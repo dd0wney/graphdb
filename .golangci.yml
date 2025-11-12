@@ -5,6 +5,8 @@ run:
   timeout: 5m
   tests: true
   modules-download-mode: readonly
+  skip-dirs:
+    - pkg/replication  # Requires ZeroMQ C library
 
 linters:
   enable:
