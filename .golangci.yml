@@ -81,10 +81,6 @@ linters-settings:
     max-func-lines: 30
 
 issues:
-  # Exclude directories from analysis
-  exclude-dirs:
-    - pkg/replication  # Requires ZeroMQ C library
-
   exclude-rules:
     # Exclude some linters from running on tests
     - path: _test\.go
