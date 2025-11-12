@@ -98,6 +98,7 @@ issues:
         - dupl
         - errcheck
         - gocritic
+        - goimports
 
     # Ignore long lines in go:generate
     - linters:
