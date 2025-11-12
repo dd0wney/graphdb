@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/golang/snappy v1.0.0
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/pebbe/zmq4 v1.4.0
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546

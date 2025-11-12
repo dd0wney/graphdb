@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"log"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -250,7 +251,11 @@ func (pt *ParallelTraversal) traverseFrom(
 				defer wg.Done()
 				defer func() { <-semaphore }()
 
-				pt.traverseFrom(targetID, depth+1, visited, results)
+				if err := pt.traverseFrom(targetID, depth+1, visited, results); err != nil {
+					// Log error but continue traversal
+					// In parallel traversal, one branch failure shouldn't stop others
+					log.Printf("Warning: parallel traversal error at depth %d: %v", depth+1, err)
+				}
 			}(edge.ToNodeID)
 		}
 

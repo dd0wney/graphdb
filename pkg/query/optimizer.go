@@ -20,17 +20,13 @@ func NewOptimizer(graph *storage.GraphStorage) *Optimizer {
 
 // Optimize optimizes an execution plan
 func (o *Optimizer) Optimize(plan *ExecutionPlan, query *Query) *ExecutionPlan {
-	optimized := &ExecutionPlan{
-		Steps: make([]ExecutionStep, 0, len(plan.Steps)),
-	}
+	// Apply optimization rules sequentially
+	result := o.applyIndexSelection(plan, query)
+	result = o.applyFilterPushdown(result, query)
+	result = o.applyJoinOrdering(result, query)
+	result = o.applyEarlyTermination(result, query)
 
-	// Apply optimization rules
-	optimized = o.applyIndexSelection(plan, query)
-	optimized = o.applyFilterPushdown(optimized, query)
-	optimized = o.applyJoinOrdering(optimized, query)
-	optimized = o.applyEarlyTermination(optimized, query)
-
-	return optimized
+	return result
 }
 
 // applyIndexSelection chooses optimal indexes for property lookups
@@ -52,14 +48,11 @@ func (o *Optimizer) applyIndexSelection(plan *ExecutionPlan, query *Query) *Exec
 
 // optimizeMatchWithIndex optimizes a match step to use indexes when available
 func (o *Optimizer) optimizeMatchWithIndex(match *MatchStep, query *Query) ExecutionStep {
-	// If WHERE clause has property filters, use index lookup
-	if query.Where != nil {
-		// Check for property equality filters
-		// Example: WHERE n.name = "Alice" -> Use index on "name" if available
-		// This would require analyzing the WHERE AST to find property filters
-		// For now, return the original step
-	}
-
+	// TODO: If WHERE clause has property filters, use index lookup
+	// Check for property equality filters
+	// Example: WHERE n.name = "Alice" -> Use index on "name" if available
+	// This would require analyzing the WHERE AST to find property filters
+	// For now, return the original step unchanged
 	return match
 }
 

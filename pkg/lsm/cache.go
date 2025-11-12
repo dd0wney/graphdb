@@ -40,7 +40,9 @@ func (bc *BlockCache) Get(key string) ([]byte, bool) {
 		// Move to front (most recently used)
 		bc.lru.MoveToFront(elem)
 		bc.hits++
-		return elem.Value.(*cacheEntry).value, true
+		if entry, ok := elem.Value.(*cacheEntry); ok {
+			return entry.value, true
+		}
 	}
 
 	bc.misses++
@@ -56,7 +58,9 @@ func (bc *BlockCache) Put(key string, value []byte) {
 	if elem, ok := bc.cache[key]; ok {
 		// Update value and move to front
 		bc.lru.MoveToFront(elem)
-		elem.Value.(*cacheEntry).value = value
+		if entry, ok := elem.Value.(*cacheEntry); ok {
+			entry.value = value
+		}
 		return
 	}
 
@@ -79,8 +83,9 @@ func (bc *BlockCache) evict() {
 	elem := bc.lru.Back()
 	if elem != nil {
 		bc.lru.Remove(elem)
-		entry := elem.Value.(*cacheEntry)
-		delete(bc.cache, entry.key)
+		if entry, ok := elem.Value.(*cacheEntry); ok {
+			delete(bc.cache, entry.key)
+		}
 	}
 }
 

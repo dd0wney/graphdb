@@ -215,17 +215,19 @@ func (l *Lexer) nextToken() (Token, error) {
 		return l.makeToken(TokenNot, "!"), nil
 	case '<':
 		l.advance()
-		if l.peek() == '=' {
+		switch l.peek() {
+		case '=':
 			l.advance()
 			return l.makeToken(TokenLessEquals, "<="), nil
-		} else if l.peek() == '>' {
+		case '>':
 			l.advance()
 			return l.makeToken(TokenNotEquals, "<>"), nil
-		} else if l.peek() == '-' {
+		case '-':
 			l.advance()
 			return l.makeToken(TokenArrowLeft, "<-"), nil
+		default:
+			return l.makeToken(TokenLessThan, "<"), nil
 		}
-		return l.makeToken(TokenLessThan, "<"), nil
 	case '>':
 		l.advance()
 		if l.peek() == '=' {

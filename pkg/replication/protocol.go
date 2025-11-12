@@ -149,6 +149,18 @@ func DefaultReplicationConfig() ReplicationConfig {
 	}
 }
 
+// HeartbeatTimeout returns the duration after which a replica is considered unresponsive
+// Following ZeroMQ Paranoid Pirate pattern: 3x heartbeat interval
+func (c *ReplicationConfig) HeartbeatTimeout() time.Duration {
+	return c.HeartbeatInterval * 3
+}
+
+// ReplicaDeadThreshold returns the number of missed heartbeats before declaring replica dead
+// Default: 5 missed heartbeats (5 seconds with 1s interval)
+func (c *ReplicationConfig) ReplicaDeadThreshold() int {
+	return 5
+}
+
 // ReplicaStatus represents the status of a replica
 type ReplicaStatus struct {
 	ReplicaID      string        `json:"replica_id"`

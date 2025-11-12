@@ -349,7 +349,9 @@ func (ms *MatchStep) traversePath(ctx *ExecutionContext, currentNode *storage.No
 	case DirectionBoth:
 		outgoing, _ := ctx.graph.GetOutgoingEdges(currentNode.ID)
 		incoming, _ := ctx.graph.GetIncomingEdges(currentNode.ID)
-		edges = append(outgoing, incoming...)
+		edges = make([]*storage.Edge, 0, len(outgoing)+len(incoming))
+		edges = append(edges, outgoing...)
+		edges = append(edges, incoming...)
 	}
 
 	if err != nil {
@@ -680,11 +682,12 @@ func (e *Executor) buildResultSet(ctx *ExecutionContext, returnClause *ReturnCla
 		columnName := item.Alias
 		if columnName == "" {
 			// Check for nil Expression to prevent nil pointer dereference
-			if item.Expression == nil {
+			switch {
+			case item.Expression == nil:
 				columnName = "<invalid>"
-			} else if item.Aggregate != "" {
+			case item.Aggregate != "":
 				columnName = fmt.Sprintf("%s(%s.%s)", item.Aggregate, item.Expression.Variable, item.Expression.Property)
-			} else {
+			default:
 				columnName = fmt.Sprintf("%s.%s", item.Expression.Variable, item.Expression.Property)
 			}
 		}

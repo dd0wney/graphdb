@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
@@ -363,6 +365,8 @@ func (rm *ReplicationManager) GetReplicationState() ReplicationState {
 	}
 
 	now := time.Now()
+	deadThreshold := rm.config.ReplicaDeadThreshold()
+
 	for _, replica := range rm.replicas {
 		// Calculate lag using primary's local monotonic time
 		lagDuration := now.Sub(replica.lastResponseTime)
@@ -370,20 +374,26 @@ func (rm *ReplicationManager) GetReplicationState() ReplicationState {
 		// Calculate heartbeat lag (how many heartbeats behind)
 		heartbeatLag := currentSeq - replica.lastResponseHeartbeatSeq
 
+		// Determine if replica is healthy based on heartbeat lag
+		// Following ZeroMQ Paranoid Pirate pattern
+		connected := heartbeatLag < uint64(deadThreshold)
+
 		state.Replicas = append(state.Replicas, ReplicaStatus{
 			ReplicaID:      replica.replicaID,
-			Connected:      true,
+			Connected:      connected, // Based on heartbeat lag, not TCP connection
 			LastSeen:       replica.lastResponseTime, // Use primary's local time for display
 			LastAppliedLSN: replica.lastAppliedLSN,
 			LagMs:          lagDuration.Milliseconds(),    // Time since last response
 			HeartbeatLag:   heartbeatLag,                  // Logical heartbeat lag
+			LagDuration:    lagDuration,
 		})
 	}
 
 	return state
 }
 
-// generateID generates a unique ID
+// generateID generates a unique ID using UUID v4
+// This ensures node identity survives network changes and prevents collisions
 func generateID() string {
-	return fmt.Sprintf("node-%d", time.Now().UnixNano())
+	return uuid.New().String()
 }
