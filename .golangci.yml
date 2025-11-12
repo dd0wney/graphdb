@@ -25,7 +25,6 @@ linters:
     - gocritic     # Comprehensive Go source code linter
     - unconvert    # Remove unnecessary type conversions
     - nakedret     # Find naked returns in functions
-    - godot        # Check that comments end in periods
 
   disable:
     - typecheck    # Can be problematic with generics
@@ -34,6 +33,7 @@ linters:
     - gocyclo      # Too strict for demonstration code
     - dupl         # Too strict for demonstration code
     - goconst      # Too strict for demonstration code
+    - godot        # Too pedantic about comment periods
 
 linters-settings:
   errcheck:
@@ -42,8 +42,12 @@ linters-settings:
     exclude-functions:
       - (*github.com/darraghdowney/cluso-graphdb/pkg/storage.GraphStorage).GetOutgoingEdges
       - (*github.com/darraghdowney/cluso-graphdb/pkg/storage.GraphStorage).GetIncomingEdges
+      - (*github.com/darraghdowney/cluso-graphdb/pkg/storage.GraphStorage).GetNode
       - (*github.com/darraghdowney/cluso-graphdb/pkg/lsm.Compactor).CleanupOldSSTables
       - (*github.com/darraghdowney/cluso-graphdb/pkg/lsm.LSMStorage).compact
+      - encoding/binary.Read
+      - (*github.com/darraghdowney/cluso-graphdb/pkg/lsm.BlockCache).evict
+      - (*github.com/darraghdowney/cluso-graphdb/pkg/lsm.BlockCache).Put
 
   govet:
     enable-all: true

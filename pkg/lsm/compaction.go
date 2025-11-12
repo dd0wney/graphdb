@@ -202,7 +202,6 @@ type CompactionStats struct {
 // MergeIterator merges multiple sorted iterators
 type MergeIterator struct {
 	iterators []*SSTableIterator
-	current   *Entry
 }
 
 // SSTableIterator iterates over an SSTable
