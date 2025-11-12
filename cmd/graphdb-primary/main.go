@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/replication"
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/replication"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 func main() {

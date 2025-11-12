@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // WorkerPool manages a pool of worker goroutines for parallel query execution

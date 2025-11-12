@@ -1,7 +1,7 @@
 package query
 
 import (
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // Optimizer optimizes query execution plans

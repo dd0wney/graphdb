@@ -3,7 +3,7 @@ package query
 import (
 	"testing"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // TestOptimizerCreation tests creating a new optimizer

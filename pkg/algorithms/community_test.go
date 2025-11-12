@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // setupCommunityTestGraph creates a test graph for community tests

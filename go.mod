@@ -1,4 +1,4 @@
-module github.com/darraghdowney/cluso-graphdb
+module github.com/dd0wney/cluso-graphdb
 
 go 1.25.3
 

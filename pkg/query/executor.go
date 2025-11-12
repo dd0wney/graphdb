@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // Executor executes parsed queries against a graph

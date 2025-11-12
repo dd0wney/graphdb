@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
-	"github.com/darraghdowney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
 // ReplicationManager manages replication on the primary node

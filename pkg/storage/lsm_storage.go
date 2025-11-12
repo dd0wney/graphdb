@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/lsm"
+	"github.com/dd0wney/cluso-graphdb/pkg/lsm"
 )
 
 // LSMGraphStorage is a disk-backed graph storage using LSM trees

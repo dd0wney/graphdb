@@ -3,7 +3,7 @@ package algorithms
 import (
 	"math"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // PageRankOptions configures PageRank algorithm

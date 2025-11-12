@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // mockTask implements the Task interface for testing

@@ -3,7 +3,7 @@ package algorithms
 import (
 	"container/list"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // ShortestPath finds the shortest path between two nodes using bidirectional BFS

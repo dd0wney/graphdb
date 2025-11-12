@@ -3,7 +3,7 @@ package query
 import (
 	"fmt"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // TraversalOptions configures graph traversal

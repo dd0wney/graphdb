@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // TestTypeAssertionSafety verifies that the type assertion fixes prevent panics

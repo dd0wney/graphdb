@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // PartitionStrategy defines how to partition a graph

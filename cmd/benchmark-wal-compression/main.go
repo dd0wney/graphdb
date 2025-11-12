@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
 func main() {

@@ -3,7 +3,7 @@ package algorithms
 import (
 	"testing"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // setupTestGraph creates a test graph for shortest path tests

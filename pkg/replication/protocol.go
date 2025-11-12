@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
 // MessageType represents the type of replication message

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/lsm"
-	"github.com/darraghdowney/cluso-graphdb/pkg/parallel"
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/lsm"
+	"github.com/dd0wney/cluso-graphdb/pkg/parallel"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // TestStorageBatchConcurrentWrites tests concurrent batch writes don't produce duplicate IDs

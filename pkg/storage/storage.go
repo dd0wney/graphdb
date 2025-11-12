@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
 var (
@@ -947,7 +947,7 @@ func (gs *GraphStorage) GetCompressionStats() CompressionStats {
 // NOTE: Parallel traversal methods (BFS, DFS, shortest path) are available
 // via the parallel package to avoid circular dependencies:
 //
-//   import "github.com/darraghdowney/cluso-graphdb/pkg/parallel"
+//   import "github.com/dd0wney/cluso-graphdb/pkg/parallel"
 //
 //   traverser := parallel.NewParallelTraverser(graph, numWorkers)
 //   defer traverser.Close()
