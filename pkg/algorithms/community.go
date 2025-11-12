@@ -17,7 +17,7 @@ type Community struct {
 // CommunityDetectionResult contains detected communities
 type CommunityDetectionResult struct {
 	Communities   []*Community
-	Modularity    float64 // Quality measure of the partitioning
+	Modularity    float64        // Quality measure of the partitioning
 	NodeCommunity map[uint64]int // Node ID -> Community ID
 }
 

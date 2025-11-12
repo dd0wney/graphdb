@@ -287,7 +287,7 @@ func TestMappedSSTable_LargeDataset(t *testing.T) {
 	// Create 1000 entries
 	entries := make([]*Entry, 1000)
 	for i := 0; i < 1000; i++ {
-		key := []byte(string(rune('a' + (i % 26))) + string(rune('a' + (i / 26))))
+		key := []byte(string(rune('a'+(i%26))) + string(rune('a'+(i/26))))
 		entries[i] = &Entry{
 			Key:       key,
 			Value:     []byte("value"),

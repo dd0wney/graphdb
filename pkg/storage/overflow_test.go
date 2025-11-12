@@ -146,11 +146,11 @@ func TestCompressionBinarySearchOverflow(t *testing.T) {
 		value    uint64
 		expected bool
 	}{
-		{0, true},           // First
-		{4999000, true},     // Middle
-		{9999000, true},     // Last
-		{5, false},          // Not present
-		{10000000, false},   // Beyond end
+		{0, true},         // First
+		{4999000, true},   // Middle
+		{9999000, true},   // Last
+		{5, false},        // Not present
+		{10000000, false}, // Beyond end
 	}
 
 	for _, tc := range testCases {

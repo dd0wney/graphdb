@@ -198,9 +198,9 @@ func DegreeCentrality(graph *storage.GraphStorage) (map[uint64]float64, error) {
 
 // CentralityResult contains centrality measures for all nodes
 type CentralityResult struct {
-	Betweenness map[uint64]float64
-	Closeness   map[uint64]float64
-	Degree      map[uint64]float64
+	Betweenness      map[uint64]float64
+	Closeness        map[uint64]float64
+	Degree           map[uint64]float64
 	TopByBetweenness []RankedNode
 	TopByCloseness   []RankedNode
 	TopByDegree      []RankedNode

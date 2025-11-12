@@ -1038,6 +1038,7 @@ func TestExecutor_CreateRelationship(t *testing.T) {
 		}
 	}
 }
+
 // TestExecutor_SortRows_Ascending tests sorting rows in ascending order
 func TestExecutor_SortRows_Ascending(t *testing.T) {
 	executor := NewExecutor(nil) // Don't need graph for sorting test

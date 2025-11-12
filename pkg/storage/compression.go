@@ -176,11 +176,11 @@ func (c *CompressedEdgeList) Contains(nodeID uint64) bool {
 
 // CompressionStats tracks compression statistics across all edge lists
 type CompressionStats struct {
-	TotalLists         int
-	TotalEdges         int64
-	UncompressedBytes  int64
-	CompressedBytes    int64
-	AverageRatio       float64
+	TotalLists        int
+	TotalEdges        int64
+	UncompressedBytes int64
+	CompressedBytes   int64
+	AverageRatio      float64
 }
 
 // CalculateCompressionStats calculates statistics for multiple compressed lists

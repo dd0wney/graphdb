@@ -24,10 +24,10 @@ func DefaultPageRankOptions() PageRankOptions {
 
 // PageRankResult contains PageRank scores for all nodes
 type PageRankResult struct {
-	Scores      map[uint64]float64 // Node ID -> PageRank score
-	Iterations  int                // Number of iterations performed
-	Converged   bool               // Whether algorithm converged
-	TopNodes    []RankedNode       // Top N nodes by score
+	Scores     map[uint64]float64 // Node ID -> PageRank score
+	Iterations int                // Number of iterations performed
+	Converged  bool               // Whether algorithm converged
+	TopNodes   []RankedNode       // Top N nodes by score
 }
 
 // RankedNode represents a node with its rank

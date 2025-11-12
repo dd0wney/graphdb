@@ -10,9 +10,9 @@ import (
 type TraversalOptions struct {
 	StartNodeID uint64
 	Direction   Direction
-	EdgeTypes   []string  // Filter by edge types (empty = all types)
-	MaxDepth    int       // Maximum traversal depth
-	MaxResults  int       // Maximum nodes to return
+	EdgeTypes   []string                 // Filter by edge types (empty = all types)
+	MaxDepth    int                      // Maximum traversal depth
+	MaxResults  int                      // Maximum nodes to return
 	Predicate   func(*storage.Node) bool // Node filter function
 }
 

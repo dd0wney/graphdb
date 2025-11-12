@@ -46,12 +46,12 @@ func (s *Server) Start() error {
 
 	// Node endpoints
 	mux.HandleFunc("/nodes", s.handleNodes)
-	mux.HandleFunc("/nodes/", s.handleNode)       // /nodes/{id}
+	mux.HandleFunc("/nodes/", s.handleNode) // /nodes/{id}
 	mux.HandleFunc("/nodes/batch", s.handleBatchNodes)
 
 	// Edge endpoints
 	mux.HandleFunc("/edges", s.handleEdges)
-	mux.HandleFunc("/edges/", s.handleEdge)       // /edges/{id}
+	mux.HandleFunc("/edges/", s.handleEdge) // /edges/{id}
 	mux.HandleFunc("/edges/batch", s.handleBatchEdges)
 
 	// Traversal endpoints

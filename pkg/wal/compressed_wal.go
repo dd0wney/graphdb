@@ -23,7 +23,7 @@ type CompressedWAL struct {
 	mu         sync.Mutex
 
 	// Statistics
-	totalWrites      uint64
+	totalWrites       uint64
 	bytesUncompressed uint64
 	bytesCompressed   uint64
 }

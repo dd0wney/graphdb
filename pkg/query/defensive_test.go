@@ -1,8 +1,8 @@
 package query
 
 import (
-	"testing"
 	"os"
+	"testing"
 
 	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
 )

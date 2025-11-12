@@ -144,10 +144,10 @@ func (pg *PartitionedGraph) GetEdgeCuts() ([]*storage.Edge, error) {
 
 // PartitionMetrics contains partitioning quality metrics
 type PartitionMetrics struct {
-	PartitionSizes []int     // Nodes per partition
-	EdgeCuts       []int     // Cut edges per partition
-	LoadBalance    float64   // 0-1 (1 = perfect balance)
-	CutRatio       float64   // Fraction of edges that are cuts
+	PartitionSizes []int   // Nodes per partition
+	EdgeCuts       []int   // Cut edges per partition
+	LoadBalance    float64 // 0-1 (1 = perfect balance)
+	CutRatio       float64 // Fraction of edges that are cuts
 }
 
 // ComputePartitionMetrics analyzes partition quality

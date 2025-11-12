@@ -51,7 +51,7 @@ func TestIntValue(t *testing.T) {
 		{"negative", -42},
 		{"max int64", math.MaxInt64},
 		{"min int64", math.MinInt64},
-		{"large positive", 1<<50},
+		{"large positive", 1 << 50},
 		{"large negative", -(1 << 50)},
 	}
 

@@ -13,7 +13,7 @@ type WorkerPool struct {
 	wg        sync.WaitGroup
 	once      sync.Once
 	mu        sync.RWMutex // Protects taskQueue from concurrent close during send
-	closed    bool          // Protected by mu
+	closed    bool         // Protected by mu
 }
 
 // NewWorkerPool creates a new worker pool with specified number of workers

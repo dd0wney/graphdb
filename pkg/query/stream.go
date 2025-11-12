@@ -294,8 +294,8 @@ func (qp *QueryPipeline) Execute(input *ResultStream) *ResultStream {
 
 // ParallelPipeline executes pipeline stages in parallel
 type ParallelPipeline struct {
-	pipeline  *QueryPipeline
-	workers   int
+	pipeline   *QueryPipeline
+	workers    int
 	bufferSize int
 }
 

@@ -10,21 +10,21 @@ import (
 	"sync"
 	"time"
 
-	zmq "github.com/pebbe/zmq4"
 	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
 	"github.com/darraghdowney/cluso-graphdb/pkg/wal"
+	zmq "github.com/pebbe/zmq4"
 )
 
 // ZMQReplicaNode represents a ZeroMQ-based replica instance
 type ZMQReplicaNode struct {
-	config         ReplicationConfig
-	replicaID      string
-	storage        *storage.GraphStorage
+	config    ReplicationConfig
+	replicaID string
+	storage   *storage.GraphStorage
 
 	// ZeroMQ sockets
-	walSubscriber  *zmq.Socket  // SUB socket for WAL streaming
-	healthDealer   *zmq.Socket  // DEALER socket for health checks
-	writePusher    *zmq.Socket  // PUSH socket for write forwarding
+	walSubscriber *zmq.Socket // SUB socket for WAL streaming
+	healthDealer  *zmq.Socket // DEALER socket for health checks
+	writePusher   *zmq.Socket // PUSH socket for write forwarding
 
 	// State
 	lastAppliedLSN uint64
@@ -33,9 +33,9 @@ type ZMQReplicaNode struct {
 	connectedMu    sync.RWMutex
 
 	// Channels
-	stopCh         chan struct{}
-	running        bool
-	runningMu      sync.Mutex
+	stopCh    chan struct{}
+	running   bool
+	runningMu sync.Mutex
 }
 
 // NewZMQReplicaNode creates a new ZeroMQ-based replica node

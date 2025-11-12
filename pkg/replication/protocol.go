@@ -34,9 +34,9 @@ type Message struct {
 
 // HandshakeRequest is sent by replica to primary during connection
 type HandshakeRequest struct {
-	ReplicaID   string `json:"replica_id"`
-	LastLSN     uint64 `json:"last_lsn"`      // Last LSN received by replica
-	Version     string `json:"version"`
+	ReplicaID    string   `json:"replica_id"`
+	LastLSN      uint64   `json:"last_lsn"` // Last LSN received by replica
+	Version      string   `json:"version"`
 	Capabilities []string `json:"capabilities"`
 }
 
@@ -105,19 +105,19 @@ func (m *Message) Decode(v interface{}) error {
 // ReplicationConfig holds replication configuration
 type ReplicationConfig struct {
 	// Primary configuration
-	IsPrimary       bool
-	ListenAddr      string
-	MaxReplicas     int
+	IsPrimary         bool
+	ListenAddr        string
+	MaxReplicas       int
 	HeartbeatInterval time.Duration
 
 	// Replica configuration
-	PrimaryAddr     string
-	ReplicaID       string
-	ReconnectDelay  time.Duration
+	PrimaryAddr    string
+	ReplicaID      string
+	ReconnectDelay time.Duration
 
 	// Common
-	SyncMode        SyncMode
-	WALBufferSize   int
+	SyncMode      SyncMode
+	WALBufferSize int
 }
 
 // SyncMode defines replication synchronization mode
@@ -160,10 +160,10 @@ type ReplicaStatus struct {
 
 // ReplicationState represents overall replication state
 type ReplicationState struct {
-	IsPrimary       bool            `json:"is_primary"`
-	PrimaryID       string          `json:"primary_id,omitempty"`
-	ReplicaCount    int             `json:"replica_count"`
-	Replicas        []ReplicaStatus `json:"replicas"`
-	CurrentLSN      uint64          `json:"current_lsn"`
-	OldestReplicaLSN uint64         `json:"oldest_replica_lsn"`
+	IsPrimary        bool            `json:"is_primary"`
+	PrimaryID        string          `json:"primary_id,omitempty"`
+	ReplicaCount     int             `json:"replica_count"`
+	Replicas         []ReplicaStatus `json:"replicas"`
+	CurrentLSN       uint64          `json:"current_lsn"`
+	OldestReplicaLSN uint64          `json:"oldest_replica_lsn"`
 }

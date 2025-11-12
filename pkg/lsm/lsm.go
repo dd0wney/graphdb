@@ -20,10 +20,10 @@ type LSMStorage struct {
 	cache  *BlockCache // LRU cache for hot data
 
 	// Configuration
-	dataDir         string
-	memTableSize    int
+	dataDir            string
+	memTableSize       int
 	compactionStrategy CompactionStrategy
-	compactor       *Compactor
+	compactor          *Compactor
 
 	// Background workers
 	flushChan      chan struct{}
@@ -39,31 +39,31 @@ type LSMStorage struct {
 type LSMStats struct {
 	mu sync.Mutex
 
-	WriteCount       int64
-	ReadCount        int64
-	FlushCount       int64
-	CompactionCount  int64
-	BytesWritten     int64
-	BytesRead        int64
-	MemTableSize     int
-	SSTableCount     int
-	Level0FileCount  int
+	WriteCount      int64
+	ReadCount       int64
+	FlushCount      int64
+	CompactionCount int64
+	BytesWritten    int64
+	BytesRead       int64
+	MemTableSize    int
+	SSTableCount    int
+	Level0FileCount int
 }
 
 // LSMOptions configures LSM storage
 type LSMOptions struct {
-	DataDir            string
-	MemTableSize       int // Bytes (default 4MB)
-	CompactionStrategy CompactionStrategy
+	DataDir              string
+	MemTableSize         int // Bytes (default 4MB)
+	CompactionStrategy   CompactionStrategy
 	EnableAutoCompaction bool
 }
 
 // DefaultLSMOptions returns default LSM configuration
 func DefaultLSMOptions(dataDir string) LSMOptions {
 	return LSMOptions{
-		DataDir:            dataDir,
-		MemTableSize:       4 * 1024 * 1024, // 4MB
-		CompactionStrategy: DefaultLeveledCompaction(),
+		DataDir:              dataDir,
+		MemTableSize:         4 * 1024 * 1024, // 4MB
+		CompactionStrategy:   DefaultLeveledCompaction(),
 		EnableAutoCompaction: true,
 	}
 }

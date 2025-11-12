@@ -216,7 +216,6 @@ func TestWorkerPoolWithPanic(t *testing.T) {
 	}
 }
 
-
 // BenchmarkWorkerPoolThroughput benchmarks worker pool throughput
 func BenchmarkWorkerPoolThroughput(b *testing.B) {
 	pool := NewWorkerPool(10)

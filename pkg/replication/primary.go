@@ -14,16 +14,16 @@ import (
 
 // ReplicationManager manages replication on the primary node
 type ReplicationManager struct {
-	config      ReplicationConfig
-	primaryID   string
-	storage     *storage.GraphStorage
-	replicas    map[string]*ReplicaConnection
-	replicasMu  sync.RWMutex
-	listener    net.Listener
-	walStream   chan *wal.Entry
-	stopCh      chan struct{}
-	running     bool
-	runningMu   sync.Mutex
+	config     ReplicationConfig
+	primaryID  string
+	storage    *storage.GraphStorage
+	replicas   map[string]*ReplicaConnection
+	replicasMu sync.RWMutex
+	listener   net.Listener
+	walStream  chan *wal.Entry
+	stopCh     chan struct{}
+	running    bool
+	runningMu  sync.Mutex
 }
 
 // ReplicaConnection represents a connection to a replica

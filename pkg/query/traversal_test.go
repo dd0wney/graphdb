@@ -10,10 +10,11 @@ import (
 
 // Helper to create a test graph
 // Graph structure:
-//     1 -> 2 -> 4
-//     |    |
-//     v    v
-//     3 -> 5
+//
+//	1 -> 2 -> 4
+//	|    |
+//	v    v
+//	3 -> 5
 func setupTraversalTestGraph(t *testing.T) (*storage.GraphStorage, func()) {
 	tempDir := filepath.Join(os.TempDir(), "traversal_test_"+t.Name())
 	gs, err := storage.NewGraphStorage(tempDir)

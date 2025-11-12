@@ -20,19 +20,19 @@ var (
 // GraphStorage is the core in-memory graph storage engine
 type GraphStorage struct {
 	// Core data structures
-	nodes      map[uint64]*Node
-	edges      map[uint64]*Edge
+	nodes map[uint64]*Node
+	edges map[uint64]*Edge
 
 	// Indexes for fast lookups
-	nodesByLabel    map[string][]uint64              // label -> node IDs
-	edgesByType     map[string][]uint64              // edge type -> edge IDs
-	outgoingEdges   map[uint64][]uint64              // node ID -> outgoing edge IDs (uncompressed)
-	incomingEdges   map[uint64][]uint64              // node ID -> incoming edge IDs (uncompressed)
-	propertyIndexes map[string]*PropertyIndex        // property key -> index
+	nodesByLabel    map[string][]uint64       // label -> node IDs
+	edgesByType     map[string][]uint64       // edge type -> edge IDs
+	outgoingEdges   map[uint64][]uint64       // node ID -> outgoing edge IDs (uncompressed)
+	incomingEdges   map[uint64][]uint64       // node ID -> incoming edge IDs (uncompressed)
+	propertyIndexes map[string]*PropertyIndex // property key -> index
 
 	// Compressed edge storage (optional)
-	compressedOutgoing map[uint64]*CompressedEdgeList  // node ID -> compressed outgoing edges
-	compressedIncoming map[uint64]*CompressedEdgeList  // node ID -> compressed incoming edges
+	compressedOutgoing map[uint64]*CompressedEdgeList // node ID -> compressed outgoing edges
+	compressedIncoming map[uint64]*CompressedEdgeList // node ID -> compressed incoming edges
 	useEdgeCompression bool
 
 	// ID generators
@@ -43,12 +43,12 @@ type GraphStorage struct {
 	mu sync.RWMutex
 
 	// Persistence
-	dataDir         string
-	wal             *wal.WAL
-	batchedWAL      *wal.BatchedWAL
-	compressedWAL   *wal.CompressedWAL
-	useBatching     bool
-	useCompression  bool
+	dataDir        string
+	wal            *wal.WAL
+	batchedWAL     *wal.BatchedWAL
+	compressedWAL  *wal.CompressedWAL
+	useBatching    bool
+	useCompression bool
 
 	// Statistics (using atomic operations for thread-safety)
 	stats Statistics
@@ -56,32 +56,32 @@ type GraphStorage struct {
 
 // StorageConfig holds configuration for GraphStorage
 type StorageConfig struct {
-	DataDir              string
-	EnableBatching       bool
-	EnableCompression    bool
+	DataDir               string
+	EnableBatching        bool
+	EnableCompression     bool
 	EnableEdgeCompression bool
-	BatchSize            int
-	FlushInterval        time.Duration
+	BatchSize             int
+	FlushInterval         time.Duration
 }
 
 // Statistics tracks database statistics
 type Statistics struct {
-	NodeCount     uint64
-	EdgeCount     uint64
-	LastSnapshot  time.Time
-	TotalQueries  uint64
-	AvgQueryTime  float64
+	NodeCount    uint64
+	EdgeCount    uint64
+	LastSnapshot time.Time
+	TotalQueries uint64
+	AvgQueryTime float64
 }
 
 // NewGraphStorage creates a new graph storage engine with default config
 func NewGraphStorage(dataDir string) (*GraphStorage, error) {
 	return NewGraphStorageWithConfig(StorageConfig{
-		DataDir:              dataDir,
-		EnableBatching:       false,
-		EnableCompression:    false,
+		DataDir:               dataDir,
+		EnableBatching:        false,
+		EnableCompression:     false,
 		EnableEdgeCompression: false,
-		BatchSize:            100,
-		FlushInterval:        10 * time.Millisecond,
+		BatchSize:             100,
+		FlushInterval:         10 * time.Millisecond,
 	})
 }
 

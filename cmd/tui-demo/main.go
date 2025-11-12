@@ -24,9 +24,9 @@ func main() {
 
 	// Create people
 	people := []struct {
-		name     string
-		age      int64
-		city     string
+		name      string
+		age       int64
+		city      string
 		interests []string
 	}{
 		{"Alice", 30, "San Francisco", []string{"AI", "Graphs", "Databases"}},
@@ -61,10 +61,10 @@ func main() {
 
 	// Create a realistic social network
 	connections := []struct {
-		from   int
-		to     int
-		relType string
-		since  int64
+		from     int
+		to       int
+		relType  string
+		since    int64
 		strength float64
 	}{
 		// Alice's connections
@@ -128,8 +128,8 @@ func main() {
 	// Create some products
 	fmt.Println("\n📦 Creating products...")
 	products := []struct {
-		name  string
-		price int64
+		name     string
+		price    int64
 		category string
 	}{
 		{"Laptop Pro", 1999, "Electronics"},

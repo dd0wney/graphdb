@@ -34,8 +34,8 @@ type Entry struct {
 
 // WAL is a Write-Ahead Log for durability
 type WAL struct {
-	file      *os.File
-	writer    *bufio.Writer
+	file       *os.File
+	writer     *bufio.Writer
 	currentLSN uint64
 	dataDir    string
 	mu         sync.Mutex

@@ -10,31 +10,31 @@ import (
 	"sync"
 	"time"
 
-	zmq "github.com/pebbe/zmq4"
 	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
 	"github.com/darraghdowney/cluso-graphdb/pkg/wal"
+	zmq "github.com/pebbe/zmq4"
 )
 
 // ZMQReplicationManager manages replication using ZeroMQ
 type ZMQReplicationManager struct {
-	config        ReplicationConfig
-	primaryID     string
-	storage       *storage.GraphStorage
+	config    ReplicationConfig
+	primaryID string
+	storage   *storage.GraphStorage
 
 	// ZeroMQ sockets
-	walPublisher  *zmq.Socket  // PUB socket for WAL streaming
-	healthRouter  *zmq.Socket  // ROUTER socket for health checks
-	writeReceiver *zmq.Socket  // PULL socket for write buffering
+	walPublisher  *zmq.Socket // PUB socket for WAL streaming
+	healthRouter  *zmq.Socket // ROUTER socket for health checks
+	writeReceiver *zmq.Socket // PULL socket for write buffering
 
 	// Replica tracking
-	replicas      map[string]*ZMQReplicaInfo
-	replicasMu    sync.RWMutex
+	replicas   map[string]*ZMQReplicaInfo
+	replicasMu sync.RWMutex
 
 	// Channels
-	walStream     chan *wal.Entry
-	stopCh        chan struct{}
-	running       bool
-	runningMu     sync.Mutex
+	walStream chan *wal.Entry
+	stopCh    chan struct{}
+	running   bool
+	runningMu sync.Mutex
 
 	// Datacenter support
 	datacenters   map[string]*DatacenterLink
@@ -349,13 +349,13 @@ func (zm *ZMQReplicationManager) AddDatacenterLink(datacenterID, pubEndpoint str
 
 // WriteOperation represents a buffered write operation
 type WriteOperation struct {
-	Type       string                    `json:"type"` // "create_node", "create_edge"
-	Labels     []string                  `json:"labels,omitempty"`
+	Type       string                   `json:"type"` // "create_node", "create_edge"
+	Labels     []string                 `json:"labels,omitempty"`
 	Properties map[string]storage.Value `json:"properties,omitempty"`
-	FromNodeID uint64                    `json:"from_node_id,omitempty"`
-	ToNodeID   uint64                    `json:"to_node_id,omitempty"`
-	EdgeType   string                    `json:"edge_type,omitempty"`
-	Weight     float64                   `json:"weight,omitempty"`
+	FromNodeID uint64                   `json:"from_node_id,omitempty"`
+	ToNodeID   uint64                   `json:"to_node_id,omitempty"`
+	EdgeType   string                   `json:"edge_type,omitempty"`
+	Weight     float64                  `json:"weight,omitempty"`
 }
 
 // executeWriteOperation executes a buffered write operation

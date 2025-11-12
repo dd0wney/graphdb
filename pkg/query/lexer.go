@@ -8,11 +8,11 @@ import (
 
 // Token represents a lexical token
 type Token struct {
-	Type    TokenType
-	Value   string
-	Pos     int
-	Line    int
-	Column  int
+	Type   TokenType
+	Value  string
+	Pos    int
+	Line   int
+	Column int
 }
 
 // TokenType represents the type of a token
@@ -52,34 +52,34 @@ const (
 	TokenNull
 
 	// Operators
-	TokenEquals      // =
-	TokenNotEquals   // !=, <>
-	TokenLessThan    // <
-	TokenGreaterThan // >
-	TokenLessEquals  // <=
+	TokenEquals        // =
+	TokenNotEquals     // !=, <>
+	TokenLessThan      // <
+	TokenGreaterThan   // >
+	TokenLessEquals    // <=
 	TokenGreaterEquals // >=
-	TokenPlus        // +
-	TokenMinus       // -
-	TokenStar        // *
-	TokenSlash       // /
-	TokenPercent     // %
-	TokenDot         // .
-	TokenColon       // :
-	TokenComma       // ,
-	TokenSemicolon   // ;
+	TokenPlus          // +
+	TokenMinus         // -
+	TokenStar          // *
+	TokenSlash         // /
+	TokenPercent       // %
+	TokenDot           // .
+	TokenColon         // :
+	TokenComma         // ,
+	TokenSemicolon     // ;
 
 	// Delimiters
-	TokenLeftParen   // (
-	TokenRightParen  // )
-	TokenLeftBracket // [
+	TokenLeftParen    // (
+	TokenRightParen   // )
+	TokenLeftBracket  // [
 	TokenRightBracket // ]
-	TokenLeftBrace   // {
-	TokenRightBrace  // }
+	TokenLeftBrace    // {
+	TokenRightBrace   // }
 
 	// Relationship arrows
-	TokenArrowLeft   // <-
-	TokenArrowRight  // ->
-	TokenArrowBoth   // -
+	TokenArrowLeft  // <-
+	TokenArrowRight // ->
+	TokenArrowBoth  // -
 )
 
 var keywords = map[string]TokenType{
@@ -109,11 +109,11 @@ var keywords = map[string]TokenType{
 
 // Lexer tokenizes a query string
 type Lexer struct {
-	input   string
-	pos     int
-	line    int
-	column  int
-	tokens  []Token
+	input  string
+	pos    int
+	line   int
+	column int
+	tokens []Token
 }
 
 // NewLexer creates a new lexer

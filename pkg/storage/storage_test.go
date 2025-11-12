@@ -95,7 +95,7 @@ func TestGraphStorage_CreateEdge(t *testing.T) {
 		node2.ID,
 		"VERIFIED_BY",
 		map[string]Value{
-			"timestamp": TimestampValue(time.Now()),
+			"timestamp":  TimestampValue(time.Now()),
 			"confidence": FloatValue(0.95),
 		},
 		1.0,

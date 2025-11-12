@@ -175,8 +175,8 @@ func (o *Optimizer) EstimateCost(pattern *MatchClause) float64 {
 
 // OptimizationHint provides hints about potential optimizations
 type OptimizationHint struct {
-	Type        string  // "index_available", "filter_early", "join_reorder"
-	Description string
+	Type          string // "index_available", "filter_early", "join_reorder"
+	Description   string
 	EstimatedGain float64 // Estimated speedup multiplier
 }
 

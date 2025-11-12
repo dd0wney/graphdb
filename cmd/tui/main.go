@@ -142,20 +142,20 @@ func (k keyMap) FullHelp() [][]key.Binding {
 }
 
 type model struct {
-	graph      *storage.GraphStorage
-	executor   *query.Executor
+	graph       *storage.GraphStorage
+	executor    *query.Executor
 	currentView view
-	queryInput textinput.Model
-	nodeList   list.Model
-	nodeTable  table.Model
-	help       help.Model
-	keys       keyMap
-	width      int
-	height     int
-	message    string
-	messageErr bool
-	startTime  time.Time
-	stats      storage.Statistics
+	queryInput  textinput.Model
+	nodeList    list.Model
+	nodeTable   table.Model
+	help        help.Model
+	keys        keyMap
+	width       int
+	height      int
+	message     string
+	messageErr  bool
+	startTime   time.Time
+	stats       storage.Statistics
 }
 
 type tickMsg time.Time
@@ -197,15 +197,15 @@ func initialModel(graph *storage.GraphStorage) model {
 	t.SetStyles(s)
 
 	return model{
-		graph:      graph,
-		executor:   query.NewExecutor(graph),
+		graph:       graph,
+		executor:    query.NewExecutor(graph),
 		currentView: dashboardView,
-		queryInput: ti,
-		nodeTable:  t,
-		help:       help.New(),
-		keys:       keys,
-		startTime:  time.Now(),
-		stats:      graph.GetStatistics(),
+		queryInput:  ti,
+		nodeTable:   t,
+		help:        help.New(),
+		keys:        keys,
+		startTime:   time.Now(),
+		stats:       graph.GetStatistics(),
 	}
 }
 

@@ -17,18 +17,18 @@ const (
 
 // HealthCheck performs health checks on replication
 type HealthCheck struct {
-	mu             sync.RWMutex
-	checks         map[string]*CheckResult
-	thresholds     HealthThresholds
-	lastCheckTime  time.Time
+	mu            sync.RWMutex
+	checks        map[string]*CheckResult
+	thresholds    HealthThresholds
+	lastCheckTime time.Time
 }
 
 // CheckResult represents the result of a health check
 type CheckResult struct {
-	Name      string       `json:"name"`
-	Status    HealthStatus `json:"status"`
-	Message   string       `json:"message"`
-	CheckedAt time.Time    `json:"checked_at"`
+	Name      string                 `json:"name"`
+	Status    HealthStatus           `json:"status"`
+	Message   string                 `json:"message"`
+	CheckedAt time.Time              `json:"checked_at"`
 	Details   map[string]interface{} `json:"details,omitempty"`
 }
 
