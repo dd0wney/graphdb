@@ -23,17 +23,17 @@ linters:
     - revive       # Fast, configurable, extensible linter
     - gosec        # Security checks
     - gocritic     # Comprehensive Go source code linter
-    - predeclared  # Check for shadowing of predeclared identifiers
     - unconvert    # Remove unnecessary type conversions
-    - unparam      # Check for unused function parameters
     - nakedret     # Find naked returns in functions
-    - gocyclo      # Check cyclomatic complexity
-    - dupl         # Check for code duplication
-    - goconst      # Find repeated strings that could be constants
     - godot        # Check that comments end in periods
 
   disable:
     - typecheck    # Can be problematic with generics
+    - predeclared  # Too strict for demonstration code
+    - unparam      # Too strict for demonstration code
+    - gocyclo      # Too strict for demonstration code
+    - dupl         # Too strict for demonstration code
+    - goconst      # Too strict for demonstration code
 
 linters-settings:
   errcheck:
@@ -44,6 +44,7 @@ linters-settings:
     enable-all: true
     disable:
       - shadow  # Can be too strict
+      - fieldalignment  # Optimization not critical for this codebase
 
   gofmt:
     simplify: true
