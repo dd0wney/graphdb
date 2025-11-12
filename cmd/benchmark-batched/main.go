@@ -71,7 +71,7 @@ func main() {
 	fmt.Printf("✅ All data verified successfully!\n")
 }
 
-func benchmarkStorage(config storage.StorageConfig, nodeCount, edgeCount int) time.Duration {
+func benchmarkStorage(config storage.StorageConfig, nodeCount, _ int) time.Duration {
 	start := time.Now()
 
 	// Initialize storage
@@ -126,7 +126,7 @@ func benchmarkStorage(config storage.StorageConfig, nodeCount, edgeCount int) ti
 	return duration
 }
 
-func verifyIntegrity(dataDir string, expectedNodes, expectedEdges int) {
+func verifyIntegrity(dataDir string, expectedNodes, _ int) {
 	graph, err := storage.NewGraphStorage(dataDir)
 	if err != nil {
 		log.Fatalf("Failed to load from %s: %v", dataDir, err)
@@ -135,6 +135,7 @@ func verifyIntegrity(dataDir string, expectedNodes, expectedEdges int) {
 
 	stats := graph.GetStatistics()
 	if stats.NodeCount != uint64(expectedNodes) {
+		graph.Close()
 		log.Fatalf("Expected %d nodes, got %d", expectedNodes, stats.NodeCount)
 	}
 

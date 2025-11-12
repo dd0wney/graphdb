@@ -48,6 +48,7 @@ func main() {
 			},
 		)
 		if err != nil {
+			graph.Close()
 			log.Fatalf("Failed to create node: %v", err)
 		}
 		nodeIDs[i] = node.ID

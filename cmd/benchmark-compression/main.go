@@ -71,11 +71,12 @@ func main() {
 	// Summary
 	fmt.Printf("📊 Summary\n")
 	fmt.Printf("==================================\n")
-	if stats.AverageRatio >= 5.0 {
+	switch {
+	case stats.AverageRatio >= 5.0:
 		fmt.Printf("✅ Excellent! Achieved 5-8x compression target\n")
-	} else if stats.AverageRatio >= 3.0 {
+	case stats.AverageRatio >= 3.0:
 		fmt.Printf("⚡ Good! Significant compression achieved\n")
-	} else {
+	default:
 		fmt.Printf("💡 Modest compression - may need different distribution\n")
 	}
 
@@ -87,13 +88,13 @@ func main() {
 }
 
 func generateEdgeLists(numNodes, avgDegree int) [][]uint64 {
-	rand.Seed(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	edgeLists := make([][]uint64, numNodes)
 
 	for i := 0; i < numNodes; i++ {
 		// Random degree around average (using normal distribution)
-		degree := avgDegree + rand.Intn(avgDegree/2) - avgDegree/4
+		degree := avgDegree + rng.Intn(avgDegree/2) - avgDegree/4
 		if degree < 0 {
 			degree = 0
 		}
@@ -102,14 +103,15 @@ func generateEdgeLists(numNodes, avgDegree int) [][]uint64 {
 		for j := 0; j < degree; j++ {
 			// Generate random target node IDs
 			// Use clustering to get better compression (nearby IDs)
-			cluster := uint64(i + rand.Intn(100) - 50)
-			if cluster < 0 {
-				cluster = 0
+			offset := rng.Intn(100) - 50
+			clusterInt := i + offset
+			if clusterInt < 0 {
+				clusterInt = 0
 			}
-			if int(cluster) >= numNodes {
-				cluster = uint64(numNodes - 1)
+			if clusterInt >= numNodes {
+				clusterInt = numNodes - 1
 			}
-			edges[j] = cluster
+			edges[j] = uint64(clusterInt)
 		}
 
 		edgeLists[i] = edges
@@ -145,15 +147,15 @@ func benchmarkRandomAccess(lists []*storage.CompressedEdgeList, maxNodeID int) (
 	start := time.Now()
 	accessCount := 1000 // Perform 1000 random lookups
 
-	rand.Seed(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	for i := 0; i < accessCount; i++ {
 		// Random list
-		listIdx := rand.Intn(len(lists))
+		listIdx := rng.Intn(len(lists))
 		list := lists[listIdx]
 
 		// Random node ID
-		nodeID := uint64(rand.Intn(maxNodeID))
+		nodeID := uint64(rng.Intn(maxNodeID))
 
 		// Check if contains
 		_ = list.Contains(nodeID)
