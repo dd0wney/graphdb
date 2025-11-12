@@ -91,6 +91,14 @@ issues:
         - gosec
         - goconst
 
+    # Exclude benchmark/cmd files from strict linting (demonstration code)
+    - path: cmd/
+      linters:
+        - gocyclo
+        - dupl
+        - errcheck
+        - gocritic
+
     # Ignore long lines in go:generate
     - linters:
         - lll
