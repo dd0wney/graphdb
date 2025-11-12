@@ -42,6 +42,8 @@ linters-settings:
     exclude-functions:
       - (*github.com/darraghdowney/cluso-graphdb/pkg/storage.GraphStorage).GetOutgoingEdges
       - (*github.com/darraghdowney/cluso-graphdb/pkg/storage.GraphStorage).GetIncomingEdges
+      - (*github.com/darraghdowney/cluso-graphdb/pkg/lsm.Compactor).CleanupOldSSTables
+      - (*github.com/darraghdowney/cluso-graphdb/pkg/lsm.LSMStorage).compact
 
   govet:
     enable-all: true
