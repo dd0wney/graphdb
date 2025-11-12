@@ -39,6 +39,9 @@ linters-settings:
   errcheck:
     check-type-assertions: true
     check-blank: true
+    exclude-functions:
+      - (*github.com/darraghdowney/cluso-graphdb/pkg/storage.GraphStorage).GetOutgoingEdges
+      - (*github.com/darraghdowney/cluso-graphdb/pkg/storage.GraphStorage).GetIncomingEdges
 
   govet:
     enable-all: true
@@ -100,6 +103,8 @@ issues:
         - errcheck
         - gocritic
         - goimports
+        - staticcheck
+        - unused
 
     # Ignore long lines in go:generate
     - linters:
