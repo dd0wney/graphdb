@@ -431,7 +431,18 @@ func (lsm *LSMStorage) GetStats() LSMStats {
 	}
 	lsm.mu.RUnlock()
 
-	return lsm.stats
+	// Return a copy without the mutex to avoid copying lock value
+	return LSMStats{
+		WriteCount:      lsm.stats.WriteCount,
+		ReadCount:       lsm.stats.ReadCount,
+		FlushCount:      lsm.stats.FlushCount,
+		CompactionCount: lsm.stats.CompactionCount,
+		BytesWritten:    lsm.stats.BytesWritten,
+		BytesRead:       lsm.stats.BytesRead,
+		MemTableSize:    lsm.stats.MemTableSize,
+		SSTableCount:    lsm.stats.SSTableCount,
+		Level0FileCount: lsm.stats.Level0FileCount,
+	}
 }
 
 // Close flushes pending writes and stops background workers
