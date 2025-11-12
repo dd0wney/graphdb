@@ -14,26 +14,29 @@ import (
 
 // ReplicationManager manages replication on the primary node
 type ReplicationManager struct {
-	config     ReplicationConfig
-	primaryID  string
-	storage    *storage.GraphStorage
-	replicas   map[string]*ReplicaConnection
-	replicasMu sync.RWMutex
-	listener   net.Listener
-	walStream  chan *wal.Entry
-	stopCh     chan struct{}
-	running    bool
-	runningMu  sync.Mutex
+	config              ReplicationConfig
+	primaryID           string
+	storage             *storage.GraphStorage
+	replicas            map[string]*ReplicaConnection
+	replicasMu          sync.RWMutex
+	listener            net.Listener
+	walStream           chan *wal.Entry
+	stopCh              chan struct{}
+	running             bool
+	runningMu           sync.Mutex
+	heartbeatSeqCounter uint64 // Monotonically increasing heartbeat sequence
+	heartbeatSeqMu      sync.Mutex
 }
 
 // ReplicaConnection represents a connection to a replica
 type ReplicaConnection struct {
-	replicaID      string
-	conn           net.Conn
-	lastSeen       time.Time
-	lastAppliedLSN uint64
-	sendCh         chan *Message
-	stopCh         chan struct{}
+	replicaID                string
+	conn                     net.Conn
+	lastResponseTime         time.Time // Primary's local time when last response received
+	lastResponseHeartbeatSeq uint64    // Last heartbeat seq we received ACK for
+	lastAppliedLSN           uint64
+	sendCh                   chan *Message
+	stopCh                   chan struct{}
 }
 
 // NewReplicationManager creates a new replication manager for primary
@@ -201,12 +204,13 @@ func (rm *ReplicationManager) handleReplicaConnection(conn net.Conn) {
 
 	// Create replica connection
 	replica := &ReplicaConnection{
-		replicaID:      handshake.ReplicaID,
-		conn:           conn,
-		lastSeen:       time.Now(),
-		lastAppliedLSN: handshake.LastLSN,
-		sendCh:         make(chan *Message, 100),
-		stopCh:         make(chan struct{}),
+		replicaID:                handshake.ReplicaID,
+		conn:                     conn,
+		lastResponseTime:         time.Now(), // Use primary's local monotonic time
+		lastResponseHeartbeatSeq: 0,
+		lastAppliedLSN:           handshake.LastLSN,
+		sendCh:                   make(chan *Message, 100),
+		stopCh:                   make(chan struct{}),
 	}
 
 	rm.replicasMu.Lock()
@@ -263,19 +267,25 @@ func (rm *ReplicationManager) receiveFromReplica(replica *ReplicaConnection, dec
 
 // handleReplicaMessage handles a message from a replica
 func (rm *ReplicationManager) handleReplicaMessage(replica *ReplicaConnection, msg *Message) {
-	replica.lastSeen = time.Now()
+	// Always update response time when we receive any message (uses primary's local clock)
+	replica.lastResponseTime = time.Now()
 
 	switch msg.Type {
 	case MsgHeartbeat:
 		var hb HeartbeatMessage
 		if err := msg.Decode(&hb); err == nil {
-			// Update replica status
+			// Replica echoed our heartbeat back - update sequence
+			replica.lastResponseHeartbeatSeq = hb.Sequence
 		}
 
 	case MsgAck:
 		var ack AckMessage
 		if err := msg.Decode(&ack); err == nil {
 			replica.lastAppliedLSN = ack.LastAppliedLSN
+			// Track heartbeat sequence from ACK
+			if ack.HeartbeatSequence > replica.lastResponseHeartbeatSeq {
+				replica.lastResponseHeartbeatSeq = ack.HeartbeatSequence
+			}
 		}
 
 	case MsgError:
@@ -308,9 +318,16 @@ func (rm *ReplicationManager) sendHeartbeats() {
 func (rm *ReplicationManager) broadcastHeartbeat() {
 	stats := rm.storage.GetStatistics()
 
+	// Increment heartbeat sequence (monotonic, never resets)
+	rm.heartbeatSeqMu.Lock()
+	rm.heartbeatSeqCounter++
+	currentSeq := rm.heartbeatSeqCounter
+	rm.heartbeatSeqMu.Unlock()
+
 	hb := HeartbeatMessage{
 		From:       rm.primaryID,
-		CurrentLSN: 0, // TODO: Get from WAL
+		Sequence:   currentSeq, // Logical time - monotonically increasing
+		CurrentLSN: 0,          // TODO: Get from WAL
 		NodeCount:  stats.NodeCount,
 		EdgeCount:  stats.EdgeCount,
 	}
@@ -334,6 +351,10 @@ func (rm *ReplicationManager) GetReplicationState() ReplicationState {
 	rm.replicasMu.RLock()
 	defer rm.replicasMu.RUnlock()
 
+	rm.heartbeatSeqMu.Lock()
+	currentSeq := rm.heartbeatSeqCounter
+	rm.heartbeatSeqMu.Unlock()
+
 	state := ReplicationState{
 		IsPrimary:    true,
 		PrimaryID:    rm.primaryID,
@@ -341,12 +362,21 @@ func (rm *ReplicationManager) GetReplicationState() ReplicationState {
 		Replicas:     make([]ReplicaStatus, 0, len(rm.replicas)),
 	}
 
+	now := time.Now()
 	for _, replica := range rm.replicas {
+		// Calculate lag using primary's local monotonic time
+		lagDuration := now.Sub(replica.lastResponseTime)
+
+		// Calculate heartbeat lag (how many heartbeats behind)
+		heartbeatLag := currentSeq - replica.lastResponseHeartbeatSeq
+
 		state.Replicas = append(state.Replicas, ReplicaStatus{
 			ReplicaID:      replica.replicaID,
 			Connected:      true,
-			LastSeen:       replica.lastSeen,
+			LastSeen:       replica.lastResponseTime, // Use primary's local time for display
 			LastAppliedLSN: replica.lastAppliedLSN,
+			LagMs:          lagDuration.Milliseconds(),    // Time since last response
+			HeartbeatLag:   heartbeatLag,                  // Logical heartbeat lag
 		})
 	}
 

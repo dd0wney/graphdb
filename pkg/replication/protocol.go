@@ -52,6 +52,7 @@ type HandshakeResponse struct {
 // HeartbeatMessage keeps connection alive and reports status
 type HeartbeatMessage struct {
 	From       string `json:"from"`
+	Sequence   uint64 `json:"sequence"`   // Monotonically increasing sequence number
 	CurrentLSN uint64 `json:"current_lsn"`
 	NodeCount  uint64 `json:"node_count"`
 	EdgeCount  uint64 `json:"edge_count"`
@@ -72,8 +73,9 @@ type SnapshotMessage struct {
 
 // AckMessage acknowledges receipt of messages
 type AckMessage struct {
-	LastAppliedLSN uint64 `json:"last_applied_lsn"`
-	ReplicaID      string `json:"replica_id"`
+	LastAppliedLSN    uint64 `json:"last_applied_lsn"`
+	ReplicaID         string `json:"replica_id"`
+	HeartbeatSequence uint64 `json:"heartbeat_sequence"` // ACKs this heartbeat sequence
 }
 
 // ErrorMessage reports errors
@@ -151,10 +153,12 @@ func DefaultReplicationConfig() ReplicationConfig {
 type ReplicaStatus struct {
 	ReplicaID      string        `json:"replica_id"`
 	Connected      bool          `json:"connected"`
-	LastSeen       time.Time     `json:"last_seen"`
+	LastSeen       time.Time     `json:"last_seen"` // Primary's local time of last response
 	LastAppliedLSN uint64        `json:"last_applied_lsn"`
 	CurrentLSN     uint64        `json:"current_lsn"`
 	LagLSN         uint64        `json:"lag_lsn"`
+	LagMs          int64         `json:"lag_ms"`           // Milliseconds since last response (monotonic)
+	HeartbeatLag   uint64        `json:"heartbeat_lag"`    // Logical heartbeat lag (sequence numbers)
 	LagDuration    time.Duration `json:"lag_duration"`
 }
 

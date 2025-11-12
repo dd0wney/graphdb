@@ -14,19 +14,21 @@ import (
 
 // ReplicaNode represents a replica instance
 type ReplicaNode struct {
-	config         ReplicationConfig
-	replicaID      string
-	storage        *storage.GraphStorage
-	conn           net.Conn
-	encoder        *json.Encoder
-	decoder        *json.Decoder
-	lastAppliedLSN uint64
-	primaryID      string
-	connected      bool
-	connectedMu    sync.RWMutex
-	stopCh         chan struct{}
-	running        bool
-	runningMu      sync.Mutex
+	config                   ReplicationConfig
+	replicaID                string
+	storage                  *storage.GraphStorage
+	conn                     net.Conn
+	encoder                  *json.Encoder
+	decoder                  *json.Decoder
+	lastAppliedLSN           uint64
+	primaryID                string
+	connected                bool
+	connectedMu              sync.RWMutex
+	stopCh                   chan struct{}
+	running                  bool
+	runningMu                sync.Mutex
+	lastReceivedHeartbeatSeq uint64    // Last heartbeat sequence received from primary
+	heartbeatSeqMu           sync.Mutex
 }
 
 // NewReplicaNode creates a new replica node
@@ -217,8 +219,13 @@ func (rn *ReplicaNode) handleMessage(msg *Message) error {
 		if err := msg.Decode(&hb); err != nil {
 			return err
 		}
-		// Heartbeat received, connection is alive
-		return nil
+		// Track the heartbeat sequence number
+		rn.heartbeatSeqMu.Lock()
+		rn.lastReceivedHeartbeatSeq = hb.Sequence
+		rn.heartbeatSeqMu.Unlock()
+
+		// Echo back the heartbeat with the same sequence
+		return rn.sendHeartbeatResponse(hb.Sequence)
 
 	case MsgWALEntry:
 		var walMsg WALEntryMessage
@@ -291,17 +298,43 @@ func (rn *ReplicaNode) applyWALEntry(entry *wal.Entry) error {
 	// Update last applied LSN
 	rn.lastAppliedLSN = entry.LSN
 
-	// Send acknowledgment
+	// Send acknowledgment with current heartbeat sequence
+	rn.heartbeatSeqMu.Lock()
+	currentSeq := rn.lastReceivedHeartbeatSeq
+	rn.heartbeatSeqMu.Unlock()
+
 	ack := AckMessage{
-		LastAppliedLSN: rn.lastAppliedLSN,
-		ReplicaID:      rn.replicaID,
+		LastAppliedLSN:    rn.lastAppliedLSN,
+		ReplicaID:         rn.replicaID,
+		HeartbeatSequence: currentSeq, // ACK the latest heartbeat we've seen
 	}
 
 	ackMsg, _ := NewMessage(MsgAck, ack)
 	return rn.encoder.Encode(ackMsg)
 }
 
+// sendHeartbeatResponse echoes a heartbeat back to the primary
+func (rn *ReplicaNode) sendHeartbeatResponse(sequence uint64) error {
+	stats := rn.storage.GetStatistics()
+	hb := HeartbeatMessage{
+		From:       rn.replicaID,
+		Sequence:   sequence, // Echo back the same sequence
+		CurrentLSN: rn.lastAppliedLSN,
+		NodeCount:  stats.NodeCount,
+		EdgeCount:  stats.EdgeCount,
+	}
+
+	msg, err := NewMessage(MsgHeartbeat, hb)
+	if err != nil {
+		return err
+	}
+
+	return rn.encoder.Encode(msg)
+}
+
 // sendHeartbeats sends periodic heartbeats to primary
+// Note: Replicas don't initiate sequence numbers, they only echo them back
+// when responding to primary heartbeats
 func (rn *ReplicaNode) sendHeartbeats() {
 	ticker := time.NewTicker(rn.config.HeartbeatInterval)
 	defer ticker.Stop()
@@ -315,9 +348,15 @@ func (rn *ReplicaNode) sendHeartbeats() {
 				return
 			}
 
+			// Get current heartbeat sequence to include in periodic heartbeat
+			rn.heartbeatSeqMu.Lock()
+			currentSeq := rn.lastReceivedHeartbeatSeq
+			rn.heartbeatSeqMu.Unlock()
+
 			stats := rn.storage.GetStatistics()
 			hb := HeartbeatMessage{
 				From:       rn.replicaID,
+				Sequence:   currentSeq, // Echo back latest received sequence
 				CurrentLSN: rn.lastAppliedLSN,
 				NodeCount:  stats.NodeCount,
 				EdgeCount:  stats.EdgeCount,
