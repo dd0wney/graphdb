@@ -73,7 +73,15 @@ func (s *Server) Start() error {
 	log.Printf("   Shortest Path: POST %s/shortest-path", addr)
 	log.Printf("   Algorithms:   POST %s/algorithms", addr)
 
-	return http.ListenAndServe(addr, s.loggingMiddleware(s.corsMiddleware(mux)))
+	// Create HTTP server with timeouts for production security
+	server := &http.Server{
+		Addr:         addr,
+		Handler:      s.loggingMiddleware(s.corsMiddleware(mux)),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	return server.ListenAndServe()
 }
 
 // Middleware
@@ -621,7 +629,9 @@ func (s *Server) convertToValue(v interface{}) storage.Value {
 func (s *Server) respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("Error encoding JSON response: %v", err)
+	}
 }
 
 func (s *Server) respondError(w http.ResponseWriter, status int, message string) {

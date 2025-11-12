@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/replication"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -98,7 +99,13 @@ func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication
 	})
 
 	addr := fmt.Sprintf(":%d", port)
-	if err := http.ListenAndServe(addr, nil); err != nil {
+	server := &http.Server{
+		Addr:         addr,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("HTTP server failed: %v", err)
 	}
 }

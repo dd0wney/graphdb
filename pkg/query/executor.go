@@ -433,16 +433,28 @@ func (ms *MatchStep) matchProperties(nodeProps map[string]storage.Value, pattern
 func (ms *MatchStep) valuesEqual(nodeValue storage.Value, patternValue interface{}) bool {
 	switch v := patternValue.(type) {
 	case string:
-		nodeStr, _ := nodeValue.AsString()
+		nodeStr, err := nodeValue.AsString()
+		if err != nil {
+			return false // Type mismatch
+		}
 		return nodeStr == v
 	case int64:
-		nodeInt, _ := nodeValue.AsInt()
+		nodeInt, err := nodeValue.AsInt()
+		if err != nil {
+			return false // Type mismatch
+		}
 		return nodeInt == v
 	case float64:
-		nodeFloat, _ := nodeValue.AsFloat()
+		nodeFloat, err := nodeValue.AsFloat()
+		if err != nil {
+			return false // Type mismatch
+		}
 		return nodeFloat == v
 	case bool:
-		nodeBool, _ := nodeValue.AsBool()
+		nodeBool, err := nodeValue.AsBool()
+		if err != nil {
+			return false // Type mismatch
+		}
 		return nodeBool == v
 	}
 	return false
@@ -582,7 +594,9 @@ func (ss *SetStep) Execute(ctx *ExecutionContext) error {
 					updatedProps[assignment.Property] = ss.convertValue(assignment.Value)
 
 					// Update in storage
-					ctx.graph.UpdateNode(node.ID, updatedProps)
+					if err := ctx.graph.UpdateNode(node.ID, updatedProps); err != nil {
+						return fmt.Errorf("failed to update node %d: %w", node.ID, err)
+					}
 				}
 			}
 		}
@@ -617,7 +631,9 @@ func (ds *DeleteStep) Execute(ctx *ExecutionContext) error {
 			if obj, ok := binding.bindings[variable]; ok {
 				if node, ok := obj.(*storage.Node); ok {
 					// Delete node (DeleteNode automatically handles edge deletion)
-					ctx.graph.DeleteNode(node.ID)
+					if err := ctx.graph.DeleteNode(node.ID); err != nil {
+						return fmt.Errorf("failed to delete node %d: %w", node.ID, err)
+					}
 				}
 			}
 		}
@@ -691,17 +707,33 @@ func (e *Executor) buildResultSet(ctx *ExecutionContext, returnClause *ReturnCla
 								// Extract the actual value based on type
 								switch prop.Type {
 								case storage.TypeString:
-									val, _ := prop.AsString()
-									row[columnName] = val
+									val, err := prop.AsString()
+									if err != nil {
+										row[columnName] = nil
+									} else {
+										row[columnName] = val
+									}
 								case storage.TypeInt:
-									val, _ := prop.AsInt()
-									row[columnName] = val
+									val, err := prop.AsInt()
+									if err != nil {
+										row[columnName] = nil
+									} else {
+										row[columnName] = val
+									}
 								case storage.TypeFloat:
-									val, _ := prop.AsFloat()
-									row[columnName] = val
+									val, err := prop.AsFloat()
+									if err != nil {
+										row[columnName] = nil
+									} else {
+										row[columnName] = val
+									}
 								case storage.TypeBool:
-									val, _ := prop.AsBool()
-									row[columnName] = val
+									val, err := prop.AsBool()
+									if err != nil {
+										row[columnName] = nil
+									} else {
+										row[columnName] = val
+									}
 								default:
 									row[columnName] = prop.Data
 								}

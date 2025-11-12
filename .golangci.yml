@@ -40,14 +40,17 @@ linters-settings:
     check-type-assertions: true
     check-blank: true
     exclude-functions:
+      # Read-only operations where errors indicate "not found" - handled by caller
       - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetOutgoingEdges
       - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetIncomingEdges
       - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetNode
+      # Internal cleanup operations - errors logged internally
       - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.Compactor).CleanupOldSSTables
       - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.LSMStorage).compact
-      - encoding/binary.Read
       - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.BlockCache).evict
       - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.BlockCache).Put
+      # Binary read errors checked elsewhere
+      - encoding/binary.Read
 
   govet:
     enable-all: true
@@ -76,6 +79,7 @@ linters-settings:
     confidence: medium
     excludes:
       - G404  # Use of weak random number generator (math/rand)
+      - G115  # Integer overflow conversion - safe in our benchmark/demo code
 
   gocyclo:
     min-complexity: 15

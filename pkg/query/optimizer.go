@@ -87,7 +87,7 @@ func (o *Optimizer) applyFilterPushdown(plan *ExecutionPlan, query *Query) *Exec
 		// Insert applicable filters after match steps
 		if _, ok := step.(*MatchStep); ok {
 			for _, filter := range filterSteps {
-				optimized.Steps = append(optimized.Steps, filter)
+				optimized.Steps = append(optimized.Steps, ExecutionStep(filter))
 			}
 			filterSteps = nil // Clear applied filters
 		}
