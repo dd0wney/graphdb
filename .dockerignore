@@ -1,0 +1,48 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+
+# Documentation
+*.md
+docs/
+PROGRESS_REPORT.md
+IMPLEMENTATION_STATUS.md
+IMPROVEMENT_PLAN.md
+
+# Test data and artifacts
+data/
+bin/
+coverage/
+*.out
+*.prof
+*.test
+
+# Build artifacts
+vendor/
+dist/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test scripts
+test_*.sh
+test-*.sh
+
+# Temporary files
+tmp/
+temp/
+*.tmp

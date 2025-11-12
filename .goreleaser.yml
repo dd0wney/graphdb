@@ -1,0 +1,146 @@
+# GoReleaser configuration for Cluso GraphDB
+# See: https://goreleaser.com
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: server
+    main: ./cmd/server
+    binary: cluso-server
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Commit={{.Commit}}
+      - -X main.Date={{.Date}}
+
+  - id: cli
+    main: ./cmd/cli
+    binary: cluso-cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+
+  - id: tui
+    main: ./cmd/tui
+    binary: cluso-tui
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - docs/*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+  groups:
+    - title: 'Features'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: 'Performance Improvements'
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: 'Others'
+      order: 999
+
+release:
+  github:
+    owner: darraghdowney
+    name: cluso-graphdb
+  draft: false
+  prerelease: auto
+  mode: append
+  header: |
+    ## Cluso GraphDB {{ .Tag }} ({{ .Date }})
+
+    A high-performance graph database built in Go.
+
+    ### Downloads
+    Download the binary for your platform below.
+
+  footer: |
+    ## Docker Images
+
+    ```bash
+    docker pull darraghdowney/cluso-graphdb:{{ .Tag }}
+    ```
+
+    **Full Changelog**: https://github.com/darraghdowney/cluso-graphdb/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+# Homebrew tap (optional - requires separate repo)
+# brews:
+#   - repository:
+#       owner: darraghdowney
+#       name: homebrew-tap
+#     homepage: https://github.com/darraghdowney/cluso-graphdb
+#     description: "High-performance graph database in Go"
+#     license: "MIT"
+
+# Docker images (handled by release.yml workflow)
+# dockers:
+#   - image_templates:
+#       - "darraghdowney/cluso-graphdb:{{ .Tag }}"
+#       - "darraghdowney/cluso-graphdb:latest"

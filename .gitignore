@@ -1,0 +1,142 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage/
+*.coverprofile
+
+# Profiling files
+*.prof
+*.pprof
+*.cpu
+*.mem
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# Build artifacts
+*.a
+*.o
+*.lo
+
+# Data directories (runtime data)
+data/
+*.db
+*.wal
+*.sst
+*.log
+
+# Test data (keep structure, ignore contents)
+test_data/*
+!test_data/.gitkeep
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Debug files
+debug
+*.dSYM/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Compiled Object files, Static and Dynamic libs
+*.o
+*.a
+*.so
+
+# Folders
+_obj
+_test
+
+# Architecture specific extensions/prefixes
+*.[568vq]
+[568vq].out
+
+# cgo generated files
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+# Test cache
+.cache/
+
+# GoLand
+.idea/
+
+# VSCode
+.vscode/
+
+# Compiled binaries (but keep the bin directory structure)
+# Specific binaries to ignore
+/bin/*
+!/bin/.gitkeep
+
+# Benchmark results
+benchmarks/
+benchmark_*.txt
+
+# Generated files
+*.pb.go
+*_generated.go
+
+# Database files
+*.sst
+*.wal
+snapshot.json
+
+# Integration test artifacts
+integration-test
+import-dimacs
+
+# Mac specific
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
