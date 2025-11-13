@@ -1,0 +1,20 @@
+# Cluso GraphDB Cluster Configuration
+# This file defines the nodes in your cluster for automated upgrades
+
+nodes:
+  # Primary node - handles all writes
+  - name: primary
+    host: 10.0.1.10
+    http_port: 8080
+    role: primary
+
+  # Replica nodes - handle reads and provide failover
+  - name: replica1
+    host: 10.0.1.11
+    http_port: 8080
+    role: replica
+
+  - name: replica2
+    host: 10.0.1.12
+    http_port: 8080
+    role: replica
