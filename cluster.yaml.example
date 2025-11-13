@@ -6,15 +6,18 @@ nodes:
   - name: primary
     host: 10.0.1.10
     http_port: 8080
+    replication_port: 9090  # Optional, defaults to 9090
     role: primary
 
   # Replica nodes - handle reads and provide failover
   - name: replica1
     host: 10.0.1.11
     http_port: 8080
+    replication_port: 9090  # Optional, defaults to 9090
     role: replica
 
   - name: replica2
     host: 10.0.1.12
     http_port: 8080
+    replication_port: 9090  # Optional, defaults to 9090
     role: replica

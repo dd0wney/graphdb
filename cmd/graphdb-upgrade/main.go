@@ -22,10 +22,11 @@ type ClusterConfig struct {
 
 // NodeConfig represents a single node configuration
 type NodeConfig struct {
-	Name     string `yaml:"name"`
-	Host     string `yaml:"host"`
-	HTTPPort int    `yaml:"http_port"`
-	Role     string `yaml:"role"` // "primary" or "replica"
+	Name            string `yaml:"name"`
+	Host            string `yaml:"host"`
+	HTTPPort        int    `yaml:"http_port"`
+	ReplicationPort int    `yaml:"replication_port"` // Port for replication traffic (default: 9090)
+	Role            string `yaml:"role"`             // "primary" or "replica"
 }
 
 // UpgradeStatus represents node upgrade status
@@ -207,7 +208,7 @@ func executeUpgrade(cluster *ClusterConfig, newVersion string) error {
 		log.Printf("\n⬇️  Phase 3: Demoting old primary %s", primary.Name)
 
 		log.Printf("  📡 Sending stepdown command to %s...", primary.Name)
-		newPrimaryAddr := fmt.Sprintf("%s:9090", newPrimary.Host) // TODO: Make port configurable
+		newPrimaryAddr := fmt.Sprintf("%s:%d", newPrimary.Host, getReplicationPort(newPrimary))
 		if err := stepDownNode(ctx, primary, newPrimaryAddr); err != nil {
 			log.Printf("  ⚠️  Failed to stepdown %s gracefully: %v", primary.Name, err)
 			log.Printf("  ⚠️  Manual intervention may be required")
@@ -381,4 +382,12 @@ func stepDownNode(ctx context.Context, node *NodeConfig, newPrimaryAddr string) 
 	}
 
 	return nil
+}
+
+// getReplicationPort returns the replication port for a node, using default if not specified
+func getReplicationPort(node NodeConfig) int {
+	if node.ReplicationPort == 0 {
+		return 9090 // Default replication port
+	}
+	return node.ReplicationPort
 }

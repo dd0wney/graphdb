@@ -31,6 +31,16 @@ type ReplicaNode struct {
 	heartbeatSeqMu           sync.Mutex
 }
 
+// ReplicaStatusInfo contains detailed status information about this replica
+type ReplicaStatusInfo struct {
+	ReplicaID         string    `json:"replica_id"`
+	PrimaryID         string    `json:"primary_id"`
+	Connected         bool      `json:"connected"`
+	LastAppliedLSN    uint64    `json:"last_applied_lsn"`
+	LastHeartbeatSeq  uint64    `json:"last_heartbeat_seq"`
+	Timestamp         time.Time `json:"timestamp"`
+}
+
 // NewReplicaNode creates a new replica node
 func NewReplicaNode(config ReplicationConfig, storage *storage.GraphStorage) *ReplicaNode {
 	if config.ReplicaID == "" {
@@ -395,4 +405,34 @@ func (rn *ReplicaNode) setConnected(connected bool) {
 	rn.connectedMu.Lock()
 	defer rn.connectedMu.Unlock()
 	rn.connected = connected
+}
+
+// GetReplicaStatus returns detailed status information about this replica
+func (rn *ReplicaNode) GetReplicaStatus() ReplicaStatusInfo {
+	rn.connectedMu.RLock()
+	connected := rn.connected
+	primaryID := rn.primaryID
+	lastAppliedLSN := rn.lastAppliedLSN
+	rn.connectedMu.RUnlock()
+
+	rn.heartbeatSeqMu.Lock()
+	lastHeartbeatSeq := rn.lastReceivedHeartbeatSeq
+	rn.heartbeatSeqMu.Unlock()
+
+	return ReplicaStatusInfo{
+		ReplicaID:        rn.replicaID,
+		PrimaryID:        primaryID,
+		Connected:        connected,
+		LastAppliedLSN:   lastAppliedLSN,
+		LastHeartbeatSeq: lastHeartbeatSeq,
+		Timestamp:        time.Now(),
+	}
+}
+
+// CalculateLagLSN calculates the LSN lag between this replica and the primary
+func (rn *ReplicaNode) CalculateLagLSN(primaryCurrentLSN uint64) uint64 {
+	if primaryCurrentLSN <= rn.lastAppliedLSN {
+		return 0
+	}
+	return primaryCurrentLSN - rn.lastAppliedLSN
 }

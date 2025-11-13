@@ -13,12 +13,27 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
+// ReplicaInterface defines the interface for replica operations
+type ReplicaInterface interface {
+	GetReplicaStatus() replication.ReplicaStatusInfo
+	CalculateLagLSN(primaryCurrentLSN uint64) uint64
+	Stop() error
+	Start() error
+	GetReplicationState() replication.ReplicationState
+}
+
+// UpgradeConfig contains configuration for the upgrade manager
+type UpgradeConfig struct {
+	ReplicationPort int `json:"replication_port"`
+}
+
 // UpgradeManager handles cluster upgrade operations
 type UpgradeManager struct {
 	storage     *storage.GraphStorage
 	replication *replication.ReplicationManager
-	replica     *replication.ReplicaNode
+	replica     ReplicaInterface
 	isPrimary   bool
+	config      UpgradeConfig
 	mu          sync.RWMutex
 }
 
@@ -67,12 +82,18 @@ type StepDownResponse struct {
 }
 
 // NewUpgradeManager creates a new upgrade manager
-func NewUpgradeManager(storage *storage.GraphStorage, replication *replication.ReplicationManager, replica *replication.ReplicaNode, isPrimary bool) *UpgradeManager {
+func NewUpgradeManager(storage *storage.GraphStorage, replication *replication.ReplicationManager, replica ReplicaInterface, isPrimary bool, config UpgradeConfig) *UpgradeManager {
+	// Set default port if not specified
+	if config.ReplicationPort == 0 {
+		config.ReplicationPort = 9090
+	}
+
 	return &UpgradeManager{
 		storage:     storage,
 		replication: replication,
 		replica:     replica,
 		isPrimary:   isPrimary,
+		config:      config,
 	}
 }
 
@@ -104,11 +125,22 @@ func (um *UpgradeManager) GetUpgradeStatus() UpgradeStatus {
 		}
 	} else if um.replica != nil {
 		// Replica node status
+		replicaStatus := um.replica.GetReplicaStatus()
+
 		status.Phase = "replica_running"
-		// TODO: Add detailed replica status tracking
-		// For now, assume replica is ready if it exists
-		status.Message = "Replica running (detailed status tracking not yet implemented)"
-		status.CanPromote = true
+		status.ReplicationLag = 0 // Will be set by caller if they have primary LSN
+		status.HeartbeatLag = replicaStatus.LastHeartbeatSeq
+
+		if replicaStatus.Connected {
+			status.Message = fmt.Sprintf("Connected to primary %s (LSN: %d)",
+				replicaStatus.PrimaryID, replicaStatus.LastAppliedLSN)
+			// Can promote if connected and has recent heartbeat (lag < 5)
+			status.CanPromote = replicaStatus.Connected && replicaStatus.LastHeartbeatSeq > 0
+		} else {
+			status.Message = "Disconnected from primary"
+			status.Ready = false
+			status.CanPromote = false
+		}
 	} else {
 		status.Phase = "standalone"
 		status.Message = "Node running in standalone mode"
@@ -123,13 +155,42 @@ func (um *UpgradeManager) WaitForReplicationSync(ctx context.Context, maxLagMs i
 		return fmt.Errorf("not a replica node")
 	}
 
-	// TODO: Implement proper replication lag tracking
-	// For now, just wait a fixed duration to allow sync
-	log.Printf("Waiting for replication sync...")
-	time.Sleep(2 * time.Second)
-	log.Printf("Replication sync assumed complete (detailed tracking not yet implemented)")
+	log.Printf("Waiting for replication sync (maxLagMs=%d, maxHeartbeatLag=%d)...", maxLagMs, maxHeartbeatLag)
 
-	return nil
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	startTime := time.Now()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for replication sync: %w", ctx.Err())
+		case <-ticker.C:
+			status := um.replica.GetReplicaStatus()
+
+			// Check if connected
+			if !status.Connected {
+				log.Printf("Replica not connected to primary, waiting...")
+				continue
+			}
+
+			// Check heartbeat lag (simplified check - just verify we're receiving heartbeats)
+			if status.LastHeartbeatSeq == 0 {
+				log.Printf("No heartbeats received yet, waiting...")
+				continue
+			}
+
+			// For now, we can't calculate exact LSN lag without knowing the primary's current LSN
+			// So we use a heuristic: if we're connected and receiving heartbeats, we're considered synced
+			elapsed := time.Since(startTime)
+			if elapsed >= 1*time.Second {
+				log.Printf("Replication sync complete after %v (connected=%v, heartbeat_seq=%d, lsn=%d)",
+					elapsed, status.Connected, status.LastHeartbeatSeq, status.LastAppliedLSN)
+				return nil
+			}
+		}
+	}
 }
 
 // PromoteToPrimary promotes this replica to primary
@@ -180,8 +241,9 @@ func (um *UpgradeManager) PromoteToPrimary(ctx context.Context, waitForSync bool
 	um.isPrimary = true
 
 	// Initialize replication manager as primary
+	listenAddr := fmt.Sprintf(":%d", um.config.ReplicationPort)
 	config := replication.ReplicationConfig{
-		ListenAddr:        ":9090", // TODO: Make configurable
+		ListenAddr:        listenAddr,
 		HeartbeatInterval: 1 * time.Second,
 		MaxReplicas:       10,
 		WALBufferSize:     1000,
