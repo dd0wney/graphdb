@@ -114,7 +114,7 @@ func TestCompressionDecompressionOverflow(t *testing.T) {
 
 	// Manually corrupt the deltas to cause overflow
 	// This would happen if disk corruption occurred
-	compressed.deltas = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01}
+	compressed.Deltas = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01}
 
 	// Decompression should handle overflow gracefully
 	result := compressed.Decompress()
@@ -125,8 +125,8 @@ func TestCompressionDecompressionOverflow(t *testing.T) {
 	}
 
 	// First value should still be base
-	if result[0] != compressed.baseNodeID {
-		t.Errorf("Expected base %d, got %d", compressed.baseNodeID, result[0])
+	if result[0] != compressed.BaseNodeID {
+		t.Errorf("Expected base %d, got %d", compressed.BaseNodeID, result[0])
 	}
 }
 
@@ -188,8 +188,8 @@ func TestCompressionSingleElement(t *testing.T) {
 		t.Errorf("Expected count 1, got %d", compressed.Count())
 	}
 
-	if compressed.baseNodeID != 42 {
-		t.Errorf("Expected base 42, got %d", compressed.baseNodeID)
+	if compressed.BaseNodeID != 42 {
+		t.Errorf("Expected base 42, got %d", compressed.BaseNodeID)
 	}
 
 	decompressed := compressed.Decompress()

@@ -9,17 +9,17 @@ import (
 // CompressedEdgeList stores a list of edge target node IDs in compressed format
 // Uses delta encoding + varint compression for memory efficiency
 type CompressedEdgeList struct {
-	baseNodeID uint64 // First node ID in the list
-	deltas     []byte // Varint-encoded deltas between consecutive sorted node IDs
-	count      int    // Number of edges in the list
+	BaseNodeID uint64 // First node ID in the list (exported for gob encoding)
+	Deltas     []byte // Varint-encoded deltas between consecutive sorted node IDs (exported for gob encoding)
+	EdgeCount  int    // Number of edges in the list (exported for gob encoding)
 }
 
 // NewCompressedEdgeList creates a compressed edge list from node IDs
 func NewCompressedEdgeList(nodeIDs []uint64) *CompressedEdgeList {
 	if len(nodeIDs) == 0 {
 		return &CompressedEdgeList{
-			deltas: []byte{},
-			count:  0,
+			Deltas:    []byte{},
+			EdgeCount: 0,
 		}
 	}
 
@@ -48,27 +48,27 @@ func NewCompressedEdgeList(nodeIDs []uint64) *CompressedEdgeList {
 	}
 
 	return &CompressedEdgeList{
-		baseNodeID: base,
-		deltas:     buf,
-		count:      len(nodeIDs),
+		BaseNodeID: base,
+		Deltas:     buf,
+		EdgeCount:  len(nodeIDs),
 	}
 }
 
 // Decompress returns the original list of node IDs
 func (c *CompressedEdgeList) Decompress() []uint64 {
-	if c.count == 0 {
+	if c.EdgeCount == 0 {
 		return []uint64{}
 	}
 
-	result := make([]uint64, 0, c.count)
-	result = append(result, c.baseNodeID)
+	result := make([]uint64, 0, c.EdgeCount)
+	result = append(result, c.BaseNodeID)
 
-	if c.count == 1 {
+	if c.EdgeCount == 1 {
 		return result
 	}
 
-	current := c.baseNodeID
-	buf := c.deltas
+	current := c.BaseNodeID
+	buf := c.Deltas
 
 	for len(buf) > 0 {
 		delta, n := binary.Uvarint(buf)
@@ -91,17 +91,17 @@ func (c *CompressedEdgeList) Decompress() []uint64 {
 
 // Count returns the number of edges in the compressed list
 func (c *CompressedEdgeList) Count() int {
-	return c.count
+	return c.EdgeCount
 }
 
 // Size returns the memory size in bytes
 func (c *CompressedEdgeList) Size() int {
-	return 8 + len(c.deltas) + 4 // baseNodeID (8) + deltas + count (4)
+	return 8 + len(c.Deltas) + 4 // baseNodeID (8) + deltas + count (4)
 }
 
 // UncompressedSize returns the size if this list was uncompressed
 func (c *CompressedEdgeList) UncompressedSize() int {
-	return c.count * 8 // Each uint64 is 8 bytes
+	return c.EdgeCount * 8 // Each uint64 is 8 bytes
 }
 
 // CompressionRatio returns the compression ratio (uncompressed / compressed)
@@ -141,17 +141,17 @@ func (c *CompressedEdgeList) Remove(nodeID uint64) *CompressedEdgeList {
 // Contains checks if a node ID exists in the compressed list
 // Uses binary search since the list is sorted
 func (c *CompressedEdgeList) Contains(nodeID uint64) bool {
-	if c.count == 0 {
+	if c.EdgeCount == 0 {
 		return false
 	}
 
 	// Quick checks
-	if nodeID < c.baseNodeID {
+	if nodeID < c.BaseNodeID {
 		return false
 	}
 
-	if c.count == 1 {
-		return nodeID == c.baseNodeID
+	if c.EdgeCount == 1 {
+		return nodeID == c.BaseNodeID
 	}
 
 	// Decompress and search
