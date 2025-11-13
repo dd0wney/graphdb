@@ -39,15 +39,15 @@ type UpgradeManager struct {
 
 // UpgradeStatus represents the current upgrade state
 type UpgradeStatus struct {
-	Phase            string    `json:"phase"`
-	Ready            bool      `json:"ready"`
-	ReplicationLag   int64     `json:"replication_lag_ms"`
-	HeartbeatLag     uint64    `json:"heartbeat_lag"`
-	Message          string    `json:"message"`
-	Timestamp        time.Time `json:"timestamp"`
-	CanPromote       bool      `json:"can_promote"`
-	CurrentRole      string    `json:"current_role"`
-	ConnectedReplicas int      `json:"connected_replicas,omitempty"`
+	Phase             string    `json:"phase"`
+	Ready             bool      `json:"ready"`
+	ReplicationLag    int64     `json:"replication_lag_ms"`
+	HeartbeatLag      uint64    `json:"heartbeat_lag"`
+	Message           string    `json:"message"`
+	Timestamp         time.Time `json:"timestamp"`
+	CanPromote        bool      `json:"can_promote"`
+	CurrentRole       string    `json:"current_role"`
+	ConnectedReplicas int       `json:"connected_replicas,omitempty"`
 }
 
 // PromoteRequest represents a promotion request
@@ -74,10 +74,10 @@ type StepDownRequest struct {
 
 // StepDownResponse represents the step-down result
 type StepDownResponse struct {
-	Success      bool      `json:"success"`
-	NewRole      string    `json:"new_role"`
-	PreviousRole string    `json:"previous_role"`
-	Message      string    `json:"message"`
+	Success       bool      `json:"success"`
+	NewRole       string    `json:"new_role"`
+	PreviousRole  string    `json:"previous_role"`
+	Message       string    `json:"message"`
 	SteppedDownAt time.Time `json:"stepped_down_at"`
 }
 

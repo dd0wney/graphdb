@@ -8,14 +8,14 @@ import (
 // TestReplicaNode_GetReplicaStatus tests the GetReplicaStatus method
 func TestReplicaNode_GetReplicaStatus(t *testing.T) {
 	tests := []struct {
-		name               string
-		setupReplica       func(*ReplicaNode)
-		expectedConnected  bool
-		expectedPrimaryID  string
-		checkLSN           bool
-		expectedLSN        uint64
-		checkHeartbeat     bool
-		expectedHeartbeat  uint64
+		name              string
+		setupReplica      func(*ReplicaNode)
+		expectedConnected bool
+		expectedPrimaryID string
+		checkLSN          bool
+		expectedLSN       uint64
+		checkHeartbeat    bool
+		expectedHeartbeat uint64
 	}{
 		{
 			name: "disconnected replica",
@@ -109,34 +109,34 @@ func TestReplicaNode_GetReplicaStatus(t *testing.T) {
 // TestReplicaNode_CalculateLag tests lag calculation
 func TestReplicaNode_CalculateLag(t *testing.T) {
 	tests := []struct {
-		name               string
-		lastAppliedLSN     uint64
-		primaryCurrentLSN  uint64
-		expectedLagLSN     uint64
+		name              string
+		lastAppliedLSN    uint64
+		primaryCurrentLSN uint64
+		expectedLagLSN    uint64
 	}{
 		{
-			name:               "no lag - caught up",
-			lastAppliedLSN:     1000,
-			primaryCurrentLSN:  1000,
-			expectedLagLSN:     0,
+			name:              "no lag - caught up",
+			lastAppliedLSN:    1000,
+			primaryCurrentLSN: 1000,
+			expectedLagLSN:    0,
 		},
 		{
-			name:               "small lag",
-			lastAppliedLSN:     995,
-			primaryCurrentLSN:  1000,
-			expectedLagLSN:     5,
+			name:              "small lag",
+			lastAppliedLSN:    995,
+			primaryCurrentLSN: 1000,
+			expectedLagLSN:    5,
 		},
 		{
-			name:               "large lag",
-			lastAppliedLSN:     500,
-			primaryCurrentLSN:  1000,
-			expectedLagLSN:     500,
+			name:              "large lag",
+			lastAppliedLSN:    500,
+			primaryCurrentLSN: 1000,
+			expectedLagLSN:    500,
 		},
 		{
-			name:               "ahead of primary (edge case)",
-			lastAppliedLSN:     1100,
-			primaryCurrentLSN:  1000,
-			expectedLagLSN:     0, // Should not be negative
+			name:              "ahead of primary (edge case)",
+			lastAppliedLSN:    1100,
+			primaryCurrentLSN: 1000,
+			expectedLagLSN:    0, // Should not be negative
 		},
 	}
 

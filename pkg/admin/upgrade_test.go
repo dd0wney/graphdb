@@ -11,10 +11,10 @@ import (
 
 // mockReplicaNode is a mock implementation for testing
 type mockReplicaNode struct {
-	replicaStatus  replication.ReplicaStatusInfo
-	primaryLSN     uint64
-	lagLSN         uint64
-	stopCalled     bool
+	replicaStatus replication.ReplicaStatusInfo
+	primaryLSN    uint64
+	lagLSN        uint64
+	stopCalled    bool
 }
 
 func (m *mockReplicaNode) GetReplicaStatus() replication.ReplicaStatusInfo {
@@ -45,12 +45,12 @@ func (m *mockReplicaNode) GetReplicationState() replication.ReplicationState {
 // TestUpgradeManager_GetUpgradeStatus_Replica tests replica status tracking
 func TestUpgradeManager_GetUpgradeStatus_Replica(t *testing.T) {
 	tests := []struct {
-		name              string
-		replicaStatus     replication.ReplicaStatusInfo
-		expectedPhase     string
-		expectedReady     bool
+		name               string
+		replicaStatus      replication.ReplicaStatusInfo
+		expectedPhase      string
+		expectedReady      bool
 		expectedCanPromote bool
-		expectedMessage   string
+		expectedMessage    string
 	}{
 		{
 			name: "connected replica ready for promotion",
@@ -136,14 +136,14 @@ func TestUpgradeManager_GetUpgradeStatus_Replica(t *testing.T) {
 // TestUpgradeManager_WaitForReplicationSync tests replication sync waiting
 func TestUpgradeManager_WaitForReplicationSync(t *testing.T) {
 	tests := []struct {
-		name           string
-		primaryLSN     uint64
-		replicaLSN     uint64
-		lagLSN         uint64
-		maxLagMs       int64
+		name            string
+		primaryLSN      uint64
+		replicaLSN      uint64
+		lagLSN          uint64
+		maxLagMs        int64
 		maxHeartbeatLag uint64
-		shouldTimeout  bool
-		expectError    bool
+		shouldTimeout   bool
+		expectError     bool
 	}{
 		{
 			name:            "already synced",

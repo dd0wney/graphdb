@@ -33,11 +33,11 @@ type DeploymentColor struct {
 
 // BlueGreenStatus represents the current blue-green deployment status
 type BlueGreenStatus struct {
-	CurrentActive string            `json:"current_active"`
-	Blue          DeploymentColor   `json:"blue"`
-	Green         DeploymentColor   `json:"green"`
-	CanSwitch     bool              `json:"can_switch"`
-	SwitchMessage string            `json:"switch_message,omitempty"`
+	CurrentActive string          `json:"current_active"`
+	Blue          DeploymentColor `json:"blue"`
+	Green         DeploymentColor `json:"green"`
+	CanSwitch     bool            `json:"can_switch"`
+	SwitchMessage string          `json:"switch_message,omitempty"`
 }
 
 // SwitchRequest represents a request to switch active deployment

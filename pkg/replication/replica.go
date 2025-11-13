@@ -33,12 +33,12 @@ type ReplicaNode struct {
 
 // ReplicaStatusInfo contains detailed status information about this replica
 type ReplicaStatusInfo struct {
-	ReplicaID         string    `json:"replica_id"`
-	PrimaryID         string    `json:"primary_id"`
-	Connected         bool      `json:"connected"`
-	LastAppliedLSN    uint64    `json:"last_applied_lsn"`
-	LastHeartbeatSeq  uint64    `json:"last_heartbeat_seq"`
-	Timestamp         time.Time `json:"timestamp"`
+	ReplicaID        string    `json:"replica_id"`
+	PrimaryID        string    `json:"primary_id"`
+	Connected        bool      `json:"connected"`
+	LastAppliedLSN   uint64    `json:"last_applied_lsn"`
+	LastHeartbeatSeq uint64    `json:"last_heartbeat_seq"`
+	Timestamp        time.Time `json:"timestamp"`
 }
 
 // NewReplicaNode creates a new replica node
