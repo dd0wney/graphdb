@@ -55,7 +55,10 @@ func ConnectedComponents(graph *storage.GraphStorage) (*CommunityDetectionResult
 		visited[startNode] = true
 
 		for queue.Len() > 0 {
-			nodeID := queue.Remove(queue.Front()).(uint64)
+			nodeID, ok := queue.Remove(queue.Front()).(uint64)
+			if !ok {
+				continue
+			}
 			component.Nodes = append(component.Nodes, nodeID)
 			nodeCommunity[nodeID] = communityID
 

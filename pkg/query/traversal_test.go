@@ -340,10 +340,8 @@ func TestFindShortestPath(t *testing.T) {
 					t.Errorf("Expected %d edges for %d nodes, got %d edges",
 						len(path.Nodes)-1, len(path.Nodes), len(path.Edges))
 				}
-			} else {
-				if err == nil {
-					t.Error("Expected error for non-existent path")
-				}
+			} else if err == nil {
+				t.Error("Expected error for non-existent path")
 			}
 		})
 	}

@@ -162,11 +162,12 @@ func (c *CompressedEdgeList) Contains(nodeID uint64) bool {
 	left, right := 0, len(nodeIDs)-1
 	for left <= right {
 		mid := left + (right-left)/2 // Overflow-safe
-		if nodeIDs[mid] == nodeID {
+		switch {
+		case nodeIDs[mid] == nodeID:
 			return true
-		} else if nodeIDs[mid] < nodeID {
+		case nodeIDs[mid] < nodeID:
 			left = mid + 1
-		} else {
+		default:
 			right = mid - 1
 		}
 	}

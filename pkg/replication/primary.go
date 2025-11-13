@@ -187,7 +187,9 @@ func (rm *ReplicationManager) handleReplicaConnection(conn net.Conn) {
 			Accepted:     false,
 			ErrorMessage: "max replicas reached",
 		})
-		encoder.Encode(response)
+		if err := encoder.Encode(response); err != nil {
+			log.Printf("Failed to send max replicas error: %v", err)
+		}
 		return
 	}
 

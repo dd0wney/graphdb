@@ -148,7 +148,9 @@ func (b *Batch) Commit() error {
 			// Update property indexes
 			for key, value := range node.Properties {
 				if idx, exists := b.graph.propertyIndexes[key]; exists {
-					idx.Insert(node.ID, value)
+					if err := idx.Insert(node.ID, value); err != nil {
+						return fmt.Errorf("failed to insert into property index %s: %w", key, err)
+					}
 				}
 			}
 
@@ -181,7 +183,9 @@ func (b *Batch) Commit() error {
 			// Update property indexes (remove old, add new)
 			for key, oldValue := range node.Properties {
 				if idx, exists := b.graph.propertyIndexes[key]; exists {
-					idx.Remove(node.ID, oldValue)
+					if err := idx.Remove(node.ID, oldValue); err != nil {
+						return fmt.Errorf("failed to remove from property index %s: %w", key, err)
+					}
 				}
 			}
 
@@ -193,7 +197,9 @@ func (b *Batch) Commit() error {
 			// Re-index
 			for key, value := range node.Properties {
 				if idx, exists := b.graph.propertyIndexes[key]; exists {
-					idx.Insert(node.ID, value)
+					if err := idx.Insert(node.ID, value); err != nil {
+						return fmt.Errorf("failed to insert into property index %s: %w", key, err)
+					}
 				}
 			}
 
@@ -217,7 +223,9 @@ func (b *Batch) Commit() error {
 			// Remove from property indexes
 			for key, value := range node.Properties {
 				if idx, exists := b.graph.propertyIndexes[key]; exists {
-					idx.Remove(op.nodeID, value)
+					if err := idx.Remove(op.nodeID, value); err != nil {
+						return fmt.Errorf("failed to remove from property index %s: %w", key, err)
+					}
 				}
 			}
 

@@ -57,7 +57,10 @@ func expandFrontier(
 	// Process one level
 	levelSize := queue.Len()
 	for i := 0; i < levelSize; i++ {
-		currentID := queue.Remove(queue.Front()).(uint64)
+		currentID, ok := queue.Remove(queue.Front()).(uint64)
+		if !ok {
+			continue
+		}
 
 		// Get neighbors
 		edges, err := graph.GetOutgoingEdges(currentID)
@@ -130,7 +133,10 @@ func AllShortestPaths(graph *storage.GraphStorage, sourceID uint64) (map[uint64]
 	queue.PushBack(sourceID)
 
 	for queue.Len() > 0 {
-		currentID := queue.Remove(queue.Front()).(uint64)
+		currentID, ok := queue.Remove(queue.Front()).(uint64)
+		if !ok {
+			continue
+		}
 		currentDist := distances[currentID]
 
 		edges, err := graph.GetOutgoingEdges(currentID)
