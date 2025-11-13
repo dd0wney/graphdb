@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -54,6 +55,8 @@ type GraphStorage struct {
 
 	// Statistics (using atomic operations for thread-safety)
 	stats Statistics
+	// Internal field for atomic float64 operations on AvgQueryTime
+	avgQueryTimeBits uint64 // Stores AvgQueryTime as bits for atomic access
 }
 
 // StorageConfig holds configuration for GraphStorage
@@ -581,28 +584,32 @@ func (gs *GraphStorage) GetStatistics() Statistics {
 		NodeCount:    atomic.LoadUint64(&gs.stats.NodeCount),
 		EdgeCount:    atomic.LoadUint64(&gs.stats.EdgeCount),
 		TotalQueries: atomic.LoadUint64(&gs.stats.TotalQueries),
-		// Note: LastSnapshot and AvgQueryTime are read under lock if needed elsewhere
-		// For now we don't atomically access these as they're not critical for correctness
 		LastSnapshot: gs.stats.LastSnapshot,
-		AvgQueryTime: gs.stats.AvgQueryTime,
+		AvgQueryTime: math.Float64frombits(atomic.LoadUint64(&gs.avgQueryTimeBits)),
 	}
 }
 
 // trackQueryTime records query execution time for statistics
-// Uses exponential moving average to avoid lock contention
+// Uses exponential moving average with atomic operations for thread-safety
 func (gs *GraphStorage) trackQueryTime(duration time.Duration) {
 	atomic.AddUint64(&gs.stats.TotalQueries, 1)
 
 	// Update average query time (milliseconds)
 	// Using exponential moving average: new_avg = 0.9 * old_avg + 0.1 * new_value
-	// This avoids needing locks for the float64 field
 	durationMs := float64(duration.Nanoseconds()) / 1000000.0
 
-	// Simple approach: read current, calculate new average
-	// Note: This is not perfectly atomic but good enough for statistics
-	currentAvg := gs.stats.AvgQueryTime
-	newAvg := 0.9*currentAvg + 0.1*durationMs
-	gs.stats.AvgQueryTime = newAvg
+	// Thread-safe update using compare-and-swap loop
+	for {
+		oldBits := atomic.LoadUint64(&gs.avgQueryTimeBits)
+		oldAvg := math.Float64frombits(oldBits)
+		newAvg := 0.9*oldAvg + 0.1*durationMs
+		newBits := math.Float64bits(newAvg)
+
+		if atomic.CompareAndSwapUint64(&gs.avgQueryTimeBits, oldBits, newBits) {
+			break
+		}
+		// CAS failed, retry with new value
+	}
 }
 
 // allocateNodeID allocates a new node ID in a thread-safe manner
