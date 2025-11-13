@@ -27,7 +27,7 @@ type ReplicaNode struct {
 	stopCh                   chan struct{}
 	running                  bool
 	runningMu                sync.Mutex
-	lastReceivedHeartbeatSeq uint64    // Last heartbeat sequence received from primary
+	lastReceivedHeartbeatSeq uint64 // Last heartbeat sequence received from primary
 	heartbeatSeqMu           sync.Mutex
 }
 

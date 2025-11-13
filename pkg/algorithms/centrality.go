@@ -47,7 +47,10 @@ func BetweennessCentrality(graph *storage.GraphStorage) (map[uint64]float64, err
 		queue.PushBack(source)
 
 		for queue.Len() > 0 {
-			v := queue.Remove(queue.Front()).(uint64)
+			v, ok := queue.Remove(queue.Front()).(uint64)
+			if !ok {
+				continue
+			}
 			stack = append(stack, v)
 
 			// Get neighbors
@@ -129,7 +132,10 @@ func ClosenessCentrality(graph *storage.GraphStorage) (map[uint64]float64, error
 		queue.PushBack(source)
 
 		for queue.Len() > 0 {
-			v := queue.Remove(queue.Front()).(uint64)
+			v, ok := queue.Remove(queue.Front()).(uint64)
+			if !ok {
+				continue
+			}
 
 			edges, err := graph.GetOutgoingEdges(v)
 			if err != nil {

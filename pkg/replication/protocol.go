@@ -52,7 +52,7 @@ type HandshakeResponse struct {
 // HeartbeatMessage keeps connection alive and reports status
 type HeartbeatMessage struct {
 	From       string `json:"from"`
-	Sequence   uint64 `json:"sequence"`   // Monotonically increasing sequence number
+	Sequence   uint64 `json:"sequence"` // Monotonically increasing sequence number
 	CurrentLSN uint64 `json:"current_lsn"`
 	NodeCount  uint64 `json:"node_count"`
 	EdgeCount  uint64 `json:"edge_count"`
@@ -169,8 +169,8 @@ type ReplicaStatus struct {
 	LastAppliedLSN uint64        `json:"last_applied_lsn"`
 	CurrentLSN     uint64        `json:"current_lsn"`
 	LagLSN         uint64        `json:"lag_lsn"`
-	LagMs          int64         `json:"lag_ms"`           // Milliseconds since last response (monotonic)
-	HeartbeatLag   uint64        `json:"heartbeat_lag"`    // Logical heartbeat lag (sequence numbers)
+	LagMs          int64         `json:"lag_ms"`        // Milliseconds since last response (monotonic)
+	HeartbeatLag   uint64        `json:"heartbeat_lag"` // Logical heartbeat lag (sequence numbers)
 	LagDuration    time.Duration `json:"lag_duration"`
 }
 

@@ -567,6 +567,7 @@ func TestParser_ErrorInvalidSyntax(t *testing.T) {
 				if r := recover(); r == nil {
 					// If we get here without panic and no error, that's unexpected
 					// But we'll allow it since some might return errors
+					t.Logf("Test did not panic or error as expected")
 				}
 			}()
 
@@ -575,9 +576,10 @@ func TestParser_ErrorInvalidSyntax(t *testing.T) {
 			_, err := parser.Parse()
 
 			// We expect either an error or a panic
-			if err == nil {
-				// Panic will be caught by defer/recover
+			if err != nil {
+				t.Logf("Got expected error: %v", err)
 			}
+			// Panic will be caught by defer/recover
 		})
 	}
 }

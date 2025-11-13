@@ -380,11 +380,11 @@ func (rm *ReplicationManager) GetReplicationState() ReplicationState {
 
 		state.Replicas = append(state.Replicas, ReplicaStatus{
 			ReplicaID:      replica.replicaID,
-			Connected:      connected, // Based on heartbeat lag, not TCP connection
+			Connected:      connected,                // Based on heartbeat lag, not TCP connection
 			LastSeen:       replica.lastResponseTime, // Use primary's local time for display
 			LastAppliedLSN: replica.lastAppliedLSN,
-			LagMs:          lagDuration.Milliseconds(),    // Time since last response
-			HeartbeatLag:   heartbeatLag,                  // Logical heartbeat lag
+			LagMs:          lagDuration.Milliseconds(), // Time since last response
+			HeartbeatLag:   heartbeatLag,               // Logical heartbeat lag
 			LagDuration:    lagDuration,
 		})
 	}

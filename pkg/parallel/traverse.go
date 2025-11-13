@@ -81,9 +81,10 @@ func (pt *ParallelTraverser) TraverseBFS(startNodes []uint64, maxDepth int) []ui
 		// Convert nextLevel to slice and add to results
 		currentLevel = make([]uint64, 0)
 		nextLevel.Range(func(key, value interface{}) bool {
-			nodeID := key.(uint64)
-			currentLevel = append(currentLevel, nodeID)
-			allResults = append(allResults, nodeID)
+			if nodeID, ok := key.(uint64); ok {
+				currentLevel = append(currentLevel, nodeID)
+				allResults = append(allResults, nodeID)
+			}
 			return true
 		})
 

@@ -73,18 +73,23 @@ func (p *Parser) Parse() (*Query, error) {
 		case TokenLimit:
 			p.advance() // consume LIMIT
 			limitToken := p.expect(TokenNumber)
-			limit, _ := strconv.Atoi(limitToken.Value)
-			query.Limit = limit
+			if limit, err := strconv.Atoi(limitToken.Value); err == nil {
+				query.Limit = limit
+			} else {
+				return nil, fmt.Errorf("invalid LIMIT value: %s", limitToken.Value)
+			}
 
 		case TokenSkip:
 			p.advance() // consume SKIP
 			skipToken := p.expect(TokenNumber)
-			skip, _ := strconv.Atoi(skipToken.Value)
-			query.Skip = skip
+			if skip, err := strconv.Atoi(skipToken.Value); err == nil {
+				query.Skip = skip
+			} else {
+				return nil, fmt.Errorf("invalid SKIP value: %s", skipToken.Value)
+			}
 
 		case TokenSemicolon:
 			p.advance()
-			break
 
 		case TokenEOF:
 			return query, nil
@@ -212,19 +217,20 @@ func (p *Parser) parseRelationship(fromNode *NodePattern) (*RelationshipPattern,
 	leadingToken := p.peek().Type
 	hasDetails := false
 
-	if leadingToken == TokenArrowLeft {
+	switch leadingToken {
+	case TokenArrowLeft:
 		// <-[...]- pattern
 		p.advance()
 		rel.Direction = DirectionIncoming
-	} else if leadingToken == TokenArrowRight {
+	case TokenArrowRight:
 		// ->[...] pattern (uncommon but possible)
 		p.advance()
 		rel.Direction = DirectionOutgoing
-	} else if leadingToken == TokenMinus {
+	case TokenMinus:
 		// -[...]- or -[...]-> pattern
 		p.advance()
 		rel.Direction = DirectionBoth // May be updated after details
-	} else {
+	default:
 		return nil, nil, fmt.Errorf("expected relationship pattern, got %v", leadingToken)
 	}
 
@@ -254,20 +260,23 @@ func (p *Parser) parseRelationship(fromNode *NodePattern) (*RelationshipPattern,
 				if strings.Contains(numToken.Value, "..") {
 					parts := strings.Split(numToken.Value, "..")
 					if len(parts) == 2 {
-						min, _ := strconv.Atoi(parts[0])
-						rel.MinHops = min
+						if min, err := strconv.Atoi(parts[0]); err == nil {
+							rel.MinHops = min
+						}
 						if parts[1] != "" {
-							max, _ := strconv.Atoi(parts[1])
-							rel.MaxHops = max
+							if max, err := strconv.Atoi(parts[1]); err == nil {
+								rel.MaxHops = max
+							}
 						} else {
 							rel.MaxHops = -1 // unlimited
 						}
 					}
 				} else {
 					// Just a single number, use it as both min and max
-					val, _ := strconv.Atoi(numToken.Value)
-					rel.MinHops = val
-					rel.MaxHops = val
+					if val, err := strconv.Atoi(numToken.Value); err == nil {
+						rel.MinHops = val
+						rel.MaxHops = val
+					}
 				}
 			}
 		}
