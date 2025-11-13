@@ -285,6 +285,13 @@ func (w *CompressedWAL) GetStatistics() CompressedWALStats {
 	}
 }
 
+// GetCurrentLSN returns the current LSN
+func (w *CompressedWAL) GetCurrentLSN() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.currentLSN
+}
+
 // CompressedWALStats holds compression statistics
 type CompressedWALStats struct {
 	TotalWrites       uint64

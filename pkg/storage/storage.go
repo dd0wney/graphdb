@@ -894,6 +894,19 @@ func (gs *GraphStorage) Close() error {
 	return nil
 }
 
+// GetCurrentLSN returns the current LSN (Log Sequence Number) from the WAL
+// This is used by replication to track the latest position in the write-ahead log
+func (gs *GraphStorage) GetCurrentLSN() uint64 {
+	if gs.useCompression && gs.compressedWAL != nil {
+		return gs.compressedWAL.GetCurrentLSN()
+	} else if gs.useBatching && gs.batchedWAL != nil {
+		return gs.batchedWAL.GetCurrentLSN()
+	} else if gs.wal != nil {
+		return gs.wal.GetCurrentLSN()
+	}
+	return 0
+}
+
 // CompressEdgeLists compresses all uncompressed edge lists
 // This can be called periodically to reduce memory usage
 func (gs *GraphStorage) CompressEdgeLists() error {

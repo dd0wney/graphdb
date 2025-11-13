@@ -196,7 +196,7 @@ func (rm *ReplicationManager) handleReplicaConnection(conn net.Conn) {
 	// Send handshake response
 	response, _ := NewMessage(MsgHandshake, HandshakeResponse{
 		PrimaryID:  rm.primaryID,
-		CurrentLSN: 0, // TODO: Get from storage
+		CurrentLSN: rm.storage.GetCurrentLSN(),
 		Version:    "1.0",
 		Accepted:   true,
 	})
@@ -331,7 +331,7 @@ func (rm *ReplicationManager) broadcastHeartbeat() {
 	hb := HeartbeatMessage{
 		From:       rm.primaryID,
 		Sequence:   currentSeq, // Logical time - monotonically increasing
-		CurrentLSN: 0,          // TODO: Get from WAL
+		CurrentLSN: rm.storage.GetCurrentLSN(),
 		NodeCount:  stats.NodeCount,
 		EdgeCount:  stats.EdgeCount,
 	}

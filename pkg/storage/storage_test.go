@@ -479,3 +479,79 @@ func BenchmarkGraphStorage_GetIncomingEdges(b *testing.B) {
 		gs.GetIncomingEdges(target.ID)
 	}
 }
+
+// TestGraphStorage_GetCurrentLSN tests retrieving the current LSN from storage
+func TestGraphStorage_GetCurrentLSN(t *testing.T) {
+	tests := []struct {
+		name           string
+		enableBatching bool
+		operations     int
+		expectedLSN    uint64
+	}{
+		{
+			name:           "basic WAL - initial state",
+			enableBatching: false,
+			operations:     0,
+			expectedLSN:    0,
+		},
+		{
+			name:           "basic WAL - after one operation",
+			enableBatching: false,
+			operations:     1,
+			expectedLSN:    1,
+		},
+		{
+			name:           "basic WAL - after multiple operations",
+			enableBatching: false,
+			operations:     5,
+			expectedLSN:    5,
+		},
+		{
+			name:           "batched WAL - after operations",
+			enableBatching: true,
+			operations:     3,
+			expectedLSN:    3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+
+			config := StorageConfig{
+				DataDir:        dataDir,
+				EnableBatching: tt.enableBatching,
+				BatchSize:      10,
+				FlushInterval:  100 * time.Millisecond,
+			}
+
+			gs, err := NewGraphStorageWithConfig(config)
+			if err != nil {
+				t.Fatalf("Failed to create storage: %v", err)
+			}
+			defer gs.Close()
+
+			// Perform operations
+			for i := 0; i < tt.operations; i++ {
+				_, err := gs.CreateNode([]string{"Test"}, map[string]Value{
+					"index": IntValue(int64(i)),
+				})
+				if err != nil {
+					t.Fatalf("Failed to create node: %v", err)
+				}
+			}
+
+			// If batching is enabled, flush to ensure WAL entries are written
+			if tt.enableBatching {
+				time.Sleep(150 * time.Millisecond) // Wait for flush
+			}
+
+			// Get current LSN
+			lsn := gs.GetCurrentLSN()
+
+			if lsn != tt.expectedLSN {
+				t.Errorf("GetCurrentLSN() = %d, want %d", lsn, tt.expectedLSN)
+			}
+		})
+	}
+}

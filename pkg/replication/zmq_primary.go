@@ -277,7 +277,7 @@ func (zm *ZMQReplicationManager) handleHealthChecks() {
 		stats := zm.storage.GetStatistics()
 		response := HeartbeatMessage{
 			From:       zm.primaryID,
-			CurrentLSN: 0, // TODO: Get from WAL
+			CurrentLSN: zm.storage.GetCurrentLSN(),
 			NodeCount:  stats.NodeCount,
 			EdgeCount:  stats.EdgeCount,
 		}
