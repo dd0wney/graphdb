@@ -85,7 +85,7 @@ func NewLSMStorage(opts LSMOptions) (*LSMStorage, error) {
 		memTable:           NewMemTable(opts.MemTableSize),
 		immutableTable:     nil,
 		levels:             levels,
-		cache:              NewBlockCache(10000), // Cache 10k blocks
+		cache:              NewBlockCache(100000), // Cache 100k blocks (10x increase for large graphs)
 		dataDir:            opts.DataDir,
 		memTableSize:       opts.MemTableSize,
 		compactionStrategy: opts.CompactionStrategy,
