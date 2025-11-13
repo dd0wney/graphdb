@@ -11,11 +11,16 @@ import (
 	"time"
 )
 
+// ConfigReloadFunc is a function that reloads configuration
+type ConfigReloadFunc func() error
+
 // GracefulServer wraps an HTTP server with graceful shutdown capabilities
 type GracefulServer struct {
-	server       *http.Server
-	shutdownCh   chan struct{}
-	shutdownOnce sync.Once
+	server         *http.Server
+	shutdownCh     chan struct{}
+	shutdownOnce   sync.Once
+	configReloadFn ConfigReloadFunc
+	configMu       sync.RWMutex
 }
 
 // NewGracefulServer creates a new graceful HTTP server
@@ -90,9 +95,10 @@ func (gs *GracefulServer) handleSignals() {
 			os.Exit(0)
 
 		case syscall.SIGHUP:
-			log.Printf("Received SIGHUP signal, reloading configuration...")
-			// TODO: Implement configuration reload
-			log.Printf("Configuration reload not yet implemented")
+			log.Printf("Received SIGHUP signal, triggering configuration reload...")
+			if err := gs.ReloadConfig(); err != nil {
+				log.Printf("Configuration reload error: %v", err)
+			}
 
 		case syscall.SIGUSR1:
 			log.Printf("Received SIGUSR1 signal, preparing for rolling restart...")
@@ -121,4 +127,32 @@ func (gs *GracefulServer) IsShuttingDown() bool {
 // ShutdownChannel returns a channel that closes when shutdown is initiated
 func (gs *GracefulServer) ShutdownChannel() <-chan struct{} {
 	return gs.shutdownCh
+}
+
+// SetConfigReloadFunc sets the function to call when configuration reload is triggered
+func (gs *GracefulServer) SetConfigReloadFunc(fn ConfigReloadFunc) {
+	gs.configMu.Lock()
+	defer gs.configMu.Unlock()
+	gs.configReloadFn = fn
+}
+
+// ReloadConfig triggers a configuration reload
+func (gs *GracefulServer) ReloadConfig() error {
+	gs.configMu.RLock()
+	reloadFn := gs.configReloadFn
+	gs.configMu.RUnlock()
+
+	if reloadFn == nil {
+		log.Printf("Configuration reload requested, but no reload function configured")
+		return nil
+	}
+
+	log.Printf("Reloading configuration...")
+	if err := reloadFn(); err != nil {
+		log.Printf("Configuration reload failed: %v", err)
+		return err
+	}
+
+	log.Printf("Configuration reload complete")
+	return nil
 }

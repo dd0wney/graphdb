@@ -171,8 +171,13 @@ func (bgm *BlueGreenManager) checkDeployment(color string) DeploymentColor {
 	// Perform health check
 	deployment.Healthy = bgm.healthChecker.Check(port)
 
-	// TODO: Get actual version and stats from the deployment
-	deployment.Version = "unknown"
+	// Fetch version from health endpoint
+	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	if version, err := bgm.healthChecker.FetchVersion(baseURL); err == nil {
+		deployment.Version = version
+	} else {
+		deployment.Version = "unknown"
+	}
 
 	return deployment
 }
@@ -212,6 +217,34 @@ func (hc *HealthChecker) Check(port int) bool {
 	defer resp.Body.Close()
 
 	return resp.StatusCode == http.StatusOK
+}
+
+// FetchVersion fetches the version from a deployment's health endpoint
+func (hc *HealthChecker) FetchVersion(baseURL string) (string, error) {
+	client := &http.Client{
+		Timeout: hc.timeout,
+	}
+
+	url := baseURL + hc.checkEndpoint
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch health endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("health endpoint returned status %d", resp.StatusCode)
+	}
+
+	var healthResp struct {
+		Version string `json:"version"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&healthResp); err != nil {
+		return "", fmt.Errorf("failed to decode health response: %w", err)
+	}
+
+	return healthResp.Version, nil
 }
 
 // RegisterHandlers registers blue-green HTTP handlers
