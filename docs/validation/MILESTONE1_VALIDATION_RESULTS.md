@@ -21,7 +21,7 @@ All Milestone 1 claims have been **validated through testing and benchmarking**:
 
 ## 1. Query Statistics - TDD Validation
 
-### Tests Added (4 comprehensive tests):
+### Tests Added (4 comprehensive tests)
 
 1. **TestQueryStatistics_TotalQueries** - Verifies query counting
 2. **TestQueryStatistics_AvgQueryTime** - Validates time tracking
@@ -31,12 +31,14 @@ All Milestone 1 claims have been **validated through testing and benchmarking**:
 ### Race Condition Found & Fixed
 
 **Issue Discovered:**
+
 ```
 WARNING: DATA RACE at storage.go:603-605
 Read/Write to AvgQueryTime without synchronization
 ```
 
 **Fix Implemented:**
+
 ```go
 // BEFORE (race condition):
 currentAvg := gs.stats.AvgQueryTime  // Unsafe read
@@ -58,9 +60,10 @@ for {
 ```
 
 **Test Results:**
+
 ```bash
 ✅ go test -race -run "TestQueryStatistics" ./pkg/storage/
-ok  	github.com/dd0wney/cluso-graphdb/pkg/storage	1.019s
+ok   github.com/dd0wney/cluso-graphdb/pkg/storage 1.019s
 ```
 
 **Status**: ✅ Race condition fixed, all tests pass
@@ -69,7 +72,7 @@ ok  	github.com/dd0wney/cluso-graphdb/pkg/storage	1.019s
 
 ## 2. Sharded Locking - Benchmark Validation
 
-### Benchmarks Added (6 comprehensive benchmarks):
+### Benchmarks Added (6 comprehensive benchmarks)
 
 1. **BenchmarkGetNode_Sequential** - Baseline single-threaded performance
 2. **BenchmarkGetNode_Concurrent** - Multi-threaded with random shards
@@ -80,7 +83,7 @@ ok  	github.com/dd0wney/cluso-graphdb/pkg/storage	1.019s
 
 ### Performance Results
 
-#### Mixed Operations (Most Realistic):
+#### Mixed Operations (Most Realistic)
 
 | Cores | ns/op | Speedup vs 1 core | Aggregate Throughput |
 |-------|-------|-------------------|---------------------|
@@ -93,7 +96,7 @@ ok  	github.com/dd0wney/cluso-graphdb/pkg/storage	1.019s
 
 **Key Insight**: The "100-256x" claim refers to **aggregate throughput**, not per-operation latency.
 
-#### GetNode Operations:
+#### GetNode Operations
 
 | Cores | ns/op | Speedup |
 |-------|-------|---------|
@@ -105,7 +108,7 @@ ok  	github.com/dd0wney/cluso-graphdb/pkg/storage	1.019s
 
 **Aggregate**: 32 cores × 2.13x = **68x total throughput**
 
-#### Different Shards (Best Case):
+#### Different Shards (Best Case)
 
 | Cores | ns/op | Aggregate Throughput |
 |-------|-------|---------------------|
@@ -119,12 +122,14 @@ ok  	github.com/dd0wney/cluso-graphdb/pkg/storage	1.019s
 ✅ **Claim VALIDATED**: With 32 cores on realistic mixed workload: **116x aggregate throughput**
 
 **Scaling Analysis:**
+
 - Single operation latency: 3.6x faster with sharded locks
 - Concurrent throughput: Scales nearly linearly up to 8 cores
 - At 32 cores: 116x total throughput vs sequential global lock
 - **Projected**: With 256 cores (theoretical max shards), could reach **256x**
 
 **Why not perfect 256x scaling?**
+
 - Memory bandwidth limitations
 - Cache coherence overhead
 - NUMA effects on multi-socket systems
@@ -138,7 +143,8 @@ ok  	github.com/dd0wney/cluso-graphdb/pkg/storage	1.019s
 
 **Source**: PHASE_2_IMPROVEMENTS.md (lines 505-650)
 
-### Documented Performance:
+### Documented Performance
+
 ```
 Compression Statistics:
   Total Lists: 10000
@@ -150,6 +156,7 @@ Compression Statistics:
 ```
 
 **Actual Test Results** (from compression_test.go):
+
 - Small lists (10 edges): 2.5x compression
 - Medium lists (100 edges): 5.2x compression
 - Large lists (1000 edges): **7.21x compression** (exceeds claim!)
@@ -174,6 +181,7 @@ cache: NewBlockCache(100000)  // 100K blocks - 10x increase ✅
 **Validation**: Direct code inspection confirms 10x increase
 
 **Impact Measurement**:
+
 ```bash
 BenchmarkLSM_Get-32: 36.18 ns/op (excellent cache hit performance)
 ```
@@ -184,17 +192,20 @@ BenchmarkLSM_Get-32: 36.18 ns/op (excellent cache hit performance)
 
 ## Overall Test Coverage
 
-### Unit Tests Added/Fixed:
+### Unit Tests Added/Fixed
+
 - ✅ 4 query statistics tests
 - ✅ Race condition fix with atomic CAS
 - ✅ All existing tests still pass (557 total test file lines → 955 lines)
 
-### Benchmarks Added:
+### Benchmarks Added
+
 - ✅ 6 sharded locking benchmarks
 - ✅ Multi-core scaling tests (1, 2, 4, 8, 16, 32 cores)
 - ✅ Realistic mixed workload simulation
 
-### Test Execution:
+### Test Execution
+
 ```bash
 ✅ go test ./pkg/storage/... - PASS
 ✅ go test -race ./pkg/storage/... - PASS (no data races)
@@ -205,7 +216,7 @@ BenchmarkLSM_Get-32: 36.18 ns/op (excellent cache hit performance)
 
 ## Updated Claims (Evidence-Based)
 
-### What We Can Now Claim with Confidence:
+### What We Can Now Claim with Confidence
 
 1. **Edge Compression**:
    - ✅ "5-7x memory reduction" (measured: 5.08-7.21x)
@@ -230,7 +241,7 @@ BenchmarkLSM_Get-32: 36.18 ns/op (excellent cache hit performance)
 
 ## Recommended Documentation Updates
 
-### MILESTONE_1_QUICK_WINS.md:
+### MILESTONE_1_QUICK_WINS.md
 
 **Old Claim**:
 > 100-256x reduction in lock contention for read operations
@@ -240,7 +251,7 @@ BenchmarkLSM_Get-32: 36.18 ns/op (excellent cache hit performance)
 
 **Rationale**: More precise, backed by actual measurements, still impressive
 
-### README.md additions:
+### README.md additions
 
 ```markdown
 ## Performance (Validated)
@@ -255,18 +266,21 @@ BenchmarkLSM_Get-32: 36.18 ns/op (excellent cache hit performance)
 
 ## Lessons Learned
 
-### What Worked Well:
+### What Worked Well
+
 1. ✅ **TDD approach** - Writing tests first caught the race condition immediately
 2. ✅ **Benchmark-driven validation** - Actual measurements > estimates
 3. ✅ **Atomic CAS** - Lock-free statistics are both fast and correct
 4. ✅ **Comprehensive testing** - Multiple scenarios (same shard, different shards, mixed ops)
 
-### What We Adjusted:
+### What We Adjusted
+
 1. ⚠️ **Conservative claims** - "116x measured" instead of "100-256x theoretical"
 2. ⚠️ **Clarified terminology** - "Aggregate throughput" vs "per-operation latency"
 3. ⚠️ **Documented methodology** - Show HOW we validated, not just results
 
-### Future Validation TODOs:
+### Future Validation TODOs
+
 - [ ] Test on different CPU architectures (ARM, Intel)
 - [ ] Measure at different scales (100K, 1M, 10M nodes)
 - [ ] Long-running stability tests (24+ hours)
@@ -279,6 +293,7 @@ BenchmarkLSM_Get-32: 36.18 ns/op (excellent cache hit performance)
 **Status**: ✅ **MILESTONE 1 FULLY VALIDATED**
 
 All claims have been:
+
 1. ✅ Tested with comprehensive unit tests
 2. ✅ Benchmarked with realistic workloads
 3. ✅ Verified with race detector
@@ -286,6 +301,7 @@ All claims have been:
 5. ✅ Validated or adjusted to match measurements
 
 **Next Steps**:
+
 1. Commit validation changes
 2. Update documentation with validated claims
 3. Proceed to Milestone 2 with confidence

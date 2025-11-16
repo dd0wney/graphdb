@@ -9,7 +9,7 @@
 
 ## Current Architecture (Milestone 1)
 
-### Memory Usage (for 5M nodes, avg degree 10):
+### Memory Usage (for 5M nodes, avg degree 10)
 
 ```
 Nodes: 5M × 2.4 KB = 12 GB
@@ -20,7 +20,7 @@ Adjacency lists (uncompressed): 50M × 8 bytes = 400 MB
 
 **Total**: ~67-68 GB (exceeds 32GB limit)
 
-### Current Storage:
+### Current Storage
 
 ```go
 // In-memory storage
@@ -36,14 +36,14 @@ compressedIncoming map[uint64]*CompressedEdgeList  // 78 MB compressed
 
 ## Milestone 2 Architecture
 
-### Strategy:
+### Strategy
 
 1. **Store adjacency lists in LSM** (disk-backed)
 2. **LRU cache** for hot edge lists (keep frequently accessed in RAM)
 3. **Lazy loading** (load from disk on demand)
 4. **Write-through cache** (persist to LSM immediately)
 
-### New Components:
+### New Components
 
 #### 1. LSM-Backed Edge Store
 
@@ -110,13 +110,15 @@ func (es *EdgeStore) GetOutgoingEdges(nodeID uint64) ([]uint64, error) {
 
 ## Memory Savings Calculation
 
-### Before (Milestone 1):
+### Before (Milestone 1)
+
 ```
 5M nodes × 10 edges avg = 50M edges
 Compressed edge lists: 78 MB (in RAM)
 ```
 
-### After (Milestone 2):
+### After (Milestone 2)
+
 ```
 50M edges total
 Cache: 1000 hottest edge lists = ~10-20 MB (in RAM)
@@ -125,7 +127,8 @@ Rest: On disk in LSM
 Memory reduction: 78 MB → 15 MB = 5.2x reduction
 ```
 
-### With cache tuning:
+### With cache tuning
+
 ```
 Cache: 10,000 edge lists (top 0.2%) = ~100 MB
 Still 80% memory savings
@@ -138,6 +141,7 @@ Still 80% memory savings
 ### Phase 1: EdgeStore with LSM Backend (Week 1)
 
 **Tests to write first:**
+
 1. ✅ `TestEdgeStore_StoreAndRetrieve` - Basic put/get
 2. ✅ `TestEdgeStore_EmptyNode` - Node with no edges
 3. ✅ `TestEdgeStore_LargeEdgeList` - 10,000 edges
@@ -145,6 +149,7 @@ Still 80% memory savings
 5. ✅ `TestEdgeStore_Persistence` - Survives restart
 
 **Implementation steps:**
+
 1. Create `pkg/storage/edgestore.go`
 2. Implement `EdgeStore` with LSM backend
 3. Serialization/deserialization for CompressedEdgeList
@@ -153,6 +158,7 @@ Still 80% memory savings
 ### Phase 2: LRU Cache (Week 2)
 
 **Tests to write first:**
+
 1. ✅ `TestEdgeCache_BasicLRU` - Insert and evict
 2. ✅ `TestEdgeCache_HitRate` - Cache effectiveness
 3. ✅ `TestEdgeCache_Concurrent` - Thread-safe operations
@@ -160,6 +166,7 @@ Still 80% memory savings
 5. ✅ `TestEdgeCache_MemoryTracking` - Size limits
 
 **Implementation steps:**
+
 1. Create `pkg/storage/edgecache.go`
 2. Implement LRU eviction policy
 3. Thread-safe access with RWMutex
@@ -169,12 +176,14 @@ Still 80% memory savings
 ### Phase 3: Integration & Migration (Week 3)
 
 **Tests to write first:**
+
 1. ✅ `TestGraphStorage_DiskBacked` - End-to-end test
 2. ✅ `TestGraphStorage_5MNodes` - 5M node capacity test
 3. ✅ `TestGraphStorage_MemoryUsage` - Memory profiling
 4. ✅ `TestGraphStorage_Performance` - Benchmark vs Milestone 1
 
 **Implementation steps:**
+
 1. Modify `GraphStorage` to use `EdgeStore`
 2. Backward compatibility (optional in-memory mode)
 3. Migration path for existing data
@@ -183,6 +192,7 @@ Still 80% memory savings
 ### Phase 4: Benchmarks & Validation (Week 4)
 
 **Benchmarks to create:**
+
 1. ✅ `BenchmarkEdgeStore_Get` - Disk read performance
 2. ✅ `BenchmarkEdgeStore_CacheHit` - Cache performance
 3. ✅ `BenchmarkEdgeStore_CacheMiss` - Disk latency
@@ -193,7 +203,7 @@ Still 80% memory savings
 
 ## Success Criteria
 
-### Performance Targets:
+### Performance Targets
 
 | Metric | Target | Validation Method |
 |--------|--------|-------------------|
@@ -203,7 +213,7 @@ Still 80% memory savings
 | **Get latency (cache miss)** | < 100 μs | Benchmark (SSD) |
 | **Thread safety** | No races | Race detector |
 
-### Capacity Targets:
+### Capacity Targets
 
 - ✅ Handle 5M nodes on 32GB RAM machine
 - ✅ Handle 50M edges with avg degree 10
@@ -213,7 +223,7 @@ Still 80% memory savings
 
 ## API Changes (Minimal)
 
-### Config Addition:
+### Config Addition
 
 ```go
 type StorageConfig struct {
@@ -226,7 +236,7 @@ type StorageConfig struct {
 }
 ```
 
-### Backward Compatibility:
+### Backward Compatibility
 
 - If `EnableDiskBackedEdges = false`, use existing in-memory implementation
 - Migration tool to convert existing graphs to disk-backed format
@@ -255,6 +265,7 @@ pkg/storage/
 
 **Impact**: Cache misses could slow queries by 100-1000x
 **Mitigation**:
+
 - Aggressive caching (tunable size)
 - Prefetching (load neighboring nodes)
 - SSD requirement for production
@@ -263,6 +274,7 @@ pkg/storage/
 
 **Impact**: Poor cache hit rate if workload is random
 **Mitigation**:
+
 - Benchmark with realistic workloads
 - Adaptive cache sizing
 - Query pattern analysis
@@ -271,6 +283,7 @@ pkg/storage/
 
 **Impact**: More moving parts = more bugs
 **Mitigation**:
+
 - TDD approach (tests first!)
 - Comprehensive test coverage
 - Gradual rollout (optional feature)

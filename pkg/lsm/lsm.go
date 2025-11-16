@@ -31,6 +31,9 @@ type LSMStorage struct {
 	stopChan       chan struct{}
 	wg             sync.WaitGroup
 
+	// State
+	closed bool
+
 	// Statistics
 	stats LSMStats
 }
@@ -447,6 +450,14 @@ func (lsm *LSMStorage) GetStats() LSMStats {
 
 // Close flushes pending writes and stops background workers
 func (lsm *LSMStorage) Close() error {
+	lsm.mu.Lock()
+	if lsm.closed {
+		lsm.mu.Unlock()
+		return nil // Already closed
+	}
+	lsm.closed = true
+	lsm.mu.Unlock()
+
 	// Stop workers
 	close(lsm.stopChan)
 	lsm.wg.Wait()

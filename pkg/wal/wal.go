@@ -21,6 +21,8 @@ const (
 	OpCreateEdge
 	OpUpdateEdge
 	OpDeleteEdge
+	OpCreatePropertyIndex
+	OpDropPropertyIndex
 )
 
 // Entry represents a single WAL entry

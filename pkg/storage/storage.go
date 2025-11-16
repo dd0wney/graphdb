@@ -36,6 +36,10 @@ type GraphStorage struct {
 	compressedIncoming map[uint64]*CompressedEdgeList // node ID -> compressed incoming edges
 	useEdgeCompression bool
 
+	// Disk-backed edge storage (Milestone 2)
+	edgeStore          *EdgeStore // LSM-backed edge storage with LRU cache
+	useDiskBackedEdges bool       // If true, use EdgeStore instead of in-memory maps
+
 	// ID generators
 	nextNodeID uint64
 	nextEdgeID uint64
@@ -67,6 +71,8 @@ type StorageConfig struct {
 	EnableEdgeCompression bool
 	BatchSize             int
 	FlushInterval         time.Duration
+	UseDiskBackedEdges    bool // Enable disk-backed adjacency lists (Milestone 2)
+	EdgeCacheSize         int  // LRU cache size for hot edge lists (default: 10000)
 }
 
 // Statistics tracks database statistics
@@ -144,6 +150,22 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 			return nil, fmt.Errorf("failed to initialize WAL: %w", err)
 		}
 		gs.wal = walInstance
+	}
+
+	// Initialize disk-backed edge storage if enabled (Milestone 2)
+	if config.UseDiskBackedEdges {
+		cacheSize := config.EdgeCacheSize
+		if cacheSize == 0 {
+			cacheSize = 10000 // Default cache size
+		}
+
+		edgeStoreDir := filepath.Join(config.DataDir, "edgestore")
+		edgeStore, err := NewEdgeStore(edgeStoreDir, cacheSize)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize EdgeStore: %w", err)
+		}
+		gs.edgeStore = edgeStore
+		gs.useDiskBackedEdges = true
 	}
 
 	// Try to load from disk
@@ -251,9 +273,9 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 		gs.trackQueryTime(time.Since(start))
 	}()
 
-	// Use shard-level read lock for better concurrency
-	gs.rlockShard(nodeID)
-	defer gs.runlockShard(nodeID)
+	// Use global read lock to properly synchronize with CreateNode's write lock
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
 
 	node, exists := gs.nodes[nodeID]
 	if !exists {
@@ -291,6 +313,22 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	}
 	node.UpdatedAt = time.Now().Unix()
 
+	// Write to WAL for durability
+	updateData, err := json.Marshal(struct {
+		NodeID     uint64
+		Properties map[string]Value
+	}{
+		NodeID:     nodeID,
+		Properties: properties,
+	})
+	if err == nil {
+		if gs.useBatching && gs.batchedWAL != nil {
+			gs.batchedWAL.Append(wal.OpUpdateNode, updateData)
+		} else if gs.wal != nil {
+			gs.wal.Append(wal.OpUpdateNode, updateData)
+		}
+	}
+
 	return nil
 }
 
@@ -304,10 +342,55 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 		return ErrNodeNotFound
 	}
 
-	// Delete all outgoing edges (with underflow protection)
-	for _, edgeID := range gs.outgoingEdges[nodeID] {
-		if _, exists := gs.edges[edgeID]; exists {
+	// Get edges to delete (disk-backed or in-memory)
+	var outgoingEdgeIDs, incomingEdgeIDs []uint64
+	if gs.useDiskBackedEdges {
+		outgoingEdgeIDs, _ = gs.edgeStore.GetOutgoingEdges(nodeID)
+		incomingEdgeIDs, _ = gs.edgeStore.GetIncomingEdges(nodeID)
+	} else {
+		outgoingEdgeIDs = gs.outgoingEdges[nodeID]
+		incomingEdgeIDs = gs.incomingEdges[nodeID]
+	}
+
+	// Cascade delete all outgoing edges
+	for _, edgeID := range outgoingEdgeIDs {
+		if edge, exists := gs.edges[edgeID]; exists {
+			// Remove from other node's incoming edges
+			if gs.useDiskBackedEdges {
+				incoming, _ := gs.edgeStore.GetIncomingEdges(edge.ToNodeID)
+				newIncoming := make([]uint64, 0, len(incoming))
+				for _, id := range incoming {
+					if id != edgeID {
+						newIncoming = append(newIncoming, id)
+					}
+				}
+				gs.edgeStore.StoreIncomingEdges(edge.ToNodeID, newIncoming)
+			} else {
+				if incoming, ok := gs.incomingEdges[edge.ToNodeID]; ok {
+					newIncoming := make([]uint64, 0, len(incoming))
+					for _, id := range incoming {
+						if id != edgeID {
+							newIncoming = append(newIncoming, id)
+						}
+					}
+					gs.incomingEdges[edge.ToNodeID] = newIncoming
+				}
+			}
+
+			// Remove from type index
+			if edgeList, ok := gs.edgesByType[edge.Type]; ok {
+				newList := make([]uint64, 0, len(edgeList))
+				for _, id := range edgeList {
+					if id != edgeID {
+						newList = append(newList, id)
+					}
+				}
+				gs.edgesByType[edge.Type] = newList
+			}
+
+			// Delete edge object
 			delete(gs.edges, edgeID)
+
 			// Atomic decrement with underflow protection
 			for {
 				current := atomic.LoadUint64(&gs.stats.EdgeCount)
@@ -321,10 +404,45 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 		}
 	}
 
-	// Delete all incoming edges (with underflow protection)
-	for _, edgeID := range gs.incomingEdges[nodeID] {
-		if _, exists := gs.edges[edgeID]; exists {
+	// Cascade delete all incoming edges
+	for _, edgeID := range incomingEdgeIDs {
+		if edge, exists := gs.edges[edgeID]; exists {
+			// Remove from other node's outgoing edges
+			if gs.useDiskBackedEdges {
+				outgoing, _ := gs.edgeStore.GetOutgoingEdges(edge.FromNodeID)
+				newOutgoing := make([]uint64, 0, len(outgoing))
+				for _, id := range outgoing {
+					if id != edgeID {
+						newOutgoing = append(newOutgoing, id)
+					}
+				}
+				gs.edgeStore.StoreOutgoingEdges(edge.FromNodeID, newOutgoing)
+			} else {
+				if outgoing, ok := gs.outgoingEdges[edge.FromNodeID]; ok {
+					newOutgoing := make([]uint64, 0, len(outgoing))
+					for _, id := range outgoing {
+						if id != edgeID {
+							newOutgoing = append(newOutgoing, id)
+						}
+					}
+					gs.outgoingEdges[edge.FromNodeID] = newOutgoing
+				}
+			}
+
+			// Remove from type index
+			if edgeList, ok := gs.edgesByType[edge.Type]; ok {
+				newList := make([]uint64, 0, len(edgeList))
+				for _, id := range edgeList {
+					if id != edgeID {
+						newList = append(newList, id)
+					}
+				}
+				gs.edgesByType[edge.Type] = newList
+			}
+
+			// Delete edge object
 			delete(gs.edges, edgeID)
+
 			// Atomic decrement with underflow protection
 			for {
 				current := atomic.LoadUint64(&gs.stats.EdgeCount)
@@ -352,8 +470,15 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 
 	// Delete node
 	delete(gs.nodes, nodeID)
-	delete(gs.outgoingEdges, nodeID)
-	delete(gs.incomingEdges, nodeID)
+
+	// Delete adjacency lists (disk-backed or in-memory)
+	if gs.useDiskBackedEdges {
+		gs.edgeStore.StoreOutgoingEdges(nodeID, []uint64{})
+		gs.edgeStore.StoreIncomingEdges(nodeID, []uint64{})
+	} else {
+		delete(gs.outgoingEdges, nodeID)
+		delete(gs.incomingEdges, nodeID)
+	}
 
 	// Atomic decrement with underflow protection
 	for {
@@ -363,6 +488,16 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 		}
 		if atomic.CompareAndSwapUint64(&gs.stats.NodeCount, current, current-1) {
 			break
+		}
+	}
+
+	// Write to WAL for durability
+	nodeData, err := json.Marshal(node)
+	if err == nil {
+		if gs.useBatching && gs.batchedWAL != nil {
+			gs.batchedWAL.Append(wal.OpDeleteNode, nodeData)
+		} else if gs.wal != nil {
+			gs.wal.Append(wal.OpDeleteNode, nodeData)
 		}
 	}
 
@@ -404,8 +539,26 @@ func (gs *GraphStorage) CreateEdge(fromID, toID uint64, edgeType string, propert
 
 	// Update indexes
 	gs.edgesByType[edgeType] = append(gs.edgesByType[edgeType], edgeID)
-	gs.outgoingEdges[fromID] = append(gs.outgoingEdges[fromID], edgeID)
-	gs.incomingEdges[toID] = append(gs.incomingEdges[toID], edgeID)
+
+	// Store edge adjacency (disk-backed or in-memory)
+	if gs.useDiskBackedEdges {
+		// Disk-backed: Store in EdgeStore
+		// Get current edge lists
+		outgoing, _ := gs.edgeStore.GetOutgoingEdges(fromID)
+		incoming, _ := gs.edgeStore.GetIncomingEdges(toID)
+
+		// Append new edge
+		outgoing = append(outgoing, edgeID)
+		incoming = append(incoming, edgeID)
+
+		// Store back
+		gs.edgeStore.StoreOutgoingEdges(fromID, outgoing)
+		gs.edgeStore.StoreIncomingEdges(toID, incoming)
+	} else {
+		// In-memory: Store in maps
+		gs.outgoingEdges[fromID] = append(gs.outgoingEdges[fromID], edgeID)
+		gs.incomingEdges[toID] = append(gs.incomingEdges[toID], edgeID)
+	}
 
 	atomic.AddUint64(&gs.stats.EdgeCount, 1)
 
@@ -420,6 +573,105 @@ func (gs *GraphStorage) CreateEdge(fromID, toID uint64, edgeType string, propert
 	}
 
 	return edge.Clone(), nil
+}
+
+// DeleteEdge deletes an edge by ID
+func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+
+	// Get edge to find fromID and toID
+	edge, exists := gs.edges[edgeID]
+	if !exists {
+		return fmt.Errorf("edge %d not found", edgeID)
+	}
+
+	fromID := edge.FromNodeID
+	toID := edge.ToNodeID
+
+	// Delete from edges map
+	delete(gs.edges, edgeID)
+
+	// Remove from type index
+	if edgeList, exists := gs.edgesByType[edge.Type]; exists {
+		newList := make([]uint64, 0, len(edgeList))
+		for _, id := range edgeList {
+			if id != edgeID {
+				newList = append(newList, id)
+			}
+		}
+		gs.edgesByType[edge.Type] = newList
+	}
+
+	// Remove from adjacency (disk-backed or in-memory)
+	if gs.useDiskBackedEdges {
+		// Disk-backed: Remove from EdgeStore
+		outgoing, _ := gs.edgeStore.GetOutgoingEdges(fromID)
+		incoming, _ := gs.edgeStore.GetIncomingEdges(toID)
+
+		// Filter out deleted edge
+		newOutgoing := make([]uint64, 0, len(outgoing))
+		for _, id := range outgoing {
+			if id != edgeID {
+				newOutgoing = append(newOutgoing, id)
+			}
+		}
+
+		newIncoming := make([]uint64, 0, len(incoming))
+		for _, id := range incoming {
+			if id != edgeID {
+				newIncoming = append(newIncoming, id)
+			}
+		}
+
+		// Store back
+		gs.edgeStore.StoreOutgoingEdges(fromID, newOutgoing)
+		gs.edgeStore.StoreIncomingEdges(toID, newIncoming)
+	} else {
+		// In-memory: Remove from maps
+		if outgoing, exists := gs.outgoingEdges[fromID]; exists {
+			newOutgoing := make([]uint64, 0, len(outgoing))
+			for _, id := range outgoing {
+				if id != edgeID {
+					newOutgoing = append(newOutgoing, id)
+				}
+			}
+			gs.outgoingEdges[fromID] = newOutgoing
+		}
+
+		if incoming, exists := gs.incomingEdges[toID]; exists {
+			newIncoming := make([]uint64, 0, len(incoming))
+			for _, id := range incoming {
+				if id != edgeID {
+					newIncoming = append(newIncoming, id)
+				}
+			}
+			gs.incomingEdges[toID] = newIncoming
+		}
+	}
+
+	// Atomic decrement with underflow protection
+	for {
+		current := atomic.LoadUint64(&gs.stats.EdgeCount)
+		if current == 0 {
+			break
+		}
+		if atomic.CompareAndSwapUint64(&gs.stats.EdgeCount, current, current-1) {
+			break
+		}
+	}
+
+	// Write to WAL for durability
+	edgeData, err := json.Marshal(edge)
+	if err == nil {
+		if gs.useBatching && gs.batchedWAL != nil {
+			gs.batchedWAL.Append(wal.OpDeleteEdge, edgeData)
+		} else if gs.wal != nil {
+			gs.wal.Append(wal.OpDeleteEdge, edgeData)
+		}
+	}
+
+	return nil
 }
 
 // GetEdge retrieves an edge by ID
@@ -454,28 +706,39 @@ func (gs *GraphStorage) GetOutgoingEdges(nodeID uint64) ([]*Edge, error) {
 
 	var edgeIDs []uint64
 
-	// Check compressed storage first if compression is enabled
-	if gs.useEdgeCompression {
-		if compressed, exists := gs.compressedOutgoing[nodeID]; exists {
-			edgeIDs = compressed.Decompress()
+	// Check disk-backed storage first if enabled (Milestone 2)
+	if gs.useDiskBackedEdges {
+		diskEdges, err := gs.edgeStore.GetOutgoingEdges(nodeID)
+		if err == nil {
+			edgeIDs = diskEdges
+		}
+	} else {
+		// Check compressed storage first if compression is enabled
+		if gs.useEdgeCompression {
+			if compressed, exists := gs.compressedOutgoing[nodeID]; exists {
+				edgeIDs = compressed.Decompress()
+			}
+		}
+
+		// Fall back to uncompressed storage
+		if edgeIDs == nil {
+			if uncompressed, exists := gs.outgoingEdges[nodeID]; exists {
+				edgeIDs = uncompressed
+			} else {
+				return []*Edge{}, nil
+			}
 		}
 	}
 
-	// Fall back to uncompressed storage
-	if edgeIDs == nil {
-		if uncompressed, exists := gs.outgoingEdges[nodeID]; exists {
-			edgeIDs = uncompressed
-		} else {
-			return []*Edge{}, nil
-		}
-	}
-
+	// Access gs.edges with global read lock (edges map is shared across all shards)
+	gs.mu.RLock()
 	edges := make([]*Edge, 0, len(edgeIDs))
 	for _, edgeID := range edgeIDs {
 		if edge, exists := gs.edges[edgeID]; exists {
 			edges = append(edges, edge.Clone())
 		}
 	}
+	gs.mu.RUnlock()
 
 	return edges, nil
 }
@@ -493,34 +756,50 @@ func (gs *GraphStorage) GetIncomingEdges(nodeID uint64) ([]*Edge, error) {
 
 	var edgeIDs []uint64
 
-	// Check compressed storage first if compression is enabled
-	if gs.useEdgeCompression {
-		if compressed, exists := gs.compressedIncoming[nodeID]; exists {
-			edgeIDs = compressed.Decompress()
+	// Check disk-backed storage first if enabled (Milestone 2)
+	if gs.useDiskBackedEdges {
+		diskEdges, err := gs.edgeStore.GetIncomingEdges(nodeID)
+		if err == nil {
+			edgeIDs = diskEdges
+		}
+	} else {
+		// Check compressed storage first if compression is enabled
+		if gs.useEdgeCompression {
+			if compressed, exists := gs.compressedIncoming[nodeID]; exists {
+				edgeIDs = compressed.Decompress()
+			}
+		}
+
+		// Fall back to uncompressed storage
+		if edgeIDs == nil {
+			if uncompressed, exists := gs.incomingEdges[nodeID]; exists {
+				edgeIDs = uncompressed
+			} else {
+				return []*Edge{}, nil
+			}
 		}
 	}
 
-	// Fall back to uncompressed storage
-	if edgeIDs == nil {
-		if uncompressed, exists := gs.incomingEdges[nodeID]; exists {
-			edgeIDs = uncompressed
-		} else {
-			return []*Edge{}, nil
-		}
-	}
-
+	// Access gs.edges with global read lock (edges map is shared across all shards)
+	gs.mu.RLock()
 	edges := make([]*Edge, 0, len(edgeIDs))
 	for _, edgeID := range edgeIDs {
 		if edge, exists := gs.edges[edgeID]; exists {
 			edges = append(edges, edge.Clone())
 		}
 	}
+	gs.mu.RUnlock()
 
 	return edges, nil
 }
 
 // FindNodesByLabel finds all nodes with a specific label
 func (gs *GraphStorage) FindNodesByLabel(label string) ([]*Node, error) {
+	start := time.Now()
+	defer func() {
+		gs.trackQueryTime(time.Since(start))
+	}()
+
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
@@ -541,6 +820,11 @@ func (gs *GraphStorage) FindNodesByLabel(label string) ([]*Node, error) {
 
 // FindNodesByProperty finds nodes with a specific property value
 func (gs *GraphStorage) FindNodesByProperty(key string, value Value) ([]*Node, error) {
+	start := time.Now()
+	defer func() {
+		gs.trackQueryTime(time.Since(start))
+	}()
+
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
@@ -560,6 +844,11 @@ func (gs *GraphStorage) FindNodesByProperty(key string, value Value) ([]*Node, e
 
 // FindEdgesByType finds all edges of a specific type
 func (gs *GraphStorage) FindEdgesByType(edgeType string) ([]*Edge, error) {
+	start := time.Now()
+	defer func() {
+		gs.trackQueryTime(time.Since(start))
+	}()
+
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
@@ -658,6 +947,13 @@ func (gs *GraphStorage) removeFromLabelIndex(label string, nodeID uint64) {
 }
 
 // Snapshot saves the current state to disk
+// PropertyIndexSnapshot is a serializable representation of a PropertyIndex
+type PropertyIndexSnapshot struct {
+	PropertyKey string
+	IndexType   ValueType
+	Index       map[string][]uint64
+}
+
 func (gs *GraphStorage) Snapshot() error {
 	// Compress edge lists before snapshot if compression is enabled
 	if gs.useEdgeCompression {
@@ -685,26 +981,40 @@ func (gs *GraphStorage) Snapshot() error {
 	// Get statistics atomically before creating snapshot
 	stats := gs.GetStatistics()
 
+	// Serialize property indexes
+	propertyIndexSnapshots := make(map[string]PropertyIndexSnapshot)
+	for key, idx := range gs.propertyIndexes {
+		idx.mu.RLock()
+		propertyIndexSnapshots[key] = PropertyIndexSnapshot{
+			PropertyKey: idx.propertyKey,
+			IndexType:   idx.indexType,
+			Index:       idx.index,
+		}
+		idx.mu.RUnlock()
+	}
+
 	snapshot := struct {
-		Nodes         map[uint64]*Node
-		Edges         map[uint64]*Edge
-		NodesByLabel  map[string][]uint64
-		EdgesByType   map[string][]uint64
-		OutgoingEdges map[uint64][]uint64
-		IncomingEdges map[uint64][]uint64
-		NextNodeID    uint64
-		NextEdgeID    uint64
-		Stats         Statistics
+		Nodes          map[uint64]*Node
+		Edges          map[uint64]*Edge
+		NodesByLabel   map[string][]uint64
+		EdgesByType    map[string][]uint64
+		OutgoingEdges  map[uint64][]uint64
+		IncomingEdges  map[uint64][]uint64
+		PropertyIndexes map[string]PropertyIndexSnapshot
+		NextNodeID     uint64
+		NextEdgeID     uint64
+		Stats          Statistics
 	}{
-		Nodes:         gs.nodes,
-		Edges:         gs.edges,
-		NodesByLabel:  gs.nodesByLabel,
-		EdgesByType:   gs.edgesByType,
-		OutgoingEdges: gs.outgoingEdges,
-		IncomingEdges: gs.incomingEdges,
-		NextNodeID:    gs.nextNodeID,
-		NextEdgeID:    gs.nextEdgeID,
-		Stats:         stats,
+		Nodes:           gs.nodes,
+		Edges:           gs.edges,
+		NodesByLabel:    gs.nodesByLabel,
+		EdgesByType:     gs.edgesByType,
+		OutgoingEdges:   gs.outgoingEdges,
+		IncomingEdges:   gs.incomingEdges,
+		PropertyIndexes: propertyIndexSnapshots,
+		NextNodeID:      gs.nextNodeID,
+		NextEdgeID:      gs.nextEdgeID,
+		Stats:           stats,
 	}
 
 	gs.mu.RUnlock()
@@ -743,15 +1053,16 @@ func (gs *GraphStorage) loadFromDisk() error {
 	}
 
 	var snapshot struct {
-		Nodes         map[uint64]*Node
-		Edges         map[uint64]*Edge
-		NodesByLabel  map[string][]uint64
-		EdgesByType   map[string][]uint64
-		OutgoingEdges map[uint64][]uint64
-		IncomingEdges map[uint64][]uint64
-		NextNodeID    uint64
-		NextEdgeID    uint64
-		Stats         Statistics
+		Nodes          map[uint64]*Node
+		Edges          map[uint64]*Edge
+		NodesByLabel   map[string][]uint64
+		EdgesByType    map[string][]uint64
+		OutgoingEdges  map[uint64][]uint64
+		IncomingEdges  map[uint64][]uint64
+		PropertyIndexes map[string]PropertyIndexSnapshot
+		NextNodeID     uint64
+		NextEdgeID     uint64
+		Stats          Statistics
 	}
 
 	if err := json.Unmarshal(data, &snapshot); err != nil {
@@ -767,6 +1078,19 @@ func (gs *GraphStorage) loadFromDisk() error {
 	gs.nextNodeID = snapshot.NextNodeID
 	gs.nextEdgeID = snapshot.NextEdgeID
 	gs.stats = snapshot.Stats
+	// Restore avgQueryTimeBits from AvgQueryTime (needed for atomic operations)
+	atomic.StoreUint64(&gs.avgQueryTimeBits, math.Float64bits(snapshot.Stats.AvgQueryTime))
+
+	// Deserialize property indexes
+	gs.propertyIndexes = make(map[string]*PropertyIndex)
+	for key, idxSnapshot := range snapshot.PropertyIndexes {
+		idx := &PropertyIndex{
+			propertyKey: idxSnapshot.PropertyKey,
+			indexType:   idxSnapshot.IndexType,
+			index:       idxSnapshot.Index,
+		}
+		gs.propertyIndexes[key] = idx
+	}
 
 	return nil
 }
@@ -811,12 +1135,55 @@ func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
 			gs.incomingEdges[node.ID] = make([]uint64, 0)
 		}
 
+		// Insert into property indexes if they exist
+		for key, value := range node.Properties {
+			if idx, exists := gs.propertyIndexes[key]; exists {
+				if value.Type == idx.indexType {
+					idx.Insert(node.ID, value)
+				}
+			}
+		}
+
 		// Update stats atomically
 		atomic.AddUint64(&gs.stats.NodeCount, 1)
 
 		// Update next ID if necessary
 		if node.ID >= gs.nextNodeID {
 			gs.nextNodeID = node.ID + 1
+		}
+
+	case wal.OpUpdateNode:
+		var updateInfo struct {
+			NodeID     uint64
+			Properties map[string]Value
+		}
+		if err := json.Unmarshal(entry.Data, &updateInfo); err != nil {
+			return err
+		}
+
+		// Skip if node doesn't exist
+		node, exists := gs.nodes[updateInfo.NodeID]
+		if !exists {
+			return nil
+		}
+
+		// Update property indexes - remove old values, add new values
+		for key, newValue := range updateInfo.Properties {
+			if idx, exists := gs.propertyIndexes[key]; exists {
+				// Remove old value from index if it exists
+				if oldValue, exists := node.Properties[key]; exists {
+					idx.Remove(updateInfo.NodeID, oldValue)
+				}
+				// Add new value to index
+				if newValue.Type == idx.indexType {
+					idx.Insert(updateInfo.NodeID, newValue)
+				}
+			}
+		}
+
+		// Apply property updates
+		for key, value := range updateInfo.Properties {
+			node.Properties[key] = value
 		}
 
 	case wal.OpCreateEdge:
@@ -833,8 +1200,23 @@ func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
 		// Replay edge creation
 		gs.edges[edge.ID] = &edge
 		gs.edgesByType[edge.Type] = append(gs.edgesByType[edge.Type], edge.ID)
-		gs.outgoingEdges[edge.FromNodeID] = append(gs.outgoingEdges[edge.FromNodeID], edge.ID)
-		gs.incomingEdges[edge.ToNodeID] = append(gs.incomingEdges[edge.ToNodeID], edge.ID)
+
+		// Rebuild adjacency lists (disk-backed or in-memory)
+		if gs.useDiskBackedEdges {
+			// Disk-backed: Rebuild EdgeStore adjacency lists from WAL
+			outgoing, _ := gs.edgeStore.GetOutgoingEdges(edge.FromNodeID)
+			incoming, _ := gs.edgeStore.GetIncomingEdges(edge.ToNodeID)
+
+			outgoing = append(outgoing, edge.ID)
+			incoming = append(incoming, edge.ID)
+
+			gs.edgeStore.StoreOutgoingEdges(edge.FromNodeID, outgoing)
+			gs.edgeStore.StoreIncomingEdges(edge.ToNodeID, incoming)
+		} else {
+			// In-memory: Update maps directly
+			gs.outgoingEdges[edge.FromNodeID] = append(gs.outgoingEdges[edge.FromNodeID], edge.ID)
+			gs.incomingEdges[edge.ToNodeID] = append(gs.incomingEdges[edge.ToNodeID], edge.ID)
+		}
 
 		// Update stats atomically
 		atomic.AddUint64(&gs.stats.EdgeCount, 1)
@@ -843,6 +1225,285 @@ func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
 		if edge.ID >= gs.nextEdgeID {
 			gs.nextEdgeID = edge.ID + 1
 		}
+
+	case wal.OpDeleteEdge:
+		var edge Edge
+		if err := json.Unmarshal(entry.Data, &edge); err != nil {
+			return err
+		}
+
+		// Skip if edge doesn't exist (already deleted or never existed)
+		if _, exists := gs.edges[edge.ID]; !exists {
+			return nil
+		}
+
+		// Replay edge deletion
+		delete(gs.edges, edge.ID)
+
+		// Remove from type index
+		if edgeList, exists := gs.edgesByType[edge.Type]; exists {
+			newList := make([]uint64, 0, len(edgeList))
+			for _, id := range edgeList {
+				if id != edge.ID {
+					newList = append(newList, id)
+				}
+			}
+			gs.edgesByType[edge.Type] = newList
+		}
+
+		// Remove from adjacency lists (disk-backed or in-memory)
+		if gs.useDiskBackedEdges {
+			// Disk-backed: Remove from EdgeStore
+			outgoing, _ := gs.edgeStore.GetOutgoingEdges(edge.FromNodeID)
+			incoming, _ := gs.edgeStore.GetIncomingEdges(edge.ToNodeID)
+
+			// Filter out deleted edge
+			newOutgoing := make([]uint64, 0, len(outgoing))
+			for _, id := range outgoing {
+				if id != edge.ID {
+					newOutgoing = append(newOutgoing, id)
+				}
+			}
+
+			newIncoming := make([]uint64, 0, len(incoming))
+			for _, id := range incoming {
+				if id != edge.ID {
+					newIncoming = append(newIncoming, id)
+				}
+			}
+
+			// Store back
+			gs.edgeStore.StoreOutgoingEdges(edge.FromNodeID, newOutgoing)
+			gs.edgeStore.StoreIncomingEdges(edge.ToNodeID, newIncoming)
+		} else {
+			// In-memory: Remove from maps
+			if outgoing, exists := gs.outgoingEdges[edge.FromNodeID]; exists {
+				newOutgoing := make([]uint64, 0, len(outgoing))
+				for _, id := range outgoing {
+					if id != edge.ID {
+						newOutgoing = append(newOutgoing, id)
+					}
+				}
+				gs.outgoingEdges[edge.FromNodeID] = newOutgoing
+			}
+
+			if incoming, exists := gs.incomingEdges[edge.ToNodeID]; exists {
+				newIncoming := make([]uint64, 0, len(incoming))
+				for _, id := range incoming {
+					if id != edge.ID {
+						newIncoming = append(newIncoming, id)
+					}
+				}
+				gs.incomingEdges[edge.ToNodeID] = newIncoming
+			}
+		}
+
+		// Decrement stats with underflow protection
+		for {
+			current := atomic.LoadUint64(&gs.stats.EdgeCount)
+			if current == 0 {
+				break
+			}
+			if atomic.CompareAndSwapUint64(&gs.stats.EdgeCount, current, current-1) {
+				break
+			}
+		}
+
+	case wal.OpDeleteNode:
+		var node Node
+		if err := json.Unmarshal(entry.Data, &node); err != nil {
+			return err
+		}
+
+		// Skip if node doesn't exist (already deleted or never existed)
+		if _, exists := gs.nodes[node.ID]; !exists {
+			return nil
+		}
+
+		// Get edges to delete (disk-backed or in-memory)
+		var outgoingEdgeIDs, incomingEdgeIDs []uint64
+		if gs.useDiskBackedEdges {
+			outgoingEdgeIDs, _ = gs.edgeStore.GetOutgoingEdges(node.ID)
+			incomingEdgeIDs, _ = gs.edgeStore.GetIncomingEdges(node.ID)
+		} else {
+			outgoingEdgeIDs = gs.outgoingEdges[node.ID]
+			incomingEdgeIDs = gs.incomingEdges[node.ID]
+		}
+
+		// Cascade delete all outgoing edges during replay
+		for _, edgeID := range outgoingEdgeIDs {
+			if edge, exists := gs.edges[edgeID]; exists {
+				// Remove from other node's incoming edges
+				if gs.useDiskBackedEdges {
+					incoming, _ := gs.edgeStore.GetIncomingEdges(edge.ToNodeID)
+					newIncoming := make([]uint64, 0, len(incoming))
+					for _, id := range incoming {
+						if id != edgeID {
+							newIncoming = append(newIncoming, id)
+						}
+					}
+					gs.edgeStore.StoreIncomingEdges(edge.ToNodeID, newIncoming)
+				} else {
+					if incoming, ok := gs.incomingEdges[edge.ToNodeID]; ok {
+						newIncoming := make([]uint64, 0, len(incoming))
+						for _, id := range incoming {
+							if id != edgeID {
+								newIncoming = append(newIncoming, id)
+							}
+						}
+						gs.incomingEdges[edge.ToNodeID] = newIncoming
+					}
+				}
+
+				// Remove from type index
+				if edgeList, ok := gs.edgesByType[edge.Type]; ok {
+					newList := make([]uint64, 0, len(edgeList))
+					for _, id := range edgeList {
+						if id != edgeID {
+							newList = append(newList, id)
+						}
+					}
+					gs.edgesByType[edge.Type] = newList
+				}
+
+				// Delete edge object
+				delete(gs.edges, edgeID)
+
+				// Decrement stats with underflow protection
+				for {
+					current := atomic.LoadUint64(&gs.stats.EdgeCount)
+					if current == 0 {
+						break
+					}
+					if atomic.CompareAndSwapUint64(&gs.stats.EdgeCount, current, current-1) {
+						break
+					}
+				}
+			}
+		}
+
+		// Cascade delete all incoming edges during replay
+		for _, edgeID := range incomingEdgeIDs {
+			if edge, exists := gs.edges[edgeID]; exists {
+				// Remove from other node's outgoing edges
+				if gs.useDiskBackedEdges {
+					outgoing, _ := gs.edgeStore.GetOutgoingEdges(edge.FromNodeID)
+					newOutgoing := make([]uint64, 0, len(outgoing))
+					for _, id := range outgoing {
+						if id != edgeID {
+							newOutgoing = append(newOutgoing, id)
+						}
+					}
+					gs.edgeStore.StoreOutgoingEdges(edge.FromNodeID, newOutgoing)
+				} else {
+					if outgoing, ok := gs.outgoingEdges[edge.FromNodeID]; ok {
+						newOutgoing := make([]uint64, 0, len(outgoing))
+						for _, id := range outgoing {
+							if id != edgeID {
+								newOutgoing = append(newOutgoing, id)
+							}
+						}
+						gs.outgoingEdges[edge.FromNodeID] = newOutgoing
+					}
+				}
+
+				// Remove from type index
+				if edgeList, ok := gs.edgesByType[edge.Type]; ok {
+					newList := make([]uint64, 0, len(edgeList))
+					for _, id := range edgeList {
+						if id != edgeID {
+							newList = append(newList, id)
+						}
+					}
+					gs.edgesByType[edge.Type] = newList
+				}
+
+				// Delete edge object
+				delete(gs.edges, edgeID)
+
+				// Decrement stats with underflow protection
+				for {
+					current := atomic.LoadUint64(&gs.stats.EdgeCount)
+					if current == 0 {
+						break
+					}
+					if atomic.CompareAndSwapUint64(&gs.stats.EdgeCount, current, current-1) {
+						break
+					}
+				}
+			}
+		}
+
+		// Remove from label indexes
+		for _, label := range node.Labels {
+			gs.removeFromLabelIndex(label, node.ID)
+		}
+
+		// Remove from property indexes
+		for key, value := range node.Properties {
+			if idx, exists := gs.propertyIndexes[key]; exists {
+				idx.Remove(node.ID, value)
+			}
+		}
+
+		// Delete node
+		delete(gs.nodes, node.ID)
+
+		// Delete adjacency lists (disk-backed or in-memory)
+		if gs.useDiskBackedEdges {
+			gs.edgeStore.StoreOutgoingEdges(node.ID, []uint64{})
+			gs.edgeStore.StoreIncomingEdges(node.ID, []uint64{})
+		} else {
+			delete(gs.outgoingEdges, node.ID)
+			delete(gs.incomingEdges, node.ID)
+		}
+
+		// Decrement stats with underflow protection
+		for {
+			current := atomic.LoadUint64(&gs.stats.NodeCount)
+			if current == 0 {
+				break
+			}
+			if atomic.CompareAndSwapUint64(&gs.stats.NodeCount, current, current-1) {
+				break
+			}
+		}
+
+	case wal.OpCreatePropertyIndex:
+		var indexInfo struct {
+			PropertyKey string
+			ValueType   ValueType
+		}
+		if err := json.Unmarshal(entry.Data, &indexInfo); err != nil {
+			return err
+		}
+
+		// Skip if index already exists
+		if _, exists := gs.propertyIndexes[indexInfo.PropertyKey]; exists {
+			return nil
+		}
+
+		// Create index and populate with existing nodes
+		idx := NewPropertyIndex(indexInfo.PropertyKey, indexInfo.ValueType)
+		for nodeID, node := range gs.nodes {
+			if prop, exists := node.Properties[indexInfo.PropertyKey]; exists {
+				if prop.Type == indexInfo.ValueType {
+					idx.Insert(nodeID, prop)
+				}
+			}
+		}
+		gs.propertyIndexes[indexInfo.PropertyKey] = idx
+
+	case wal.OpDropPropertyIndex:
+		var indexInfo struct {
+			PropertyKey string
+		}
+		if err := json.Unmarshal(entry.Data, &indexInfo); err != nil {
+			return err
+		}
+
+		// Remove index
+		delete(gs.propertyIndexes, indexInfo.PropertyKey)
 	}
 
 	return nil
@@ -872,6 +1533,22 @@ func (gs *GraphStorage) CreatePropertyIndex(propertyKey string, valueType ValueT
 
 	gs.propertyIndexes[propertyKey] = idx
 
+	// Write to WAL for durability
+	indexData, err := json.Marshal(struct {
+		PropertyKey string
+		ValueType   ValueType
+	}{
+		PropertyKey: propertyKey,
+		ValueType:   valueType,
+	})
+	if err == nil {
+		if gs.useBatching && gs.batchedWAL != nil {
+			gs.batchedWAL.Append(wal.OpCreatePropertyIndex, indexData)
+		} else if gs.wal != nil {
+			gs.wal.Append(wal.OpCreatePropertyIndex, indexData)
+		}
+	}
+
 	return nil
 }
 
@@ -885,6 +1562,20 @@ func (gs *GraphStorage) DropPropertyIndex(propertyKey string) error {
 	}
 
 	delete(gs.propertyIndexes, propertyKey)
+
+	// Write to WAL for durability
+	indexData, err := json.Marshal(struct {
+		PropertyKey string
+	}{
+		PropertyKey: propertyKey,
+	})
+	if err == nil {
+		if gs.useBatching && gs.batchedWAL != nil {
+			gs.batchedWAL.Append(wal.OpDropPropertyIndex, indexData)
+		} else if gs.wal != nil {
+			gs.wal.Append(wal.OpDropPropertyIndex, indexData)
+		}
+	}
 
 	return nil
 }
@@ -991,6 +1682,13 @@ func (gs *GraphStorage) Close() error {
 	// Save snapshot on close
 	if err := gs.Snapshot(); err != nil {
 		return err
+	}
+
+	// Close EdgeStore if enabled
+	if gs.useDiskBackedEdges && gs.edgeStore != nil {
+		if err := gs.edgeStore.Close(); err != nil {
+			return fmt.Errorf("failed to close EdgeStore: %w", err)
+		}
 	}
 
 	// Close WAL

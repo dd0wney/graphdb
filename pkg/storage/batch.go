@@ -1,9 +1,12 @@
 package storage
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
 // Batch represents a batch of write operations
@@ -154,6 +157,16 @@ func (b *Batch) Commit() error {
 				}
 			}
 
+			// Write to WAL for durability
+			nodeData, err := json.Marshal(node)
+			if err == nil {
+				if b.graph.useBatching && b.graph.batchedWAL != nil {
+					b.graph.batchedWAL.Append(wal.OpCreateNode, nodeData)
+				} else if b.graph.wal != nil {
+					b.graph.wal.Append(wal.OpCreateNode, nodeData)
+				}
+			}
+
 		case opCreateEdge:
 			edge := &Edge{
 				ID:         op.edgeID,
@@ -173,6 +186,16 @@ func (b *Batch) Commit() error {
 			// Update adjacency lists
 			b.graph.outgoingEdges[edge.FromNodeID] = append(b.graph.outgoingEdges[edge.FromNodeID], edge.ID)
 			b.graph.incomingEdges[edge.ToNodeID] = append(b.graph.incomingEdges[edge.ToNodeID], edge.ID)
+
+			// Write to WAL for durability
+			edgeData, err := json.Marshal(edge)
+			if err == nil {
+				if b.graph.useBatching && b.graph.batchedWAL != nil {
+					b.graph.batchedWAL.Append(wal.OpCreateEdge, edgeData)
+				} else if b.graph.wal != nil {
+					b.graph.wal.Append(wal.OpCreateEdge, edgeData)
+				}
+			}
 
 		case opUpdateNode:
 			node, exists := b.graph.nodes[op.nodeID]
@@ -200,6 +223,22 @@ func (b *Batch) Commit() error {
 					if err := idx.Insert(node.ID, value); err != nil {
 						return fmt.Errorf("failed to insert into property index %s: %w", key, err)
 					}
+				}
+			}
+
+			// Write to WAL for durability
+			updateData, err := json.Marshal(struct {
+				NodeID     uint64
+				Properties map[string]Value
+			}{
+				NodeID:     op.nodeID,
+				Properties: op.properties,
+			})
+			if err == nil {
+				if b.graph.useBatching && b.graph.batchedWAL != nil {
+					b.graph.batchedWAL.Append(wal.OpUpdateNode, updateData)
+				} else if b.graph.wal != nil {
+					b.graph.wal.Append(wal.OpUpdateNode, updateData)
 				}
 			}
 
@@ -275,6 +314,16 @@ func (b *Batch) Commit() error {
 				}
 			}
 
+			// Write to WAL for durability
+			nodeData, err := json.Marshal(node)
+			if err == nil {
+				if b.graph.useBatching && b.graph.batchedWAL != nil {
+					b.graph.batchedWAL.Append(wal.OpDeleteNode, nodeData)
+				} else if b.graph.wal != nil {
+					b.graph.wal.Append(wal.OpDeleteNode, nodeData)
+				}
+			}
+
 		case opDeleteEdge:
 			edge, exists := b.graph.edges[op.edgeID]
 			if !exists {
@@ -316,6 +365,16 @@ func (b *Batch) Commit() error {
 				}
 				if atomic.CompareAndSwapUint64(&b.graph.stats.EdgeCount, current, current-1) {
 					break
+				}
+			}
+
+			// Write to WAL for durability
+			edgeData, err := json.Marshal(edge)
+			if err == nil {
+				if b.graph.useBatching && b.graph.batchedWAL != nil {
+					b.graph.batchedWAL.Append(wal.OpDeleteEdge, edgeData)
+				} else if b.graph.wal != nil {
+					b.graph.wal.Append(wal.OpDeleteEdge, edgeData)
 				}
 			}
 		}
