@@ -525,7 +525,31 @@ Contributions are welcome! Areas for improvement:
 
 ## 📄 License
 
-MIT License - see LICENSE file for details
+Cluso GraphDB is released under the [MIT License](LICENSE).
+
+### Community Edition (Free)
+- All core features
+- Unlimited nodes and edges
+- Full API access
+- Open source (MIT)
+- Community support (GitHub Issues)
+- Use for personal projects, open source, evaluation
+
+### Professional Edition ($49/month)
+- Everything in Community
+- Commercial use license
+- Email support (48h response)
+- Priority bug fixes
+- Performance consultation
+
+### Enterprise Edition ($299/month)
+- Everything in Professional
+- Priority support (24h response)
+- Architecture consultation
+- Early access to distributed features
+- Custom SLA available
+
+For commercial licensing details, see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)
 
 ## 🙏 Acknowledgments
 
