@@ -106,8 +106,8 @@ changelog:
 
 release:
   github:
-    owner: darraghdowney
-    name: cluso-graphdb
+    owner: dd0wney
+    name: graphdb
   draft: false
   prerelease: auto
   mode: append
@@ -123,10 +123,10 @@ release:
     ## Docker Images
 
     ```bash
-    docker pull darraghdowney/cluso-graphdb:{{ .Tag }}
+    docker pull dd0wney/graphdb:{{ .Tag }}
     ```
 
-    **Full Changelog**: https://github.com/darraghdowney/cluso-graphdb/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/dd0wney/graphdb/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 # Homebrew tap (optional - requires separate repo)
 # brews:
