@@ -9,6 +9,7 @@
 **Target Deployment**: 3-5 node cluster with strong consistency and fault tolerance
 
 **Key Capabilities**:
+
 - **Capacity**: 100M nodes across cluster (20M-33M per node)
 - **Consistency**: Strong consistency via Raft consensus
 - **Availability**: Survives 1-2 node failures (3-5 node cluster)
@@ -22,22 +23,26 @@
 ### 1.1 Functional Requirements
 
 **FR1: Distributed Storage**
+
 - Store 100M nodes across 3-5 machines
 - Each node stores 20M-33M graph nodes locally
 - Total cluster memory: 96-160 GB (5x32 GB nodes)
 
 **FR2: Strong Consistency**
+
 - All writes go through Raft consensus
 - Reads see the latest committed state
 - No split-brain scenarios
 
 **FR3: Fault Tolerance**
+
 - Cluster survives single node failure (3-node minimum)
 - Cluster survives two node failures (5-node recommended)
 - Automatic leader election on failure
 - Configurable replication factor (default: 3x)
 
 **FR4: Distributed Queries**
+
 - Local queries execute on single node (fast path)
 - Cross-shard queries use scatter-gather pattern
 - Graph traversals work across node boundaries
@@ -46,22 +51,26 @@
 ### 1.2 Non-Functional Requirements
 
 **NFR1: Performance**
+
 - Write latency: P99 < 50ms (including Raft replication)
 - Read latency (local): P99 < 5ms
 - Read latency (cross-shard): P99 < 20ms
 - Throughput: 100K+ writes/sec, 1M+ reads/sec (cluster-wide)
 
 **NFR2: Availability**
+
 - Failover time: < 5 seconds
 - Data availability: 99.9%
 - Zero data loss on single node failure
 
 **NFR3: Scalability**
+
 - Horizontal scaling: Add nodes to increase capacity
 - Linear scaling up to 10 nodes
 - Rebalancing support (future: automatic shard migration)
 
 **NFR4: Operational**
+
 - Zero-downtime rolling upgrades
 - Incremental migration from Milestone 2
 - Monitoring and observability (Prometheus metrics)
@@ -69,17 +78,20 @@
 ### 1.3 Constraints
 
 **C1: Backward Compatibility**
+
 - Must support migration from Milestone 2 single-node deployment
 - Existing WAL and snapshot formats remain valid
 - GraphStorage API remains unchanged
 
 **C2: Technology Stack**
+
 - Language: Go (existing codebase)
 - Consensus: Raft (hashicorp/raft library)
 - RPC: gRPC with Protocol Buffers
 - No external dependencies beyond Go modules
 
 **C3: Resource Limits**
+
 - Target deployment: Cloud VMs or bare metal servers
 - Per-node RAM: 32 GB minimum
 - Per-node disk: 100 GB SSD minimum
@@ -144,6 +156,7 @@
 ### 2.2 Data Flow
 
 **Write Path (Strong Consistency)**:
+
 1. Client sends `CreateNode(label, props)` to any cluster node
 2. Node forwards request to Raft leader (if not leader)
 3. Leader appends to Raft log and replicates to followers
@@ -153,12 +166,14 @@
 7. Followers asynchronously apply committed log entries
 
 **Read Path (Local - Fast)**:
+
 1. Client sends `GetNode(id)` to any cluster node
 2. Node calculates shard: `hash(id) % num_nodes`
 3. If local shard: Read from local GraphStorage, return result
 4. Query completes in P99 < 5ms
 
 **Read Path (Cross-shard - Scatter-Gather)**:
+
 1. Client sends `FindNodesByLabel(label)` to any cluster node
 2. Coordinator node broadcasts query to all shards
 3. Each shard executes local query on GraphStorage
@@ -167,6 +182,7 @@
 6. Query completes in P99 < 20ms
 
 **Traversal Path (Multi-hop)**:
+
 1. Client sends `BFS(startNode, maxDepth)` to any cluster node
 2. Coordinator determines shard for `startNode`
 3. Coordinator performs BFS, fetching remote nodes via gRPC
@@ -230,6 +246,7 @@ func (f *GraphFSM) Restore(snapshot io.ReadCloser) error {
 ```
 
 **Key Design Decisions**:
+
 - **Reuse GraphStorage**: FSM wraps existing Milestone 2 storage (no changes needed)
 - **Command Log**: Serialize graph operations as JSON commands
 - **Snapshot Integration**: Leverage existing snapshot.go (already implemented)
@@ -262,6 +279,7 @@ type RaftConfig struct {
 ```
 
 **Tuning for Graph Workloads**:
+
 - Short heartbeat (1s) for fast failure detection
 - MaxLogEntries triggers compaction (avoid unbounded log growth)
 - Snapshot interval balances recovery time vs overhead
@@ -271,10 +289,12 @@ type RaftConfig struct {
 File: `pkg/raft/log_store.go`
 
 **Option 1**: Use `raft-boltdb` (hashicorp's BoltDB store)
+
 - Pros: Battle-tested, simple integration
 - Cons: Extra dependency
 
 **Option 2**: Adapt existing WAL (`pkg/wal/wal.go`)
+
 - Pros: Reuse existing code, fewer dependencies
 - Cons: Need to implement `raft.LogStore` interface
 
@@ -506,6 +526,7 @@ func (s *Server) FindNodesByLabel(req *api.FindNodesByLabelRequest, stream api.G
 ```
 
 **Key Features**:
+
 - **Leader Forwarding**: Non-leaders forward writes to leader
 - **Local Fast Path**: Reads from local shard skip network
 - **Scatter-Gather**: Parallel query execution across shards
@@ -558,6 +579,7 @@ func (p *ConnPool) GetConnection(addr string) (api.GraphDBClient, error) {
 ```
 
 **Performance Optimizations**:
+
 - Persistent connections with keepalive
 - Connection pooling (avoid dial overhead)
 - TODO: Add TLS for production security
@@ -579,12 +601,14 @@ shard_id = hash(node_id) % num_shards
 ```
 
 **Rationale**:
+
 - **Simple**: Easy to implement and reason about
 - **Balanced**: Uniform distribution (assuming good hash function)
 - **Deterministic**: Same node ID always maps to same shard
 - **Stateless**: No coordination needed to determine shard
 
 **Alternative Considered** (Range-based sharding):
+
 - Shard 0: node IDs 0-33M
 - Shard 1: node IDs 33M-66M
 - Shard 2: node IDs 66M-100M
@@ -649,6 +673,7 @@ func (sm *ShardMap) GetLocalShards() []uint32 {
 ```
 
 **Features**:
+
 - **Even Distribution**: Round-robin shard assignment
 - **Fast Lookups**: O(1) shard → node mapping
 - **Thread-Safe**: RWMutex for concurrent access
@@ -667,14 +692,17 @@ Stored on: shard(hash(42))
 ```
 
 **Implications**:
+
 - **GetOutgoingEdges(node_42)**: Local query (fast)
 - **GetIncomingEdges(node_89)**: Requires global scan (slow)
 
 **Optimization** (Phase 2):
+
 - Maintain reverse index on destination shard
 - Trade-off: 2x storage for edges vs faster incoming queries
 
 **Traversal Impact**:
+
 - BFS outgoing: Efficient (follow edge pointers)
 - BFS incoming: Slower (may need cross-shard lookups)
 
@@ -798,6 +826,7 @@ func (dt *DistributedTraverser) BFS(startNodeID uint64, maxDepth int) ([]*Node, 
 ```
 
 **Performance Characteristics**:
+
 - **Latency**: Each BFS level requires cross-shard RPC (adds 1-5ms per level)
 - **Optimization**: Batch node fetches (fetch 100 nodes in single RPC)
 - **Future**: Compute shipping (send traversal code to shards, reduce network)
@@ -920,11 +949,13 @@ Capacity: ~165M nodes (33M per node)
 | Throughput | 769K writes/sec | 100K writes/sec | Bottleneck: Raft leader |
 
 **Bottleneck Analysis**:
+
 - Raft requires majority acknowledgment before commit
 - Leader serializes all writes through log
 - Network latency (1-5ms) dominates
 
 **Mitigation**:
+
 - Batch writes (commit 100 ops in single Raft entry)
 - Use SSDs for faster fsync
 - Tune Raft batch size and timeouts
@@ -1012,18 +1043,21 @@ var (
 ### 8.1 Network Security
 
 **TLS for gRPC** (Production requirement):
+
 ```go
 creds, _ := credentials.NewServerTLSFromFile("cert.pem", "key.pem")
 server := grpc.NewServer(grpc.Creds(creds))
 ```
 
 **Raft Transport Security**:
+
 - Use Raft TLS transport for consensus traffic
 - Mutual TLS authentication between cluster nodes
 
 ### 8.2 Authentication & Authorization
 
 **Future Enhancement** (Milestone 4):
+
 - Client authentication (mTLS or API keys)
 - Role-based access control (RBAC)
 - Query authorization (user can only access certain labels)
@@ -1038,6 +1072,7 @@ server := grpc.NewServer(grpc.Creds(creds))
 **Future**: Automatic rebalancing when adding/removing nodes
 
 **Approach**:
+
 1. Detect new node joining cluster
 2. Calculate new shard distribution
 3. Stream shard data to new node in background
@@ -1051,6 +1086,7 @@ server := grpc.NewServer(grpc.Creds(creds))
 **Goal**: Increase read throughput without affecting write performance
 
 **Approach**:
+
 - Add read-only follower nodes (not part of Raft quorum)
 - Replicate committed log entries asynchronously
 - Clients can query read replicas (eventual consistency)
@@ -1062,6 +1098,7 @@ server := grpc.NewServer(grpc.Creds(creds))
 **Goal**: Deploy clusters in multiple datacenters for disaster recovery
 
 **Approach**:
+
 - Primary cluster (us-east-1): Handles writes
 - Secondary cluster (eu-west-1): Async replication
 - Failover: Promote secondary to primary if primary fails
@@ -1073,11 +1110,13 @@ server := grpc.NewServer(grpc.Creds(creds))
 **Goal**: Reduce network traffic for complex traversals
 
 **Approach**:
+
 - Send traversal logic (e.g., BFS algorithm) to data nodes
 - Execute locally on each shard
 - Return only final results
 
 **Example**:
+
 ```go
 // Instead of fetching nodes one-by-one
 // Ship this closure to each shard:
@@ -1127,17 +1166,17 @@ func(shard *GraphStorage) []*Node {
 
 ### 11.1 External Libraries
 
-- **Raft**: https://github.com/hashicorp/raft
-- **gRPC**: https://grpc.io/docs/languages/go/
-- **Protocol Buffers**: https://developers.google.com/protocol-buffers
-- **Prometheus**: https://prometheus.io/docs/guides/go-application/
+- **Raft**: <https://github.com/hashicorp/raft>
+- **gRPC**: <https://grpc.io/docs/languages/go/>
+- **Protocol Buffers**: <https://developers.google.com/protocol-buffers>
+- **Prometheus**: <https://prometheus.io/docs/guides/go-application/>
 
 ### 11.2 Related Documentation
 
 - Milestone 1: In-memory storage with WAL
 - Milestone 2: Disk-backed edges with LRU cache
-- Raft paper: https://raft.github.io/raft.pdf
-- Consistent hashing: https://en.wikipedia.org/wiki/Consistent_hashing
+- Raft paper: <https://raft.github.io/raft.pdf>
+- Consistent hashing: <https://en.wikipedia.org/wiki/Consistent_hashing>
 
 ---
 

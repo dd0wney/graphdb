@@ -5,6 +5,7 @@ A high-performance, feature-rich graph database built from scratch in Go. Cluso 
 ## ✨ Features
 
 ### 🎯 Core Database
+
 - **LSM-Tree Storage** - Efficient write-heavy workloads with leveled compaction
 - **Write-Ahead Logging (WAL)** - Durability and crash recovery
 - **Bloom Filters** - Fast negative lookups
@@ -13,6 +14,7 @@ A high-performance, feature-rich graph database built from scratch in Go. Cluso 
 - **Batched Operations** - Efficient bulk data loading
 
 ### 🧮 Graph Algorithms
+
 - **PageRank** - Node importance scoring with convergence detection
 - **Betweenness Centrality** - Identify bridge nodes
 - **Community Detection** - Label propagation algorithm
@@ -22,6 +24,7 @@ A high-performance, feature-rich graph database built from scratch in Go. Cluso 
 ### 🔍 Query Interfaces
 
 #### 1. Cypher-like Query Language
+
 ```cypher
 MATCH (p:Person)-[:KNOWS]->(f:Person)
 WHERE p.age > 25
@@ -29,6 +32,7 @@ RETURN p, f
 ```
 
 #### 2. REST API Server
+
 ```bash
 # Start the server
 ./bin/server --port 8080 --data ./data/server
@@ -40,6 +44,7 @@ curl -X POST http://localhost:8080/query \
 ```
 
 #### 3. Interactive CLI
+
 ```bash
 ./bin/cli
 
@@ -49,11 +54,13 @@ cluso> pagerank
 ```
 
 #### 4. Beautiful TUI (Terminal UI)
+
 ```bash
 ./bin/tui
 ```
 
 Interactive terminal interface with:
+
 - 📊 Real-time dashboard with statistics
 - 👥 Node browser with table navigation
 - 🔍 Query console with syntax highlighting
@@ -61,11 +68,13 @@ Interactive terminal interface with:
 - 📈 PageRank metrics with bar charts
 
 ### 🚀 Distributed Features
+
 - **ZeroMQ Replication** - Multiple replication patterns (PUB/SUB, PUSH/PULL, REQ/REP, DEALER/ROUTER)
 - **Graph Partitioning** - Horizontal scaling with hash-based partitioning
 - **Temporal Graphs** - Time-aware graph queries
 
 ### ⚡ Performance Optimizations
+
 - **Parallel Query Execution** - Worker pools for concurrent operations
 - **Streaming Results** - Memory-efficient result iteration
 - **Query Pipelines** - Composable query operations
@@ -134,6 +143,7 @@ go build -o bin/tui-demo ./cmd/tui-demo
 ```
 
 The TUI includes:
+
 - **Dashboard** - Real-time stats, uptime, query metrics
 - **Nodes** - Browse all nodes in a table
 - **Query** - Execute Cypher queries interactively
@@ -354,14 +364,23 @@ go build -o bin/benchmark-query ./cmd/benchmark-query
 
 ### Performance Results
 
-Typical performance on modern hardware:
+**Validated with 5M node capacity test** (see [detailed improvements](docs/LSM_PERFORMANCE_IMPROVEMENTS.md)):
+
+| Metric | Performance | Notes |
+|--------|-------------|-------|
+| **Write Throughput** | 430K nodes/sec | Sustained rate over 5M nodes |
+| **Read Throughput** | 50K+ reads/sec | Random reads, 10K sample |
+| **Read Latency** | 19.7 µs average | P50, cold cache |
+| **Cached Read Latency** | 2.7 µs average | 7.3x speedup on hot data |
+| **Memory Efficiency** | 80 bytes/node | Stable, no leaks |
+| **Total Memory (5M nodes)** | 385 MB | Including 50M edges |
+
+**Additional Operations:**
 
 | Operation | Throughput | Latency |
 |-----------|-----------|---------|
-| Node Creation | ~100K ops/sec | <10μs |
-| Edge Creation | ~80K ops/sec | <15μs |
 | Property Lookup (indexed) | ~500K ops/sec | <2μs |
-| Shortest Path (1000 nodes) | ~1K queries/sec | ~1ms |
+| Shortest Path (1K nodes) | ~1K queries/sec | ~1ms |
 | PageRank (10K nodes) | Converges in <100ms | - |
 | Query Execution | ~0.6-1.0x procedural | Minimal overhead |
 
@@ -467,6 +486,7 @@ The Terminal UI (built with Bubble Tea, Bubbles, and Lipgloss) provides:
    - Performance metrics
 
 **Keyboard Controls:**
+
 - `Tab` / `Shift+Tab` - Navigate views
 - `↑/↓` or `j/k` - Navigate lists
 - `Enter` - Execute query
@@ -528,6 +548,7 @@ Contributions are welcome! Areas for improvement:
 Cluso GraphDB is released under the [MIT License](LICENSE).
 
 ### Community Edition (Free)
+
 - All core features
 - Unlimited nodes and edges
 - Full API access
@@ -536,6 +557,7 @@ Cluso GraphDB is released under the [MIT License](LICENSE).
 - Use for personal projects, open source, evaluation
 
 ### Professional Edition ($49/month)
+
 - Everything in Community
 - Commercial use license
 - Email support (48h response)
@@ -543,6 +565,7 @@ Cluso GraphDB is released under the [MIT License](LICENSE).
 - Performance consultation
 
 ### Enterprise Edition ($299/month)
+
 - Everything in Professional
 - Priority support (24h response)
 - Architecture consultation
@@ -554,6 +577,7 @@ For commercial licensing details, see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE
 ## 🙏 Acknowledgments
 
 Built with:
+
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
 - [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
 - [Lipgloss](https://github.com/charmbracelet/lipgloss) - Terminal styling
