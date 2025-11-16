@@ -428,9 +428,13 @@ func TestAverageClusteringCoefficient(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
+	// Create bidirectional edges to form proper triangles
 	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
 
 	result, err := AverageClusteringCoefficient(gs)
 

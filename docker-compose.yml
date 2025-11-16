@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database for license server
+  postgres:
+    image: postgres:16-alpine
+    container_name: cluso-postgres
+    environment:
+      POSTGRES_DB: cluso_licenses
+      POSTGRES_USER: cluso
+      POSTGRES_PASSWORD: cluso_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cluso"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # License server
+  license-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.license-server
+    container_name: cluso-license-server
+    environment:
+      PORT: "8082"
+      DATABASE_URL: "postgres://cluso:cluso_dev_password@postgres:5432/cluso_licenses?sslmode=disable"
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # GraphDB server
+  graphdb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cluso-graphdb
+    environment:
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - graphdb_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  postgres_data:
+  graphdb_data:
