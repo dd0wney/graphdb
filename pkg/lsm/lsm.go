@@ -246,6 +246,18 @@ func (lsm *LSMStorage) triggerFlush() {
 	}
 }
 
+// Sync forces a flush of the current memtable to disk
+func (lsm *LSMStorage) Sync() error {
+	lsm.mu.Lock()
+	needsFlush := lsm.memTable.Size() > 0
+	lsm.mu.Unlock()
+
+	if needsFlush {
+		lsm.flush()
+	}
+	return nil
+}
+
 // triggerCompaction signals the compaction worker
 func (lsm *LSMStorage) triggerCompaction() {
 	select {

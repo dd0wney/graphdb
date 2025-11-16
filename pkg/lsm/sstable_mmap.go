@@ -108,17 +108,17 @@ func (sst *MappedSSTable) Get(key []byte) (*Entry, bool) {
 		return nil, false // Definitely not in this SSTable
 	}
 
-	// Binary search in sparse index
+	// Binary search in sparse index (zero-allocation)
 	idx := sort.Search(len(sst.index), func(i int) bool {
-		return string(sst.index[i].Key) >= string(key)
+		return bytes.Compare(sst.index[i].Key, key) >= 0
 	})
 
 	// Start from previous index entry
 	startOffset := int64(binary.Size(sst.header))
-	maxEntries := sst.entryCount
+	maxEntries := IndexInterval // Never scan more than one index block
 	if idx > 0 {
 		startOffset = int64(sst.index[idx-1].Offset)
-		maxEntries = IndexInterval * 2 // Scan up to 2 index blocks
+		maxEntries = IndexInterval // Scan one index block (100 entries max)
 	}
 
 	// Scan entries directly from mmap
@@ -129,15 +129,16 @@ func (sst *MappedSSTable) Get(key []byte) (*Entry, bool) {
 			return nil, false
 		}
 
-		cmp := string(entry.Key)
-		if cmp == string(key) {
+		// Use byte comparison to avoid allocations (critical for performance)
+		cmp := bytes.Compare(entry.Key, key)
+		if cmp == 0 {
 			if entry.Deleted {
 				return nil, false
 			}
 			return entry, true
 		}
 
-		if cmp > string(key) {
+		if cmp > 0 {
 			return nil, false
 		}
 

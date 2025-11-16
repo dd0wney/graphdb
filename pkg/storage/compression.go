@@ -15,6 +15,7 @@ type CompressedEdgeList struct {
 }
 
 // NewCompressedEdgeList creates a compressed edge list from node IDs
+// Uses buffer pooling to reduce GC pressure
 func NewCompressedEdgeList(nodeIDs []uint64) *CompressedEdgeList {
 	if len(nodeIDs) == 0 {
 		return &CompressedEdgeList{
@@ -24,8 +25,9 @@ func NewCompressedEdgeList(nodeIDs []uint64) *CompressedEdgeList {
 	}
 
 	// Sort node IDs for better compression with delta encoding
-	sorted := make([]uint64, len(nodeIDs))
-	copy(sorted, nodeIDs)
+	// Use pooled buffer for sorting
+	sorted := getUint64Slice(len(nodeIDs))
+	sorted = append(sorted, nodeIDs...)
 	sort.Slice(sorted, func(i, j int) bool {
 		return sorted[i] < sorted[j]
 	})
@@ -33,12 +35,15 @@ func NewCompressedEdgeList(nodeIDs []uint64) *CompressedEdgeList {
 	// First node is stored as base
 	base := sorted[0]
 
-	// Encode deltas with varint
-	buf := make([]byte, 0, len(nodeIDs)*2) // Initial estimate
+	// Encode deltas with varint - use pooled byte buffer
+	buf := getByteSlice(len(nodeIDs) * 2) // Initial estimate
 
 	for i := 1; i < len(sorted); i++ {
 		// Validate sorted order to prevent underflow
 		if sorted[i] < sorted[i-1] {
+			// Return buffers before panicking
+			putUint64Slice(sorted)
+			putByteSlice(buf)
 			// This should never happen due to sort above, but guards against bugs
 			panic(fmt.Sprintf("compression: unsorted data detected at index %d (%d < %d)",
 				i, sorted[i], sorted[i-1]))
@@ -47,20 +52,30 @@ func NewCompressedEdgeList(nodeIDs []uint64) *CompressedEdgeList {
 		buf = binary.AppendUvarint(buf, delta)
 	}
 
+	// Copy buf to final slice (so we can return pool buffer)
+	deltas := make([]byte, len(buf))
+	copy(deltas, buf)
+
+	// Return buffers to pool
+	putUint64Slice(sorted)
+	putByteSlice(buf)
+
 	return &CompressedEdgeList{
 		BaseNodeID: base,
-		Deltas:     buf,
+		Deltas:     deltas,
 		EdgeCount:  len(nodeIDs),
 	}
 }
 
 // Decompress returns the original list of node IDs
+// Uses buffer pooling to reduce GC pressure
 func (c *CompressedEdgeList) Decompress() []uint64 {
 	if c.EdgeCount == 0 {
 		return []uint64{}
 	}
 
-	result := make([]uint64, 0, c.EdgeCount)
+	// Get buffer from pool instead of allocating
+	result := getUint64Slice(c.EdgeCount)
 	result = append(result, c.BaseNodeID)
 
 	if c.EdgeCount == 1 {

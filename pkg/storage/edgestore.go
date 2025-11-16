@@ -1,14 +1,26 @@
 package storage
 
 import (
-	"bytes"
-	"encoding/gob"
+	"encoding/binary"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/lsm"
 )
+
+// makeEdgeStoreKey generates edge storage key more efficiently than fmt.Sprintf
+// Reduces allocations in hot path
+func makeEdgeStoreKey(direction string, nodeID uint64) string {
+	// Pre-allocate buffer: "edges:" (6) + "out"/"in" (2-3) + ":" (1) + digits (~10) = ~20 bytes
+	buf := make([]byte, 0, 24)
+	buf = append(buf, "edges:"...)
+	buf = append(buf, direction...)
+	buf = append(buf, ':')
+	buf = strconv.AppendUint(buf, nodeID, 10)
+	return string(buf)
+}
 
 // EdgeStore provides disk-backed storage for adjacency lists using LSM
 type EdgeStore struct {
@@ -24,7 +36,7 @@ func NewEdgeStore(dataDir string, cacheSize int) (*EdgeStore, error) {
 	lsmPath := filepath.Join(dataDir, "edges-lsm")
 	lsmOpts := lsm.LSMOptions{
 		DataDir:              lsmPath,
-		MemTableSize:         4 * 1024 * 1024, // 4MB memtable
+		MemTableSize:         64 * 1024 * 1024, // 64MB memtable (reduces SSTable count 16x)
 		CompactionStrategy:   lsm.DefaultLeveledCompaction(),
 		EnableAutoCompaction: true,
 	}
@@ -46,7 +58,7 @@ func NewEdgeStore(dataDir string, cacheSize int) (*EdgeStore, error) {
 
 // StoreOutgoingEdges stores the outgoing edge list for a node
 func (es *EdgeStore) StoreOutgoingEdges(nodeID uint64, edges []uint64) error {
-	key := fmt.Sprintf("edges:out:%d", nodeID)
+	key := makeEdgeStoreKey("out", nodeID)
 
 	// Compress edge list
 	compressed := NewCompressedEdgeList(edges)
@@ -74,7 +86,7 @@ func (es *EdgeStore) StoreOutgoingEdges(nodeID uint64, edges []uint64) error {
 
 // GetOutgoingEdges retrieves the outgoing edge list for a node
 func (es *EdgeStore) GetOutgoingEdges(nodeID uint64) ([]uint64, error) {
-	key := fmt.Sprintf("edges:out:%d", nodeID)
+	key := makeEdgeStoreKey("out", nodeID)
 
 	// Check cache first
 	if cached := es.cache.Get(key); cached != nil {
@@ -105,7 +117,7 @@ func (es *EdgeStore) GetOutgoingEdges(nodeID uint64) ([]uint64, error) {
 
 // StoreIncomingEdges stores the incoming edge list for a node
 func (es *EdgeStore) StoreIncomingEdges(nodeID uint64, edges []uint64) error {
-	key := fmt.Sprintf("edges:in:%d", nodeID)
+	key := makeEdgeStoreKey("in", nodeID)
 
 	// Compress edge list
 	compressed := NewCompressedEdgeList(edges)
@@ -133,7 +145,7 @@ func (es *EdgeStore) StoreIncomingEdges(nodeID uint64, edges []uint64) error {
 
 // GetIncomingEdges retrieves the incoming edge list for a node
 func (es *EdgeStore) GetIncomingEdges(nodeID uint64) ([]uint64, error) {
-	key := fmt.Sprintf("edges:in:%d", nodeID)
+	key := makeEdgeStoreKey("in", nodeID)
 
 	// Check cache first
 	if cached := es.cache.Get(key); cached != nil {
@@ -162,6 +174,14 @@ func (es *EdgeStore) GetIncomingEdges(nodeID uint64) ([]uint64, error) {
 	return compressed.Decompress(), nil
 }
 
+// Sync forces a flush of pending writes to disk
+func (es *EdgeStore) Sync() error {
+	if es.lsm != nil {
+		return es.lsm.Sync()
+	}
+	return nil
+}
+
 // Close closes the edge store and flushes all data
 func (es *EdgeStore) Close() error {
 	if es.lsm != nil {
@@ -170,30 +190,40 @@ func (es *EdgeStore) Close() error {
 	return nil
 }
 
-// serializeEdgeList serializes a CompressedEdgeList to bytes using gob encoding
+// serializeEdgeList serializes a CompressedEdgeList to bytes using binary format
+// Format: [BaseNodeID:8][EdgeCount:4][DeltasLen:4][Deltas:N]
 func (es *EdgeStore) serializeEdgeList(compressed *CompressedEdgeList) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
+	deltasLen := len(compressed.Deltas)
+	buf := make([]byte, 8+4+4+deltasLen)
 
-	// Encode the struct
-	err := enc.Encode(compressed)
-	if err != nil {
-		return nil, err
-	}
+	binary.LittleEndian.PutUint64(buf[0:8], compressed.BaseNodeID)
+	binary.LittleEndian.PutUint32(buf[8:12], uint32(compressed.EdgeCount))
+	binary.LittleEndian.PutUint32(buf[12:16], uint32(deltasLen))
+	copy(buf[16:], compressed.Deltas)
 
-	return buf.Bytes(), nil
+	return buf, nil
 }
 
 // deserializeEdgeList deserializes bytes back to CompressedEdgeList
 func (es *EdgeStore) deserializeEdgeList(data []byte) (*CompressedEdgeList, error) {
-	buf := bytes.NewBuffer(data)
-	dec := gob.NewDecoder(buf)
-
-	var compressed CompressedEdgeList
-	err := dec.Decode(&compressed)
-	if err != nil {
-		return nil, err
+	if len(data) < 16 {
+		return nil, fmt.Errorf("invalid data: too short")
 	}
 
-	return &compressed, nil
+	baseNodeID := binary.LittleEndian.Uint64(data[0:8])
+	edgeCount := int(binary.LittleEndian.Uint32(data[8:12]))
+	deltasLen := int(binary.LittleEndian.Uint32(data[12:16]))
+
+	if len(data) < 16+deltasLen {
+		return nil, fmt.Errorf("invalid data: deltas truncated")
+	}
+
+	// Zero-copy: share backing array (safe since data comes from LSM)
+	deltas := data[16 : 16+deltasLen]
+
+	return &CompressedEdgeList{
+		BaseNodeID: baseNodeID,
+		Deltas:     deltas,
+		EdgeCount:  edgeCount,
+	}, nil
 }
