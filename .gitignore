@@ -106,8 +106,8 @@ _cgo_export.*
 /bin/*
 !/bin/.gitkeep
 
-# Benchmark results
-benchmarks/
+# Benchmark results (keep benchmarks/history/ tracked)
+benchmark-*.txt
 benchmark_*.txt
 
 # Generated files

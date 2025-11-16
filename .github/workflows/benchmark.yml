@@ -1,0 +1,137 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  release:
+    types: [created]
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+
+    - name: System Information
+      run: |
+        echo "=== CPU Information ==="
+        lscpu | grep -E "Model name|CPU\(s\)|Thread|Core|Socket"
+        echo ""
+        echo "=== Memory Information ==="
+        free -h
+        echo ""
+        echo "=== Disk Information ==="
+        df -h /
+        echo ""
+        echo "=== Go Version ==="
+        go version
+
+    - name: Build binaries
+      run: |
+        go build -v -o bin/server ./cmd/server
+        go build -v -o bin/benchmark ./cmd/benchmark
+
+    - name: Run Unit Test Benchmarks
+      run: |
+        echo "=== Running Go Benchmarks ==="
+        go test -bench=. -benchmem -benchtime=5s ./pkg/storage ./pkg/lsm ./pkg/wal | tee benchmark-unit.txt
+
+    - name: Run Storage Benchmarks
+      run: |
+        echo "=== Storage Layer Benchmarks ==="
+        ./bin/benchmark | tee benchmark-storage.txt
+
+    - name: Run Capacity Test (5M nodes)
+      timeout-minutes: 20
+      run: |
+        echo "=== Capacity Test - 5 Million Nodes ==="
+        RUN_CAPACITY_TEST=1 go test -v -run=Test5MNodeCapacity -timeout=15m ./pkg/storage/ | tee benchmark-capacity.txt
+
+    - name: Extract Key Metrics
+      run: |
+        echo "=== Performance Summary ===" | tee benchmark-summary.txt
+        echo "" | tee -a benchmark-summary.txt
+        echo "**Hardware:** GitHub Actions ubuntu-latest runner" | tee -a benchmark-summary.txt
+        echo "- CPU: 4-core (Intel Xeon or AMD EPYC)" | tee -a benchmark-summary.txt
+        echo "- RAM: 16GB" | tee -a benchmark-summary.txt
+        echo "- Storage: SSD" | tee -a benchmark-summary.txt
+        echo "" | tee -a benchmark-summary.txt
+
+        # Extract capacity test results
+        if [ -f benchmark-capacity.txt ]; then
+          echo "**Capacity Test Results:**" | tee -a benchmark-summary.txt
+          grep -E "(Write throughput|Read throughput|Peak memory|Final memory)" benchmark-capacity.txt | tee -a benchmark-summary.txt || true
+        fi
+
+        echo "" | tee -a benchmark-summary.txt
+        echo "**Reproducibility:**" | tee -a benchmark-summary.txt
+        echo "These benchmarks run on every commit and are fully reproducible." | tee -a benchmark-summary.txt
+        echo "Fork this repo and run: \`go test -bench=. ./...\`" | tee -a benchmark-summary.txt
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: benchmark-results-${{ github.run_number }}
+        path: |
+          benchmark-*.txt
+        retention-days: 90
+
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const summary = fs.readFileSync('benchmark-summary.txt', 'utf8');
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `## Performance Benchmark Results\n\n${summary}\n\n[View full results](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+          });
+
+    - name: Store historical results
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        mkdir -p benchmarks/history
+        date=$(date +%Y-%m-%d-%H-%M)
+        cp benchmark-summary.txt "benchmarks/history/${date}.txt"
+
+        # Create CSV entry if capacity test succeeded
+        if [ -f benchmark-capacity.txt ]; then
+          writes=$(grep "Write throughput" benchmark-capacity.txt | grep -oP '\d+' | head -1 || echo "0")
+          reads=$(grep "Read throughput" benchmark-capacity.txt | grep -oP '\d+' | head -1 || echo "0")
+          memory=$(grep "Final memory" benchmark-capacity.txt | grep -oP '\d+' | head -1 || echo "0")
+
+          echo "${date},${writes},${reads},${memory}" >> benchmarks/history/results.csv
+        fi
+
+    - name: Generate performance badge data
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        # Extract writes/sec for badge
+        if [ -f benchmark-capacity.txt ]; then
+          writes=$(grep "Write throughput" benchmark-capacity.txt | grep -oP '\d+' | head -1 || echo "0")
+
+          # Create badge JSON
+          mkdir -p .github/badges
+          cat > .github/badges/performance.json <<EOF
+        {
+          "schemaVersion": 1,
+          "label": "writes/sec",
+          "message": "${writes}K",
+          "color": "green"
+        }
+        EOF
+        fi
