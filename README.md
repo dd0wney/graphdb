@@ -1,10 +1,10 @@
-# 🔥 Cluso GraphDB
+# Cluso GraphDB
 
 A high-performance, feature-rich graph database built from scratch in Go. Cluso combines modern storage techniques with powerful graph algorithms and multiple query interfaces.
 
-## ✨ Features
+## Features
 
-### 🎯 Core Database
+### Core Database
 
 - **LSM-Tree Storage** - Efficient write-heavy workloads with leveled compaction
 - **Write-Ahead Logging (WAL)** - Durability and crash recovery
@@ -13,7 +13,7 @@ A high-performance, feature-rich graph database built from scratch in Go. Cluso 
 - **Property Indexes** - Fast property-based lookups
 - **Batched Operations** - Efficient bulk data loading
 
-### 🧮 Graph Algorithms
+### Graph Algorithms
 
 - **PageRank** - Node importance scoring with convergence detection
 - **Betweenness Centrality** - Identify bridge nodes
@@ -61,26 +61,26 @@ cluso> pagerank
 
 Interactive terminal interface with:
 
-- 📊 Real-time dashboard with statistics
+- Real-time dashboard with statistics
 - 👥 Node browser with table navigation
 - 🔍 Query console with syntax highlighting
 - 🌐 ASCII graph visualization
 - 📈 PageRank metrics with bar charts
 
-### 🚀 Distributed Features
+### Distributed Features
 
 - **ZeroMQ Replication** - Multiple replication patterns (PUB/SUB, PUSH/PULL, REQ/REP, DEALER/ROUTER)
 - **Graph Partitioning** - Horizontal scaling with hash-based partitioning
 - **Temporal Graphs** - Time-aware graph queries
 
-### ⚡ Performance Optimizations
+### Performance Optimizations
 
 - **Parallel Query Execution** - Worker pools for concurrent operations
 - **Streaming Results** - Memory-efficient result iteration
 - **Query Pipelines** - Composable query operations
 - **In-Memory + Persistent** - Hybrid storage for optimal performance
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -116,7 +116,7 @@ Interactive terminal interface with:
 └─────────────────────────────────────────────────┘
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
@@ -324,7 +324,7 @@ curl -X POST http://localhost:8080/nodes/batch \
   }'
 ```
 
-## 🎯 Benchmarks
+## Benchmarks
 
 ### Available Benchmarks
 
@@ -407,7 +407,7 @@ cluso-graphdb/
 └── bin/                 # Compiled binaries (gitignored)
 ```
 
-## 🔧 Configuration
+## Configuration
 
 ### Server Options
 
@@ -492,7 +492,7 @@ The Terminal UI (built with Bubble Tea, Bubbles, and Lipgloss) provides:
 - `Enter` - Execute query
 - `q` or `Ctrl+C` - Quit
 
-## 🌟 Advanced Features
+## Advanced Features
 
 ### Temporal Graphs
 
