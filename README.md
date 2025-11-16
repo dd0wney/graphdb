@@ -1,5 +1,11 @@
 # Cluso GraphDB
 
+[![Tests](https://github.com/dd0wney/graphdb/actions/workflows/test.yml/badge.svg)](https://github.com/dd0wney/graphdb/actions/workflows/test.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/dd0wney/graphdb)](https://go.dev/)
+[![Release](https://img.shields.io/github/v/release/dd0wney/graphdb)](https://github.com/dd0wney/graphdb/releases)
+[![License](https://img.shields.io/github/license/dd0wney/graphdb)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/dd0wney/graphdb)](https://goreportcard.com/report/github.com/dd0wney/graphdb)
+
 A high-performance, feature-rich graph database built from scratch in Go. Cluso combines modern storage techniques with powerful graph algorithms and multiple query interfaces.
 
 ## Features
@@ -65,7 +71,7 @@ Interactive terminal interface with:
 - 👥 Node browser with table navigation
 - 🔍 Query console with syntax highlighting
 - 🌐 ASCII graph visualization
-- 📈 PageRank metrics with bar charts
+- PageRank metrics with bar charts
 
 ### Distributed Features
 
