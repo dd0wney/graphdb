@@ -82,10 +82,12 @@ type ShortestPathResponse struct {
 
 // HealthResponse represents health check response
 type HealthResponse struct {
-	Status    string    `json:"status"`
+	Status    string   `json:"status"`
 	Timestamp time.Time `json:"timestamp"`
-	Version   string    `json:"version"`
-	Uptime    string    `json:"uptime"`
+	Version   string   `json:"version"`
+	Edition   string   `json:"edition"`
+	Features  []string `json:"features"`
+	Uptime    string   `json:"uptime"`
 }
 
 // MetricsResponse represents database metrics
