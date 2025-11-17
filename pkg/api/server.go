@@ -25,8 +25,8 @@ type Server struct {
 
 // NewServer creates a new API server
 func NewServer(graph *storage.GraphStorage, port int) *Server {
-	// Generate GraphQL schema from storage
-	schema, err := graphql.GenerateSchema(graph)
+	// Generate GraphQL schema with mutations from storage
+	schema, err := graphql.GenerateSchemaWithMutations(graph)
 	if err != nil {
 		log.Printf("Warning: Failed to generate GraphQL schema: %v", err)
 	}
