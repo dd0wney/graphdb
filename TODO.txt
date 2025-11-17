@@ -58,6 +58,22 @@ GraphQL Pagination (Test-Driven Development)
 ✅ Implement pagination logic in createEdgesResolver
 ✅ Verify all tests pass (38 GraphQL tests total, all passing)
 
+GraphQL Cursor-Based Pagination (Test-Driven Development)
+----------------------------------------------------------
+✅ Write cursor pagination tests for forward pagination (first, after)
+✅ Write cursor pagination tests for backward pagination (last, before)
+✅ Write cursor pagination edge case tests (first 0, first > total, no args, invalid cursor)
+✅ Write edge cursor pagination tests (edges with cursor pagination)
+✅ Implement cursor encoding/decoding (base64)
+✅ Implement PageInfo type (hasNextPage, hasPreviousPage, startCursor, endCursor)
+✅ Implement Connection types (edges with cursor + node, pageInfo)
+✅ Implement connection resolvers for nodes (first, after, last, before support)
+✅ Implement connection resolvers for edges (first, after, last, before support)
+✅ Add connection queries for all node labels ({label}sConnection)
+✅ Add connection query for edges (edgesConnection)
+✅ Integrate cursor pagination into GenerateSchemaWithCursors
+✅ Verify all tests pass (44 GraphQL tests total, all passing)
+
 Server Integration
 ------------------
 ✅ GraphQL endpoint available at POST /graphql
@@ -68,12 +84,17 @@ Server Integration
 
 Test Summary
 ------------
-- GraphQL Package: 16 tests passing
+- GraphQL Package: 44 tests passing
   - Schema generation: 4 tests
   - Query execution: 6 tests
   - HTTP handler: 6 tests
+  - Mutations: 6 tests
+  - Edges: 7 tests
+  - UpdateEdge: 5 tests
+  - Offset pagination: 6 tests
+  - Cursor pagination: 6 tests
 - API Integration: 3 tests passing
-- Total GraphQL tests: 19 tests, all passing
+- Total GraphQL tests: 44 tests, all passing
 
 Previous Work (From Earlier Sessions)
 --------------------------------------
@@ -90,18 +111,23 @@ New Files:
 ----------
 - pkg/graphql/http.go - GraphQL HTTP handler
 - pkg/graphql/http_test.go - HTTP handler tests (6 tests)
+- pkg/graphql/mutations_test.go - Mutation tests (6 tests)
+- pkg/graphql/edges_test.go - Edge support tests (12 tests)
+- pkg/graphql/pagination_test.go - Offset pagination tests (6 tests)
+- pkg/graphql/cursor_pagination_test.go - Cursor pagination tests (6 tests)
 
 Modified Files:
 ---------------
+- pkg/graphql/schema.go - Added mutations, edges, pagination, and cursor-based pagination
 - pkg/api/server.go - Added GraphQL endpoint integration
 - pkg/api/server_test.go - Added GraphQL integration tests (3 tests)
+- pkg/storage/edge_operations.go - Added UpdateEdge method
 
 NEXT STEPS / IDEAS
 ==================
 
 Potential Future Work:
 ----------------------
-- [ ] Add cursor-based pagination (more GraphQL-standard than offset-based)
 - [ ] Add GraphQL subscriptions for real-time updates
 - [ ] Add query complexity analysis and rate limiting
 - [ ] Create GraphQL playground/documentation UI
@@ -176,11 +202,34 @@ Edge Mutation Examples:
   "query": "mutation { deleteEdge(id: \"1\") { success id } }"
 }
 
+Cursor-Based Pagination Examples (Relay Connection Specification):
+{
+  "query": "{ personsConnection(first: 10) { edges { cursor node { id properties } } pageInfo { hasNextPage hasPreviousPage startCursor endCursor } } }"
+}
+
+{
+  "query": "{ personsConnection(first: 10, after: \"Y3Vyc29yOjk=\") { edges { cursor node { id properties } } pageInfo { hasNextPage hasPreviousPage endCursor } } }"
+}
+
+{
+  "query": "{ personsConnection(last: 5) { edges { cursor node { id properties } } pageInfo { hasNextPage hasPreviousPage startCursor } } }"
+}
+
+{
+  "query": "{ edgesConnection(first: 10) { edges { cursor node { id type fromNodeId toNodeId weight } } pageInfo { hasNextPage endCursor } } }"
+}
+
 Features:
 - Schema auto-generated from node labels in database
 - Query fields: {label} (singular) and {label}s (plural)
 - Edge queries: edge (by ID), edges (all)
-- Pagination support: limit and offset arguments on all plural queries
+- Offset-based pagination: limit and offset arguments on all plural queries
+- Cursor-based pagination (Relay Connection Specification):
+  - Connection queries: {label}sConnection, edgesConnection
+  - Arguments: first, after, last, before
+  - Returns: edges (cursor + node), pageInfo (hasNextPage, hasPreviousPage, startCursor, endCursor)
+  - Base64-encoded opaque cursors
+  - Supports forward and backward pagination
 - Node mutations: createNode, updateNode, deleteNode
 - Edge mutations: createEdge, updateEdge, deleteEdge (complete CRUD)
 - Edge traversal: outgoingEdges, incomingEdges on node types
