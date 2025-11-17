@@ -74,6 +74,24 @@ GraphQL Cursor-Based Pagination (Test-Driven Development)
 ✅ Integrate cursor pagination into GenerateSchemaWithCursors
 ✅ Verify all tests pass (44 GraphQL tests total, all passing)
 
+GraphQL Sorting/Ordering (Test-Driven Development)
+----------------------------------------------------
+✅ Write sorting tests for ascending order (by property)
+✅ Write sorting tests for descending order (by property)
+✅ Write sorting tests combined with offset pagination
+✅ Write sorting tests combined with cursor pagination
+✅ Write sorting tests for edges (by weight)
+✅ Write test for queries without orderBy (backwards compatibility)
+✅ Implement OrderByInput type (field, direction)
+✅ Implement sorting logic for nodes (sortNodes function)
+✅ Implement sorting logic for edges (sortEdges function)
+✅ Implement value comparison (strings, ints, floats, bools)
+✅ Add orderBy argument to plural queries
+✅ Add orderBy argument to connection queries
+✅ Add orderBy argument to edge queries
+✅ Integrate sorting into GenerateSchemaWithSorting
+✅ Verify all tests pass (50 GraphQL tests total, all passing)
+
 Server Integration
 ------------------
 ✅ GraphQL endpoint available at POST /graphql
@@ -84,7 +102,7 @@ Server Integration
 
 Test Summary
 ------------
-- GraphQL Package: 44 tests passing
+- GraphQL Package: 50 tests passing
   - Schema generation: 4 tests
   - Query execution: 6 tests
   - HTTP handler: 6 tests
@@ -93,8 +111,9 @@ Test Summary
   - UpdateEdge: 5 tests
   - Offset pagination: 6 tests
   - Cursor pagination: 6 tests
+  - Sorting/Ordering: 6 tests
 - API Integration: 3 tests passing
-- Total GraphQL tests: 44 tests, all passing
+- Total GraphQL tests: 50 tests, all passing
 
 Previous Work (From Earlier Sessions)
 --------------------------------------
@@ -115,10 +134,11 @@ New Files:
 - pkg/graphql/edges_test.go - Edge support tests (12 tests)
 - pkg/graphql/pagination_test.go - Offset pagination tests (6 tests)
 - pkg/graphql/cursor_pagination_test.go - Cursor pagination tests (6 tests)
+- pkg/graphql/sorting_test.go - Sorting/ordering tests (6 tests)
 
 Modified Files:
 ---------------
-- pkg/graphql/schema.go - Added mutations, edges, pagination, and cursor-based pagination
+- pkg/graphql/schema.go - Added mutations, edges, pagination, cursor-based pagination, and sorting
 - pkg/api/server.go - Added GraphQL endpoint integration
 - pkg/api/server_test.go - Added GraphQL integration tests (3 tests)
 - pkg/storage/edge_operations.go - Added UpdateEdge method
@@ -219,6 +239,23 @@ Cursor-Based Pagination Examples (Relay Connection Specification):
   "query": "{ edgesConnection(first: 10) { edges { cursor node { id type fromNodeId toNodeId weight } } pageInfo { hasNextPage endCursor } } }"
 }
 
+Sorting/Ordering Examples:
+{
+  "query": "{ persons(orderBy: {field: \"age\", direction: \"ASC\"}) { id properties } }"
+}
+
+{
+  "query": "{ persons(orderBy: {field: \"name\", direction: \"DESC\"}, limit: 10) { id properties } }"
+}
+
+{
+  "query": "{ personsConnection(orderBy: {field: \"score\", direction: \"DESC\"}, first: 5) { edges { node { id properties } } } }"
+}
+
+{
+  "query": "{ edges(orderBy: {field: \"weight\", direction: \"ASC\"}) { id type weight } }"
+}
+
 Features:
 - Schema auto-generated from node labels in database
 - Query fields: {label} (singular) and {label}s (plural)
@@ -230,6 +267,13 @@ Features:
   - Returns: edges (cursor + node), pageInfo (hasNextPage, hasPreviousPage, startCursor, endCursor)
   - Base64-encoded opaque cursors
   - Supports forward and backward pagination
+- Sorting/Ordering:
+  - OrderBy argument on all plural queries and connection queries
+  - Input: {field: "fieldName", direction: "ASC" | "DESC"}
+  - Sorts by any property field (nodes) or weight field (edges)
+  - Supports all value types: strings, integers, floats, booleans
+  - Works with both offset and cursor pagination
+  - Null values handled (sorted first in ASC, last in DESC)
 - Node mutations: createNode, updateNode, deleteNode
 - Edge mutations: createEdge, updateEdge, deleteEdge (complete CRUD)
 - Edge traversal: outgoingEdges, incomingEdges on node types
