@@ -323,6 +323,231 @@ func TestDeleteEdgeMutation(t *testing.T) {
 	}
 }
 
+// TestUpdateEdgeMutation tests updating an edge via GraphQL mutation
+func TestUpdateEdgeMutation(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := storage.StorageConfig{
+		DataDir:        tmpDir,
+		BulkImportMode: true,
+	}
+
+	gs, err := storage.NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer gs.Close()
+
+	// Create nodes and edge
+	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Alice"),
+	})
+	node2, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Bob"),
+	})
+	edge, _ := gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
+		"since": storage.IntValue(2020),
+	}, 1.0)
+
+	schema, err := GenerateSchemaWithEdges(gs)
+	if err != nil {
+		t.Fatalf("GenerateSchemaWithEdges() error = %v", err)
+	}
+
+	// Execute updateEdge mutation
+	mutation := `
+		mutation {
+			updateEdge(id: "1", properties: "{\"since\": 2021, \"strength\": \"strong\"}", weight: 2.5) {
+				id
+				fromNodeId
+				toNodeId
+				type
+				weight
+				properties
+			}
+		}
+	`
+
+	result := graphql.Do(graphql.Params{
+		Schema:        schema,
+		RequestString: mutation,
+	})
+
+	if result.HasErrors() {
+		t.Fatalf("GraphQL mutation failed: %v", result.Errors)
+	}
+
+	// Verify result
+	data := result.Data.(map[string]interface{})
+	edgeData := data["updateEdge"].(map[string]interface{})
+
+	if edgeData["id"] != "1" {
+		t.Errorf("Expected id 1, got %v", edgeData["id"])
+	}
+
+	if weight, ok := edgeData["weight"].(float64); !ok || weight != 2.5 {
+		t.Errorf("Expected weight 2.5, got %v", edgeData["weight"])
+	}
+
+	// Verify edge was updated in storage
+	updatedEdge, err := gs.GetEdge(edge.ID)
+	if err != nil {
+		t.Fatalf("Failed to retrieve updated edge: %v", err)
+	}
+
+	// Check weight was updated
+	if updatedEdge.Weight != 2.5 {
+		t.Errorf("Expected weight 2.5, got %f", updatedEdge.Weight)
+	}
+
+	// Check 'since' property was updated
+	since, _ := updatedEdge.Properties["since"].AsInt()
+	if since != 2021 {
+		t.Errorf("Expected since 2021, got %d", since)
+	}
+
+	// Check 'strength' property was added
+	strength, _ := updatedEdge.Properties["strength"].AsString()
+	if strength != "strong" {
+		t.Errorf("Expected strength 'strong', got %s", strength)
+	}
+}
+
+// TestUpdateEdgePropertiesOnly tests updating only properties (not weight)
+func TestUpdateEdgePropertiesOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := storage.StorageConfig{
+		DataDir:        tmpDir,
+		BulkImportMode: true,
+	}
+
+	gs, err := storage.NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer gs.Close()
+
+	// Create nodes and edge
+	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Alice"),
+	})
+	node2, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Bob"),
+	})
+	edge, _ := gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
+		"since": storage.IntValue(2020),
+	}, 1.0)
+
+	schema, err := GenerateSchemaWithEdges(gs)
+	if err != nil {
+		t.Fatalf("GenerateSchemaWithEdges() error = %v", err)
+	}
+
+	// Execute updateEdge mutation (properties only)
+	mutation := `
+		mutation {
+			updateEdge(id: "1", properties: "{\"since\": 2022}") {
+				id
+				weight
+				properties
+			}
+		}
+	`
+
+	result := graphql.Do(graphql.Params{
+		Schema:        schema,
+		RequestString: mutation,
+	})
+
+	if result.HasErrors() {
+		t.Fatalf("GraphQL mutation failed: %v", result.Errors)
+	}
+
+	// Verify edge was updated in storage
+	updatedEdge, err := gs.GetEdge(edge.ID)
+	if err != nil {
+		t.Fatalf("Failed to retrieve updated edge: %v", err)
+	}
+
+	// Check weight remained the same
+	if updatedEdge.Weight != 1.0 {
+		t.Errorf("Expected weight 1.0 (unchanged), got %f", updatedEdge.Weight)
+	}
+
+	// Check 'since' property was updated
+	since, _ := updatedEdge.Properties["since"].AsInt()
+	if since != 2022 {
+		t.Errorf("Expected since 2022, got %d", since)
+	}
+}
+
+// TestUpdateEdgeWeightOnly tests updating only weight (not properties)
+func TestUpdateEdgeWeightOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := storage.StorageConfig{
+		DataDir:        tmpDir,
+		BulkImportMode: true,
+	}
+
+	gs, err := storage.NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer gs.Close()
+
+	// Create nodes and edge
+	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Alice"),
+	})
+	node2, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Bob"),
+	})
+	edge, _ := gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
+		"since": storage.IntValue(2020),
+	}, 1.0)
+
+	schema, err := GenerateSchemaWithEdges(gs)
+	if err != nil {
+		t.Fatalf("GenerateSchemaWithEdges() error = %v", err)
+	}
+
+	// Execute updateEdge mutation (weight only)
+	mutation := `
+		mutation {
+			updateEdge(id: "1", weight: 3.5) {
+				id
+				weight
+				properties
+			}
+		}
+	`
+
+	result := graphql.Do(graphql.Params{
+		Schema:        schema,
+		RequestString: mutation,
+	})
+
+	if result.HasErrors() {
+		t.Fatalf("GraphQL mutation failed: %v", result.Errors)
+	}
+
+	// Verify edge was updated in storage
+	updatedEdge, err := gs.GetEdge(edge.ID)
+	if err != nil {
+		t.Fatalf("Failed to retrieve updated edge: %v", err)
+	}
+
+	// Check weight was updated
+	if updatedEdge.Weight != 3.5 {
+		t.Errorf("Expected weight 3.5, got %f", updatedEdge.Weight)
+	}
+
+	// Check 'since' property remained the same
+	since, _ := updatedEdge.Properties["since"].AsInt()
+	if since != 2020 {
+		t.Errorf("Expected since 2020 (unchanged), got %d", since)
+	}
+}
+
 // TestEdgeMutationErrorHandling tests error cases for edge mutations
 func TestEdgeMutationErrorHandling(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -374,6 +599,28 @@ func TestEdgeMutationErrorHandling(t *testing.T) {
 			mutation: `
 				mutation {
 					createEdge(fromNodeId: "1", toNodeId: "2", type: "KNOWS", properties: "{invalid}", weight: 1.0) {
+						id
+					}
+				}
+			`,
+			expectError: true,
+		},
+		{
+			name: "update non-existent edge",
+			mutation: `
+				mutation {
+					updateEdge(id: "99999", properties: "{\"test\": 1}") {
+						id
+					}
+				}
+			`,
+			expectError: true,
+		},
+		{
+			name: "update edge with invalid JSON properties",
+			mutation: `
+				mutation {
+					updateEdge(id: "1", properties: "{invalid}") {
 						id
 					}
 				}

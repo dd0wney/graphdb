@@ -640,6 +640,21 @@ func GenerateSchemaWithEdges(gs *storage.GraphStorage) (graphql.Schema, error) {
 				},
 				Resolve: createEdgeMutationResolver(gs),
 			},
+			"updateEdge": &graphql.Field{
+				Type: edgeType,
+				Args: graphql.FieldConfigArgument{
+					"id": &graphql.ArgumentConfig{
+						Type: graphql.NewNonNull(graphql.ID),
+					},
+					"properties": &graphql.ArgumentConfig{
+						Type: graphql.String,
+					},
+					"weight": &graphql.ArgumentConfig{
+						Type: graphql.Float,
+					},
+				},
+				Resolve: updateEdgeMutationResolver(gs),
+			},
 			"deleteEdge": &graphql.Field{
 				Type: deleteResultType,
 				Args: graphql.FieldConfigArgument{
@@ -925,6 +940,53 @@ func createEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		edge, err := gs.CreateEdge(fromNodeID, toNodeID, edgeType, properties, weight)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create edge: %w", err)
+		}
+
+		return edge, nil
+	}
+}
+
+// updateEdgeMutationResolver creates a resolver for updateEdge mutation
+func updateEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+	return func(p graphql.ResolveParams) (interface{}, error) {
+		// Get ID argument
+		idStr, ok := p.Args["id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("id argument is required")
+		}
+
+		var id uint64
+		fmt.Sscanf(idStr, "%d", &id)
+
+		// Parse properties if provided
+		var properties map[string]storage.Value
+		if propsJSON, ok := p.Args["properties"].(string); ok && propsJSON != "" {
+			var propsMap map[string]interface{}
+			if err := json.Unmarshal([]byte(propsJSON), &propsMap); err != nil {
+				return nil, fmt.Errorf("invalid properties JSON: %w", err)
+			}
+
+			properties = make(map[string]storage.Value)
+			for k, v := range propsMap {
+				properties[k] = convertToStorageValue(v)
+			}
+		}
+
+		// Get weight if provided
+		var weight *float64
+		if w, ok := p.Args["weight"].(float64); ok {
+			weight = &w
+		}
+
+		// Update edge in storage
+		if err := gs.UpdateEdge(id, properties, weight); err != nil {
+			return nil, fmt.Errorf("failed to update edge: %w", err)
+		}
+
+		// Fetch and return updated edge
+		edge, err := gs.GetEdge(id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve updated edge: %w", err)
 		}
 
 		return edge, nil
