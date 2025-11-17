@@ -25,6 +25,20 @@ GraphQL Mutations (Test-Driven Development)
 ✅ Integrate mutations into server (available at POST /graphql)
 ✅ Verify all tests pass (22 GraphQL tests total, all passing)
 
+GraphQL Edge Support (Test-Driven Development)
+-----------------------------------------------
+✅ Write edge query tests (edge by ID, all edges)
+✅ Write edge mutation tests (createEdge, deleteEdge)
+✅ Write edge traversal tests (outgoingEdges, incomingEdges from nodes)
+✅ Write edge error handling tests (3 error scenarios)
+✅ Implement Edge GraphQL type (id, fromNodeId, toNodeId, type, weight, properties)
+✅ Implement edge query resolvers (edge, edges)
+✅ Implement createEdge mutation (with optional properties and weight)
+✅ Implement deleteEdge mutation (returns success status)
+✅ Add edge traversal fields to node types (outgoingEdges, incomingEdges)
+✅ Integrate edge support into server schema
+✅ Verify all tests pass (29 GraphQL tests total, all passing)
+
 Server Integration
 ------------------
 ✅ GraphQL endpoint available at POST /graphql
@@ -68,9 +82,8 @@ NEXT STEPS / IDEAS
 
 Potential Future Work:
 ----------------------
-- [ ] Add edge/relationship queries to GraphQL schema
-- [ ] Add edge mutations to GraphQL (create/update/delete edges)
-- [ ] Add pagination support for large result sets
+- [ ] Add pagination support for large GraphQL result sets
+- [ ] Add updateEdge mutation to GraphQL (update edge properties/weight)
 - [ ] Add GraphQL subscriptions for real-time updates
 - [ ] Add query complexity analysis and rate limiting
 - [ ] Create GraphQL playground/documentation UI
@@ -93,12 +106,25 @@ GraphQL Endpoint Usage:
 POST http://localhost:8080/graphql
 Content-Type: application/json
 
-Query Example:
+Node Query Examples:
 {
   "query": "{ persons { id labels properties } }"
 }
 
-Mutation Examples:
+{
+  "query": "{ person(id: \"1\") { id labels properties outgoingEdges { id type toNodeId } } }"
+}
+
+Edge Query Examples:
+{
+  "query": "{ edges { id fromNodeId toNodeId type weight properties } }"
+}
+
+{
+  "query": "{ edge(id: \"1\") { id fromNodeId toNodeId type weight } }"
+}
+
+Node Mutation Examples:
 {
   "query": "mutation { createNode(labels: [\"Person\"], properties: \"{\\\"name\\\": \\\"Alice\\\", \\\"age\\\": 30}\") { id labels properties } }"
 }
@@ -111,10 +137,22 @@ Mutation Examples:
   "query": "mutation { deleteNode(id: \"1\") { success id } }"
 }
 
+Edge Mutation Examples:
+{
+  "query": "mutation { createEdge(fromNodeId: \"1\", toNodeId: \"2\", type: \"KNOWS\", properties: \"{\\\"since\\\": 2020}\", weight: 1.0) { id type fromNodeId toNodeId } }"
+}
+
+{
+  "query": "mutation { deleteEdge(id: \"1\") { success id } }"
+}
+
 Features:
 - Schema auto-generated from node labels in database
 - Query fields: {label} (singular) and {label}s (plural)
-- Mutations: createNode, updateNode, deleteNode
+- Edge queries: edge (by ID), edges (all)
+- Node mutations: createNode, updateNode, deleteNode
+- Edge mutations: createEdge, deleteEdge
+- Edge traversal: outgoingEdges, incomingEdges on node types
 - Variable support for parameterized queries
 - Always includes a "health" query for uptime checks
 
