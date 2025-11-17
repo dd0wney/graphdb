@@ -100,9 +100,18 @@ Server Integration
 ✅ Error handling for invalid JSON and GraphQL errors
 ✅ Server builds successfully
 
+GraphQL Aggregation Queries (Test-Driven Development)
+------------------------------------------------------
+✅ Write aggregation query tests (7 tests: count, min/max, avg, sum, multiple fields, edges, empty)
+✅ Implement aggregation resolvers (COUNT, MIN, MAX, AVG, SUM for nodes and edges)
+✅ Dynamic schema generation (discovers properties from sample nodes)
+✅ Separate field types (min/max/sum preserve types, avg always float)
+✅ Empty result handling (returns 0 count, empty aggregates)
+✅ Verify all tests pass (57 GraphQL tests total, all passing)
+
 Test Summary
 ------------
-- GraphQL Package: 50 tests passing
+- GraphQL Package: 57 tests passing
   - Schema generation: 4 tests
   - Query execution: 6 tests
   - HTTP handler: 6 tests
@@ -112,8 +121,9 @@ Test Summary
   - Offset pagination: 6 tests
   - Cursor pagination: 6 tests
   - Sorting/Ordering: 6 tests
+  - Aggregation: 7 tests
 - API Integration: 3 tests passing
-- Total GraphQL tests: 50 tests, all passing
+- Total GraphQL tests: 57 tests, all passing
 
 Previous Work (From Earlier Sessions)
 --------------------------------------
@@ -135,10 +145,11 @@ New Files:
 - pkg/graphql/pagination_test.go - Offset pagination tests (6 tests)
 - pkg/graphql/cursor_pagination_test.go - Cursor pagination tests (6 tests)
 - pkg/graphql/sorting_test.go - Sorting/ordering tests (6 tests)
+- pkg/graphql/aggregation_test.go - Aggregation tests (7 tests)
 
 Modified Files:
 ---------------
-- pkg/graphql/schema.go - Added mutations, edges, pagination, cursor-based pagination, and sorting
+- pkg/graphql/schema.go - Added mutations, edges, pagination, cursor-based pagination, sorting, and aggregation
 - pkg/api/server.go - Added GraphQL endpoint integration
 - pkg/api/server_test.go - Added GraphQL integration tests (3 tests)
 - pkg/storage/edge_operations.go - Added UpdateEdge method
@@ -148,6 +159,7 @@ NEXT STEPS / IDEAS
 
 Potential Future Work:
 ----------------------
+- [ ] Add GraphQL filtering/where clauses (eq, gt, lt, gte, lte, contains operators)
 - [ ] Add GraphQL subscriptions for real-time updates
 - [ ] Add query complexity analysis and rate limiting
 - [ ] Create GraphQL playground/documentation UI
@@ -256,6 +268,27 @@ Sorting/Ordering Examples:
   "query": "{ edges(orderBy: {field: \"weight\", direction: \"ASC\"}) { id type weight } }"
 }
 
+Aggregation Examples:
+{
+  "query": "{ personsAggregate { count } }"
+}
+
+{
+  "query": "{ personsAggregate { count min { age } max { age } } }"
+}
+
+{
+  "query": "{ personsAggregate { avg { score } sum { score } } }"
+}
+
+{
+  "query": "{ personsAggregate { count min { age salary } max { age salary } avg { age salary } sum { salary } } }"
+}
+
+{
+  "query": "{ edgesAggregate { count avg { weight } min { weight } max { weight } } }"
+}
+
 Features:
 - Schema auto-generated from node labels in database
 - Query fields: {label} (singular) and {label}s (plural)
@@ -274,6 +307,15 @@ Features:
   - Supports all value types: strings, integers, floats, booleans
   - Works with both offset and cursor pagination
   - Null values handled (sorted first in ASC, last in DESC)
+- Aggregation Queries:
+  - Aggregate queries: {label}sAggregate, edgesAggregate
+  - COUNT: Total number of nodes/edges
+  - MIN: Minimum value for each numeric property
+  - MAX: Maximum value for each numeric property
+  - AVG: Average value for each numeric property (always returns float)
+  - SUM: Sum of values for each numeric property
+  - Dynamic schema generation discovers properties from sample nodes
+  - Empty result handling (returns 0 count, empty aggregates)
 - Node mutations: createNode, updateNode, deleteNode
 - Edge mutations: createEdge, updateEdge, deleteEdge (complete CRUD)
 - Edge traversal: outgoingEdges, incomingEdges on node types
