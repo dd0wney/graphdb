@@ -178,6 +178,25 @@ func createNodesResolver(gs *storage.GraphStorage, label string) graphql.FieldRe
 			return nil, err
 		}
 
+		// Apply pagination if specified
+		limit, limitOk := p.Args["limit"].(int)
+		offset, offsetOk := p.Args["offset"].(int)
+
+		// Apply offset
+		if offsetOk && offset > 0 {
+			if offset >= len(nodes) {
+				return []*storage.Node{}, nil
+			}
+			nodes = nodes[offset:]
+		}
+
+		// Apply limit
+		if limitOk && limit >= 0 {
+			if limit < len(nodes) {
+				nodes = nodes[:limit]
+			}
+		}
+
 		return nodes, nil
 	}
 }
@@ -541,7 +560,15 @@ func GenerateSchemaWithEdges(gs *storage.GraphStorage) (graphql.Schema, error) {
 			Resolve: createEdgeResolver(gs),
 		},
 		"edges": &graphql.Field{
-			Type:    graphql.NewList(edgeType),
+			Type: graphql.NewList(edgeType),
+			Args: graphql.FieldConfigArgument{
+				"limit": &graphql.ArgumentConfig{
+					Type: graphql.Int,
+				},
+				"offset": &graphql.ArgumentConfig{
+					Type: graphql.Int,
+				},
+			},
 			Resolve: createEdgesResolver(gs),
 		},
 	}
@@ -565,7 +592,15 @@ func GenerateSchemaWithEdges(gs *storage.GraphStorage) (graphql.Schema, error) {
 		// Plural query
 		pluralName := strings.ToLower(label) + "s"
 		queryFields[pluralName] = &graphql.Field{
-			Type:    graphql.NewList(nodeType),
+			Type: graphql.NewList(nodeType),
+			Args: graphql.FieldConfigArgument{
+				"limit": &graphql.ArgumentConfig{
+					Type: graphql.Int,
+				},
+				"offset": &graphql.ArgumentConfig{
+					Type: graphql.Int,
+				},
+			},
 			Resolve: createNodesResolver(gs, label),
 		}
 	}
@@ -887,6 +922,25 @@ func createEdgesResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 				continue
 			}
 			edges = append(edges, edge)
+		}
+
+		// Apply pagination if specified
+		limit, limitOk := p.Args["limit"].(int)
+		offset, offsetOk := p.Args["offset"].(int)
+
+		// Apply offset
+		if offsetOk && offset > 0 {
+			if offset >= len(edges) {
+				return []*storage.Edge{}, nil
+			}
+			edges = edges[offset:]
+		}
+
+		// Apply limit
+		if limitOk && limit >= 0 {
+			if limit < len(edges) {
+				edges = edges[:limit]
+			}
 		}
 
 		return edges, nil

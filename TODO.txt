@@ -47,6 +47,17 @@ GraphQL updateEdge Mutation (Test-Driven Development)
 ✅ Implement updateEdge GraphQL mutation (optional properties and weight args)
 ✅ Verify all tests pass (32 GraphQL tests total, all passing)
 
+GraphQL Pagination (Test-Driven Development)
+---------------------------------------------
+✅ Write pagination tests for node queries (3 tests: limit, offset, default)
+✅ Write pagination tests for edge queries (2 tests: limit, offset)
+✅ Write pagination edge case tests (4 scenarios: beyond total, limit>total, etc.)
+✅ Add limit and offset arguments to plural node queries
+✅ Add limit and offset arguments to edges query
+✅ Implement pagination logic in createNodesResolver
+✅ Implement pagination logic in createEdgesResolver
+✅ Verify all tests pass (38 GraphQL tests total, all passing)
+
 Server Integration
 ------------------
 ✅ GraphQL endpoint available at POST /graphql
@@ -90,7 +101,7 @@ NEXT STEPS / IDEAS
 
 Potential Future Work:
 ----------------------
-- [ ] Add pagination support for large GraphQL result sets
+- [ ] Add cursor-based pagination (more GraphQL-standard than offset-based)
 - [ ] Add GraphQL subscriptions for real-time updates
 - [ ] Add query complexity analysis and rate limiting
 - [ ] Create GraphQL playground/documentation UI
@@ -119,12 +130,20 @@ Node Query Examples:
 }
 
 {
+  "query": "{ persons(limit: 10, offset: 0) { id labels properties } }"
+}
+
+{
   "query": "{ person(id: \"1\") { id labels properties outgoingEdges { id type toNodeId } } }"
 }
 
 Edge Query Examples:
 {
   "query": "{ edges { id fromNodeId toNodeId type weight properties } }"
+}
+
+{
+  "query": "{ edges(limit: 5, offset: 0) { id fromNodeId toNodeId type weight } }"
 }
 
 {
@@ -161,6 +180,7 @@ Features:
 - Schema auto-generated from node labels in database
 - Query fields: {label} (singular) and {label}s (plural)
 - Edge queries: edge (by ID), edges (all)
+- Pagination support: limit and offset arguments on all plural queries
 - Node mutations: createNode, updateNode, deleteNode
 - Edge mutations: createEdge, updateEdge, deleteEdge (complete CRUD)
 - Edge traversal: outgoingEdges, incomingEdges on node types
