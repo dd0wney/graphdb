@@ -42,6 +42,8 @@ const (
 	TokenAnd
 	TokenOr
 	TokenNot
+	TokenGroup
+	TokenBy
 
 	// Identifiers and literals
 	TokenIdentifier
@@ -102,6 +104,7 @@ var keywords = map[string]TokenType{
 	"AND":      TokenAnd,
 	"OR":       TokenOr,
 	"NOT":      TokenNot,
+	"GROUP":    TokenGroup,
 	"TRUE":     TokenTrue,
 	"FALSE":    TokenFalse,
 	"NULL":     TokenNull,

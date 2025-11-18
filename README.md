@@ -1,4 +1,4 @@
-# Cluso GraphDB
+# GraphDB
 
 [![Tests](https://github.com/dd0wney/graphdb/actions/workflows/test.yml/badge.svg)](https://github.com/dd0wney/graphdb/actions/workflows/test.yml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/dd0wney/graphdb)](https://go.dev/)
@@ -6,7 +6,34 @@
 [![License](https://img.shields.io/github/license/dd0wney/graphdb)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dd0wney/graphdb)](https://goreportcard.com/report/github.com/dd0wney/graphdb)
 
-A high-performance, feature-rich graph database built from scratch in Go. Cluso combines modern storage techniques with powerful graph algorithms and multiple query interfaces.
+A high-performance, feature-rich graph database built from scratch in Go. GraphDB combines modern storage techniques with powerful graph algorithms and multiple query interfaces.
+
+## v0.1.0 Released!
+
+**Try it in 30 seconds:**
+
+```bash
+# Docker (recommended)
+docker run -p 8080:8080 dd0wney/graphdb:latest
+
+# Or download pre-built binary
+wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Linux_x86_64.tar.gz
+tar -xzf graphdb_0.1.0_Linux_x86_64.tar.gz
+./cluso-server --port 8080
+```
+
+**Available for:**
+- **Docker**: Multi-arch images (amd64, arm64) on [Docker Hub](https://hub.docker.com/r/dd0wney/graphdb)
+- **macOS**: arm64 (M1/M2/M3) & x86_64 (Intel)
+- **Linux**: arm64 & x86_64
+- **Windows**: arm64 & x86_64
+
+**Performance Highlights:**
+- **5M nodes + 50M edges** in just **73MB RAM** (15.31 bytes/node)
+- **330K writes/sec** - sustained throughput over 5M nodes
+- **1.5M lookups/sec** - blazing fast random reads
+- **152µs average latency** (cold cache), **38µs** (hot cache)
+- **10ms** - average shortest path query
 
 ## Features
 
@@ -21,13 +48,22 @@ A high-performance, feature-rich graph database built from scratch in Go. Cluso 
 
 ### Graph Algorithms
 
+- **Cycle Detection** - Find all cycles in the graph using DFS with three-color marking
+- **Topological Validators** - DAG validation, topological sort, tree detection, connectivity, bipartite graphs
 - **PageRank** - Node importance scoring with convergence detection
 - **Betweenness Centrality** - Identify bridge nodes
 - **Community Detection** - Label propagation algorithm
 - **Shortest Path** - Bidirectional BFS and weighted Dijkstra
 - **Graph Traversal** - DFS/BFS with configurable depth and direction
 
-### 🔍 Query Interfaces
+### Constraint Validation
+
+- **Property Constraints** - Validate node properties (required, type, range)
+- **Cardinality Constraints** - Validate edge counts (min/max, direction)
+- **Validation Framework** - Multi-constraint validation with detailed violation reporting
+- **Severity Levels** - Error, Warning, Info classifications
+
+### Query Interfaces
 
 #### 1. Cypher-like Query Language
 
@@ -41,7 +77,7 @@ RETURN p, f
 
 ```bash
 # Start the server
-./bin/server --port 8080 --data ./data/server
+docker run -p 8080:8080 dd0wney/graphdb:latest
 
 # Query via HTTP
 curl -X POST http://localhost:8080/query \
@@ -68,9 +104,9 @@ cluso> pagerank
 Interactive terminal interface with:
 
 - Real-time dashboard with statistics
-- 👥 Node browser with table navigation
-- 🔍 Query console with syntax highlighting
-- 🌐 ASCII graph visualization
+- Node browser with table navigation
+- Query console with syntax highlighting
+- ASCII graph visualization
 - PageRank metrics with bar charts
 
 ### Distributed Features
@@ -90,7 +126,7 @@ Interactive terminal interface with:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│            Cluso GraphDB                         │
+│               GraphDB                            │
 ├─────────────────────────────────────────────────┤
 │  User Interfaces                                 │
 │  • Interactive TUI (Bubble Tea)                  │
@@ -124,12 +160,58 @@ Interactive terminal interface with:
 
 ## Quick Start
 
-### Installation
+### Using Docker (Easiest)
+
+```bash
+# Run the server
+docker run -p 8080:8080 dd0wney/graphdb:latest
+
+# In another terminal, test it
+curl http://localhost:8080/health
+
+# Create a node
+curl -X POST http://localhost:8080/nodes \
+  -H "Content-Type: application/json" \
+  -d '{"labels": ["Person"], "properties": {"name": "Alice", "age": 30}}'
+```
+
+### Using Pre-built Binaries
+
+Download from [GitHub Releases](https://github.com/dd0wney/graphdb/releases/latest):
+
+```bash
+# Linux (x86_64)
+wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Linux_x86_64.tar.gz
+tar -xzf graphdb_0.1.0_Linux_x86_64.tar.gz
+./cluso-server --port 8080
+
+# Linux (arm64)
+wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Linux_arm64.tar.gz
+tar -xzf graphdb_0.1.0_Linux_arm64.tar.gz
+./cluso-server --port 8080
+
+# macOS (Intel)
+wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Darwin_x86_64.tar.gz
+tar -xzf graphdb_0.1.0_Darwin_x86_64.tar.gz
+./cluso-server --port 8080
+
+# macOS (Apple Silicon)
+wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Darwin_arm64.tar.gz
+tar -xzf graphdb_0.1.0_Darwin_arm64.tar.gz
+./cluso-server --port 8080
+
+# Windows (PowerShell)
+Invoke-WebRequest -Uri "https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Windows_x86_64.zip" -OutFile "graphdb.zip"
+Expand-Archive graphdb.zip
+.\graphdb\cluso-server.exe --port 8080
+```
+
+### Building from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/darraghdowney/cluso-graphdb
-cd cluso-graphdb
+git clone https://github.com/dd0wney/graphdb
+cd graphdb
 
 # Build all binaries
 go build -o bin/server ./cmd/server
@@ -156,31 +238,7 @@ The TUI includes:
 - **Graph** - Visualize your graph structure
 - **Metrics** - PageRank analysis with visual bars
 
-### Start the REST API Server
-
-```bash
-# Start server
-./bin/server --port 8080 --data ./data/server
-
-# In another terminal, run the API demo
-go build -o bin/api-demo ./cmd/api-demo
-./bin/api-demo
-```
-
-### Use the CLI
-
-```bash
-./bin/cli
-
-# Available commands:
-# - help, stats, demo
-# - create-node, create-edge, list-nodes, get-node
-# - neighbors, traverse, path
-# - pagerank, betweenness
-# - query (execute Cypher queries)
-```
-
-## 📖 Usage Examples
+## Usage Examples
 
 ### Programmatic Usage
 
@@ -188,9 +246,9 @@ go build -o bin/api-demo ./cmd/api-demo
 package main
 
 import (
-    "github.com/darraghdowney/cluso-graphdb/pkg/storage"
-    "github.com/darraghdowney/cluso-graphdb/pkg/algorithms"
-    "github.com/darraghdowney/cluso-graphdb/pkg/query"
+    "github.com/dd0wney/cluso-graphdb/pkg/storage"
+    "github.com/dd0wney/cluso-graphdb/pkg/algorithms"
+    "github.com/dd0wney/cluso-graphdb/pkg/query"
 )
 
 func main() {
@@ -217,6 +275,26 @@ func main() {
 
     // Create edge
     graph.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
+
+    // Detect cycles in the graph
+    cycles, _ := algorithms.DetectCycles(graph)
+    stats := algorithms.AnalyzeCycles(cycles)
+    fmt.Printf("Found %d cycles\n", stats.TotalCycles)
+
+    // Quick check for cycles
+    hasCycle, _ := algorithms.HasCycle(graph)
+    fmt.Printf("Graph has cycles: %v\n", hasCycle)
+
+    // Validate graph constraints
+    validator := constraints.NewValidator()
+    validator.AddConstraint(&constraints.PropertyConstraint{
+        NodeLabel:    "Person",
+        PropertyName: "age",
+        Type:         storage.TypeInt,
+        Required:     true,
+    })
+    validationResult, _ := validator.Validate(graph)
+    fmt.Printf("Graph valid: %v\n", validationResult.Valid)
 
     // Run PageRank
     opts := algorithms.PageRankOptions{
@@ -319,6 +397,23 @@ curl -X POST http://localhost:8080/algorithms \
     }
   }'
 
+# Detect cycles in the graph
+curl -X POST http://localhost:8080/algorithms \
+  -H "Content-Type: application/json" \
+  -d '{
+    "algorithm": "detect_cycles",
+    "parameters": {
+      "min_length": 2
+    }
+  }'
+
+# Quick check if graph has any cycles
+curl -X POST http://localhost:8080/algorithms \
+  -H "Content-Type: application/json" \
+  -d '{
+    "algorithm": "has_cycle"
+  }'
+
 # Batch create nodes
 curl -X POST http://localhost:8080/nodes/batch \
   -H "Content-Type: application/json" \
@@ -332,68 +427,73 @@ curl -X POST http://localhost:8080/nodes/batch \
 
 ## Benchmarks
 
-### Available Benchmarks
-
-```bash
-# Basic operations benchmark
-go build -o bin/benchmark ./cmd/benchmark
-./bin/benchmark --nodes 10000 --edges 30000 --traversals 100
-
-# Batched WAL benchmark
-go build -o bin/benchmark-batched ./cmd/benchmark-batched
-./bin/benchmark-batched --nodes 10000 --batch 100 --flush 100us
-
-# Index performance
-go build -o bin/benchmark-index ./cmd/benchmark-index
-./bin/benchmark-index --nodes 10000
-
-# LSM storage
-go build -o bin/benchmark-lsm ./cmd/benchmark-lsm
-./bin/benchmark-lsm --writes 10000 --reads 1000 --value-size 1024
-
-# Graph storage
-go build -o bin/benchmark-graph-storage ./cmd/benchmark-graph-storage
-./bin/benchmark-graph-storage --nodes 10000 --edges 50000
-
-# Parallel queries
-go build -o bin/benchmark-parallel ./cmd/benchmark-parallel
-./bin/benchmark-parallel --nodes 10000 --workers 8
-
-# Algorithms
-go build -o bin/benchmark-algorithms ./cmd/benchmark-algorithms
-./bin/benchmark-algorithms --nodes 1000 --edges 5000
-
-# Query language
-go build -o bin/benchmark-query ./cmd/benchmark-query
-./bin/benchmark-query --nodes 1000
-```
-
 ### Performance Results
 
-**Validated with 5M node capacity test** (see [detailed improvements](docs/LSM_PERFORMANCE_IMPROVEMENTS.md)):
+**Capacity Test (5M nodes + 50M edges):**
+
+Validated on GitHub Actions (AMD EPYC 7763, 16GB RAM):
 
 | Metric | Performance | Notes |
 |--------|-------------|-------|
-| **Write Throughput** | 430K nodes/sec | Sustained rate over 5M nodes |
-| **Read Throughput** | 50K+ reads/sec | Random reads, 10K sample |
-| **Read Latency** | 19.7 µs average | P50, cold cache |
-| **Cached Read Latency** | 2.7 µs average | 7.3x speedup on hot data |
-| **Memory Efficiency** | 80 bytes/node | Stable, no leaks |
-| **Total Memory (5M nodes)** | 385 MB | Including 50M edges |
+| **Write Throughput** | 330K nodes/sec | Sustained rate over 5M nodes |
+| **Read Throughput** | 1.5M lookups/sec | Random reads |
+| **Cold Cache Latency** | 152µs average | Initial read |
+| **Hot Cache Latency** | 38µs average | 4x speedup on cached data |
+| **Memory Efficiency** | 15.31 bytes/node | Incredibly low overhead |
+| **Total Memory (5M nodes)** | 73 MB | Including 50M edges |
 
-**Additional Operations:**
+**Unit Benchmarks (per operation):**
 
 | Operation | Throughput | Latency |
 |-----------|-----------|---------|
-| Property Lookup (indexed) | ~500K ops/sec | <2μs |
-| Shortest Path (1K nodes) | ~1K queries/sec | ~1ms |
+| CompressedEdgeList New | ~1.3M ops/sec | 4.6µs |
+| EdgeStore CacheHit | ~9.4M ops/sec | 640ns |
+| EdgeCache Hit/Miss | ~320M ops/sec | 19ns |
+| Property Index Insert | ~30M ops/sec | 192ns |
+| Property Index Lookup | ~14M ops/sec | 394ns |
+| LSM Put | ~33M ops/sec | 179ns |
+| LSM Get | ~122M ops/sec | 49ns |
+| Node Creation | ~15K ops/sec | 401µs |
+| Edge Creation | ~14K ops/sec | 413µs |
+| GetNode | ~29M ops/sec | 207ns |
+| Shortest Path | ~1K queries/sec | 10.25ms |
 | PageRank (10K nodes) | Converges in <100ms | - |
-| Query Execution | ~0.6-1.0x procedural | Minimal overhead |
 
-## 📂 Project Structure
+**Storage Benchmarks:**
+
+| Benchmark | Throughput | Latency |
+|-----------|-----------|---------|
+| Node Creation | 2,812 nodes/sec | 355µs |
+| Edge Creation | 2,875 edges/sec | 347µs |
+| Random Lookups | 1.5M lookups/sec | 0.65µs |
+| Outgoing Edges Query | 449K queries/sec | 2.22µs |
+| BFS Traversal | 22,845 traversals/sec | 0.04ms |
+
+### Running Benchmarks
+
+```bash
+# Clone and build
+git clone https://github.com/dd0wney/graphdb
+cd graphdb
+
+# Run all benchmarks
+go test -bench=. ./...
+
+# Run specific benchmark
+go test -bench=BenchmarkGraphStorage ./pkg/storage
+
+# With memory profiling
+go test -bench=. -benchmem ./pkg/storage
+
+# Run capacity test
+cd pkg/storage
+RUN_CAPACITY_TEST=1 go test -run Test5MNodeCapacity -v
+```
+
+## Project Structure
 
 ```
-cluso-graphdb/
+graphdb/
 ├── cmd/
 │   ├── server/          # REST API server
 │   ├── cli/             # Interactive CLI
@@ -440,7 +540,7 @@ opts := storage.Options{
 }
 ```
 
-## 🧪 Testing
+## Testing
 
 ```bash
 # Run all tests
@@ -456,9 +556,13 @@ go test -race ./...
 
 # Verbose output
 go test -v ./...
+
+# Run capacity test
+cd pkg/storage
+RUN_CAPACITY_TEST=1 go test -run Test5MNodeCapacity -v
 ```
 
-## 🎨 TUI Features
+## TUI Features
 
 The Terminal UI (built with Bubble Tea, Bubbles, and Lipgloss) provides:
 
@@ -538,7 +642,7 @@ leader := replication.NewLeader("tcp://*:5555", replication.PatternPubSub)
 follower := replication.NewFollower("tcp://localhost:5555", replication.PatternPubSub)
 ```
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Areas for improvement:
 
@@ -549,9 +653,9 @@ Contributions are welcome! Areas for improvement:
 - Web-based UI (React/Vue dashboard)
 - Additional data types (geospatial, full-text search)
 
-## 📄 License
+## License
 
-Cluso GraphDB is released under the [MIT License](LICENSE).
+GraphDB is released under the [MIT License](LICENSE).
 
 ### Community Edition (Free)
 
@@ -578,9 +682,9 @@ Cluso GraphDB is released under the [MIT License](LICENSE).
 - Early access to distributed features
 - Custom SLA available
 
-For commercial licensing details, see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)
+For commercial licensing details, contact: [your-email]
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Built with:
 
@@ -589,7 +693,7 @@ Built with:
 - [Lipgloss](https://github.com/charmbracelet/lipgloss) - Terminal styling
 - [ZeroMQ](https://github.com/pebbe/zmq4) - Distributed messaging
 
-## 🚦 Roadmap
+## Roadmap
 
 - [x] Core graph storage (nodes, edges, properties)
 - [x] LSM-tree persistent storage
@@ -604,6 +708,8 @@ Built with:
 - [x] Temporal graphs
 - [x] Graph partitioning
 - [x] ZeroMQ replication
+- [x] v0.1.0 Release with multi-platform binaries
+- [x] Docker Hub images
 - [ ] Distributed consensus (Raft)
 - [ ] Query optimizer
 - [ ] Schema validation
@@ -611,8 +717,27 @@ Built with:
 - [ ] Geospatial queries
 - [ ] Web-based dashboard
 
+## Why GraphDB?
+
+Built for **BL Pay**, a next-generation payment platform that needed to:
+- Map trust networks between users in real-time
+- Detect fraud patterns across payment relationships
+- Handle high-volume transaction graph updates
+- Scale efficiently with minimal infrastructure
+
+**Use cases perfect for GraphDB:**
+- Fraud detection & prevention
+- Social networks & trust graphs
+- Payment network analysis
+- Knowledge graphs for AI/LLM
+- Recommendation engines
+- IoT sensor networks
+- Real-time analytics
+
 ---
 
-**Built with ❤️ in Go**
+**Built with Go**
 
-For questions, issues, or feature requests, please open an issue on GitHub.
+For questions, issues, or feature requests, please open an [issue on GitHub](https://github.com/dd0wney/graphdb/issues).
+
+**Try it now:** `docker run -p 8080:8080 dd0wney/graphdb:latest`

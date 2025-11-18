@@ -17,6 +17,7 @@ const (
 	TypeBool
 	TypeBytes
 	TypeTimestamp
+	TypeVector // Vector of float32 for embeddings/vector search
 )
 
 // Value represents a typed property value
@@ -60,6 +61,16 @@ func TimestampValue(t time.Time) Value {
 	return Value{Type: TypeTimestamp, Data: data}
 }
 
+func VectorValue(vec []float32) Value {
+	// Encode as: [4 bytes dimensions][4 bytes per float32 element]
+	data := make([]byte, 4+len(vec)*4)
+	binary.LittleEndian.PutUint32(data[0:4], uint32(len(vec)))
+	for i, f := range vec {
+		binary.LittleEndian.PutUint32(data[4+i*4:8+i*4], math.Float32bits(f))
+	}
+	return Value{Type: TypeVector, Data: data}
+}
+
 // Decode methods
 func (v Value) AsString() (string, error) {
 	if v.Type != TypeString {
@@ -94,6 +105,31 @@ func (v Value) AsTimestamp() (time.Time, error) {
 		return time.Time{}, fmt.Errorf("value is not a timestamp")
 	}
 	return time.Unix(int64(binary.LittleEndian.Uint64(v.Data)), 0), nil
+}
+
+func (v Value) AsVector() ([]float32, error) {
+	if v.Type != TypeVector {
+		return nil, fmt.Errorf("value is not a vector")
+	}
+	if len(v.Data) < 4 {
+		return nil, fmt.Errorf("invalid vector data: too short")
+	}
+
+	// Decode dimensions
+	dims := binary.LittleEndian.Uint32(v.Data[0:4])
+	expectedLen := 4 + int(dims)*4
+	if len(v.Data) != expectedLen {
+		return nil, fmt.Errorf("invalid vector data: expected %d bytes, got %d", expectedLen, len(v.Data))
+	}
+
+	// Decode floats
+	vec := make([]float32, dims)
+	for i := uint32(0); i < dims; i++ {
+		bits := binary.LittleEndian.Uint32(v.Data[4+i*4 : 8+i*4])
+		vec[i] = math.Float32frombits(bits)
+	}
+
+	return vec, nil
 }
 
 // Node represents a vertex in the graph

@@ -147,6 +147,7 @@ type ReturnClause struct {
 	Items     []*ReturnItem
 	Distinct  bool
 	OrderBy   []*OrderByItem
+	GroupBy   []*PropertyExpression
 	Ascending bool
 }
 
@@ -255,39 +256,71 @@ func extractValue(expr Expression, context map[string]interface{}) interface{} {
 
 // Compare values (simplified)
 func compareValues(left, right interface{}) int {
-	// Type assertion for common types
-	switch l := left.(type) {
-	case int:
-		if r, ok := right.(int); ok {
-			return l - r
+	// Handle int64
+	lInt, lIsInt := left.(int64)
+	rInt, rIsInt := right.(int64)
+	if lIsInt && rIsInt {
+		if lInt < rInt {
+			return -1
+		} else if lInt > rInt {
+			return 1
 		}
-	case int64:
-		if r, ok := right.(int64); ok {
-			if l > r {
-				return 1
-			} else if l < r {
-				return -1
-			}
-			return 0
+		return 0
+	}
+
+	// Handle float64
+	lFloat, lIsFloat := left.(float64)
+	rFloat, rIsFloat := right.(float64)
+	if lIsFloat && rIsFloat {
+		if lFloat < rFloat {
+			return -1
+		} else if lFloat > rFloat {
+			return 1
 		}
-	case float64:
-		if r, ok := right.(float64); ok {
-			if l > r {
-				return 1
-			} else if l < r {
-				return -1
-			}
-			return 0
+		return 0
+	}
+
+	// Handle mixed int/float (int on left, float on right)
+	if lIsInt && rIsFloat {
+		lFloat = float64(lInt)
+		if lFloat < rFloat {
+			return -1
+		} else if lFloat > rFloat {
+			return 1
 		}
-	case string:
-		if r, ok := right.(string); ok {
-			if l > r {
-				return 1
-			} else if l < r {
-				return -1
-			}
-			return 0
+		return 0
+	}
+
+	// Handle mixed int/float (float on left, int on right)
+	if lIsFloat && rIsInt {
+		rFloat = float64(rInt)
+		if lFloat < rFloat {
+			return -1
+		} else if lFloat > rFloat {
+			return 1
+		}
+		return 0
+	}
+
+	// Handle int (for backwards compatibility)
+	if lIntPlain, ok := left.(int); ok {
+		if rIntPlain, ok := right.(int); ok {
+			return lIntPlain - rIntPlain
 		}
 	}
+
+	// Handle string
+	lStr, lIsStr := left.(string)
+	rStr, rIsStr := right.(string)
+	if lIsStr && rIsStr {
+		if lStr < rStr {
+			return -1
+		} else if lStr > rStr {
+			return 1
+		}
+		return 0
+	}
+
+	// Default: equal
 	return 0
 }

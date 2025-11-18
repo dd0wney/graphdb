@@ -3,7 +3,6 @@ package query
 import (
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 // Parser builds an AST from tokens
@@ -125,265 +124,6 @@ func (p *Parser) parseMatch() (*MatchClause, error) {
 	return &MatchClause{Patterns: patterns}, nil
 }
 
-// parsePattern parses a graph pattern
-func (p *Parser) parsePattern() (*Pattern, error) {
-	pattern := &Pattern{
-		Nodes:         make([]*NodePattern, 0),
-		Relationships: make([]*RelationshipPattern, 0),
-	}
-
-	// Parse first node
-	node, err := p.parseNode()
-	if err != nil {
-		return nil, err
-	}
-	pattern.Nodes = append(pattern.Nodes, node)
-
-	// Parse relationships and nodes
-	for {
-		tokenType := p.peek().Type
-		if tokenType != TokenMinus && tokenType != TokenArrowLeft && tokenType != TokenArrowRight {
-			break
-		}
-		rel, targetNode, err := p.parseRelationship(node)
-		if err != nil {
-			return nil, err
-		}
-		pattern.Relationships = append(pattern.Relationships, rel)
-		pattern.Nodes = append(pattern.Nodes, targetNode)
-		node = targetNode
-	}
-
-	return pattern, nil
-}
-
-// parseNode parses a node pattern: (variable:Label {prop: value})
-func (p *Parser) parseNode() (*NodePattern, error) {
-	if p.peek().Type != TokenLeftParen {
-		return nil, fmt.Errorf("expected '(', got %s", p.peek().Type)
-	}
-	p.advance() // consume (
-
-	node := &NodePattern{
-		Labels:     make([]string, 0),
-		Properties: make(map[string]interface{}),
-	}
-
-	// Variable (optional)
-	if p.peek().Type == TokenIdentifier {
-		// Check if next token is : (label) or ) or { (properties)
-		nextToken := p.peekAhead(1)
-		if nextToken.Type == TokenColon || nextToken.Type == TokenRightParen || nextToken.Type == TokenLeftBrace {
-			node.Variable = p.advance().Value
-		}
-	}
-
-	// Labels (optional)
-	for p.peek().Type == TokenColon {
-		p.advance() // consume :
-		if p.peek().Type == TokenIdentifier {
-			labelToken := p.advance()
-			node.Labels = append(node.Labels, labelToken.Value)
-		}
-	}
-
-	// Properties (optional)
-	if p.peek().Type == TokenLeftBrace {
-		props, err := p.parseProperties()
-		if err != nil {
-			return nil, err
-		}
-		node.Properties = props
-	}
-
-	if p.peek().Type != TokenRightParen {
-		return nil, fmt.Errorf("expected ')', got %s at line %d", p.peek().Type, p.peek().Line)
-	}
-	p.advance() // consume )
-
-	return node, nil
-}
-
-// parseRelationship parses a relationship pattern
-func (p *Parser) parseRelationship(fromNode *NodePattern) (*RelationshipPattern, *NodePattern, error) {
-	rel := &RelationshipPattern{
-		From:       fromNode,
-		Properties: make(map[string]interface{}),
-		MinHops:    1,
-		MaxHops:    1,
-	}
-
-	// Determine initial direction from leading token
-	leadingToken := p.peek().Type
-	hasDetails := false
-
-	switch leadingToken {
-	case TokenArrowLeft:
-		// <-[...]- pattern
-		p.advance()
-		rel.Direction = DirectionIncoming
-	case TokenArrowRight:
-		// ->[...] pattern (uncommon but possible)
-		p.advance()
-		rel.Direction = DirectionOutgoing
-	case TokenMinus:
-		// -[...]- or -[...]-> pattern
-		p.advance()
-		rel.Direction = DirectionBoth // May be updated after details
-	default:
-		return nil, nil, fmt.Errorf("expected relationship pattern, got %v", leadingToken)
-	}
-
-	// Parse relationship details
-	if p.peek().Type == TokenLeftBracket {
-		hasDetails = true
-		p.advance() // consume [
-
-		// Variable (optional)
-		if p.peek().Type == TokenIdentifier {
-			rel.Variable = p.advance().Value
-		}
-
-		// Type (optional)
-		if p.peek().Type == TokenColon {
-			p.advance() // consume :
-			typeToken := p.expect(TokenIdentifier)
-			rel.Type = typeToken.Value
-		}
-
-		// Variable-length path (optional): *1..5
-		if p.peek().Type == TokenStar {
-			p.advance()
-			if p.peek().Type == TokenNumber {
-				numToken := p.advance()
-				// The number might be "1" or "1..3" (lexer includes range in number)
-				if strings.Contains(numToken.Value, "..") {
-					parts := strings.Split(numToken.Value, "..")
-					if len(parts) == 2 {
-						if min, err := strconv.Atoi(parts[0]); err == nil {
-							rel.MinHops = min
-						}
-						if parts[1] != "" {
-							if max, err := strconv.Atoi(parts[1]); err == nil {
-								rel.MaxHops = max
-							}
-						} else {
-							rel.MaxHops = -1 // unlimited
-						}
-					}
-				} else {
-					// Just a single number, use it as both min and max
-					if val, err := strconv.Atoi(numToken.Value); err == nil {
-						rel.MinHops = val
-						rel.MaxHops = val
-					}
-				}
-			}
-		}
-
-		// Properties (optional)
-		if p.peek().Type == TokenLeftBrace {
-			props, err := p.parseProperties()
-			if err != nil {
-				return nil, nil, err
-			}
-			rel.Properties = props
-		}
-
-		p.expect(TokenRightBracket)
-	}
-
-	// Check for trailing arrow to determine final direction
-	// After -[...], we might see -> or -
-	// After <-[...], we might see -
-	if hasDetails {
-		trailingToken := p.peek().Type
-		if leadingToken == TokenMinus {
-			if trailingToken == TokenArrowRight {
-				p.advance()
-				rel.Direction = DirectionOutgoing
-			} else if trailingToken == TokenMinus {
-				p.advance()
-				rel.Direction = DirectionBoth
-			}
-		} else if leadingToken == TokenArrowLeft {
-			if trailingToken == TokenMinus {
-				p.advance()
-				// Keep DirectionIncoming
-			}
-		}
-	}
-
-	// Target node
-	toNode, err := p.parseNode()
-	if err != nil {
-		return nil, nil, err
-	}
-	rel.To = toNode
-
-	return rel, toNode, nil
-}
-
-// parseProperties parses property map: {key: value, ...}
-func (p *Parser) parseProperties() (map[string]interface{}, error) {
-	p.expect(TokenLeftBrace)
-
-	props := make(map[string]interface{})
-
-	for p.peek().Type != TokenRightBrace {
-		// Property key
-		keyToken := p.expect(TokenIdentifier)
-		p.expect(TokenColon)
-
-		// Property value
-		value, err := p.parseValue()
-		if err != nil {
-			return nil, err
-		}
-
-		props[keyToken.Value] = value
-
-		if p.peek().Type == TokenComma {
-			p.advance()
-		}
-	}
-
-	p.expect(TokenRightBrace)
-
-	return props, nil
-}
-
-// parseValue parses a literal value
-func (p *Parser) parseValue() (interface{}, error) {
-	token := p.peek()
-
-	switch token.Type {
-	case TokenString:
-		p.advance()
-		return token.Value, nil
-	case TokenNumber:
-		p.advance()
-		if val, err := strconv.ParseInt(token.Value, 10, 64); err == nil {
-			return val, nil
-		}
-		if val, err := strconv.ParseFloat(token.Value, 64); err == nil {
-			return val, nil
-		}
-		return nil, fmt.Errorf("invalid number: %s", token.Value)
-	case TokenTrue:
-		p.advance()
-		return true, nil
-	case TokenFalse:
-		p.advance()
-		return false, nil
-	case TokenNull:
-		p.advance()
-		return nil, nil
-	default:
-		return nil, fmt.Errorf("expected value, got %s", token.Type)
-	}
-}
-
 // parseWhere parses a WHERE clause
 func (p *Parser) parseWhere() (*WhereClause, error) {
 	p.expect(TokenWhere)
@@ -394,141 +134,6 @@ func (p *Parser) parseWhere() (*WhereClause, error) {
 	}
 
 	return &WhereClause{Expression: expr}, nil
-}
-
-// parseExpression parses a boolean expression
-func (p *Parser) parseExpression() (Expression, error) {
-	return p.parseOrExpression()
-}
-
-// parseOrExpression parses OR expressions
-func (p *Parser) parseOrExpression() (Expression, error) {
-	left, err := p.parseAndExpression()
-	if err != nil {
-		return nil, err
-	}
-
-	for p.peek().Type == TokenOr {
-		p.advance()
-		right, err := p.parseAndExpression()
-		if err != nil {
-			return nil, err
-		}
-		left = &BinaryExpression{
-			Left:     left,
-			Operator: "OR",
-			Right:    right,
-		}
-	}
-
-	return left, nil
-}
-
-// parseAndExpression parses AND expressions
-func (p *Parser) parseAndExpression() (Expression, error) {
-	left, err := p.parseComparisonExpression()
-	if err != nil {
-		return nil, err
-	}
-
-	for p.peek().Type == TokenAnd {
-		p.advance()
-		right, err := p.parseComparisonExpression()
-		if err != nil {
-			return nil, err
-		}
-		left = &BinaryExpression{
-			Left:     left,
-			Operator: "AND",
-			Right:    right,
-		}
-	}
-
-	return left, nil
-}
-
-// parseComparisonExpression parses comparison expressions
-func (p *Parser) parseComparisonExpression() (Expression, error) {
-	left, err := p.parsePrimaryExpression()
-	if err != nil {
-		return nil, err
-	}
-
-	token := p.peek()
-	var operator string
-
-	switch token.Type {
-	case TokenEquals:
-		operator = "="
-	case TokenNotEquals:
-		operator = "!="
-	case TokenLessThan:
-		operator = "<"
-	case TokenGreaterThan:
-		operator = ">"
-	case TokenLessEquals:
-		operator = "<="
-	case TokenGreaterEquals:
-		operator = ">="
-	default:
-		return left, nil // No comparison operator
-	}
-
-	p.advance()
-
-	right, err := p.parsePrimaryExpression()
-	if err != nil {
-		return nil, err
-	}
-
-	return &BinaryExpression{
-		Left:     left,
-		Operator: operator,
-		Right:    right,
-	}, nil
-}
-
-// parsePrimaryExpression parses primary expressions
-func (p *Parser) parsePrimaryExpression() (Expression, error) {
-	token := p.peek()
-
-	switch token.Type {
-	case TokenIdentifier:
-		// Could be: variable.property or just variable
-		variable := p.advance().Value
-		if p.peek().Type == TokenDot {
-			p.advance()
-			propertyToken := p.expect(TokenIdentifier)
-			return &PropertyExpression{
-				Variable: variable,
-				Property: propertyToken.Value,
-			}, nil
-		}
-		// Just a variable reference (treat as property expression with empty property)
-		return &PropertyExpression{
-			Variable: variable,
-			Property: "",
-		}, nil
-
-	case TokenString, TokenNumber, TokenTrue, TokenFalse, TokenNull:
-		value, err := p.parseValue()
-		if err != nil {
-			return nil, err
-		}
-		return &LiteralExpression{Value: value}, nil
-
-	case TokenLeftParen:
-		p.advance()
-		expr, err := p.parseExpression()
-		if err != nil {
-			return nil, err
-		}
-		p.expect(TokenRightParen)
-		return expr, nil
-
-	default:
-		return nil, fmt.Errorf("unexpected token in expression: %s", token.Type)
-	}
 }
 
 // parseReturn parses a RETURN clause
@@ -557,6 +162,31 @@ func (p *Parser) parseReturn() (*ReturnClause, error) {
 			break
 		}
 		p.advance()
+	}
+
+	// GROUP BY (optional)
+	if p.peek().Type == TokenGroup {
+		p.advance() // consume GROUP
+		if p.peek().Type != TokenOrderBy { // TokenOrderBy is used for BY keyword
+			return nil, fmt.Errorf("expected BY after GROUP")
+		}
+		p.advance() // consume BY
+
+		// Parse group by expressions
+		for {
+			expr, err := p.parsePrimaryExpression()
+			if err != nil {
+				return nil, err
+			}
+			if propExpr, ok := expr.(*PropertyExpression); ok {
+				returnClause.GroupBy = append(returnClause.GroupBy, propExpr)
+			}
+
+			if p.peek().Type != TokenComma {
+				break
+			}
+			p.advance()
+		}
 	}
 
 	return returnClause, nil

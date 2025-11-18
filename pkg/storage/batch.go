@@ -157,13 +157,15 @@ func (b *Batch) Commit() error {
 				}
 			}
 
-			// Write to WAL for durability
-			nodeData, err := json.Marshal(node)
-			if err == nil {
-				if b.graph.useBatching && b.graph.batchedWAL != nil {
-					b.graph.batchedWAL.Append(wal.OpCreateNode, nodeData)
-				} else if b.graph.wal != nil {
-					b.graph.wal.Append(wal.OpCreateNode, nodeData)
+			// Write to WAL for durability (skip marshal if no WAL)
+			if b.graph.batchedWAL != nil || b.graph.wal != nil || b.graph.compressedWAL != nil {
+				nodeData, err := json.Marshal(node)
+				if err == nil {
+					if b.graph.useBatching && b.graph.batchedWAL != nil {
+						b.graph.batchedWAL.Append(wal.OpCreateNode, nodeData)
+					} else if b.graph.wal != nil {
+						b.graph.wal.Append(wal.OpCreateNode, nodeData)
+					}
 				}
 			}
 
@@ -187,13 +189,15 @@ func (b *Batch) Commit() error {
 			b.graph.outgoingEdges[edge.FromNodeID] = append(b.graph.outgoingEdges[edge.FromNodeID], edge.ID)
 			b.graph.incomingEdges[edge.ToNodeID] = append(b.graph.incomingEdges[edge.ToNodeID], edge.ID)
 
-			// Write to WAL for durability
-			edgeData, err := json.Marshal(edge)
-			if err == nil {
-				if b.graph.useBatching && b.graph.batchedWAL != nil {
-					b.graph.batchedWAL.Append(wal.OpCreateEdge, edgeData)
-				} else if b.graph.wal != nil {
-					b.graph.wal.Append(wal.OpCreateEdge, edgeData)
+			// Write to WAL for durability (skip marshal if no WAL)
+			if b.graph.batchedWAL != nil || b.graph.wal != nil || b.graph.compressedWAL != nil {
+				edgeData, err := json.Marshal(edge)
+				if err == nil {
+					if b.graph.useBatching && b.graph.batchedWAL != nil {
+						b.graph.batchedWAL.Append(wal.OpCreateEdge, edgeData)
+					} else if b.graph.wal != nil {
+						b.graph.wal.Append(wal.OpCreateEdge, edgeData)
+					}
 				}
 			}
 

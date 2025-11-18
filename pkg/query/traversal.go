@@ -8,12 +8,13 @@ import (
 
 // TraversalOptions configures graph traversal
 type TraversalOptions struct {
-	StartNodeID uint64
-	Direction   Direction
-	EdgeTypes   []string                 // Filter by edge types (empty = all types)
-	MaxDepth    int                      // Maximum traversal depth
-	MaxResults  int                      // Maximum nodes to return
-	Predicate   func(*storage.Node) bool // Node filter function
+	StartNodeID   uint64
+	Direction     Direction
+	EdgeTypes     []string                 // Filter by edge types (empty = all types)
+	MaxDepth      int                      // Maximum traversal depth
+	MaxResults    int                      // Maximum nodes to return
+	Predicate     func(*storage.Node) bool // Node filter function
+	EdgePredicate func(*storage.Edge) bool // Edge filter function (for temporal/property filtering)
 }
 
 // TraversalResult contains the results of a traversal
@@ -79,7 +80,7 @@ func (t *Traverser) BFS(opts TraversalOptions) (*TraversalResult, error) {
 		}
 
 		// Get neighbors
-		neighbors, err := t.getNeighbors(nodeID, opts.Direction, opts.EdgeTypes)
+		neighbors, err := t.getNeighbors(nodeID, opts.Direction, opts.EdgeTypes, opts.EdgePredicate)
 		if err != nil {
 			continue
 		}
@@ -136,7 +137,7 @@ func (t *Traverser) dfsRecursive(
 	result.Nodes = append(result.Nodes, node)
 
 	// Get neighbors
-	neighbors, err := t.getNeighbors(nodeID, opts.Direction, opts.EdgeTypes)
+	neighbors, err := t.getNeighbors(nodeID, opts.Direction, opts.EdgeTypes, opts.EdgePredicate)
 	if err != nil {
 		return
 	}
@@ -148,6 +149,11 @@ func (t *Traverser) dfsRecursive(
 
 // FindShortestPath finds the shortest path between two nodes (BFS-based)
 func (t *Traverser) FindShortestPath(fromID, toID uint64, edgeTypes []string) (Path, error) {
+	return t.FindShortestPathWithPredicate(fromID, toID, edgeTypes, nil)
+}
+
+// FindShortestPathWithPredicate finds shortest path with optional edge filtering
+func (t *Traverser) FindShortestPathWithPredicate(fromID, toID uint64, edgeTypes []string, edgePredicate func(*storage.Edge) bool) (Path, error) {
 	if fromID == toID {
 		node, err := t.storage.GetNode(fromID)
 		if err != nil {
@@ -183,6 +189,10 @@ func (t *Traverser) FindShortestPath(fromID, toID uint64, edgeTypes []string) (P
 			if len(edgeTypes) > 0 && !contains(edgeTypes, edge.Type) {
 				continue
 			}
+			// Filter by edge predicate
+			if edgePredicate != nil && !edgePredicate(edge) {
+				continue
+			}
 
 			neighborID := edge.ToNodeID
 			if !visited[neighborID] {
@@ -199,6 +209,11 @@ func (t *Traverser) FindShortestPath(fromID, toID uint64, edgeTypes []string) (P
 
 // FindAllPaths finds all paths between two nodes up to maxDepth
 func (t *Traverser) FindAllPaths(fromID, toID uint64, maxDepth int, edgeTypes []string) ([]Path, error) {
+	return t.FindAllPathsWithPredicate(fromID, toID, maxDepth, edgeTypes, nil)
+}
+
+// FindAllPathsWithPredicate finds all paths with optional edge filtering
+func (t *Traverser) FindAllPathsWithPredicate(fromID, toID uint64, maxDepth int, edgeTypes []string, edgePredicate func(*storage.Edge) bool) ([]Path, error) {
 	paths := make([]Path, 0)
 	currentPath := Path{
 		Nodes: make([]*storage.Node, 0),
@@ -212,7 +227,7 @@ func (t *Traverser) FindAllPaths(fromID, toID uint64, maxDepth int, edgeTypes []
 		return nil, err
 	}
 
-	t.findAllPathsRecursive(fromID, toID, maxDepth, edgeTypes, currentPath, visited, &paths, startNode)
+	t.findAllPathsRecursive(fromID, toID, maxDepth, edgeTypes, edgePredicate, currentPath, visited, &paths, startNode)
 
 	return paths, nil
 }
@@ -222,6 +237,7 @@ func (t *Traverser) findAllPathsRecursive(
 	currentID, targetID uint64,
 	remainingDepth int,
 	edgeTypes []string,
+	edgePredicate func(*storage.Edge) bool,
 	currentPath Path,
 	visited map[uint64]bool,
 	allPaths *[]Path,
@@ -250,6 +266,10 @@ func (t *Traverser) findAllPathsRecursive(
 				if len(edgeTypes) > 0 && !contains(edgeTypes, edge.Type) {
 					continue
 				}
+				// Filter by edge predicate
+				if edgePredicate != nil && !edgePredicate(edge) {
+					continue
+				}
 
 				neighborID := edge.ToNodeID
 				if !visited[neighborID] {
@@ -267,6 +287,7 @@ func (t *Traverser) findAllPathsRecursive(
 						targetID,
 						remainingDepth-1,
 						edgeTypes,
+						edgePredicate,
 						newPath,
 						visited,
 						allPaths,
@@ -299,7 +320,7 @@ func (t *Traverser) GetNeighborhood(nodeID uint64, hops int, direction Direction
 }
 
 // getNeighbors gets neighboring node IDs based on direction
-func (t *Traverser) getNeighbors(nodeID uint64, direction Direction, edgeTypes []string) ([]uint64, error) {
+func (t *Traverser) getNeighbors(nodeID uint64, direction Direction, edgeTypes []string, edgePredicate func(*storage.Edge) bool) ([]uint64, error) {
 	neighbors := make([]uint64, 0)
 
 	if direction == DirectionOutgoing || direction == DirectionBoth {
@@ -309,9 +330,15 @@ func (t *Traverser) getNeighbors(nodeID uint64, direction Direction, edgeTypes [
 		}
 
 		for _, edge := range edges {
-			if len(edgeTypes) == 0 || contains(edgeTypes, edge.Type) {
-				neighbors = append(neighbors, edge.ToNodeID)
+			// Filter by edge type
+			if len(edgeTypes) > 0 && !contains(edgeTypes, edge.Type) {
+				continue
 			}
+			// Filter by edge predicate (temporal/property filtering)
+			if edgePredicate != nil && !edgePredicate(edge) {
+				continue
+			}
+			neighbors = append(neighbors, edge.ToNodeID)
 		}
 	}
 
@@ -322,9 +349,15 @@ func (t *Traverser) getNeighbors(nodeID uint64, direction Direction, edgeTypes [
 		}
 
 		for _, edge := range edges {
-			if len(edgeTypes) == 0 || contains(edgeTypes, edge.Type) {
-				neighbors = append(neighbors, edge.FromNodeID)
+			// Filter by edge type
+			if len(edgeTypes) > 0 && !contains(edgeTypes, edge.Type) {
+				continue
 			}
+			// Filter by edge predicate (temporal/property filtering)
+			if edgePredicate != nil && !edgePredicate(edge) {
+				continue
+			}
+			neighbors = append(neighbors, edge.FromNodeID)
 		}
 	}
 
