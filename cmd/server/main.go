@@ -15,6 +15,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/api"
 	"github.com/dd0wney/cluso-graphdb/pkg/editions"
 	"github.com/dd0wney/cluso-graphdb/pkg/licensing"
+	"github.com/dd0wney/cluso-graphdb/pkg/plugins"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
@@ -168,6 +169,36 @@ func main() {
 			"type", license.Type,
 			"email", license.Email,
 		)
+
+		// Load Enterprise plugins
+		pluginDir := os.Getenv("GRAPHDB_PLUGIN_DIR")
+		if pluginDir == "" {
+			pluginDir = "./plugins"
+		}
+
+		pluginLoader := plugins.NewPluginLoader(license, logger)
+		ctx := context.Background()
+
+		if err := pluginLoader.LoadPluginsFromDir(ctx, pluginDir); err != nil {
+			logger.Error("failed to load plugins", "error", err)
+			// Continue without plugins - they're optional
+		}
+
+		// Start all loaded plugins
+		if err := pluginLoader.StartAll(ctx); err != nil {
+			logger.Error("failed to start plugins", "error", err)
+		}
+
+		// Defer plugin shutdown
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := pluginLoader.StopAll(shutdownCtx); err != nil {
+				logger.Error("failed to stop plugins", "error", err)
+			}
+		}()
+
+		logger.Info("Enterprise plugins loaded", "count", len(pluginLoader.GetAllPlugins()))
 
 		// Initialize telemetry (opt-in via GRAPHDB_ENABLE_TELEMETRY=true)
 		if os.Getenv("GRAPHDB_ENABLE_TELEMETRY") == "true" {
