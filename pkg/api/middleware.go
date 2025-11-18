@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -18,7 +20,7 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -47,4 +49,49 @@ func (s *Server) bodySizeLimitMiddleware(next http.Handler, maxBytes int64) http
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// Context key for storing claims
+type contextKey string
+
+const claimsContextKey contextKey = "claims"
+
+// requireAuth middleware validates JWT tokens and protects endpoints
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract Authorization header
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			s.respondError(w, http.StatusUnauthorized, "Missing authorization header")
+			return
+		}
+
+		// Extract token (format: "Bearer <token>")
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			s.respondError(w, http.StatusUnauthorized, "Invalid authorization header format")
+			return
+		}
+
+		token := parts[1]
+
+		// Validate token
+		claims, err := s.jwtManager.ValidateToken(token)
+		if err != nil {
+			log.Printf("Token validation failed: %v", err)
+			s.respondError(w, http.StatusUnauthorized, "Invalid or expired token")
+			return
+		}
+
+		// Verify user still exists
+		_, err = s.userStore.GetUserByID(claims.UserID)
+		if err != nil {
+			s.respondError(w, http.StatusUnauthorized, "User not found")
+			return
+		}
+
+		// Store claims in context for handlers to access
+		ctx := context.WithValue(r.Context(), claimsContextKey, claims)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
 }

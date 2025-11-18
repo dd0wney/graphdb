@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/auth"
 	"github.com/dd0wney/cluso-graphdb/pkg/editions"
 	"github.com/dd0wney/cluso-graphdb/pkg/graphql"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
@@ -18,6 +20,9 @@ type Server struct {
 	graph          *storage.GraphStorage
 	executor       *query.Executor
 	graphqlHandler *graphql.GraphQLHandler
+	authHandler    *auth.AuthHandler
+	jwtManager     *auth.JWTManager
+	userStore      *auth.UserStore
 	startTime      time.Time
 	version        string
 	port           int
@@ -36,10 +41,41 @@ func NewServer(graph *storage.GraphStorage, port int) *Server {
 		graphqlHandler = graphql.NewGraphQLHandler(schema)
 	}
 
+	// Initialize authentication components
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		// Generate a default secret for development (NOT for production)
+		jwtSecret = "default-jwt-secret-key-change-in-production-minimum-32-chars"
+		log.Printf("⚠️  WARNING: Using default JWT secret. Set JWT_SECRET environment variable for production!")
+	}
+
+	userStore := auth.NewUserStore()
+	jwtManager := auth.NewJWTManager(jwtSecret, auth.DefaultTokenDuration, auth.DefaultRefreshTokenDuration)
+	authHandler := auth.NewAuthHandler(userStore, jwtManager)
+
+	// Create default admin user if no users exist
+	if len(userStore.ListUsers()) == 0 {
+		adminPassword := os.Getenv("ADMIN_PASSWORD")
+		if adminPassword == "" {
+			adminPassword = "admin123!" // Default password for development
+			log.Printf("⚠️  WARNING: Using default admin password. Set ADMIN_PASSWORD environment variable!")
+		}
+
+		admin, err := userStore.CreateUser("admin", adminPassword, auth.RoleAdmin)
+		if err != nil {
+			log.Printf("Warning: Failed to create default admin user: %v", err)
+		} else {
+			log.Printf("✅ Created default admin user: %s", admin.Username)
+		}
+	}
+
 	return &Server{
 		graph:          graph,
 		executor:       query.NewExecutor(graph),
 		graphqlHandler: graphqlHandler,
+		authHandler:    authHandler,
+		jwtManager:     jwtManager,
+		userStore:      userStore,
 		startTime:      time.Now(),
 		version:        "1.0.0",
 		port:           port,
@@ -50,45 +86,52 @@ func NewServer(graph *storage.GraphStorage, port int) *Server {
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 
-	// Health and metrics
+	// Health and metrics (public)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 
-	// Query endpoints
-	mux.HandleFunc("/query", s.handleQuery)
+	// Authentication endpoints (public)
+	mux.Handle("/auth/", s.authHandler)
 
-	// GraphQL endpoint
-	mux.HandleFunc("/graphql", s.handleGraphQL)
+	// Query endpoints (protected)
+	mux.HandleFunc("/query", s.requireAuth(s.handleQuery))
 
-	// Node endpoints
-	mux.HandleFunc("/nodes", s.handleNodes)
-	mux.HandleFunc("/nodes/", s.handleNode) // /nodes/{id}
-	mux.HandleFunc("/nodes/batch", s.handleBatchNodes)
+	// GraphQL endpoint (protected)
+	mux.HandleFunc("/graphql", s.requireAuth(s.handleGraphQL))
 
-	// Edge endpoints
-	mux.HandleFunc("/edges", s.handleEdges)
-	mux.HandleFunc("/edges/", s.handleEdge) // /edges/{id}
-	mux.HandleFunc("/edges/batch", s.handleBatchEdges)
+	// Node endpoints (protected)
+	mux.HandleFunc("/nodes", s.requireAuth(s.handleNodes))
+	mux.HandleFunc("/nodes/", s.requireAuth(s.handleNode)) // /nodes/{id}
+	mux.HandleFunc("/nodes/batch", s.requireAuth(s.handleBatchNodes))
 
-	// Traversal endpoints
-	mux.HandleFunc("/traverse", s.handleTraversal)
-	mux.HandleFunc("/shortest-path", s.handleShortestPath)
+	// Edge endpoints (protected)
+	mux.HandleFunc("/edges", s.requireAuth(s.handleEdges))
+	mux.HandleFunc("/edges/", s.requireAuth(s.handleEdge)) // /edges/{id}
+	mux.HandleFunc("/edges/batch", s.requireAuth(s.handleBatchEdges))
 
-	// Algorithm endpoints
-	mux.HandleFunc("/algorithms", s.handleAlgorithm)
+	// Traversal endpoints (protected)
+	mux.HandleFunc("/traverse", s.requireAuth(s.handleTraversal))
+	mux.HandleFunc("/shortest-path", s.requireAuth(s.handleShortestPath))
+
+	// Algorithm endpoints (protected)
+	mux.HandleFunc("/algorithms", s.requireAuth(s.handleAlgorithm))
 
 	addr := fmt.Sprintf(":%d", s.port)
 	log.Printf("🚀 Cluso GraphDB API Server starting on %s", addr)
 	log.Printf("📖 API Documentation:")
-	log.Printf("   Health:       GET  %s/health", addr)
-	log.Printf("   Metrics:      GET  %s/metrics", addr)
-	log.Printf("   Query:        POST %s/query", addr)
-	log.Printf("   GraphQL:      POST %s/graphql", addr)
-	log.Printf("   Nodes:        GET/POST %s/nodes", addr)
-	log.Printf("   Edges:        GET/POST %s/edges", addr)
-	log.Printf("   Traverse:     POST %s/traverse", addr)
-	log.Printf("   Shortest Path: POST %s/shortest-path", addr)
-	log.Printf("   Algorithms:   POST %s/algorithms", addr)
+	log.Printf("   Health:        GET  %s/health (public)", addr)
+	log.Printf("   Metrics:       GET  %s/metrics (public)", addr)
+	log.Printf("   Login:         POST %s/auth/login (public)", addr)
+	log.Printf("   Register:      POST %s/auth/register (requires admin)", addr)
+	log.Printf("   Refresh:       POST %s/auth/refresh (public)", addr)
+	log.Printf("   Current User:  GET  %s/auth/me (requires auth)", addr)
+	log.Printf("   Query:         POST %s/query (requires auth)", addr)
+	log.Printf("   GraphQL:       POST %s/graphql (requires auth)", addr)
+	log.Printf("   Nodes:         GET/POST %s/nodes (requires auth)", addr)
+	log.Printf("   Edges:         GET/POST %s/edges (requires auth)", addr)
+	log.Printf("   Traverse:      POST %s/traverse (requires auth)", addr)
+	log.Printf("   Shortest Path: POST %s/shortest-path (requires auth)", addr)
+	log.Printf("   Algorithms:    POST %s/algorithms (requires auth)", addr)
 
 	// Create HTTP server with timeouts for production security
 	server := &http.Server{
