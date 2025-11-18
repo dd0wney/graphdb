@@ -1,0 +1,42 @@
+# Cloudflare Tunnel Configuration for GraphDB
+# This configures the secure tunnel from Cloudflare's edge to your Digital Ocean droplet
+
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /etc/cloudflared/credentials.json
+
+# Ingress rules - route traffic from Cloudflare edge to GraphDB
+ingress:
+  # GraphQL API endpoint (proxied through Workers)
+  - hostname: graphql.yourdomain.com
+    service: http://localhost:8080
+    originRequest:
+      noTLSVerify: false
+      connectTimeout: 30s
+      tcpKeepAlive: 30s
+
+  # Main GraphDB API
+  - hostname: api.yourdomain.com
+    service: http://localhost:8080
+    originRequest:
+      noTLSVerify: false
+      connectTimeout: 30s
+      tcpKeepAlive: 30s
+      # Enable HTTP/2 for better performance
+      httpHostHeader: api.yourdomain.com
+
+  # Metrics endpoint (optional - can be restricted to specific IPs)
+  - hostname: metrics.yourdomain.com
+    service: http://localhost:8080/metrics
+    originRequest:
+      noTLSVerify: false
+
+  # Catch-all rule (required)
+  - service: http_status:404
+
+# Logging
+logLevel: info
+logDirectory: /var/log/cloudflared
+logFile: cloudflared.log
+
+# Tunnel metrics
+metrics: 0.0.0.0:8099

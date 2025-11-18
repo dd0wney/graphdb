@@ -1,0 +1,31 @@
+# Cloudflare Workers configuration for GraphDB tunnel router
+name = "graphdb-tunnel-router"
+main = "tunnel-router.js"
+compatibility_date = "2024-01-01"
+
+# Workers route - all requests to your domain
+routes = [
+  { pattern = "api.yourdomain.com/*", zone_name = "yourdomain.com" },
+  { pattern = "graphql.yourdomain.com/*", zone_name = "yourdomain.com" }
+]
+
+# Environment variables
+[env.production]
+vars = { ENVIRONMENT = "production" }
+
+[env.staging]
+vars = { ENVIRONMENT = "staging" }
+
+# KV namespaces for caching and rate limiting (optional)
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "your-kv-namespace-id"
+
+# Durable Objects for distributed rate limiting (optional)
+# [[durable_objects.bindings]]
+# name = "RATE_LIMITER"
+# class_name = "RateLimiter"
+
+# Secrets (use wrangler secret put to set these)
+# - JWT_SECRET
+# - API_KEY

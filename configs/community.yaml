@@ -1,0 +1,73 @@
+# GraphDB Community Edition Configuration
+
+edition: community
+
+# Server configuration
+server:
+  port: 8080
+  host: "0.0.0.0"
+  read_timeout: 15s
+  write_timeout: 30s
+  idle_timeout: 60s
+
+# Storage configuration
+storage:
+  data_dir: ./data
+  enable_wal: true
+  enable_batching: true
+  enable_compression: true
+  enable_disk_backed_edges: false
+
+# Vector search (Community - Custom HNSW implementation)
+vector:
+  enabled: true
+  implementation: "hnsw"  # Custom HNSW algorithm
+  hnsw:
+    m: 16                  # Number of bi-directional links per node
+    ef_construction: 200   # Size of dynamic candidate list during construction
+    ef_search: 100         # Size of dynamic candidate list during search
+    max_elements: 1000000  # Maximum number of vectors
+
+# Backup configuration (Community - Manual only)
+backup:
+  enabled: false
+  # Community edition: Use standard S3-compatible storage
+  # For automated backups, upgrade to Enterprise edition with R2
+
+# GraphQL API (Available in Community)
+graphql:
+  enabled: true
+  endpoint: "/graphql"
+  playground: true  # Enable GraphQL Playground
+
+# Monitoring (Basic metrics in Community)
+monitoring:
+  enabled: true
+  metrics_endpoint: "/metrics"
+  health_endpoint: "/health"
+
+# Replication (Basic in Community)
+replication:
+  enabled: false
+  mode: "primary"
+  # For multi-region replication, upgrade to Enterprise edition
+
+# Rate limiting (Basic in Community)
+rate_limiting:
+  enabled: true
+  requests_per_second: 100
+  burst: 200
+
+# Authentication (Basic in Community)
+auth:
+  enabled: false
+  # For SAML/OIDC/custom auth, upgrade to Enterprise edition
+
+# Licensing
+license:
+  edition: "Community"
+  features:
+    - "vector_search"
+    - "graphql"
+    - "basic_monitoring"
+    - "basic_replication"

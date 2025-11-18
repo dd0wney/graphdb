@@ -1,0 +1,148 @@
+# GraphDB Enterprise Edition Configuration
+
+edition: enterprise
+
+# Server configuration
+server:
+  port: 8080
+  host: "0.0.0.0"
+  read_timeout: 15s
+  write_timeout: 30s
+  idle_timeout: 60s
+
+# Storage configuration
+storage:
+  data_dir: ./data
+  enable_wal: true
+  enable_batching: true
+  enable_compression: true
+  enable_disk_backed_edges: true
+
+# Vector search (Enterprise - Cloudflare Vectorize)
+vector:
+  enabled: true
+  implementation: "vectorize"  # Cloudflare Vectorize
+  vectorize:
+    account_id: "${CLOUDFLARE_ACCOUNT_ID}"
+    api_token: "${CLOUDFLARE_API_TOKEN}"
+    index_name: "graphdb-vectors"
+    dimensions: 768  # Supports up to 5M dimensions
+    metric: "cosine" # cosine, euclidean, or dot_product
+  # Fallback to HNSW if Vectorize unavailable
+  hnsw:
+    m: 16
+    ef_construction: 200
+    ef_search: 100
+    max_elements: 1000000
+
+# Backup configuration (Enterprise - Cloudflare R2)
+backup:
+  enabled: true
+  implementation: "r2"
+  r2:
+    account_id: "${CLOUDFLARE_ACCOUNT_ID}"
+    access_key_id: "${R2_ACCESS_KEY_ID}"
+    secret_access_key: "${R2_SECRET_ACCESS_KEY}"
+    bucket: "graphdb-backups"
+    endpoint: "https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+  schedule: "0 * * * *"  # Hourly backups
+  retention: 30d          # Keep backups for 30 days
+  incremental: true       # Use incremental WAL-based backups
+
+# Change Data Capture (Enterprise - Cloudflare Queues)
+cdc:
+  enabled: true
+  queue:
+    account_id: "${CLOUDFLARE_ACCOUNT_ID}"
+    api_token: "${CLOUDFLARE_API_TOKEN}"
+    queue_name: "graphdb-changes"
+  format: "debezium"  # Debezium-compatible CDC format
+  operations:
+    - "create"
+    - "update"
+    - "delete"
+  entities:
+    - "nodes"
+    - "edges"
+
+# GraphQL API (Available in Enterprise with edge caching)
+graphql:
+  enabled: true
+  endpoint: "/graphql"
+  playground: true
+  edge_caching:
+    enabled: true
+    ttl: 300s  # Cache TTL at Cloudflare edge
+    vary_by_query: true
+
+# Cloudflare Tunnel configuration
+cloudflare:
+  tunnel:
+    enabled: true
+    tunnel_id: "${CLOUDFLARE_TUNNEL_ID}"
+    credentials_file: "/etc/cloudflared/credentials.json"
+  workers:
+    enabled: true
+    # GraphQL Workers endpoint
+    graphql_worker: "https://graphql.yourdomain.workers.dev"
+
+# Monitoring (Advanced in Enterprise)
+monitoring:
+  enabled: true
+  metrics_endpoint: "/metrics"
+  health_endpoint: "/health"
+  advanced:
+    enabled: true
+    tracing: true
+    profiling: true
+    analytics:
+      account_id: "${CLOUDFLARE_ACCOUNT_ID}"
+      dataset: "graphdb-analytics"
+
+# Replication (Multi-region in Enterprise)
+replication:
+  enabled: true
+  mode: "primary"
+  multi_region:
+    enabled: true
+    regions:
+      - "us-east-1"
+      - "eu-west-1"
+      - "ap-southeast-1"
+    automatic_failover: true
+    consensus: "raft"
+
+# Rate limiting (Advanced in Enterprise)
+rate_limiting:
+  enabled: true
+  requests_per_second: 1000
+  burst: 2000
+  per_user: true
+  per_ip: true
+
+# Authentication (Advanced in Enterprise)
+auth:
+  enabled: true
+  providers:
+    - type: "jwt"
+      issuer: "https://yourdomain.com"
+      audience: "graphdb-api"
+    - type: "oidc"
+      provider: "${OIDC_PROVIDER_URL}"
+      client_id: "${OIDC_CLIENT_ID}"
+    - type: "saml"
+      idp_metadata_url: "${SAML_IDP_METADATA_URL}"
+
+# Licensing
+license:
+  path: "/etc/graphdb/license.key"
+  edition: "Enterprise"
+  features:
+    - "vector_search"
+    - "cloudflare_vectorize"
+    - "r2_backups"
+    - "cdc"
+    - "graphql"
+    - "advanced_monitoring"
+    - "multi_region_replication"
+    - "custom_auth"
