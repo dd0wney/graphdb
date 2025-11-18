@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/validation"
 )
 
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
@@ -53,9 +54,22 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate request
+	validationReq := validation.NodeRequest{
+		Labels:     req.Labels,
+		Properties: req.Properties,
+	}
+	if err := validation.ValidateNodeRequest(&validationReq); err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Sanitize properties to prevent XSS
+	sanitizedProps := storage.SanitizePropertyMap(req.Properties)
+
 	// Convert properties
 	props := make(map[string]storage.Value)
-	for k, v := range req.Properties {
+	for k, v := range sanitizedProps {
 		props[k] = s.convertToValue(v)
 	}
 
@@ -108,8 +122,23 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 		return
 	}
 
+	// Validate properties if present
+	if req.Properties != nil {
+		validationReq := validation.NodeRequest{
+			Labels:     []string{"Placeholder"}, // Labels not required for update
+			Properties: req.Properties,
+		}
+		if err := validation.ValidateNodeRequest(&validationReq); err != nil {
+			s.respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	// Sanitize properties
+	sanitizedProps := storage.SanitizePropertyMap(req.Properties)
+
 	props := make(map[string]storage.Value)
-	for k, v := range req.Properties {
+	for k, v := range sanitizedProps {
 		props[k] = s.convertToValue(v)
 	}
 
@@ -144,12 +173,30 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate batch size
+	if err := validation.ValidateBatchSize(len(req.Nodes)); err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	start := time.Now()
 	nodes := make([]*NodeResponse, 0, len(req.Nodes))
 
 	for _, nodeReq := range req.Nodes {
+		// Validate each node request
+		validationReq := validation.NodeRequest{
+			Labels:     nodeReq.Labels,
+			Properties: nodeReq.Properties,
+		}
+		if err := validation.ValidateNodeRequest(&validationReq); err != nil {
+			continue // Skip invalid nodes
+		}
+
+		// Sanitize properties
+		sanitizedProps := storage.SanitizePropertyMap(nodeReq.Properties)
+
 		props := make(map[string]storage.Value)
-		for k, v := range nodeReq.Properties {
+		for k, v := range sanitizedProps {
 			props[k] = s.convertToValue(v)
 		}
 

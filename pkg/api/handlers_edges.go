@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/validation"
 )
 
 func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
@@ -26,8 +27,28 @@ func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate request
+	var weightPtr *float64
+	if req.Weight != 0 {
+		weightPtr = &req.Weight
+	}
+	validationReq := validation.EdgeRequest{
+		FromNodeID: req.FromNodeID,
+		ToNodeID:   req.ToNodeID,
+		Type:       req.Type,
+		Weight:     weightPtr,
+		Properties: req.Properties,
+	}
+	if err := validation.ValidateEdgeRequest(&validationReq); err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Sanitize properties
+	sanitizedProps := storage.SanitizePropertyMap(req.Properties)
+
 	props := make(map[string]storage.Value)
-	for k, v := range req.Properties {
+	for k, v := range sanitizedProps {
 		props[k] = s.convertToValue(v)
 	}
 
@@ -79,12 +100,37 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate batch size
+	if err := validation.ValidateBatchSize(len(req.Edges)); err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	start := time.Now()
 	edges := make([]*EdgeResponse, 0, len(req.Edges))
 
 	for _, edgeReq := range req.Edges {
+		// Validate each edge request
+		var weightPtr *float64
+		if edgeReq.Weight != 0 {
+			weightPtr = &edgeReq.Weight
+		}
+		validationReq := validation.EdgeRequest{
+			FromNodeID: edgeReq.FromNodeID,
+			ToNodeID:   edgeReq.ToNodeID,
+			Type:       edgeReq.Type,
+			Weight:     weightPtr,
+			Properties: edgeReq.Properties,
+		}
+		if err := validation.ValidateEdgeRequest(&validationReq); err != nil {
+			continue // Skip invalid edges
+		}
+
+		// Sanitize properties
+		sanitizedProps := storage.SanitizePropertyMap(edgeReq.Properties)
+
 		props := make(map[string]storage.Value)
-		for k, v := range edgeReq.Properties {
+		for k, v := range sanitizedProps {
 			props[k] = s.convertToValue(v)
 		}
 

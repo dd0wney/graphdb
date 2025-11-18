@@ -146,10 +146,17 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize query to prevent injection attacks
+	sanitizedQuery, err := query.SanitizeQuery(req.Query)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid query: %v", err))
+		return
+	}
+
 	start := time.Now()
 
 	// Parse query
-	lexer := query.NewLexer(req.Query)
+	lexer := query.NewLexer(sanitizedQuery)
 	tokens, err := lexer.Tokenize()
 	if err != nil {
 		s.respondError(w, http.StatusBadRequest, fmt.Sprintf("Lexer error: %v", err))

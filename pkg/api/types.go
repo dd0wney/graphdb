@@ -33,8 +33,8 @@ type NodeResponse struct {
 
 // EdgeRequest represents an edge creation request
 type EdgeRequest struct {
-	FromNodeID uint64                 `json:"from_node_id"`
-	ToNodeID   uint64                 `json:"to_node_id"`
+	FromNodeID uint64                 `json:"fromNodeId"`
+	ToNodeID   uint64                 `json:"toNodeId"`
 	Type       string                 `json:"type"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 	Weight     float64                `json:"weight"`
