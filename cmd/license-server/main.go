@@ -29,6 +29,7 @@ type Server struct {
 	stripeKey         string
 	webhookSecret     string
 	emailConfig       *licensing.EmailConfig
+	adminAPIKey       string
 	logger            *slog.Logger
 	startTime         time.Time
 	licensesValidated atomic.Int64
@@ -40,6 +41,40 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// requireAuth is a middleware that requires API key authentication
+func (s *Server) requireAuth(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// If no admin API key is set, allow all requests (backwards compatibility)
+		if s.adminAPIKey == "" {
+			handler(w, r)
+			return
+		}
+
+		// Check for API key in header
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey == "" {
+			// Also check Authorization header (Bearer token)
+			auth := r.Header.Get("Authorization")
+			if len(auth) > 7 && auth[:7] == "Bearer " {
+				apiKey = auth[7:]
+			}
+		}
+
+		if apiKey != s.adminAPIKey {
+			s.logger.Warn("unauthorized admin endpoint access attempt", "ip", r.RemoteAddr, "path", r.URL.Path)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "unauthorized",
+				"message": "invalid or missing API key (set X-API-Key header or Authorization: Bearer <key>)",
+			})
+			return
+		}
+
+		handler(w, r)
+	}
 }
 
 func main() {
@@ -103,11 +138,21 @@ func main() {
 		logger.Info("email configured", "smtp_host", emailConfig.SMTPHost, "from", emailConfig.FromEmail)
 	}
 
+	// Get admin API key (for protecting admin endpoints)
+	adminAPIKey := os.Getenv("ADMIN_API_KEY")
+	if adminAPIKey == "" {
+		logger.Warn("no admin API key set - admin endpoints will be unprotected!")
+		logger.Info("to protect admin endpoints, set ADMIN_API_KEY environment variable")
+	} else {
+		logger.Info("admin API key configured - admin endpoints protected")
+	}
+
 	server := &Server{
 		store:         store,
 		stripeKey:     *stripeKey,
 		webhookSecret: *webhookSecret,
 		emailConfig:   emailConfig,
+		adminAPIKey:   adminAPIKey,
 		logger:        logger,
 		startTime:     time.Now(),
 	}
@@ -118,8 +163,9 @@ func main() {
 	mux.HandleFunc("/metrics", server.handleMetrics)
 	mux.HandleFunc("/validate", server.handleValidate)
 	mux.HandleFunc("/stripe/webhook", server.handleStripeWebhook)
-	mux.HandleFunc("/licenses", server.handleListLicenses)
-	mux.HandleFunc("/licenses/create", server.handleCreateLicense)
+	// Admin endpoints - protected with API key
+	mux.HandleFunc("/licenses", server.requireAuth(server.handleListLicenses))
+	mux.HandleFunc("/licenses/create", server.requireAuth(server.handleCreateLicense))
 
 	// Create HTTP server
 	httpServer := &http.Server{
@@ -441,14 +487,13 @@ func (s *Server) handleSubscriptionDeleted(data json.RawMessage) {
 	s.logger.Info("license cancelled", "key", license.Key)
 }
 
-// handleListLicenses lists all licenses (admin endpoint, should be protected)
+// handleListLicenses lists all licenses (admin endpoint - requires authentication)
 func (s *Server) handleListLicenses(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// TODO: Add authentication
 	licenses := s.store.ListLicenses()
 
 	w.Header().Set("Content-Type", "application/json")
