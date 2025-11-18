@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/audit"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
 	"github.com/dd0wney/cluso-graphdb/pkg/editions"
 	"github.com/dd0wney/cluso-graphdb/pkg/graphql"
@@ -24,6 +25,7 @@ type Server struct {
 	jwtManager     *auth.JWTManager
 	userStore      *auth.UserStore
 	apiKeyStore    *auth.APIKeyStore
+	auditLogger    *audit.AuditLogger
 	startTime      time.Time
 	version        string
 	port           int
@@ -54,6 +56,7 @@ func NewServer(graph *storage.GraphStorage, port int) *Server {
 	apiKeyStore := auth.NewAPIKeyStore()
 	jwtManager := auth.NewJWTManager(jwtSecret, auth.DefaultTokenDuration, auth.DefaultRefreshTokenDuration)
 	authHandler := auth.NewAuthHandler(userStore, jwtManager)
+	auditLogger := audit.NewAuditLogger(10000) // Store last 10,000 events
 
 	// Create default admin user if no users exist
 	if len(userStore.ListUsers()) == 0 {
@@ -79,6 +82,7 @@ func NewServer(graph *storage.GraphStorage, port int) *Server {
 		jwtManager:     jwtManager,
 		userStore:      userStore,
 		apiKeyStore:    apiKeyStore,
+		auditLogger:    auditLogger,
 		startTime:      time.Now(),
 		version:        "1.0.0",
 		port:           port,
@@ -137,9 +141,10 @@ func (s *Server) Start() error {
 	log.Printf("   Algorithms:    POST %s/algorithms (requires auth)", addr)
 
 	// Create HTTP server with timeouts for production security
+	// Middleware chain: audit -> logging -> CORS -> routes
 	server := &http.Server{
 		Addr:         addr,
-		Handler:      s.loggingMiddleware(s.corsMiddleware(mux)),
+		Handler:      s.auditMiddleware(s.loggingMiddleware(s.corsMiddleware(mux))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,

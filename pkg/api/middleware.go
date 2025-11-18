@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/audit"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
 )
 
@@ -128,4 +129,113 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		// No valid authentication provided
 		s.respondError(w, http.StatusUnauthorized, "Missing authentication (Bearer token or X-API-Key header required)")
 	}
+}
+
+// auditMiddleware logs all API requests for security and compliance
+func (s *Server) auditMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// Create a response writer wrapper to capture status code
+		wrapper := &statusResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		// Process request
+		next.ServeHTTP(wrapper, r)
+
+		// Extract user info from context if authenticated
+		userID := ""
+		username := ""
+		if claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims); ok {
+			userID = claims.UserID
+			username = claims.Username
+		}
+
+		// Determine resource type and action from path and method
+		resourceType, action := determineResourceAndAction(r.Method, r.URL.Path)
+
+		// Determine status
+		status := audit.StatusSuccess
+		if wrapper.statusCode >= 400 {
+			status = audit.StatusFailure
+		}
+
+		// Log the audit event
+		event := &audit.Event{
+			UserID:       userID,
+			Username:     username,
+			Action:       action,
+			ResourceType: resourceType,
+			Status:       status,
+			IPAddress:    getIPAddress(r),
+			UserAgent:    r.UserAgent(),
+			Metadata: map[string]interface{}{
+				"method":       r.Method,
+				"path":         r.URL.Path,
+				"status_code":  wrapper.statusCode,
+				"duration_ms":  time.Since(start).Milliseconds(),
+			},
+		}
+
+		s.auditLogger.Log(event)
+	})
+}
+
+// statusResponseWriter wraps http.ResponseWriter to capture status code
+type statusResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *statusResponseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+// Helper functions
+
+func determineResourceAndAction(method, path string) (audit.ResourceType, audit.Action) {
+	// Determine resource type from path
+	resourceType := audit.ResourceQuery // default
+
+	if strings.Contains(path, "/nodes") {
+		resourceType = audit.ResourceNode
+	} else if strings.Contains(path, "/edges") {
+		resourceType = audit.ResourceEdge
+	} else if strings.Contains(path, "/auth") {
+		resourceType = audit.ResourceAuth
+	} else if strings.Contains(path, "/query") || strings.Contains(path, "/graphql") {
+		resourceType = audit.ResourceQuery
+	}
+
+	// Determine action from HTTP method
+	action := audit.ActionRead // default
+
+	switch method {
+	case http.MethodPost:
+		if resourceType == audit.ResourceAuth {
+			action = audit.ActionAuth
+		} else {
+			action = audit.ActionCreate
+		}
+	case http.MethodGet:
+		action = audit.ActionRead
+	case http.MethodPut, http.MethodPatch:
+		action = audit.ActionUpdate
+	case http.MethodDelete:
+		action = audit.ActionDelete
+	}
+
+	return resourceType, action
+}
+
+func getIPAddress(r *http.Request) string {
+	// Try to get real IP from headers (for proxies)
+	ip := r.Header.Get("X-Real-IP")
+	if ip == "" {
+		ip = r.Header.Get("X-Forwarded-For")
+	}
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+	return ip
 }
