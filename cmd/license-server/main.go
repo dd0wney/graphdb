@@ -25,11 +25,12 @@ var (
 )
 
 type Server struct {
-	store           licensing.LicenseStore
-	stripeKey       string
-	webhookSecret   string
-	logger          *slog.Logger
-	startTime       time.Time
+	store             licensing.LicenseStore
+	stripeKey         string
+	webhookSecret     string
+	emailConfig       *licensing.EmailConfig
+	logger            *slog.Logger
+	startTime         time.Time
 	licensesValidated atomic.Int64
 	licensesFailed    atomic.Int64
 }
@@ -93,10 +94,20 @@ func main() {
 		logger.Warn("no Stripe secret key provided - Stripe integration disabled")
 	}
 
+	// Load email configuration
+	emailConfig := licensing.LoadEmailConfigFromEnv()
+	if !emailConfig.IsConfigured() {
+		logger.Warn("email not configured - license keys will not be sent via email")
+		logger.Info("to enable email delivery, set: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, FROM_EMAIL")
+	} else {
+		logger.Info("email configured", "smtp_host", emailConfig.SMTPHost, "from", emailConfig.FromEmail)
+	}
+
 	server := &Server{
 		store:         store,
 		stripeKey:     *stripeKey,
 		webhookSecret: *webhookSecret,
+		emailConfig:   emailConfig,
 		logger:        logger,
 		startTime:     time.Now(),
 	}
@@ -351,7 +362,17 @@ func (s *Server) handleCheckoutCompleted(data json.RawMessage) {
 		"type", license.Type,
 	)
 
-	// TODO: Send license key via email
+	// Send license key via email
+	if s.emailConfig.IsConfigured() {
+		if err := licensing.SendLicenseEmail(s.emailConfig, license); err != nil {
+			s.logger.Error("failed to send license email", "error", err, "email", license.Email)
+			// Don't fail the whole operation - license is still created
+		} else {
+			s.logger.Info("license email sent", "email", license.Email)
+		}
+	} else {
+		s.logger.Warn("email not configured - license not sent to customer", "email", license.Email)
+	}
 }
 
 // handleSubscriptionUpdated updates license status
@@ -477,6 +498,15 @@ func (s *Server) handleCreateLicense(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.logger.Info("test license created", "key", license.Key, "email", license.Email)
+
+	// Send license key via email (if configured)
+	if s.emailConfig.IsConfigured() {
+		if err := licensing.SendLicenseEmail(s.emailConfig, license); err != nil {
+			s.logger.Error("failed to send license email", "error", err, "email", license.Email)
+		} else {
+			s.logger.Info("license email sent", "email", license.Email)
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(license)
