@@ -23,6 +23,7 @@ type Server struct {
 	authHandler    *auth.AuthHandler
 	jwtManager     *auth.JWTManager
 	userStore      *auth.UserStore
+	apiKeyStore    *auth.APIKeyStore
 	startTime      time.Time
 	version        string
 	port           int
@@ -50,6 +51,7 @@ func NewServer(graph *storage.GraphStorage, port int) *Server {
 	}
 
 	userStore := auth.NewUserStore()
+	apiKeyStore := auth.NewAPIKeyStore()
 	jwtManager := auth.NewJWTManager(jwtSecret, auth.DefaultTokenDuration, auth.DefaultRefreshTokenDuration)
 	authHandler := auth.NewAuthHandler(userStore, jwtManager)
 
@@ -76,6 +78,7 @@ func NewServer(graph *storage.GraphStorage, port int) *Server {
 		authHandler:    authHandler,
 		jwtManager:     jwtManager,
 		userStore:      userStore,
+		apiKeyStore:    apiKeyStore,
 		startTime:      time.Now(),
 		version:        "1.0.0",
 		port:           port,
