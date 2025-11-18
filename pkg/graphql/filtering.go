@@ -15,8 +15,19 @@ type FilterCondition struct {
 	Value    interface{}
 }
 
-// parseWhere parses the where argument into filter conditions
-func parseWhere(args map[string]interface{}) []FilterCondition {
+// FilterExpression represents a filter that can be simple or logical
+type FilterExpression struct {
+	// For simple conditions
+	Conditions []FilterCondition
+
+	// For logical operators
+	AND []FilterExpression
+	OR  []FilterExpression
+	NOT *FilterExpression
+}
+
+// parseWhere parses the where argument into a filter expression
+func parseWhere(args map[string]interface{}) *FilterExpression {
 	whereArg, ok := args["where"]
 	if !ok {
 		return nil
@@ -27,36 +38,111 @@ func parseWhere(args map[string]interface{}) []FilterCondition {
 		return nil
 	}
 
-	var conditions []FilterCondition
+	return parseFilterExpression(whereMap)
+}
 
-	// Iterate through each field in the where clause
-	for field, conditionValue := range whereMap {
-		conditionMap, ok := conditionValue.(map[string]interface{})
-		if !ok {
-			continue
-		}
+// parseFilterExpression recursively parses a filter expression
+func parseFilterExpression(whereMap map[string]interface{}) *FilterExpression {
+	expr := &FilterExpression{}
 
-		// Parse operators for this field
-		for operator, value := range conditionMap {
-			conditions = append(conditions, FilterCondition{
-				Field:    field,
-				Operator: operator,
-				Value:    value,
-			})
+	for key, value := range whereMap {
+		switch key {
+		case "AND":
+			// Parse AND array
+			andArray, ok := value.([]interface{})
+			if !ok {
+				continue
+			}
+			for _, item := range andArray {
+				itemMap, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				expr.AND = append(expr.AND, *parseFilterExpression(itemMap))
+			}
+
+		case "OR":
+			// Parse OR array
+			orArray, ok := value.([]interface{})
+			if !ok {
+				continue
+			}
+			for _, item := range orArray {
+				itemMap, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				expr.OR = append(expr.OR, *parseFilterExpression(itemMap))
+			}
+
+		case "NOT":
+			// Parse NOT object
+			notMap, ok := value.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			notExpr := parseFilterExpression(notMap)
+			expr.NOT = notExpr
+
+		default:
+			// Regular field condition
+			conditionMap, ok := value.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			// Parse operators for this field
+			for operator, opValue := range conditionMap {
+				expr.Conditions = append(expr.Conditions, FilterCondition{
+					Field:    key,
+					Operator: operator,
+					Value:    opValue,
+				})
+			}
 		}
 	}
 
-	return conditions
+	return expr
 }
 
-// evaluateFilter checks if a node matches all filter conditions
-func evaluateFilter(node *storage.Node, conditions []FilterCondition) bool {
-	if len(conditions) == 0 {
+// evaluateFilter checks if a node matches the filter expression
+func evaluateFilter(node *storage.Node, expr *FilterExpression) bool {
+	if expr == nil {
 		return true // No filter means match all
 	}
 
-	// All conditions must match (AND logic)
-	for _, condition := range conditions {
+	return evaluateFilterExpression(node, expr)
+}
+
+// evaluateFilterExpression recursively evaluates a filter expression
+func evaluateFilterExpression(node *storage.Node, expr *FilterExpression) bool {
+	// Evaluate NOT first
+	if expr.NOT != nil {
+		return !evaluateFilterExpression(node, expr.NOT)
+	}
+
+	// Evaluate OR - at least one must match
+	if len(expr.OR) > 0 {
+		for _, orExpr := range expr.OR {
+			if evaluateFilterExpression(node, &orExpr) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Evaluate AND - all must match
+	if len(expr.AND) > 0 {
+		for _, andExpr := range expr.AND {
+			if !evaluateFilterExpression(node, &andExpr) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Evaluate simple conditions - all must match (implicit AND)
+	for _, condition := range expr.Conditions {
 		if !evaluateCondition(node, condition) {
 			return false
 		}
@@ -223,13 +309,44 @@ func compareNumeric(a, b interface{}) int {
 	return 0
 }
 
-// evaluateEdgeFilter checks if an edge matches all filter conditions
-func evaluateEdgeFilter(edge *storage.Edge, conditions []FilterCondition) bool {
-	if len(conditions) == 0 {
+// evaluateEdgeFilter checks if an edge matches the filter expression
+func evaluateEdgeFilter(edge *storage.Edge, expr *FilterExpression) bool {
+	if expr == nil {
 		return true
 	}
 
-	for _, condition := range conditions {
+	return evaluateEdgeFilterExpression(edge, expr)
+}
+
+// evaluateEdgeFilterExpression recursively evaluates a filter expression for edges
+func evaluateEdgeFilterExpression(edge *storage.Edge, expr *FilterExpression) bool {
+	// Evaluate NOT first
+	if expr.NOT != nil {
+		return !evaluateEdgeFilterExpression(edge, expr.NOT)
+	}
+
+	// Evaluate OR - at least one must match
+	if len(expr.OR) > 0 {
+		for _, orExpr := range expr.OR {
+			if evaluateEdgeFilterExpression(edge, &orExpr) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Evaluate AND - all must match
+	if len(expr.AND) > 0 {
+		for _, andExpr := range expr.AND {
+			if !evaluateEdgeFilterExpression(edge, &andExpr) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Evaluate simple conditions - all must match (implicit AND)
+	for _, condition := range expr.Conditions {
 		if !evaluateEdgeCondition(edge, condition) {
 			return false
 		}
