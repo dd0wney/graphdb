@@ -110,6 +110,12 @@ _cgo_export.*
 benchmark-*.txt
 benchmark_*.txt
 
+# Data files
+*.csv
+
+# Server binary
+/server
+
 # Generated files
 *.pb.go
 *_generated.go

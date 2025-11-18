@@ -174,9 +174,10 @@ NEXT STEPS / IDEAS
 Potential Future Work:
 ----------------------
 - [x] Add GraphQL filtering/where clauses (eq, gt, lt, gte, lte, contains operators)
-- [ ] Add logical operators to filtering (AND/OR/NOT for complex filter combinations)
-- [ ] Add GraphQL subscriptions for real-time updates
+- [x] Add logical operators to filtering (AND/OR/NOT for complex filter combinations)
 - [ ] Add query complexity analysis and rate limiting
+- [ ] Add GraphQL field-level result limiting (prevent over-fetching)
+- [ ] Add GraphQL subscriptions for real-time updates
 - [ ] Create GraphQL playground/documentation UI
 - [ ] Add more comprehensive error messages
 - [ ] Performance testing for large datasets
