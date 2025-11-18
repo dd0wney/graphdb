@@ -109,9 +109,20 @@ GraphQL Aggregation Queries (Test-Driven Development)
 ✅ Empty result handling (returns 0 count, empty aggregates)
 ✅ Verify all tests pass (57 GraphQL tests total, all passing)
 
+GraphQL Filtering/Where Clauses (Test-Driven Development)
+-----------------------------------------------------------
+✅ Write filtering tests (10 tests: eq, gt, lt, range, contains, in, multiple conditions, with sorting/pagination, edges, no results)
+✅ Implement FilterCondition type and parseWhere function
+✅ Implement filter operators: eq, gt, lt, gte, lte, contains, in
+✅ Implement evaluateFilter for nodes and edges
+✅ Support all property types (string, int, float, bool)
+✅ Integrate with sorting and pagination
+✅ Create GenerateSchemaWithFiltering and specialized resolvers
+✅ Verify all tests pass (67 GraphQL tests total, all passing)
+
 Test Summary
 ------------
-- GraphQL Package: 57 tests passing
+- GraphQL Package: 67 tests passing
   - Schema generation: 4 tests
   - Query execution: 6 tests
   - HTTP handler: 6 tests
@@ -122,8 +133,9 @@ Test Summary
   - Cursor pagination: 6 tests
   - Sorting/Ordering: 6 tests
   - Aggregation: 7 tests
+  - Filtering: 10 tests
 - API Integration: 3 tests passing
-- Total GraphQL tests: 57 tests, all passing
+- Total GraphQL tests: 67 tests, all passing
 
 Previous Work (From Earlier Sessions)
 --------------------------------------
@@ -146,6 +158,8 @@ New Files:
 - pkg/graphql/cursor_pagination_test.go - Cursor pagination tests (6 tests)
 - pkg/graphql/sorting_test.go - Sorting/ordering tests (6 tests)
 - pkg/graphql/aggregation_test.go - Aggregation tests (7 tests)
+- pkg/graphql/filtering.go - Filtering implementation (510 lines)
+- pkg/graphql/filtering_test.go - Filtering tests (10 tests)
 
 Modified Files:
 ---------------
@@ -159,7 +173,8 @@ NEXT STEPS / IDEAS
 
 Potential Future Work:
 ----------------------
-- [ ] Add GraphQL filtering/where clauses (eq, gt, lt, gte, lte, contains operators)
+- [x] Add GraphQL filtering/where clauses (eq, gt, lt, gte, lte, contains operators)
+- [ ] Add logical operators to filtering (AND/OR/NOT for complex filter combinations)
 - [ ] Add GraphQL subscriptions for real-time updates
 - [ ] Add query complexity analysis and rate limiting
 - [ ] Create GraphQL playground/documentation UI
@@ -289,10 +304,67 @@ Aggregation Examples:
   "query": "{ edgesAggregate { count avg { weight } min { weight } max { weight } } }"
 }
 
+Filtering Examples (using variables):
+{
+  "query": "query($where: WhereInput) { persons(where: $where) { id properties } }",
+  "variables": {
+    "where": {
+      "age": { "eq": 30 }
+    }
+  }
+}
+
+{
+  "query": "query($where: WhereInput) { persons(where: $where) { id properties } }",
+  "variables": {
+    "where": {
+      "age": { "gt": 25, "lt": 40 }
+    }
+  }
+}
+
+{
+  "query": "query($where: WhereInput) { persons(where: $where) { id properties } }",
+  "variables": {
+    "where": {
+      "name": { "contains": "Smith" }
+    }
+  }
+}
+
+{
+  "query": "query($where: WhereInput) { persons(where: $where) { id properties } }",
+  "variables": {
+    "where": {
+      "age": { "in": [25, 30, 35] }
+    }
+  }
+}
+
+{
+  "query": "query($where: WhereInput, $orderBy: OrderByInput, $limit: Int) { persons(where: $where, orderBy: $orderBy, limit: $limit) { id properties } }",
+  "variables": {
+    "where": {
+      "age": { "gte": 20, "lte": 40 }
+    },
+    "orderBy": {
+      "field": "age",
+      "direction": "ASC"
+    },
+    "limit": 10
+  }
+}
+
 Features:
 - Schema auto-generated from node labels in database
 - Query fields: {label} (singular) and {label}s (plural)
 - Edge queries: edge (by ID), edges (all)
+- Filtering/Where Clauses:
+  - Where argument on all plural queries (nodes and edges)
+  - Operators: eq, gt, lt, gte, lte, contains, in
+  - Supports all property types: string, int, float, bool
+  - Multiple conditions use AND logic (all must match)
+  - Integrates with sorting and pagination
 - Offset-based pagination: limit and offset arguments on all plural queries
 - Cursor-based pagination (Relay Connection Specification):
   - Connection queries: {label}sConnection, edgesConnection
