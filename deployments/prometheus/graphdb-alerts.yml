@@ -1,0 +1,386 @@
+# GraphDB Prometheus Alert Rules
+# Configure these alerts in your Prometheus server or Alertmanager
+#
+# Documentation: https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
+
+groups:
+  - name: graphdb_health
+    interval: 30s
+    rules:
+      - alert: GraphDBDown
+        expr: up{job="graphdb"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: graphdb
+        annotations:
+          summary: "GraphDB instance is down"
+          description: "GraphDB instance {{ $labels.instance }} has been down for more than 1 minute."
+          runbook_url: "https://docs.graphdb.io/runbooks/graphdb-down"
+
+      - alert: GraphDBHealthCheckFailing
+        expr: up{job="graphdb"} == 1 and probe_success{job="graphdb-health"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: graphdb
+        annotations:
+          summary: "GraphDB health check failing"
+          description: "GraphDB health check for {{ $labels.instance }} has been failing for more than 2 minutes."
+          runbook_url: "https://docs.graphdb.io/runbooks/health-check-failure"
+
+  - name: graphdb_performance
+    interval: 30s
+    rules:
+      - alert: HighQueryLatency
+        expr: histogram_quantile(0.95, sum(rate(graphdb_query_duration_seconds_bucket[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: graphdb
+        annotations:
+          summary: "High query latency detected"
+          description: "GraphDB p95 query latency is {{ $value | humanizeDuration }} (threshold: 500ms)."
+          runbook_url: "https://docs.graphdb.io/runbooks/high-latency"
+
+      - alert: CriticalQueryLatency
+        expr: histogram_quantile(0.95, sum(rate(graphdb_query_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 3m
+        labels:
+          severity: critical
+          component: graphdb
+        annotations:
+          summary: "Critical query latency detected"
+          description: "GraphDB p95 query latency is {{ $value | humanizeDuration }} (threshold: 2s)."
+          runbook_url: "https://docs.graphdb.io/runbooks/critical-latency"
+
+      - alert: HighQueryErrorRate
+        expr: (rate(graphdb_query_errors_total[5m]) / (rate(graphdb_query_errors_total[5m]) + rate(graphdb_query_duration_seconds_count[5m]))) * 100 > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: graphdb
+        annotations:
+          summary: "High query error rate"
+          description: "GraphDB query error rate is {{ $value | humanizePercentage }} (threshold: 1%)."
+          runbook_url: "https://docs.graphdb.io/runbooks/high-error-rate"
+
+      - alert: CriticalQueryErrorRate
+        expr: (rate(graphdb_query_errors_total[5m]) / (rate(graphdb_query_errors_total[5m]) + rate(graphdb_query_duration_seconds_count[5m]))) * 100 > 5
+        for: 2m
+        labels:
+          severity: critical
+          component: graphdb
+        annotations:
+          summary: "Critical query error rate"
+          description: "GraphDB query error rate is {{ $value | humanizePercentage }} (threshold: 5%)."
+          runbook_url: "https://docs.graphdb.io/runbooks/critical-error-rate"
+
+      - alert: HighSlowQueryRate
+        expr: rate(graphdb_slow_queries_total[5m]) > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: graphdb
+        annotations:
+          summary: "High slow query rate"
+          description: "GraphDB is experiencing {{ $value | humanize }} slow queries per second."
+          runbook_url: "https://docs.graphdb.io/runbooks/slow-queries"
+
+      - alert: LowCacheHitRate
+        expr: (rate(graphdb_query_cache_hits_total[5m]) / (rate(graphdb_query_cache_hits_total[5m]) + rate(graphdb_query_cache_misses_total[5m]))) * 100 < 50
+        for: 15m
+        labels:
+          severity: warning
+          component: graphdb
+        annotations:
+          summary: "Low cache hit rate"
+          description: "GraphDB cache hit rate is {{ $value | humanizePercentage }} (threshold: 50%)."
+          runbook_url: "https://docs.graphdb.io/runbooks/low-cache-hit-rate"
+
+      - alert: HighActiveQueries
+        expr: graphdb_active_queries > 50
+        for: 5m
+        labels:
+          severity: warning
+          component: graphdb
+        annotations:
+          summary: "High number of active queries"
+          description: "GraphDB has {{ $value }} active queries (threshold: 50)."
+          runbook_url: "https://docs.graphdb.io/runbooks/high-active-queries"
+
+  - name: graphdb_resources
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: graphdb_system_cpu_percent > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: graphdb
+        annotations:
+          summary: "High CPU usage"
+          description: "GraphDB CPU usage is {{ $value | humanizePercentage }} (threshold: 80%)."
+          runbook_url: "https://docs.graphdb.io/runbooks/high-cpu"
+
+      - alert: CriticalCPUUsage
+        expr: graphdb_system_cpu_percent > 95
+        for: 5m
+        labels:
+          severity: critical
+          component: graphdb
+        annotations:
+          summary: "Critical CPU usage"
+          description: "GraphDB CPU usage is {{ $value | humanizePercentage }} (threshold: 95%)."
+          runbook_url: "https://docs.graphdb.io/runbooks/critical-cpu"
+
+      - alert: HighMemoryUsage
+        expr: (graphdb_system_memory_used_bytes / graphdb_system_memory_total_bytes) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+          component: graphdb
+        annotations:
+          summary: "High memory usage"
+          description: "GraphDB memory usage is {{ $value | humanizePercentage }} (threshold: 85%)."
+          runbook_url: "https://docs.graphdb.io/runbooks/high-memory"
+
+      - alert: CriticalMemoryUsage
+        expr: (graphdb_system_memory_used_bytes / graphdb_system_memory_total_bytes) * 100 > 95
+        for: 5m
+        labels:
+          severity: critical
+          component: graphdb
+        annotations:
+          summary: "Critical memory usage"
+          description: "GraphDB memory usage is {{ $value | humanizePercentage }} (threshold: 95%)."
+          runbook_url: "https://docs.graphdb.io/runbooks/critical-memory"
+
+      - alert: HighDiskUsage
+        expr: (graphdb_system_disk_used_bytes / graphdb_system_disk_total_bytes) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: graphdb
+        annotations:
+          summary: "High disk usage"
+          description: "GraphDB disk usage is {{ $value | humanizePercentage }} (threshold: 80%)."
+          runbook_url: "https://docs.graphdb.io/runbooks/high-disk"
+
+      - alert: CriticalDiskUsage
+        expr: (graphdb_system_disk_used_bytes / graphdb_system_disk_total_bytes) * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+          component: graphdb
+        annotations:
+          summary: "Critical disk usage"
+          description: "GraphDB disk usage is {{ $value | humanizePercentage }} (threshold: 90%)."
+          runbook_url: "https://docs.graphdb.io/runbooks/critical-disk"
+
+  - name: graphdb_backup
+    interval: 1m
+    rules:
+      - alert: BackupFailed
+        expr: increase(graphdb_backup_failure_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: graphdb-backup
+        annotations:
+          summary: "Backup failed"
+          description: "GraphDB backup has failed {{ $value }} times in the last hour."
+          runbook_url: "https://docs.graphdb.io/runbooks/backup-failure"
+
+      - alert: BackupStale
+        expr: (time() - graphdb_backup_last_success_timestamp_seconds) > 86400
+        for: 30m
+        labels:
+          severity: warning
+          component: graphdb-backup
+        annotations:
+          summary: "Backup is stale"
+          description: "GraphDB last successful backup was {{ $value | humanizeDuration }} ago (threshold: 24 hours)."
+          runbook_url: "https://docs.graphdb.io/runbooks/stale-backup"
+
+      - alert: BackupCriticallyStale
+        expr: (time() - graphdb_backup_last_success_timestamp_seconds) > 172800
+        for: 1h
+        labels:
+          severity: critical
+          component: graphdb-backup
+        annotations:
+          summary: "Backup is critically stale"
+          description: "GraphDB last successful backup was {{ $value | humanizeDuration }} ago (threshold: 48 hours)."
+          runbook_url: "https://docs.graphdb.io/runbooks/critical-stale-backup"
+
+      - alert: BackupTakingTooLong
+        expr: graphdb_backup_in_progress == 1 and (time() - graphdb_backup_last_run_timestamp_seconds) > 3600
+        for: 10m
+        labels:
+          severity: warning
+          component: graphdb-backup
+        annotations:
+          summary: "Backup taking too long"
+          description: "GraphDB backup has been running for {{ $value | humanizeDuration }} (threshold: 1 hour)."
+          runbook_url: "https://docs.graphdb.io/runbooks/slow-backup"
+
+  - name: graphdb_data
+    interval: 30s
+    rules:
+      - alert: GraphSizeSuddenDrop
+        expr: (graphdb_graph_nodes_total - graphdb_graph_nodes_total offset 1h) / graphdb_graph_nodes_total offset 1h * 100 < -20
+        for: 5m
+        labels:
+          severity: warning
+          component: graphdb
+        annotations:
+          summary: "Graph size sudden drop"
+          description: "GraphDB node count decreased by {{ $value | humanizePercentage }} in the last hour."
+          runbook_url: "https://docs.graphdb.io/runbooks/graph-size-drop"
+
+      - alert: GraphSizeRapidGrowth
+        expr: (graphdb_graph_nodes_total - graphdb_graph_nodes_total offset 1h) / graphdb_graph_nodes_total offset 1h * 100 > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: graphdb
+        annotations:
+          summary: "Graph size rapid growth"
+          description: "GraphDB node count increased by {{ $value | humanizePercentage }} in the last hour."
+          runbook_url: "https://docs.graphdb.io/runbooks/graph-size-growth"
+
+  - name: graphdb_security
+    interval: 30s
+    rules:
+      - alert: HighAuthenticationFailureRate
+        expr: rate(graphdb_auth_failures_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: graphdb-security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "GraphDB is experiencing {{ $value | humanize }} failed authentication attempts per second."
+          runbook_url: "https://docs.graphdb.io/runbooks/high-auth-failures"
+
+      - alert: CriticalAuthenticationFailureRate
+        expr: rate(graphdb_auth_failures_total[5m]) > 20
+        for: 2m
+        labels:
+          severity: critical
+          component: graphdb-security
+        annotations:
+          summary: "Critical authentication failure rate (possible brute force attack)"
+          description: "GraphDB is experiencing {{ $value | humanize }} failed authentication attempts per second. This may indicate a brute force attack."
+          runbook_url: "https://docs.graphdb.io/runbooks/critical-auth-failures"
+
+      - alert: EncryptionDisabled
+        expr: graphdb_security_encryption_enabled == 0
+        for: 1m
+        labels:
+          severity: warning
+          component: graphdb-security
+        annotations:
+          summary: "Encryption is disabled"
+          description: "GraphDB is running without encryption enabled. Data at rest is not encrypted."
+          runbook_url: "https://docs.graphdb.io/runbooks/encryption-disabled"
+
+      - alert: EncryptionKeyRotationOverdue
+        expr: (time() - graphdb_security_key_last_rotation_timestamp_seconds) > 7776000
+        for: 1h
+        labels:
+          severity: warning
+          component: graphdb-security
+        annotations:
+          summary: "Encryption key rotation overdue"
+          description: "GraphDB encryption keys have not been rotated in {{ $value | humanizeDuration }} (threshold: 90 days)."
+          runbook_url: "https://docs.graphdb.io/runbooks/key-rotation-overdue"
+
+      - alert: TLSDisabled
+        expr: graphdb_security_tls_enabled == 0
+        for: 1m
+        labels:
+          severity: warning
+          component: graphdb-security
+        annotations:
+          summary: "TLS is disabled"
+          description: "GraphDB is running without TLS/SSL. Network traffic is not encrypted."
+          runbook_url: "https://docs.graphdb.io/runbooks/tls-disabled"
+
+      - alert: TLSCertificateExpiring
+        expr: (graphdb_security_tls_cert_expiry_timestamp_seconds - time()) < 2592000
+        for: 1h
+        labels:
+          severity: warning
+          component: graphdb-security
+        annotations:
+          summary: "TLS certificate expiring soon"
+          description: "GraphDB TLS certificate will expire in {{ $value | humanizeDuration }} (threshold: 30 days)."
+          runbook_url: "https://docs.graphdb.io/runbooks/tls-cert-expiring"
+
+      - alert: TLSCertificateCriticallyExpiring
+        expr: (graphdb_security_tls_cert_expiry_timestamp_seconds - time()) < 604800
+        for: 30m
+        labels:
+          severity: critical
+          component: graphdb-security
+        annotations:
+          summary: "TLS certificate expiring critically soon"
+          description: "GraphDB TLS certificate will expire in {{ $value | humanizeDuration }} (threshold: 7 days)."
+          runbook_url: "https://docs.graphdb.io/runbooks/tls-cert-critical"
+
+      - alert: AuditLogExportFailed
+        expr: increase(graphdb_security_audit_export_failures_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: graphdb-security
+        annotations:
+          summary: "Audit log export failed"
+          description: "GraphDB audit log export has failed {{ $value }} times in the last hour."
+          runbook_url: "https://docs.graphdb.io/runbooks/audit-export-failure"
+
+      - alert: HighSuspiciousActivityRate
+        expr: rate(graphdb_security_suspicious_events_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: graphdb-security
+        annotations:
+          summary: "High suspicious activity rate"
+          description: "GraphDB is detecting {{ $value | humanize }} suspicious events per second."
+          runbook_url: "https://docs.graphdb.io/runbooks/suspicious-activity"
+
+      - alert: CriticalSuspiciousActivityRate
+        expr: rate(graphdb_security_suspicious_events_total[5m]) > 50
+        for: 2m
+        labels:
+          severity: critical
+          component: graphdb-security
+        annotations:
+          summary: "Critical suspicious activity rate (possible attack)"
+          description: "GraphDB is detecting {{ $value | humanize }} suspicious events per second. This may indicate an active attack."
+          runbook_url: "https://docs.graphdb.io/runbooks/critical-suspicious-activity"
+
+      - alert: UnauthorizedAccessAttempts
+        expr: rate(graphdb_security_unauthorized_access_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: graphdb-security
+        annotations:
+          summary: "High unauthorized access attempt rate"
+          description: "GraphDB is experiencing {{ $value | humanize }} unauthorized access attempts per second."
+          runbook_url: "https://docs.graphdb.io/runbooks/unauthorized-access"
+
+      - alert: SecurityHealthCheckFailing
+        expr: graphdb_security_health_status != 1
+        for: 2m
+        labels:
+          severity: critical
+          component: graphdb-security
+        annotations:
+          summary: "Security health check failing"
+          description: "GraphDB security health check is failing. One or more security components may be unhealthy."
+          runbook_url: "https://docs.graphdb.io/runbooks/security-health-failure"

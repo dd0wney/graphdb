@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluso GraphDB - API Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            font-size: 1.3em;
+            opacity: 0.95;
+        }
+        
+        .content {
+            padding: 60px 40px;
+        }
+        
+        .intro {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+        
+        .intro h2 {
+            font-size: 2em;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .intro p {
+            font-size: 1.1em;
+            color: #666;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .docs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 50px;
+        }
+        
+        .doc-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        
+        .doc-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border-color: #667eea;
+        }
+        
+        .doc-card h3 {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+        
+        .doc-card p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        .doc-card .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .doc-card .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .features {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 40px;
+            margin-bottom: 40px;
+        }
+        
+        .features h3 {
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            text-align: center;
+            color: #333;
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .feature {
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+        }
+        
+        .feature h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        
+        .feature p {
+            color: #666;
+            font-size: 0.95em;
+        }
+        
+        .quickstart {
+            background: #2d3748;
+            color: white;
+            border-radius: 12px;
+            padding: 40px;
+            margin-bottom: 40px;
+        }
+        
+        .quickstart h3 {
+            font-size: 1.8em;
+            margin-bottom: 25px;
+        }
+        
+        .quickstart pre {
+            background: #1a202c;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-bottom: 15px;
+        }
+        
+        .quickstart code {
+            color: #68d391;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 40px;
+            background: #f8f9fa;
+            color: #666;
+        }
+        
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .header p {
+                font-size: 1em;
+            }
+            
+            .docs-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Cluso GraphDB</h1>
+            <p>Enterprise-Grade Graph Database API Documentation</p>
+        </div>
+        
+        <div class="content">
+            <div class="intro">
+                <h2>Welcome to GraphDB API Documentation</h2>
+                <p>
+                    Comprehensive REST API for managing graph data with advanced algorithms, 
+                    authentication, and enterprise features. Choose your preferred documentation viewer below.
+                </p>
+            </div>
+            
+            <div class="docs-grid">
+                <div class="doc-card">
+                    <h3>📚 Swagger UI</h3>
+                    <p>
+                        Interactive API explorer with try-it-out functionality. 
+                        Perfect for testing endpoints directly in your browser.
+                    </p>
+                    <a href="swagger.html" class="btn">Open Swagger UI →</a>
+                </div>
+                
+                <div class="doc-card">
+                    <h3>📖 Redoc</h3>
+                    <p>
+                        Beautiful, responsive documentation with search and navigation. 
+                        Great for reading and understanding the API.
+                    </p>
+                    <a href="redoc.html" class="btn">Open Redoc →</a>
+                </div>
+                
+                <div class="doc-card">
+                    <h3>📝 Markdown Guide</h3>
+                    <p>
+                        Complete API guide with examples, best practices, and quick start. 
+                        Perfect for getting started quickly.
+                    </p>
+                    <a href="API.md" class="btn">Read Guide →</a>
+                </div>
+            </div>
+            
+            <div class="features">
+                <h3>✨ Key Features</h3>
+                <div class="features-grid">
+                    <div class="feature">
+                        <h4>🔐 Dual Authentication</h4>
+                        <p>JWT Bearer tokens and API keys for flexible authentication</p>
+                    </div>
+                    <div class="feature">
+                        <h4>📊 Graph Algorithms</h4>
+                        <p>PageRank, betweenness centrality, community detection, and more</p>
+                    </div>
+                    <div class="feature">
+                        <h4>⚡ Batch Operations</h4>
+                        <p>Bulk create/update operations for high-performance data loading</p>
+                    </div>
+                    <div class="feature">
+                        <h4>🔍 GraphQL Support</h4>
+                        <p>Flexible querying with GraphQL in addition to REST</p>
+                    </div>
+                    <div class="feature">
+                        <h4>📈 Comprehensive Metrics</h4>
+                        <p>Built-in health checks, metrics, and audit logging</p>
+                    </div>
+                    <div class="feature">
+                        <h4>🛡️ Enterprise Ready</h4>
+                        <p>Advanced features, vector search, and production-grade security</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="quickstart">
+                <h3>🚀 Quick Start</h3>
+                <pre><code># 1. Start the server
+PORT=8080 ./bin/server
+
+# 2. Register a user
+curl -X POST http://localhost:8080/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "password": "SecurePass123!"}'
+
+# 3. Login and get token
+curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "password": "SecurePass123!"}'
+
+# 4. Create a node
+curl -X POST http://localhost:8080/nodes \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"labels": ["Person"], "properties": {"name": "Alice"}}'</code></pre>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>
+                <strong>Cluso GraphDB</strong> - Enterprise Graph Database<br>
+                <a href="https://github.com/dd0wney/cluso-graphdb" target="_blank">GitHub</a> | 
+                <a href="openapi.yaml" target="_blank">OpenAPI Spec</a> | 
+                <a href="API.md" target="_blank">Full Documentation</a>
+            </p>
+            <p style="margin-top: 20px; font-size: 0.9em;">
+                API Version 1.0.0 | MIT License
+            </p>
+        </div>
+    </div>
+</body>
+</html>

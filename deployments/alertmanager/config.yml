@@ -1,0 +1,58 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'default'
+  routes:
+    # Critical alerts go to pagerduty (if configured)
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      continue: true
+
+    # Warning alerts go to slack (if configured)
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      continue: true
+
+receivers:
+  - name: 'default'
+    # Default receiver - logs only
+    # To enable Slack/PagerDuty, add webhook configurations below
+
+  - name: 'critical-alerts'
+    # Uncomment and configure for PagerDuty integration:
+    # pagerduty_configs:
+    #   - service_key: YOUR_PAGERDUTY_SERVICE_KEY
+    #     description: '{{ .CommonAnnotations.summary }}'
+
+    # Or use webhook for custom integrations:
+    webhook_configs:
+      - url: 'http://localhost:5001/critical'
+        send_resolved: true
+
+  - name: 'warning-alerts'
+    # Uncomment and configure for Slack integration:
+    # slack_configs:
+    #   - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+    #     channel: '#graphdb-alerts'
+    #     title: 'GraphDB Alert: {{ .CommonAnnotations.summary }}'
+    #     text: '{{ .CommonAnnotations.description }}'
+
+    # Or use webhook for custom integrations:
+    webhook_configs:
+      - url: 'http://localhost:5001/warning'
+        send_resolved: true
+
+inhibit_rules:
+  # Inhibit warning alerts if critical alert is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']

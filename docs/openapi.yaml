@@ -1,0 +1,1496 @@
+openapi: 3.0.3
+info:
+  title: Cluso GraphDB API
+  description: |
+    Enterprise-grade graph database API with comprehensive features for managing nodes, edges, and running graph algorithms.
+    
+    ## Features
+    - Node and edge CRUD operations
+    - Batch operations for bulk data manipulation
+    - Graph traversal and shortest path algorithms
+    - Advanced algorithms: PageRank, betweenness centrality, community detection
+    - GraphQL and custom query language support
+    - JWT and API key authentication
+    - Comprehensive audit logging
+    - Vector search capabilities (Enterprise edition)
+    
+    ## Authentication
+    This API supports two authentication methods:
+    - **JWT Bearer Token**: Use `Authorization: Bearer <token>` header
+    - **API Key**: Use `X-API-Key: <key>` header
+    
+    Most endpoints require authentication. Public endpoints are explicitly marked.
+    
+  version: 1.0.0
+  contact:
+    name: GraphDB Support
+    email: support@clusographdb.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: https://api.graphdb.example.com
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and registration
+  - name: Health & Monitoring
+    description: Health checks and metrics (public endpoints)
+  - name: Nodes
+    description: Node management operations
+  - name: Edges
+    description: Edge management operations
+  - name: Traversal
+    description: Graph traversal operations
+  - name: Algorithms
+    description: Advanced graph algorithms
+  - name: Query
+    description: Custom query execution
+  - name: GraphQL
+    description: GraphQL endpoint
+  - name: Security
+    description: Security management operations (encryption, audit, health)
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  # Authentication endpoints
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Create a new user account. This is a public endpoint.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+                  pattern: '^[a-zA-Z0-9_-]+$'
+                  description: Username (alphanumeric, underscore, and hyphen only)
+                  example: alice_123
+                password:
+                  type: string
+                  minLength: 8
+                  description: Password (minimum 8 characters)
+                  example: SecurePass123!
+                email:
+                  type: string
+                  format: email
+                  description: Email address (optional)
+                  example: alice@example.com
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login and get access tokens
+      description: Authenticate and receive JWT access and refresh tokens. This is a public endpoint.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: alice_123
+                password:
+                  type: string
+                  example: SecurePass123!
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    description: JWT access token (15 minutes validity)
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  refresh_token:
+                    type: string
+                    description: JWT refresh token (7 days validity)
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Use a refresh token to get a new access token. This is a public endpoint.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+                  description: Valid refresh token
+                  example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: New tokens generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user info
+      description: Retrieve information about the authenticated user
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Health & Monitoring
+  /health:
+    get:
+      tags:
+        - Health & Monitoring
+      summary: Health check
+      description: Check API health status. This is a public endpoint.
+      security: []
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  version:
+                    type: string
+                    example: 1.0.0
+                  edition:
+                    type: string
+                    enum: [Community, Enterprise]
+                    example: Enterprise
+                  uptime:
+                    type: string
+                    example: 2h15m30s
+                  timestamp:
+                    type: string
+                    format: date-time
+                  features:
+                    type: array
+                    items:
+                      type: string
+                    example: ["vector-search", "advanced-algorithms", "audit-logging"]
+
+  /metrics:
+    get:
+      tags:
+        - Health & Monitoring
+      summary: Get API metrics
+      description: Retrieve system metrics and statistics. This is a public endpoint.
+      security: []
+      responses:
+        '200':
+          description: System metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node_count:
+                    type: integer
+                    example: 150000
+                  edge_count:
+                    type: integer
+                    example: 500000
+                  uptime:
+                    type: string
+                    example: 2h15m30s
+                  total_queries:
+                    type: integer
+                    example: 1250
+                  avg_query_time:
+                    type: number
+                    format: float
+                    description: Average query time in milliseconds
+                    example: 45.2
+
+  # Node endpoints
+  /nodes:
+    get:
+      tags:
+        - Nodes
+      summary: List nodes
+      description: Retrieve a paginated list of nodes with optional filtering
+      parameters:
+        - name: labels
+          in: query
+          description: Filter by node labels (comma-separated)
+          schema:
+            type: string
+            example: Person,Company
+        - name: limit
+          in: query
+          description: Maximum number of nodes to return
+          schema:
+            type: integer
+            default: 100
+            maximum: 10000
+            example: 50
+        - name: offset
+          in: query
+          description: Number of nodes to skip
+          schema:
+            type: integer
+            default: 0
+            example: 0
+      responses:
+        '200':
+          description: List of nodes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+                  total:
+                    type: integer
+                    example: 150000
+                  limit:
+                    type: integer
+                    example: 50
+                  offset:
+                    type: integer
+                    example: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Nodes
+      summary: Create a new node
+      description: Create a single node with labels and properties
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - labels
+              properties:
+                labels:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  example: ["Person", "Employee"]
+                properties:
+                  type: object
+                  maxProperties: 100
+                  additionalProperties: true
+                  example:
+                    name: Alice Johnson
+                    age: 30
+                    email: alice@example.com
+      responses:
+        '201':
+          description: Node created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /nodes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Node ID
+        schema:
+          type: integer
+          format: uint64
+          example: 12345
+    
+    get:
+      tags:
+        - Nodes
+      summary: Get node by ID
+      description: Retrieve a single node by its ID
+      responses:
+        '200':
+          description: Node found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags:
+        - Nodes
+      summary: Update node
+      description: Update node labels and/or properties
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                labels:
+                  type: array
+                  items:
+                    type: string
+                  example: ["Person", "Manager"]
+                properties:
+                  type: object
+                  additionalProperties: true
+                  example:
+                    name: Alice Johnson
+                    age: 31
+                    department: Engineering
+      responses:
+        '200':
+          description: Node updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      tags:
+        - Nodes
+      summary: Delete node
+      description: Delete a node by its ID (also removes connected edges)
+      responses:
+        '200':
+          description: Node deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Node deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /nodes/batch:
+    post:
+      tags:
+        - Nodes
+      summary: Create nodes in batch
+      description: Create multiple nodes in a single operation (max 1000)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - nodes
+              properties:
+                nodes:
+                  type: array
+                  maxItems: 1000
+                  items:
+                    type: object
+                    required:
+                      - labels
+                    properties:
+                      labels:
+                        type: array
+                        items:
+                          type: string
+                      properties:
+                        type: object
+                        additionalProperties: true
+                  example:
+                    - labels: ["Person"]
+                      properties:
+                        name: Alice
+                        age: 30
+                    - labels: ["Person"]
+                      properties:
+                        name: Bob
+                        age: 25
+      responses:
+        '201':
+          description: Nodes created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: integer
+                    example: 2
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Edge endpoints
+  /edges:
+    get:
+      tags:
+        - Edges
+      summary: List edges
+      description: Retrieve a paginated list of edges with optional filtering
+      parameters:
+        - name: from_node_id
+          in: query
+          description: Filter by source node ID
+          schema:
+            type: integer
+            format: uint64
+        - name: to_node_id
+          in: query
+          description: Filter by target node ID
+          schema:
+            type: integer
+            format: uint64
+        - name: type
+          in: query
+          description: Filter by edge type
+          schema:
+            type: string
+            example: KNOWS
+        - name: limit
+          in: query
+          description: Maximum number of edges to return
+          schema:
+            type: integer
+            default: 100
+            maximum: 10000
+        - name: offset
+          in: query
+          description: Number of edges to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of edges
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  edges:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Edge'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Edges
+      summary: Create a new edge
+      description: Create an edge between two nodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - from_node_id
+                - to_node_id
+                - type
+              properties:
+                from_node_id:
+                  type: integer
+                  format: uint64
+                  example: 12345
+                to_node_id:
+                  type: integer
+                  format: uint64
+                  example: 67890
+                type:
+                  type: string
+                  pattern: '^[A-Z_]+$'
+                  example: KNOWS
+                weight:
+                  type: number
+                  format: float
+                  default: 1.0
+                  example: 0.8
+                properties:
+                  type: object
+                  maxProperties: 100
+                  additionalProperties: true
+                  example:
+                    since: "2020-01-15"
+                    strength: high
+      responses:
+        '201':
+          description: Edge created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Edge'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /edges/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Edge ID
+        schema:
+          type: integer
+          format: uint64
+    
+    get:
+      tags:
+        - Edges
+      summary: Get edge by ID
+      description: Retrieve a single edge by its ID
+      responses:
+        '200':
+          description: Edge found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Edge'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags:
+        - Edges
+      summary: Update edge
+      description: Update edge properties and/or weight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                weight:
+                  type: number
+                  format: float
+                properties:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Edge updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Edge'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      tags:
+        - Edges
+      summary: Delete edge
+      description: Delete an edge by its ID
+      responses:
+        '200':
+          description: Edge deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Edge deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /edges/batch:
+    post:
+      tags:
+        - Edges
+      summary: Create edges in batch
+      description: Create multiple edges in a single operation (max 1000)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - edges
+              properties:
+                edges:
+                  type: array
+                  maxItems: 1000
+                  items:
+                    type: object
+                    required:
+                      - from_node_id
+                      - to_node_id
+                      - type
+                    properties:
+                      from_node_id:
+                        type: integer
+                        format: uint64
+                      to_node_id:
+                        type: integer
+                        format: uint64
+                      type:
+                        type: string
+                      weight:
+                        type: number
+                        format: float
+                        default: 1.0
+                      properties:
+                        type: object
+                        additionalProperties: true
+      responses:
+        '201':
+          description: Edges created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: integer
+                  edges:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Edge'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Traversal endpoints
+  /traverse:
+    post:
+      tags:
+        - Traversal
+      summary: Traverse graph from a starting node
+      description: Perform breadth-first or depth-first traversal from a starting node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - start_node_id
+              properties:
+                start_node_id:
+                  type: integer
+                  format: uint64
+                  example: 12345
+                max_depth:
+                  type: integer
+                  default: 3
+                  example: 5
+                direction:
+                  type: string
+                  enum: [outgoing, incoming, both]
+                  default: outgoing
+                  example: outgoing
+                edge_types:
+                  type: array
+                  items:
+                    type: string
+                  example: ["KNOWS", "WORKS_WITH"]
+      responses:
+        '200':
+          description: Traversal results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+                  paths:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        nodes:
+                          type: array
+                          items:
+                            type: integer
+                            format: uint64
+                        depth:
+                          type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /shortest-path:
+    post:
+      tags:
+        - Traversal
+      summary: Find shortest path between two nodes
+      description: Calculate the shortest path using Dijkstra's algorithm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - start_node_id
+                - end_node_id
+              properties:
+                start_node_id:
+                  type: integer
+                  format: uint64
+                  example: 12345
+                end_node_id:
+                  type: integer
+                  format: uint64
+                  example: 67890
+                weighted:
+                  type: boolean
+                  default: true
+                  description: Use edge weights for path calculation
+                  example: true
+      responses:
+        '200':
+          description: Shortest path found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: array
+                    items:
+                      type: integer
+                      format: uint64
+                    example: [12345, 23456, 34567, 67890]
+                  distance:
+                    type: number
+                    format: float
+                    description: Total distance/weight of the path
+                    example: 3.5
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+        '404':
+          description: No path found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Algorithm endpoints
+  /algorithms:
+    post:
+      tags:
+        - Algorithms
+      summary: Execute graph algorithm
+      description: |
+        Run advanced graph algorithms on the entire graph or a subgraph.
+        
+        Supported algorithms:
+        - **pagerank**: Calculate PageRank scores for all nodes
+        - **betweenness**: Calculate betweenness centrality
+        - **louvain**: Community detection using Louvain method
+        - **label_propagation**: Community detection using label propagation
+        - **connected_components**: Find all connected components
+        - **triangle_count**: Count triangles in the graph
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - algorithm
+              properties:
+                algorithm:
+                  type: string
+                  enum: [pagerank, betweenness, louvain, label_propagation, connected_components, triangle_count]
+                  example: pagerank
+                parameters:
+                  type: object
+                  additionalProperties: true
+                  description: Algorithm-specific parameters
+                  example:
+                    iterations: 20
+                    damping_factor: 0.85
+      responses:
+        '200':
+          description: Algorithm execution results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  algorithm:
+                    type: string
+                    example: pagerank
+                  execution_time_ms:
+                    type: number
+                    format: float
+                    example: 1250.5
+                  results:
+                    type: object
+                    additionalProperties: true
+                    description: Algorithm-specific results
+                    example:
+                      scores:
+                        "12345": 0.15
+                        "67890": 0.23
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Query endpoints
+  /query:
+    post:
+      tags:
+        - Query
+      summary: Execute custom query
+      description: Execute a custom graph query using GraphDB query language
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  example: 'MATCH (p:Person)-[:KNOWS]->(f:Person) WHERE p.age > 25 RETURN p, f LIMIT 10'
+                parameters:
+                  type: object
+                  additionalProperties: true
+                  description: Query parameters
+      responses:
+        '200':
+          description: Query results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  execution_time_ms:
+                    type: number
+                    format: float
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /graphql:
+    post:
+      tags:
+        - GraphQL
+      summary: Execute GraphQL query
+      description: Execute a GraphQL query against the graph database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  example: |
+                    query {
+                      nodes(labels: ["Person"], limit: 10) {
+                        id
+                        labels
+                        properties
+                      }
+                    }
+                variables:
+                  type: object
+                  additionalProperties: true
+                operationName:
+                  type: string
+      responses:
+        '200':
+          description: GraphQL response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        message:
+                          type: string
+                        locations:
+                          type: array
+                          items:
+                            type: object
+                        path:
+                          type: array
+                          items:
+                            type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Security Management endpoints
+  /api/v1/security/keys/rotate:
+    post:
+      tags:
+        - Security
+      summary: Rotate encryption keys
+      description: |
+        Rotate the encryption keys used for data-at-rest encryption.
+        Generates a new Key Encryption Key (KEK) with a new version number.
+        Old keys are retained for decrypting existing data.
+        All new data will be encrypted with the new key version.
+
+        **Note:** Requires admin authentication.
+      responses:
+        '200':
+          description: Key rotation successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Key rotated successfully
+                  new_version:
+                    type: integer
+                    example: 2
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: '2025-11-23T10:30:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Key rotation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/security/keys/info:
+    get:
+      tags:
+        - Security
+      summary: Get encryption key information
+      description: |
+        Display information about encryption keys including:
+        - Active key version
+        - Total number of keys
+        - Key history with creation timestamps
+        - Compliance recommendations
+
+        **Note:** Requires admin authentication.
+      responses:
+        '200':
+          description: Key information retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  active_version:
+                    type: integer
+                    example: 3
+                  total_keys:
+                    type: integer
+                    example: 3
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version:
+                          type: integer
+                          example: 1
+                        created_at:
+                          type: string
+                          format: date-time
+                          example: '2025-08-01T00:00:00Z'
+                        is_active:
+                          type: boolean
+                          example: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Encryption not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/security/audit/logs:
+    get:
+      tags:
+        - Security
+      summary: Query audit logs
+      description: |
+        Retrieve audit logs with optional filtering.
+
+        **Note:** Requires admin authentication.
+      parameters:
+        - name: user_id
+          in: query
+          schema:
+            type: string
+          description: Filter by user ID
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [read, write, delete, admin]
+          description: Filter by action type
+        - name: start_time
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter events after this time (RFC3339 format)
+        - name: end_time
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter events before this time (RFC3339 format)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+          description: Maximum number of events to return
+      responses:
+        '200':
+          description: Audit logs retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        timestamp:
+                          type: string
+                          format: date-time
+                        user_id:
+                          type: string
+                        action:
+                          type: string
+                        resource:
+                          type: string
+                        ip_address:
+                          type: string
+                        user_agent:
+                          type: string
+                        status_code:
+                          type: integer
+                  count:
+                    type: integer
+                    example: 42
+                  total:
+                    type: integer
+                    example: 15432
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/security/audit/export:
+    post:
+      tags:
+        - Security
+      summary: Export audit logs
+      description: |
+        Export audit logs to a file for compliance, analysis, or archival.
+        Supports filtering by user, action, and time range.
+
+        **Note:** Requires admin authentication.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format:
+                  type: string
+                  enum: [json, csv]
+                  default: json
+                  description: Export format
+                user_id:
+                  type: string
+                  description: Filter by user ID
+                action:
+                  type: string
+                  description: Filter by action type
+                start_time:
+                  type: string
+                  format: date-time
+                  description: Filter events after this time
+                end_time:
+                  type: string
+                  format: date-time
+                  description: Filter events before this time
+      responses:
+        '200':
+          description: Audit logs exported
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
+                  export_time:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/security/health:
+    get:
+      tags:
+        - Security
+      summary: Check security health status
+      description: |
+        Check the health status of all security components including:
+        - Encryption (enabled/disabled, key statistics)
+        - TLS (enabled/disabled)
+        - Audit Logging (enabled/disabled, event count)
+        - Authentication (JWT and API key status)
+
+        **Note:** Requires admin authentication.
+      responses:
+        '200':
+          description: Security health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                    example: healthy
+                  components:
+                    type: object
+                    properties:
+                      encryption:
+                        type: object
+                        properties:
+                          enabled:
+                            type: boolean
+                          key_stats:
+                            type: object
+                            properties:
+                              total_keys:
+                                type: integer
+                              active_version:
+                                type: integer
+                      tls:
+                        type: object
+                        properties:
+                          enabled:
+                            type: boolean
+                      audit:
+                        type: object
+                        properties:
+                          enabled:
+                            type: boolean
+                          event_count:
+                            type: integer
+                      authentication:
+                        type: object
+                        properties:
+                          jwt_enabled:
+                            type: boolean
+                          apikey_enabled:
+                            type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /auth/login
+    
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for programmatic access
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        username:
+          type: string
+          example: alice_123
+        role:
+          type: string
+          enum: [admin, editor, viewer]
+          example: editor
+        created_at:
+          type: integer
+          format: int64
+          description: Unix timestamp
+          example: 1700000000
+
+    Node:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: uint64
+          example: 12345
+        labels:
+          type: array
+          items:
+            type: string
+          example: ["Person", "Employee"]
+        properties:
+          type: object
+          additionalProperties: true
+          example:
+            name: Alice Johnson
+            age: 30
+            email: alice@example.com
+
+    Edge:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: uint64
+          example: 78901
+        from_node_id:
+          type: integer
+          format: uint64
+          example: 12345
+        to_node_id:
+          type: integer
+          format: uint64
+          example: 67890
+        type:
+          type: string
+          example: KNOWS
+        weight:
+          type: number
+          format: float
+          example: 1.0
+        properties:
+          type: object
+          additionalProperties: true
+          example:
+            since: "2020-01-15"
+            strength: high
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Invalid request parameters
+        code:
+          type: string
+          example: INVALID_REQUEST
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Invalid request parameters
+            code: INVALID_REQUEST
+
+    Unauthorized:
+      description: Unauthorized - missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Missing authentication (Bearer token or X-API-Key header required)
+            code: UNAUTHORIZED
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Resource not found
+            code: NOT_FOUND
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Insufficient permissions
+            code: FORBIDDEN

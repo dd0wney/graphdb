@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluso GraphDB API - Redoc Documentation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        .back-link {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            text-decoration: none;
+            color: #667eea;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+        }
+
+        .back-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Custom Redoc styling */
+        redoc {
+            --header-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+
+<body>
+    <a href="index.html" class="back-link">← Back to Docs</a>
+
+    <redoc spec-url="openapi.yaml"
+           hide-download-button="false"
+           suppress-warnings="true"
+           theme='{
+               "colors": {
+                   "primary": {
+                       "main": "#667eea"
+                   },
+                   "success": {
+                       "main": "#68d391"
+                   },
+                   "text": {
+                       "primary": "#333"
+                   }
+               },
+               "typography": {
+                   "fontSize": "16px",
+                   "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
+                   "headings": {
+                       "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
+                       "fontWeight": "700"
+                   },
+                   "code": {
+                       "fontFamily": "\"Courier New\", monospace",
+                       "fontSize": "14px",
+                       "color": "#68d391",
+                       "backgroundColor": "#2d3748"
+                   }
+               },
+               "sidebar": {
+                   "backgroundColor": "#f8f9fa",
+                   "textColor": "#333"
+               },
+               "rightPanel": {
+                   "backgroundColor": "#2d3748",
+                   "textColor": "#fff"
+               }
+           }'>
+    </redoc>
+
+    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+</body>
+</html>
