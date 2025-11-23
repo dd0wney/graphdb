@@ -6,29 +6,39 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
 	"github.com/dd0wney/cluso-graphdb/pkg/editions"
 	"github.com/dd0wney/cluso-graphdb/pkg/graphql"
+	"github.com/dd0wney/cluso-graphdb/pkg/health"
+	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server represents the HTTP API server
 type Server struct {
-	graph          *storage.GraphStorage
-	executor       *query.Executor
-	graphqlHandler *graphql.GraphQLHandler
-	authHandler    *auth.AuthHandler
-	jwtManager     *auth.JWTManager
-	userStore      *auth.UserStore
-	apiKeyStore    *auth.APIKeyStore
-	auditLogger    *audit.AuditLogger
-	startTime      time.Time
-	version        string
-	port           int
+	graph            *storage.GraphStorage
+	executor         *query.Executor
+	graphqlHandler   *graphql.GraphQLHandler
+	authHandler      *auth.AuthHandler
+	jwtManager       *auth.JWTManager
+	userStore        *auth.UserStore
+	apiKeyStore      *auth.APIKeyStore
+	auditLogger      *audit.AuditLogger
+	metricsRegistry  *metrics.Registry
+	healthChecker    *health.HealthChecker
+	tlsConfig        *tlspkg.Config
+	encryptionEngine interface{} // *encryption.Engine
+	keyManager       interface{} // *encryption.KeyManager
+	startTime        time.Time
+	version          string
+	port             int
 }
 
 // NewServer creates a new API server
@@ -58,6 +68,27 @@ func NewServer(graph *storage.GraphStorage, port int) *Server {
 	authHandler := auth.NewAuthHandler(userStore, jwtManager)
 	auditLogger := audit.NewAuditLogger(10000) // Store last 10,000 events
 
+	// Initialize metrics and health monitoring
+	metricsRegistry := metrics.DefaultRegistry()
+	healthChecker := health.NewHealthChecker()
+
+	// Register basic health checks
+	healthChecker.RegisterLivenessCheck("api", func() health.Check {
+		return health.SimpleCheck("api")
+	})
+
+	healthChecker.RegisterReadinessCheck("storage", health.DatabaseCheck(func() error {
+		// Check if storage is accessible
+		_ = graph.GetStatistics()
+		return nil
+	}))
+
+	healthChecker.RegisterCheck("memory", health.MemoryCheck(func() (uint64, uint64) {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		return m.Alloc, m.Sys
+	}))
+
 	// Create default admin user if no users exist
 	if len(userStore.ListUsers()) == 0 {
 		adminPassword := os.Getenv("ADMIN_PASSWORD")
@@ -75,18 +106,32 @@ func NewServer(graph *storage.GraphStorage, port int) *Server {
 	}
 
 	return &Server{
-		graph:          graph,
-		executor:       query.NewExecutor(graph),
-		graphqlHandler: graphqlHandler,
-		authHandler:    authHandler,
-		jwtManager:     jwtManager,
-		userStore:      userStore,
-		apiKeyStore:    apiKeyStore,
-		auditLogger:    auditLogger,
-		startTime:      time.Now(),
-		version:        "1.0.0",
-		port:           port,
+		graph:           graph,
+		executor:        query.NewExecutor(graph),
+		graphqlHandler:  graphqlHandler,
+		authHandler:     authHandler,
+		jwtManager:      jwtManager,
+		userStore:       userStore,
+		apiKeyStore:     apiKeyStore,
+		auditLogger:     auditLogger,
+		metricsRegistry: metricsRegistry,
+		healthChecker:   healthChecker,
+		tlsConfig:       nil, // TLS disabled by default
+		startTime:       time.Now(),
+		version:         "1.0.0",
+		port:            port,
 	}
+}
+
+// SetTLSConfig sets the TLS configuration for the server
+func (s *Server) SetTLSConfig(cfg *tlspkg.Config) {
+	s.tlsConfig = cfg
+}
+
+// SetEncryption sets the encryption engine and key manager for the server
+func (s *Server) SetEncryption(engine, keyManager interface{}) {
+	s.encryptionEngine = engine
+	s.keyManager = keyManager
 }
 
 // Start starts the HTTP server
@@ -95,7 +140,9 @@ func (s *Server) Start() error {
 
 	// Health and metrics (public)
 	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/metrics", s.handleMetrics)
+	mux.Handle("/health/ready", s.healthChecker.ReadinessHandler())
+	mux.Handle("/health/live", s.healthChecker.LivenessHandler())
+	mux.Handle("/metrics", promhttp.HandlerFor(s.metricsRegistry.GetPrometheusRegistry(), promhttp.HandlerOpts{}))
 
 	// Authentication endpoints (public)
 	mux.Handle("/auth/", s.authHandler)
@@ -123,32 +170,74 @@ func (s *Server) Start() error {
 	// Algorithm endpoints (protected)
 	mux.HandleFunc("/algorithms", s.requireAuth(s.handleAlgorithm))
 
+	// Security management endpoints (protected, admin only for some)
+	mux.HandleFunc("/api/v1/security/keys/rotate", s.requireAuth(s.handleSecurityKeyRotate))
+	mux.HandleFunc("/api/v1/security/keys/info", s.requireAuth(s.handleSecurityKeyInfo))
+	mux.HandleFunc("/api/v1/security/audit/logs", s.requireAuth(s.handleSecurityAuditLogs))
+	mux.HandleFunc("/api/v1/security/audit/export", s.requireAuth(s.handleSecurityAuditExport))
+	mux.HandleFunc("/api/v1/security/health", s.requireAuth(s.handleSecurityHealth))
+
 	addr := fmt.Sprintf(":%d", s.port)
-	log.Printf("🚀 Cluso GraphDB API Server starting on %s", addr)
+
+	// Check if TLS is enabled
+	protocol := "http"
+	if s.tlsConfig != nil && s.tlsConfig.Enabled {
+		protocol = "https"
+	}
+
+	log.Printf("🚀 Cluso GraphDB API Server starting on %s://%s", protocol, addr)
+	if s.tlsConfig != nil && s.tlsConfig.Enabled {
+		log.Printf("🔒 TLS enabled with secure cipher suites (TLS 1.2+)")
+	}
 	log.Printf("📖 API Documentation:")
-	log.Printf("   Health:        GET  %s/health (public)", addr)
-	log.Printf("   Metrics:       GET  %s/metrics (public)", addr)
-	log.Printf("   Login:         POST %s/auth/login (public)", addr)
-	log.Printf("   Register:      POST %s/auth/register (requires admin)", addr)
-	log.Printf("   Refresh:       POST %s/auth/refresh (public)", addr)
-	log.Printf("   Current User:  GET  %s/auth/me (requires auth)", addr)
-	log.Printf("   Query:         POST %s/query (requires auth)", addr)
-	log.Printf("   GraphQL:       POST %s/graphql (requires auth)", addr)
-	log.Printf("   Nodes:         GET/POST %s/nodes (requires auth)", addr)
-	log.Printf("   Edges:         GET/POST %s/edges (requires auth)", addr)
-	log.Printf("   Traverse:      POST %s/traverse (requires auth)", addr)
-	log.Printf("   Shortest Path: POST %s/shortest-path (requires auth)", addr)
-	log.Printf("   Algorithms:    POST %s/algorithms (requires auth)", addr)
+	log.Printf("   Health:        GET  %s://%s/health (public)", protocol, addr)
+	log.Printf("   Readiness:     GET  %s://%s/health/ready (public)", protocol, addr)
+	log.Printf("   Liveness:      GET  %s://%s/health/live (public)", protocol, addr)
+	log.Printf("   Metrics:       GET  %s://%s/metrics (public, Prometheus format)", protocol, addr)
+	log.Printf("   Login:         POST %s://%s/auth/login (public)", protocol, addr)
+	log.Printf("   Register:      POST %s://%s/auth/register (requires admin)", protocol, addr)
+	log.Printf("   Refresh:       POST %s://%s/auth/refresh (public)", protocol, addr)
+	log.Printf("   Current User:  GET  %s://%s/auth/me (requires auth)", protocol, addr)
+	log.Printf("   Query:         POST %s://%s/query (requires auth)", protocol, addr)
+	log.Printf("   GraphQL:       POST %s://%s/graphql (requires auth)", protocol, addr)
+	log.Printf("   Nodes:         GET/POST %s://%s/nodes (requires auth)", protocol, addr)
+	log.Printf("   Edges:         GET/POST %s://%s/edges (requires auth)", protocol, addr)
+	log.Printf("   Traverse:      POST %s://%s/traverse (requires auth)", protocol, addr)
+	log.Printf("   Shortest Path: POST %s://%s/shortest-path (requires auth)", protocol, addr)
+	log.Printf("   Algorithms:    POST %s://%s/algorithms (requires auth)", protocol, addr)
+	log.Printf("📋 Security Management:")
+	log.Printf("   Key Rotation:  POST %s://%s/api/v1/security/keys/rotate (requires auth)", protocol, addr)
+	log.Printf("   Key Info:      GET  %s://%s/api/v1/security/keys/info (requires auth)", protocol, addr)
+	log.Printf("   Audit Logs:    GET  %s://%s/api/v1/security/audit/logs (requires auth)", protocol, addr)
+	log.Printf("   Audit Export:  POST %s://%s/api/v1/security/audit/export (requires auth)", protocol, addr)
+	log.Printf("   Security Health: GET  %s://%s/api/v1/security/health (requires auth)", protocol, addr)
+
+	// Start background metrics updater
+	go s.updateMetricsPeriodically()
 
 	// Create HTTP server with timeouts for production security
-	// Middleware chain: audit -> logging -> CORS -> routes
+	// Middleware chain: metrics -> panicRecovery -> securityHeaders -> inputValidation -> audit -> logging -> CORS -> routes
 	server := &http.Server{
 		Addr:         addr,
-		Handler:      s.auditMiddleware(s.loggingMiddleware(s.corsMiddleware(mux))),
+		Handler:      s.metricsMiddleware(s.panicRecoveryMiddleware(s.securityHeadersMiddleware(s.inputValidationMiddleware(s.auditMiddleware(s.loggingMiddleware(s.corsMiddleware(mux))))))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+
+	// Start server with or without TLS
+	if s.tlsConfig != nil && s.tlsConfig.Enabled {
+		// Load TLS configuration
+		serverTLSConfig, err := tlspkg.LoadTLSConfig(s.tlsConfig)
+		if err != nil {
+			return fmt.Errorf("failed to load TLS config: %w", err)
+		}
+		server.TLSConfig = serverTLSConfig
+
+		// ListenAndServeTLS with empty cert/key since they're in TLSConfig
+		return server.ListenAndServeTLS("", "")
+	}
+
 	return server.ListenAndServe()
 }
 
@@ -161,15 +250,31 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		features = append(features, string(feature))
 	}
 
+	// Get health check results
+	healthStatus := s.healthChecker.Check()
+
+	// Determine HTTP status code based on health
+	httpStatus := http.StatusOK
+	if healthStatus.Status == health.StatusUnhealthy {
+		httpStatus = http.StatusServiceUnavailable
+	}
+
+	// Convert health checks to interface{} map for JSON serialization
+	checks := make(map[string]interface{})
+	for name, check := range healthStatus.Checks {
+		checks[name] = check
+	}
+
 	response := HealthResponse{
-		Status:    "healthy",
-		Timestamp: time.Now(),
+		Status:    string(healthStatus.Status),
+		Timestamp: healthStatus.Timestamp,
 		Version:   s.version,
 		Edition:   editions.Current.String(),
 		Features:  features,
 		Uptime:    time.Since(s.startTime).String(),
+		Checks:    checks,
 	}
-	s.respondJSON(w, http.StatusOK, response)
+	s.respondJSON(w, httpStatus, response)
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {

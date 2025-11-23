@@ -92,6 +92,22 @@ func (gs *GraphStorage) Snapshot() error {
 		return fmt.Errorf("failed to marshal snapshot: %w", err)
 	}
 
+	// Encrypt data if encryption is enabled
+	if gs.encryptionEngine != nil {
+		// Type assert to access Encrypt method
+		// Using interface{} with runtime type assertion to avoid import cycle
+		type encrypter interface {
+			Encrypt([]byte) ([]byte, error)
+		}
+		if engine, ok := gs.encryptionEngine.(encrypter); ok {
+			encrypted, err := engine.Encrypt(data)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt snapshot: %w", err)
+			}
+			data = encrypted
+		}
+	}
+
 	snapshotPath := filepath.Join(gs.dataDir, "snapshot.json")
 	tmpPath := snapshotPath + ".tmp"
 
@@ -118,6 +134,28 @@ func (gs *GraphStorage) loadFromDisk() error {
 	data, err := os.ReadFile(snapshotPath)
 	if err != nil {
 		return err
+	}
+
+	// Try to detect if data is encrypted by checking if it's valid JSON
+	// Valid JSON starts with '{' or '[', encrypted data is binary
+	isEncrypted := len(data) > 0 && data[0] != '{' && data[0] != '['
+
+	// Decrypt data if it appears to be encrypted and we have an encryption engine
+	if isEncrypted && gs.encryptionEngine != nil {
+		// Type assert to access Decrypt method
+		type decrypter interface {
+			Decrypt([]byte) ([]byte, error)
+		}
+		if engine, ok := gs.encryptionEngine.(decrypter); ok {
+			decrypted, err := engine.Decrypt(data)
+			if err != nil {
+				return fmt.Errorf("failed to decrypt snapshot: %w", err)
+			}
+			data = decrypted
+		}
+	} else if isEncrypted && gs.encryptionEngine == nil {
+		// Data is encrypted but no decryption engine available
+		return fmt.Errorf("snapshot is encrypted but encryption is not enabled (set ENCRYPTION_ENABLED=true)")
 	}
 
 	var snapshot struct {
@@ -374,6 +412,14 @@ func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
 	}
 
 	return nil
+}
+
+// SetEncryption sets the encryption engine and key manager for the storage
+func (gs *GraphStorage) SetEncryption(engine, keyManager interface{}) {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	gs.encryptionEngine = engine
+	gs.keyManager = keyManager
 }
 
 // Close performs cleanup

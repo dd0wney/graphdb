@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
@@ -70,6 +71,13 @@ type GraphStorage struct {
 	// Transaction management
 	activeTransaction *Transaction
 	txIDCounter       uint64
+
+	// Metrics
+	metricsRegistry *metrics.Registry
+
+	// Encryption
+	encryptionEngine interface{} // *encryption.Engine (interface to avoid import cycle)
+	keyManager       interface{} // *encryption.KeyManager
 }
 
 // StorageConfig holds configuration for GraphStorage
@@ -231,6 +239,7 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		useCompression:     config.EnableCompression,
 		nextNodeID:         1,
 		nextEdgeID:         1,
+		metricsRegistry:    metrics.DefaultRegistry(),
 	}
 
 	// Initialize shard locks for fine-grained concurrency
@@ -374,3 +383,11 @@ func (gs *GraphStorage) allocateEdgeID() (uint64, error) {
 //   results := traverser.TraverseBFS(startNodes, maxDepth)
 //
 // See pkg/parallel/traverse.go for full API documentation.
+
+// recordOperation records storage operation metrics
+func (gs *GraphStorage) recordOperation(operation string, status string, start time.Time) {
+	if gs.metricsRegistry != nil {
+		duration := time.Since(start)
+		gs.metricsRegistry.RecordStorageOperation(operation, status, duration)
+	}
+}

@@ -109,6 +109,51 @@ Interactive terminal interface with:
 - ASCII graph visualization
 - PageRank metrics with bar charts
 
+#### 5. Admin CLI (Security Management)
+
+```bash
+# Generate encryption key
+./bin/graphdb-admin security init --generate-key
+
+# Check security health
+./bin/graphdb-admin security health --token="your-jwt-token"
+
+# Rotate encryption keys
+./bin/graphdb-admin security rotate-keys --token="your-jwt-token"
+
+# Export audit logs
+./bin/graphdb-admin security audit-export --output=audit.json
+```
+
+See the [CLI Admin documentation](docs/CLI-ADMIN.md) for complete usage.
+
+## Documentation
+
+Comprehensive API documentation is available at **[graphdb.pages.dev](https://dd0wney.github.io/graphdb/)**
+
+- **[Interactive API Explorer (Swagger UI)](https://dd0wney.github.io/graphdb/swagger.html)** - Try out API endpoints directly in your browser
+- **[API Reference (Redoc)](https://dd0wney.github.io/graphdb/redoc.html)** - Beautiful, searchable API documentation
+- **[Quick Start Guide](https://dd0wney.github.io/graphdb/API.md)** - Complete guide with examples and best practices
+- **[OpenAPI Specification](https://dd0wney.github.io/graphdb/openapi.yaml)** - Machine-readable API spec
+
+### Security Documentation
+
+- **[CLI Admin Guide](docs/CLI-ADMIN.md)** - Command-line tools for security management
+- **[Security Quick Start](docs/SECURITY-QUICKSTART.md)** - Get started with encryption and security features
+- **[Security Integration Summary](SECURITY-INTEGRATION-SUMMARY.md)** - Architecture and implementation details
+- **[Encryption Architecture](docs/ENCRYPTION_ARCHITECTURE.md)** - Deep dive into encryption design
+
+The documentation covers:
+- Authentication (JWT tokens and API keys)
+- Encryption at rest and in transit
+- Security management and monitoring
+- Audit logging and compliance
+- All REST API endpoints
+- Request/response schemas
+- Code examples in multiple languages
+- Error handling and best practices
+- Rate limits and performance tips
+
 ### Distributed Features
 
 - **ZeroMQ Replication** - Multiple replication patterns (PUB/SUB, PUSH/PULL, REQ/REP, DEALER/ROUTER)

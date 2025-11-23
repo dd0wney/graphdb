@@ -118,6 +118,7 @@ build-all:
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_DIR)/api-demo ./cmd/api-demo
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_DIR)/import-dimacs ./cmd/import-dimacs
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_DIR)/integration-test ./cmd/integration-test
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_DIR)/graphdb-admin ./cmd/graphdb-admin
 	@echo "All binaries built in $(BINARY_DIR)/"
 
 ## clean: Remove build artifacts and test data
