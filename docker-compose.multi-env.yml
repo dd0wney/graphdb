@@ -1,0 +1,91 @@
+# Docker Compose Multi-Environment Configuration
+# Runs staging and production GraphDB instances simultaneously
+#
+# Usage:
+#   # Create .env file first (see .env.multi-env.example)
+#   docker compose -f docker-compose.multi-env.yml up -d
+#
+#   # View logs
+#   docker compose -f docker-compose.multi-env.yml logs -f
+#
+#   # Stop all
+#   docker compose -f docker-compose.multi-env.yml down
+#
+#   # Stop individual environment
+#   docker compose -f docker-compose.multi-env.yml stop graphdb-staging
+
+services:
+  graphdb-staging:
+    image: ${DOCKER_REGISTRY:-dd0wney}/graphdb:${VERSION:-latest}
+    container_name: graphdb-staging
+    restart: unless-stopped
+    environment:
+      PORT: "8081"
+      DATA_DIR: /data
+      GRAPHDB_ENV: test
+      GRAPHDB_EDITION: ${GRAPHDB_EDITION:-community}
+      JWT_SECRET: ${STAGING_JWT_SECRET:?STAGING_JWT_SECRET is required}
+      ADMIN_PASSWORD: ${STAGING_ADMIN_PASSWORD:?STAGING_ADMIN_PASSWORD is required}
+      AUDIT_PERSISTENT: "true"
+      AUDIT_DIR: /data/audit
+    ports:
+      - "${STAGING_PORT:-8081}:8081"
+    volumes:
+      - graphdb_staging_data:/data
+    networks:
+      - graphdb-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "com.graphdb.environment=staging"
+      - "com.graphdb.description=GraphDB Staging Instance"
+
+  graphdb-production:
+    image: ${DOCKER_REGISTRY:-dd0wney}/graphdb:${VERSION:-latest}
+    container_name: graphdb-production
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DATA_DIR: /data
+      GRAPHDB_ENV: production
+      GRAPHDB_EDITION: ${GRAPHDB_EDITION:-community}
+      JWT_SECRET: ${PRODUCTION_JWT_SECRET:?PRODUCTION_JWT_SECRET is required}
+      ADMIN_PASSWORD: ${PRODUCTION_ADMIN_PASSWORD:?PRODUCTION_ADMIN_PASSWORD is required}
+      AUDIT_PERSISTENT: "true"
+      AUDIT_DIR: /data/audit
+    ports:
+      - "${PRODUCTION_PORT:-8080}:8080"
+    volumes:
+      - graphdb_production_data:/data
+    networks:
+      - graphdb-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "com.graphdb.environment=production"
+      - "com.graphdb.description=GraphDB Production Instance"
+    # Production has higher resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+networks:
+  graphdb-network:
+    driver: bridge
+
+volumes:
+  graphdb_staging_data:
+    name: graphdb_staging_data
+  graphdb_production_data:
+    name: graphdb_production_data

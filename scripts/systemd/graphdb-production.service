@@ -1,0 +1,46 @@
+[Unit]
+Description=GraphDB Graph Database (Production)
+Documentation=https://github.com/dd0wney/graphdb
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=graphdb
+Group=graphdb
+WorkingDirectory=/var/lib/graphdb/production
+
+# Load environment from production config
+EnvironmentFile=/var/lib/graphdb/production/graphdb.env
+
+# Start command using environment variables
+ExecStart=/usr/local/bin/graphdb-server --port ${PORT} --data ${DATA_DIR}
+
+# Restart policy
+Restart=always
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=4096
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/var/lib/graphdb/production
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=graphdb-production
+
+[Install]
+WantedBy=multi-user.target
