@@ -26,7 +26,9 @@ func (m *mockReplicaNode) CalculateLagLSN(primaryCurrentLSN uint64) uint64 {
 }
 
 func (m *mockReplicaNode) Stop() error {
-	m.stopCalled = true
+	if m != nil {
+		m.stopCalled = true
+	}
 	return nil
 }
 
@@ -209,4 +211,193 @@ func TestUpgradeManager_WaitForReplicationSync(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestUpgradeManager_PromoteToPrimary tests promoting replica to primary
+func TestUpgradeManager_PromoteToPrimary(t *testing.T) {
+	tests := []struct {
+		name          string
+		isPrimary     bool
+		hasReplica    bool
+		waitForSync   bool
+		expectSuccess bool
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:          "successful promotion without sync",
+			isPrimary:     false,
+			hasReplica:    true,
+			waitForSync:   false,
+			expectSuccess: true,
+			expectError:   false,
+		},
+		{
+			name:          "successful promotion with sync",
+			isPrimary:     false,
+			hasReplica:    true,
+			waitForSync:   true,
+			expectSuccess: true,
+			expectError:   false,
+		},
+		{
+			name:          "already primary",
+			isPrimary:     true,
+			hasReplica:    false,
+			waitForSync:   false,
+			expectSuccess: false,
+			expectError:   true,
+			errorContains: "already a primary",
+		},
+		{
+			name:          "not configured as replica",
+			isPrimary:     false,
+			hasReplica:    false,
+			waitForSync:   false,
+			expectSuccess: false,
+			expectError:   true,
+			errorContains: "not configured as replica",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			um := &UpgradeManager{
+				storage:   &storage.GraphStorage{},
+				replica:   nil,
+				isPrimary: tt.isPrimary,
+				config:    UpgradeConfig{ReplicationPort: 0}, // Use port 0 for testing
+			}
+
+			if tt.hasReplica {
+				um.replica = &mockReplicaNode{
+					replicaStatus: replication.ReplicaStatusInfo{
+						ReplicaID:        "replica-1",
+						PrimaryID:        "primary-123",
+						Connected:        true,
+						LastAppliedLSN:   1000,
+						LastHeartbeatSeq: 10,
+						Timestamp:        time.Now(),
+					},
+					lagLSN: 0,
+				}
+			}
+
+			ctx := context.Background()
+			timeout := 5 * time.Second
+
+			response, err := um.PromoteToPrimary(ctx, tt.waitForSync, timeout)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("PromoteToPrimary() expected error, got nil")
+				}
+				if tt.errorContains != "" && err != nil {
+					if !contains(err.Error(), tt.errorContains) {
+						t.Errorf("PromoteToPrimary() error = %v, want error containing %v", err, tt.errorContains)
+					}
+				}
+			} else {
+				if err != nil {
+					t.Errorf("PromoteToPrimary() unexpected error: %v", err)
+				}
+			}
+
+			if response != nil {
+				if response.Success != tt.expectSuccess {
+					t.Errorf("PromoteToPrimary() success = %v, want %v", response.Success, tt.expectSuccess)
+				}
+
+				if tt.expectSuccess {
+					if response.NewRole != "primary" {
+						t.Errorf("PromoteToPrimary() newRole = %v, want primary", response.NewRole)
+					}
+					if !um.isPrimary {
+						t.Errorf("PromoteToPrimary() manager still not marked as primary")
+					}
+					if mockRep, ok := um.replica.(*mockReplicaNode); ok && mockRep != nil {
+						if !mockRep.stopCalled {
+							t.Errorf("PromoteToPrimary() replica.Stop() not called")
+						}
+					}
+					if um.replication != nil {
+						um.replication.Stop()
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestUpgradeManager_StepDownToReplica tests demoting primary to replica
+func TestUpgradeManager_StepDownToReplica(t *testing.T) {
+	tests := []struct {
+		name           string
+		isPrimary      bool
+		hasReplication bool
+		expectSuccess  bool
+		expectError    bool
+		errorContains  string
+	}{
+		{
+			name:           "already replica",
+			isPrimary:      false,
+			hasReplication: false,
+			expectSuccess:  false,
+			expectError:    true,
+			errorContains:  "not a primary",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			um := &UpgradeManager{
+				storage:     &storage.GraphStorage{},
+				isPrimary:   tt.isPrimary,
+				replication: nil,
+				config:      UpgradeConfig{ReplicationPort: 0},
+			}
+
+			ctx := context.Background()
+			newPrimaryAddr := "localhost:9999"
+
+			response, err := um.StepDownToReplica(ctx, newPrimaryAddr)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("StepDownToReplica() expected error, got nil")
+				}
+				if tt.errorContains != "" && err != nil {
+					if !contains(err.Error(), tt.errorContains) {
+						t.Errorf("StepDownToReplica() error = %v, want error containing %v", err, tt.errorContains)
+					}
+				}
+			} else {
+				if err != nil {
+					t.Errorf("StepDownToReplica() unexpected error: %v", err)
+				}
+			}
+
+			if response != nil {
+				if response.Success != tt.expectSuccess {
+					t.Errorf("StepDownToReplica() success = %v, want %v", response.Success, tt.expectSuccess)
+				}
+			}
+		})
+	}
+}
+
+// Helper function for string contains check
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && hasSubstring(s, substr)))
+}
+
+func hasSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

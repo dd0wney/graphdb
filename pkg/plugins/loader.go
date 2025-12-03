@@ -114,8 +114,8 @@ func (l *PluginLoader) loadPlugin(ctx context.Context, path string) error {
 
 // getPluginConfig retrieves configuration for a plugin from environment variables
 // Looks for PLUGIN_<NAME>_* environment variables
-func (l *PluginLoader) getPluginConfig(name string) map[string]interface{} {
-	config := make(map[string]interface{})
+func (l *PluginLoader) getPluginConfig(name string) map[string]any {
+	config := make(map[string]any)
 	
 	// This would typically load from a config file or environment
 	// For now, return empty config

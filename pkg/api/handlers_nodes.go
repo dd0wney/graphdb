@@ -1,38 +1,25 @@
 package api
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/validation"
 )
 
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		s.listNodes(w, r)
-	case http.MethodPost:
-		s.createNode(w, r)
-	default:
-		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
-	}
+	s.NewMethodRouter(w, r).
+		Get(func() { s.listNodes(w, r) }).
+		Post(func() { s.createNode(w, r) }).
+		NotAllowed()
 }
 
 func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
-	stats := s.graph.GetStatistics()
-	nodes := make([]*NodeResponse, 0)
+	allNodes := s.graph.GetAllNodes()
+	nodes := make([]*NodeResponse, 0, len(allNodes))
 
-	for nodeID := uint64(1); nodeID <= stats.NodeCount; nodeID++ {
-		node, err := s.graph.GetNode(nodeID)
-		if err != nil {
-			continue
-		}
-
-		props := make(map[string]interface{})
+	for _, node := range allNodes {
+		props := make(map[string]any)
 		for k, v := range node.Properties {
 			props[k] = v.Data
 		}
@@ -49,33 +36,19 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	var req NodeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, http.StatusBadRequest, "Invalid request body")
+	decoder := s.NewRequestDecoder(w, r)
+	decoder.DecodeJSON(&req).ValidateNode(&req)
+	if decoder.RespondError() {
 		return
 	}
 
-	// Validate request
-	validationReq := validation.NodeRequest{
-		Labels:     req.Labels,
-		Properties: req.Properties,
-	}
-	if err := validation.ValidateNodeRequest(&validationReq); err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Sanitize properties to prevent XSS
-	sanitizedProps := storage.SanitizePropertyMap(req.Properties)
-
-	// Convert properties
-	props := make(map[string]storage.Value)
-	for k, v := range sanitizedProps {
-		props[k] = s.convertToValue(v)
-	}
+	// Convert and sanitize properties
+	converter := newPropertyConverter()
+	props := converter.ConvertAndSanitize(req.Properties, s.convertToValue)
 
 	node, err := s.graph.CreateNode(req.Labels, props)
 	if err != nil {
-		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create node: %v", err))
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create node"))
 		return
 	}
 
@@ -85,23 +58,17 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 	// Extract ID from path
-	idStr := r.URL.Path[len("/nodes/"):]
-	nodeID, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		s.respondError(w, http.StatusBadRequest, "Invalid node ID")
+	extractor := s.NewPathExtractor(w, r)
+	nodeID, ok := extractor.ExtractUint64("/nodes/")
+	if !ok {
 		return
 	}
 
-	switch r.Method {
-	case http.MethodGet:
-		s.getNode(w, r, nodeID)
-	case http.MethodPut:
-		s.updateNode(w, r, nodeID)
-	case http.MethodDelete:
-		s.deleteNode(w, r, nodeID)
-	default:
-		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
-	}
+	s.NewMethodRouter(w, r).
+		Get(func() { s.getNode(w, r, nodeID) }).
+		Put(func() { s.updateNode(w, r, nodeID) }).
+		Delete(func() { s.deleteNode(w, r, nodeID) }).
+		NotAllowed()
 }
 
 func (s *Server) getNode(w http.ResponseWriter, r *http.Request, nodeID uint64) {
@@ -117,8 +84,9 @@ func (s *Server) getNode(w http.ResponseWriter, r *http.Request, nodeID uint64) 
 
 func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint64) {
 	var req NodeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, http.StatusBadRequest, "Invalid request body")
+	decoder := s.NewRequestDecoder(w, r)
+	decoder.DecodeJSON(&req)
+	if decoder.RespondError() {
 		return
 	}
 
@@ -134,31 +102,32 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 		}
 	}
 
-	// Sanitize properties
-	sanitizedProps := storage.SanitizePropertyMap(req.Properties)
-
-	props := make(map[string]storage.Value)
-	for k, v := range sanitizedProps {
-		props[k] = s.convertToValue(v)
-	}
+	// Convert and sanitize properties
+	converter := newPropertyConverter()
+	props := converter.ConvertAndSanitize(req.Properties, s.convertToValue)
 
 	if err := s.graph.UpdateNode(nodeID, props); err != nil {
-		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update node: %v", err))
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "update node"))
 		return
 	}
 
-	node, _ := s.graph.GetNode(nodeID)
+	node, err := s.graph.GetNode(nodeID)
+	if err != nil {
+		// Update succeeded but couldn't retrieve the updated node - unusual but not fatal
+		s.respondJSON(w, http.StatusOK, map[string]any{"updated": nodeID})
+		return
+	}
 	response := s.nodeToResponse(node)
 	s.respondJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request, nodeID uint64) {
 	if err := s.graph.DeleteNode(nodeID); err != nil {
-		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to delete node: %v", err))
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete node"))
 		return
 	}
 
-	s.respondJSON(w, http.StatusOK, map[string]interface{}{"deleted": nodeID})
+	s.respondJSON(w, http.StatusOK, map[string]any{"deleted": nodeID})
 }
 
 func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
@@ -168,8 +137,9 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req BatchNodeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, http.StatusBadRequest, "Invalid request body")
+	decoder := s.NewRequestDecoder(w, r)
+	decoder.DecodeJSON(&req)
+	if decoder.RespondError() {
 		return
 	}
 
@@ -181,6 +151,7 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 	nodes := make([]*NodeResponse, 0, len(req.Nodes))
+	converter := newPropertyConverter()
 
 	for _, nodeReq := range req.Nodes {
 		// Validate each node request
@@ -192,13 +163,8 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 			continue // Skip invalid nodes
 		}
 
-		// Sanitize properties
-		sanitizedProps := storage.SanitizePropertyMap(nodeReq.Properties)
-
-		props := make(map[string]storage.Value)
-		for k, v := range sanitizedProps {
-			props[k] = s.convertToValue(v)
-		}
+		// Convert and sanitize properties
+		props := converter.ConvertAndSanitize(nodeReq.Properties, s.convertToValue)
 
 		node, err := s.graph.CreateNode(nodeReq.Labels, props)
 		if err != nil {

@@ -61,7 +61,10 @@ func (es *EdgeStore) StoreOutgoingEdges(nodeID uint64, edges []uint64) error {
 	key := makeEdgeStoreKey("out", nodeID)
 
 	// Compress edge list
-	compressed := NewCompressedEdgeList(edges)
+	compressed, err := NewCompressedEdgeList(edges)
+	if err != nil {
+		return fmt.Errorf("failed to compress edge list: %w", err)
+	}
 
 	// Serialize
 	data, err := es.serializeEdgeList(compressed)
@@ -120,7 +123,10 @@ func (es *EdgeStore) StoreIncomingEdges(nodeID uint64, edges []uint64) error {
 	key := makeEdgeStoreKey("in", nodeID)
 
 	// Compress edge list
-	compressed := NewCompressedEdgeList(edges)
+	compressed, err := NewCompressedEdgeList(edges)
+	if err != nil {
+		return fmt.Errorf("failed to compress edge list: %w", err)
+	}
 
 	// Serialize
 	data, err := es.serializeEdgeList(compressed)

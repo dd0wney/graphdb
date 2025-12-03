@@ -213,7 +213,7 @@ func TestWorkerPoolConcurrentCloseAndSubmit(t *testing.T) {
 	numIterations := 100
 
 	for iteration := 0; iteration < numIterations; iteration++ {
-		pool := parallel.NewWorkerPool(4)
+		pool, _ := parallel.NewWorkerPool(4)
 
 		var wg sync.WaitGroup
 		numSubmitters := 10
@@ -257,7 +257,7 @@ func TestWorkerPoolConcurrentCloseAndSubmit(t *testing.T) {
 // TestWorkerPoolPanicRecovery tests that panics in tasks don't crash the pool
 // This validates the panic recovery fix
 func TestWorkerPoolPanicRecovery(t *testing.T) {
-	pool := parallel.NewWorkerPool(4)
+	pool, _ := parallel.NewWorkerPool(4)
 	defer pool.Close()
 
 	var normalTaskCount int64
@@ -303,7 +303,7 @@ func TestIntegratedGraphOperationsUnderLoad(t *testing.T) {
 	}
 	defer store.Close()
 
-	pool := parallel.NewWorkerPool(10)
+	pool, _ := parallel.NewWorkerPool(10)
 	defer pool.Close()
 
 	numOperations := 100
@@ -355,7 +355,7 @@ func TestLSMUnderWorkerPoolLoad(t *testing.T) {
 	}
 	defer lsmStore.Close()
 
-	pool := parallel.NewWorkerPool(10)
+	pool, _ := parallel.NewWorkerPool(10)
 	defer pool.Close()
 
 	numOperations := 200

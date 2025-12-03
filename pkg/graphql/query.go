@@ -16,7 +16,7 @@ func ExecuteQuery(query string, schema graphql.Schema) *graphql.Result {
 }
 
 // ExecuteQueryWithVariables executes a GraphQL query with variables
-func ExecuteQueryWithVariables(query string, schema graphql.Schema, variables map[string]interface{}) *graphql.Result {
+func ExecuteQueryWithVariables(query string, schema graphql.Schema, variables map[string]any) *graphql.Result {
 	params := graphql.Params{
 		Schema:         schema,
 		RequestString:  query,

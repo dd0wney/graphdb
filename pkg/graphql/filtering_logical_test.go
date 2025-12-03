@@ -57,16 +57,16 @@ func TestFilterWithOR(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"OR": []interface{}{
-					map[string]interface{}{
-						"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"OR": []any{
+					map[string]any{
+						"age": map[string]any{
 							"gt": 30,
 						},
 					},
-					map[string]interface{}{
-						"age": map[string]interface{}{
+					map[string]any{
+						"age": map[string]any{
 							"lt": 22,
 						},
 					},
@@ -79,8 +79,8 @@ func TestFilterWithOR(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return Charlie (35) and David (20)
 	if len(persons) != 2 {
@@ -134,10 +134,10 @@ func TestFilterWithNOT(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"NOT": map[string]interface{}{
-					"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"NOT": map[string]any{
+					"age": map[string]any{
 						"eq": 30,
 					},
 				},
@@ -149,8 +149,8 @@ func TestFilterWithNOT(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return only Bob (25)
 	if len(persons) != 1 {
@@ -207,16 +207,16 @@ func TestFilterWithAND(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"AND": []interface{}{
-					map[string]interface{}{
-						"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"AND": []any{
+					map[string]any{
+						"age": map[string]any{
 							"gte": 30,
 						},
 					},
-					map[string]interface{}{
-						"active": map[string]interface{}{
+					map[string]any{
+						"active": map[string]any{
 							"eq": true,
 						},
 					},
@@ -229,8 +229,8 @@ func TestFilterWithAND(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return Alice and Charlie
 	if len(persons) != 2 {
@@ -292,25 +292,25 @@ func TestFilterWithNestedLogic(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"AND": []interface{}{
-					map[string]interface{}{
-						"OR": []interface{}{
-							map[string]interface{}{
-								"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"AND": []any{
+					map[string]any{
+						"OR": []any{
+							map[string]any{
+								"age": map[string]any{
 									"gt": 30,
 								},
 							},
-							map[string]interface{}{
-								"age": map[string]interface{}{
+							map[string]any{
+								"age": map[string]any{
 									"lt": 22,
 								},
 							},
 						},
 					},
-					map[string]interface{}{
-						"active": map[string]interface{}{
+					map[string]any{
+						"active": map[string]any{
 							"eq": true,
 						},
 					},
@@ -323,8 +323,8 @@ func TestFilterWithNestedLogic(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return Charlie and David
 	if len(persons) != 2 {
@@ -378,17 +378,17 @@ func TestFilterWithNOTAndOR(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"NOT": map[string]interface{}{
-					"OR": []interface{}{
-						map[string]interface{}{
-							"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"NOT": map[string]any{
+					"OR": []any{
+						map[string]any{
+							"age": map[string]any{
 								"eq": 25,
 							},
 						},
-						map[string]interface{}{
-							"age": map[string]interface{}{
+						map[string]any{
+							"age": map[string]any{
 								"eq": 35,
 							},
 						},
@@ -402,8 +402,8 @@ func TestFilterWithNOTAndOR(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return only Alice (30)
 	if len(persons) != 1 {
@@ -462,16 +462,16 @@ func TestLogicalOperatorsWithEdges(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"OR": []interface{}{
-					map[string]interface{}{
-						"since": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"OR": []any{
+					map[string]any{
+						"since": map[string]any{
 							"lt": 2021,
 						},
 					},
-					map[string]interface{}{
-						"weight": map[string]interface{}{
+					map[string]any{
+						"weight": map[string]any{
 							"gt": 2.5,
 						},
 					},
@@ -484,8 +484,8 @@ func TestLogicalOperatorsWithEdges(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	edges := data["edges"].([]interface{})
+	data := result.Data.(map[string]any)
+	edges := data["edges"].([]any)
 
 	// Should return 2 edges
 	if len(edges) != 2 {

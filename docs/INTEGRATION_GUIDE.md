@@ -38,12 +38,12 @@ GOOS=linux GOARCH=amd64 go build -o graphdb-linux ./cmd/graphdb
 cat > Makefile << 'EOF'
 .PHONY: build-linux
 build-linux:
-	GOOS=linux GOARCH=amd64 go build -o bin/graphdb-linux ./cmd/graphdb
+ GOOS=linux GOARCH=amd64 go build -o bin/graphdb-linux ./cmd/graphdb
 
 .PHONY: deploy
 deploy: build-linux
-	scp bin/graphdb-linux root@$(DROPLET_IP):/usr/local/bin/graphdb
-	ssh root@$(DROPLET_IP) systemctl restart graphdb
+ scp bin/graphdb-linux root@$(DROPLET_IP):/usr/local/bin/graphdb
+ ssh root@$(DROPLET_IP) systemctl restart graphdb
 EOF
 
 make build-linux
@@ -107,359 +107,66 @@ EOF
 
 ---
 
-## Step 2: Add HTTP/REST API
+## Step 2: Use the Built-in REST API
 
-Currently, the GraphDB only has a Go API. Let's add a REST API for Cloudflare Workers to call.
+GraphDB includes a production-ready HTTP API server in `pkg/api/server.go` using Go's standard library.
 
-### Create REST Server
+### Available Endpoints
 
-```go
-// cmd/graphdb-server/main.go
-package main
+The production API server provides:
 
-import (
-	"encoding/json"
-	"log"
-	"net/http"
-	"strconv"
+**Node Operations:**
 
-	"github.com/darraghdowney/cluso-graphdb/pkg/query"
-	"github.com/darraghdowney/cluso-graphdb/pkg/storage"
-	"github.com/gorilla/mux"
-)
+- `POST /nodes` - Create a new node
+- `GET /nodes/{id}` - Get a node by ID
+- `PUT /nodes/{id}` - Update a node
+- `DELETE /nodes/{id}` - Delete a node
+- `GET /nodes?label={label}` - Find nodes by label
 
-type Server struct {
-	graph     *storage.GraphStorage
-	traverser *query.Traverser
-}
+**Edge Operations:**
 
-func main() {
-	// Initialize graph
-	graph, err := storage.NewGraphStorage("/var/lib/graphdb")
-	if err != nil {
-		log.Fatalf("Failed to create storage: %v", err)
-	}
-	defer graph.Close()
+- `POST /edges` - Create a new edge
+- `GET /edges/{id}` - Get an edge by ID
+- `DELETE /edges/{id}` - Delete an edge
 
-	server := &Server{
-		graph:     graph,
-		traverser: query.NewTraverser(graph),
-	}
+**Query Operations:**
 
-	router := mux.NewRouter()
+- `POST /query` - Execute a graph query
+- `POST /traverse` - Perform graph traversal
 
-	// Node endpoints
-	router.HandleFunc("/nodes", server.createNode).Methods("POST")
-	router.HandleFunc("/nodes/{id}", server.getNode).Methods("GET")
-	router.HandleFunc("/nodes", server.findNodes).Methods("GET")
+**Health & Monitoring:**
 
-	// Edge endpoints
-	router.HandleFunc("/edges", server.createEdge).Methods("POST")
-	router.HandleFunc("/nodes/{id}/edges/outgoing", server.getOutgoingEdges).Methods("GET")
+- `GET /health` - Health check endpoint
+- `GET /metrics` - Prometheus metrics
 
-	// Query endpoints
-	router.HandleFunc("/traverse", server.traverse).Methods("POST")
-	router.HandleFunc("/path", server.findPath).Methods("POST")
-
-	// Health check
-	router.HandleFunc("/health", server.health).Methods("GET")
-
-	log.Println("🚀 Cluso GraphDB Server listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", router))
-}
-
-// createNode creates a new node
-func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Labels     []string               `json:"labels"`
-		Properties map[string]interface{} `json:"properties"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Convert properties
-	props := make(map[string]storage.Value)
-	for k, v := range req.Properties {
-		props[k] = convertToValue(v)
-	}
-
-	node, err := s.graph.CreateNode(req.Labels, props)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":     node.ID,
-		"labels": node.Labels,
-	})
-}
-
-// getNode retrieves a node by ID
-func (s *Server) getNode(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.ParseUint(vars["id"], 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid node ID", http.StatusBadRequest)
-		return
-	}
-
-	node, err := s.graph.GetNode(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	json.NewEncoder(w).Encode(nodeToJSON(node))
-}
-
-// findNodes finds nodes by label or property
-func (s *Server) findNodes(w http.ResponseWriter, r *http.Request) {
-	label := r.URL.Query().Get("label")
-
-	if label != "" {
-		nodes, err := s.graph.FindNodesByLabel(label)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		result := make([]interface{}, len(nodes))
-		for i, node := range nodes {
-			result[i] = nodeToJSON(node)
-		}
-
-		json.NewEncoder(w).Encode(result)
-	} else {
-		http.Error(w, "label parameter required", http.StatusBadRequest)
-	}
-}
-
-// createEdge creates a new edge
-func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		FromNodeID uint64                 `json:"from_node_id"`
-		ToNodeID   uint64                 `json:"to_node_id"`
-		Type       string                 `json:"type"`
-		Properties map[string]interface{} `json:"properties"`
-		Weight     float64                `json:"weight"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	props := make(map[string]storage.Value)
-	for k, v := range req.Properties {
-		props[k] = convertToValue(v)
-	}
-
-	edge, err := s.graph.CreateEdge(req.FromNodeID, req.ToNodeID, req.Type, props, req.Weight)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":           edge.ID,
-		"from_node_id": edge.FromNodeID,
-		"to_node_id":   edge.ToNodeID,
-		"type":         edge.Type,
-	})
-}
-
-// getOutgoingEdges gets outgoing edges from a node
-func (s *Server) getOutgoingEdges(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.ParseUint(vars["id"], 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid node ID", http.StatusBadRequest)
-		return
-	}
-
-	edges, err := s.graph.GetOutgoingEdges(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	result := make([]interface{}, len(edges))
-	for i, edge := range edges {
-		result[i] = edgeToJSON(edge)
-	}
-
-	json.NewEncoder(w).Encode(result)
-}
-
-// traverse performs graph traversal
-func (s *Server) traverse(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		StartNodeID uint64   `json:"start_node_id"`
-		Direction   string   `json:"direction"` // "outgoing", "incoming", "both"
-		EdgeTypes   []string `json:"edge_types"`
-		MaxDepth    int      `json:"max_depth"`
-		MaxResults  int      `json:"max_results"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	direction := query.DirectionOutgoing
-	switch req.Direction {
-	case "incoming":
-		direction = query.DirectionIncoming
-	case "both":
-		direction = query.DirectionBoth
-	}
-
-	result, err := s.traverser.BFS(query.TraversalOptions{
-		StartNodeID: req.StartNodeID,
-		Direction:   direction,
-		EdgeTypes:   req.EdgeTypes,
-		MaxDepth:    req.MaxDepth,
-		MaxResults:  req.MaxResults,
-	})
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	nodes := make([]interface{}, len(result.Nodes))
-	for i, node := range result.Nodes {
-		nodes[i] = nodeToJSON(node)
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"nodes": nodes,
-		"count": len(nodes),
-	})
-}
-
-// findPath finds shortest path between two nodes
-func (s *Server) findPath(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		FromNodeID uint64   `json:"from_node_id"`
-		ToNodeID   uint64   `json:"to_node_id"`
-		EdgeTypes  []string `json:"edge_types"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	path, err := s.traverser.FindShortestPath(req.FromNodeID, req.ToNodeID, req.EdgeTypes)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	nodes := make([]interface{}, len(path.Nodes))
-	for i, node := range path.Nodes {
-		nodes[i] = nodeToJSON(node)
-	}
-
-	edges := make([]interface{}, len(path.Edges))
-	for i, edge := range path.Edges {
-		edges[i] = edgeToJSON(edge)
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"nodes": nodes,
-		"edges": edges,
-	})
-}
-
-// health check
-func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	stats := s.graph.GetStatistics()
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":      "healthy",
-		"node_count":  stats.NodeCount,
-		"edge_count":  stats.EdgeCount,
-	})
-}
-
-// Helper functions
-func convertToValue(v interface{}) storage.Value {
-	switch val := v.(type) {
-	case string:
-		return storage.StringValue(val)
-	case float64:
-		return storage.IntValue(int64(val))
-	case bool:
-		return storage.BoolValue(val)
-	default:
-		return storage.StringValue(fmt.Sprint(v))
-	}
-}
-
-func nodeToJSON(node *storage.Node) map[string]interface{} {
-	props := make(map[string]interface{})
-	for k, v := range node.Properties {
-		props[k] = valueToInterface(v)
-	}
-
-	return map[string]interface{}{
-		"id":         node.ID,
-		"labels":     node.Labels,
-		"properties": props,
-		"created_at": node.CreatedAt,
-		"updated_at": node.UpdatedAt,
-	}
-}
-
-func edgeToJSON(edge *storage.Edge) map[string]interface{} {
-	props := make(map[string]interface{})
-	for k, v := range edge.Properties {
-		props[k] = valueToInterface(v)
-	}
-
-	return map[string]interface{}{
-		"id":           edge.ID,
-		"from_node_id": edge.FromNodeID,
-		"to_node_id":   edge.ToNodeID,
-		"type":         edge.Type,
-		"properties":   props,
-		"weight":       edge.Weight,
-		"created_at":   edge.CreatedAt,
-	}
-}
-
-func valueToInterface(v storage.Value) interface{} {
-	switch v.Type {
-	case storage.TypeString:
-		s, _ := v.AsString()
-		return s
-	case storage.TypeInt:
-		i, _ := v.AsInt()
-		return i
-	case storage.TypeFloat:
-		f, _ := v.AsFloat()
-		return f
-	case storage.TypeBool:
-		b, _ := v.AsBool()
-		return b
-	case storage.TypeTimestamp:
-		t, _ := v.AsTimestamp()
-		return t.Unix()
-	default:
-		return nil
-	}
-}
-```
-
-### Install Dependencies
+### Running the Server
 
 ```bash
-go get github.com/gorilla/mux
+# Build and run
+go build -o graphdb ./cmd/graphdb
+./graphdb --port 8080 --data-dir /var/lib/graphdb
+```
+
+### Example API Calls
+
+```bash
+# Create a node
+curl -X POST http://localhost:8080/nodes \
+  -H "Content-Type: application/json" \
+  -d '{"labels": ["User"], "properties": {"name": "Alice", "fraudScore": 15}}'
+
+# Get a node
+curl http://localhost:8080/nodes/1
+
+# Create an edge
+curl -X POST http://localhost:8080/edges \
+  -H "Content-Type: application/json" \
+  -d '{"from_node_id": 1, "to_node_id": 2, "type": "VERIFIED_BY", "weight": 1.0}'
+
+# Traverse the graph
+curl -X POST http://localhost:8080/traverse \
+  -H "Content-Type: application/json" \
+  -d '{"start_node_id": 1, "direction": "outgoing", "max_depth": 2}'
 ```
 
 ---
@@ -581,6 +288,7 @@ app.post('/api/v1/fraud/analyze', async (c) => {
 ## Performance Expectations
 
 ### Without Cache (Direct GraphDB query)
+
 ```
 Simple traversal (1-hop):  50-100ms
 Medium traversal (2-hop):  150-300ms
@@ -588,6 +296,7 @@ Complex traversal (3-hop): 400-800ms
 ```
 
 ### With Cloudflare Cache (KV hit)
+
 ```
 All queries: 10-50ms ⚡
 ```
@@ -613,14 +322,15 @@ ssh root@droplet-ip journalctl -u graphdb -f
 ### Performance Metrics
 
 Add to `storage.go`:
+
 ```go
 func (gs *GraphStorage) RecordQueryTime(duration time.Duration) {
-	gs.mu.Lock()
-	defer gs.mu.Unlock()
+ gs.mu.Lock()
+ defer gs.mu.Unlock()
 
-	// Update running average
-	gs.stats.TotalQueries++
-	gs.stats.AvgQueryTime = (gs.stats.AvgQueryTime*float64(gs.stats.TotalQueries-1) + duration.Seconds()) / float64(gs.stats.TotalQueries)
+ // Update running average
+ gs.stats.TotalQueries++
+ gs.stats.AvgQueryTime = (gs.stats.AvgQueryTime*float64(gs.stats.TotalQueries-1) + duration.Seconds()) / float64(gs.stats.TotalQueries)
 }
 ```
 
@@ -638,4 +348,376 @@ func (gs *GraphStorage) RecordQueryTime(duration time.Duration) {
 
 ---
 
-**You now have a complete custom graph database backend for Cluso!** 🎉
+**You now have a complete custom graph database backend for Cluso!**
+
+---
+
+## Syntopica Learning Platform Schema
+
+This section describes how to implement a graph schema for a learning platform with fraud detection capabilities. The design follows graph database best practices:
+
+1. **Edges are expensive, properties are cheap** - Store aggregates on nodes
+2. **No supernodes** - Cap relationships, use intermediate cluster nodes
+3. **Precompute everything queryable** - Graph is for traversal, not aggregation
+4. **Time-bound fraud data** - Keep hot data in graph, archive cold to Postgres
+5. **Unidirectional edges** - Pick a direction, stick to it
+
+### Node Types
+
+#### User Node
+
+```go
+package syntopica
+
+import (
+    "time"
+    "github.com/dd0wney/cluso-graphdb/pkg/storage"
+)
+
+// CreateUser creates a User node with all required properties
+func CreateUser(gs *storage.GraphStorage, externalID string) (*storage.Node, error) {
+    properties := map[string]storage.Value{
+        // Identity - external ID for application-level lookups
+        "id": storage.StringValue(externalID),
+
+        // Precomputed metrics (updated by cron jobs)
+        "trustScore":       storage.FloatValue(50.0),  // 0-100, default to neutral
+        "teachingPageRank": storage.FloatValue(0.0),   // 0-1, influence in teaching network
+        "conceptCount":     storage.IntValue(0),       // Total concepts with MASTERY edge
+        "verifiedCount":    storage.IntValue(0),       // Concepts at verified/mastered status
+
+        // Fraud signals
+        "flagCount":    storage.IntValue(0),  // Active fraud flags
+        "clusterCount": storage.IntValue(0),  // Answer clusters user belongs to
+
+        // Temporal
+        "createdAt":    storage.TimestampValue(time.Now()),
+        "lastActiveAt": storage.TimestampValue(time.Now()),
+    }
+
+    return gs.CreateNode([]string{"User"}, properties)
+}
+```
+
+#### Concept Node
+
+```go
+// CreateConcept creates a Concept node for knowledge graph
+func CreateConcept(gs *storage.GraphStorage, id, name, domain string, bloomLevel int, estimatedHours float64) (*storage.Node, error) {
+    properties := map[string]storage.Value{
+        "id":             storage.StringValue(id),
+        "name":           storage.StringValue(name),
+        "domain":         storage.StringValue(domain),
+        "bloomLevel":     storage.IntValue(int64(bloomLevel)), // 1-6
+        "estimatedHours": storage.FloatValue(estimatedHours),
+
+        // Precomputed (updated by cron)
+        "pageRank":     storage.FloatValue(0.0),
+        "learnerCount": storage.IntValue(0),
+    }
+
+    return gs.CreateNode([]string{"Concept"}, properties)
+}
+```
+
+#### AnswerCluster Node (Fraud Detection)
+
+```go
+// CreateAnswerCluster creates a cluster for grouping suspicious similar answers
+func CreateAnswerCluster(gs *storage.GraphStorage, id, conceptID string, similarity float64) (*storage.Node, error) {
+    properties := map[string]storage.Value{
+        "id":         storage.StringValue(id),
+        "conceptId":  storage.StringValue(conceptID),
+
+        "memberCount": storage.IntValue(0),
+        "similarity":  storage.FloatValue(similarity),
+
+        // Fraud signals
+        "flagged":    storage.BoolValue(false),
+        "flagReason": storage.StringValue(""),  // 'rapid_growth' | 'high_similarity' | 'temporal_pattern'
+
+        "createdAt":    storage.TimestampValue(time.Now()),
+        "lastJoinedAt": storage.TimestampValue(time.Now()),
+    }
+
+    return gs.CreateNode([]string{"AnswerCluster"}, properties)
+}
+```
+
+### Edge Types
+
+#### MASTERY Edge (User → Concept)
+
+```go
+// MasteryStatus represents learning progress
+type MasteryStatus string
+
+const (
+    MasteryEncountered MasteryStatus = "encountered"
+    MasteryStudying    MasteryStatus = "studying"
+    MasteryVerified    MasteryStatus = "verified"
+    MasteryMastered    MasteryStatus = "mastered"
+)
+
+// CreateOrUpdateMastery creates or updates a MASTERY edge
+// KEY DESIGN: ONE edge per user-concept pair, updated in place
+func CreateOrUpdateMastery(gs *storage.GraphStorage, userNodeID, conceptNodeID uint64, status MasteryStatus, score int) (*storage.Edge, error) {
+    properties := map[string]storage.Value{
+        "status":      storage.StringValue(string(status)),
+        "score":       storage.IntValue(int64(score)), // 0-100
+        "verifyCount": storage.IntValue(1),
+        "lastAt":      storage.TimestampValue(time.Now()),
+    }
+
+    return gs.CreateEdge(userNodeID, conceptNodeID, "MASTERY", properties, float64(score)/100.0)
+}
+```
+
+#### TAUGHT Edge (User → User)
+
+```go
+// CreateOrUpdateTaught tracks teaching relationships
+// NOTE: concepts field uses BytesValue since GraphDB doesn't have native arrays
+func CreateOrUpdateTaught(gs *storage.GraphStorage, teacherNodeID, studentNodeID uint64, conceptIDs []string, rating float64) (*storage.Edge, error) {
+    // Encode concept IDs as JSON or msgpack (cap at 20)
+    if len(conceptIDs) > 20 {
+        conceptIDs = conceptIDs[:20]
+    }
+    conceptsJSON, _ := json.Marshal(conceptIDs)
+
+    properties := map[string]storage.Value{
+        "sessionCount": storage.IntValue(1),
+        "avgRating":    storage.FloatValue(rating),
+        "concepts":     storage.BytesValue(conceptsJSON), // Encoded array
+        "lastAt":       storage.TimestampValue(time.Now()),
+    }
+
+    return gs.CreateEdge(teacherNodeID, studentNodeID, "TAUGHT", properties, rating)
+}
+```
+
+### Index Setup
+
+Create indexes **before** inserting data for optimal performance:
+
+```go
+// SetupSyntopicaIndexes creates all required indexes
+func SetupSyntopicaIndexes(gs *storage.GraphStorage) error {
+    // Primary key lookups (external IDs)
+    if err := gs.CreatePropertyIndex("id", storage.TypeString); err != nil {
+        return fmt.Errorf("creating id index: %w", err)
+    }
+
+    // Query patterns
+    if err := gs.CreatePropertyIndex("domain", storage.TypeString); err != nil {
+        return fmt.Errorf("creating domain index: %w", err)
+    }
+    if err := gs.CreatePropertyIndex("conceptId", storage.TypeString); err != nil {
+        return fmt.Errorf("creating conceptId index: %w", err)
+    }
+    if err := gs.CreatePropertyIndex("flagged", storage.TypeBool); err != nil {
+        return fmt.Errorf("creating flagged index: %w", err)
+    }
+
+    // Sorting/filtering
+    if err := gs.CreatePropertyIndex("trustScore", storage.TypeFloat); err != nil {
+        return fmt.Errorf("creating trustScore index: %w", err)
+    }
+    if err := gs.CreatePropertyIndex("pageRank", storage.TypeFloat); err != nil {
+        return fmt.Errorf("creating pageRank index: %w", err)
+    }
+
+    return nil
+}
+```
+
+### Query Patterns
+
+#### 1. Learning Path
+
+Find prerequisites for a concept with user's current mastery status:
+
+```go
+// Using the query engine
+query := `
+MATCH (target:Concept {id: $conceptId})
+MATCH (target)<-[:PREREQUISITE*1..5]-(prereq:Concept)
+OPTIONAL MATCH (u:User {id: $userId})-[m:MASTERY]->(prereq)
+RETURN prereq, m.status
+`
+
+result, err := queryEngine.Execute(ctx, query, map[string]interface{}{
+    "conceptId": "calc-derivatives",
+    "userId":    "user-123",
+})
+```
+
+**Performance:** O(prerequisite depth × branching factor) - bounded by curriculum design
+
+#### 2. Ready Concepts
+
+Find concepts the user is ready to learn:
+
+```go
+query := `
+MATCH (u:User {id: $userId})-[m:MASTERY]->(known:Concept)
+WHERE m.status IN ['verified', 'mastered']
+MATCH (known)-[:PREREQUISITE]->(next:Concept)
+WHERE NOT EXISTS((u)-[:MASTERY]->(next))
+RETURN DISTINCT next
+`
+```
+
+#### 3. Collusion Detection
+
+Check if user is in any flagged fraud clusters:
+
+```go
+query := `
+MATCH (u:User {id: $userId})-[:MEMBER]->(c:AnswerCluster)
+WHERE c.flagged = true
+RETURN c, c.memberCount, c.flagReason
+`
+```
+
+**Performance:** O(1-3) - most users belong to 0-3 clusters
+
+#### 4. Programmatic Traversal (Alternative)
+
+For simpler queries, use the traversal API directly:
+
+```go
+// Find user's fraud clusters using traversal
+clusters, err := gs.Traverse(ctx, &storage.TraversalRequest{
+    StartNodeID: userNodeID,
+    Direction:   "outgoing",
+    EdgeTypes:   []string{"MEMBER"},
+    MaxDepth:    1,
+    Filter: func(n *storage.Node) bool {
+        flagged, _ := n.Properties["flagged"].AsBool()
+        return flagged
+    },
+})
+```
+
+### Cardinality Constraints
+
+Enforce the "no supernodes" principle:
+
+```go
+import "github.com/dd0wney/cluso-graphdb/pkg/constraints"
+
+// User can teach at most 100 students
+teachingLimit := &constraints.CardinalityConstraint{
+    NodeLabel: "User",
+    EdgeType:  "TAUGHT",
+    Direction: constraints.Outgoing,
+    Min:       0,
+    Max:       100,
+}
+
+// Concepts have 1-10 prerequisites (curriculum design)
+prereqLimit := &constraints.CardinalityConstraint{
+    NodeLabel: "Concept",
+    EdgeType:  "PREREQUISITE",
+    Direction: constraints.Incoming,
+    Min:       0,
+    Max:       10,
+}
+
+// Answer clusters capped at 50 members
+clusterLimit := &constraints.CardinalityConstraint{
+    NodeLabel: "AnswerCluster",
+    EdgeType:  "MEMBER",
+    Direction: constraints.Incoming,
+    Min:       0,
+    Max:       50,
+}
+```
+
+### Cron Jobs for Precomputation
+
+These jobs update denormalized metrics:
+
+```go
+// UpdateUserMetrics - Run hourly
+func UpdateUserMetrics(gs *storage.GraphStorage) error {
+    users := gs.FindNodesByLabel("User")
+
+    for _, user := range users {
+        // Count MASTERY edges
+        masteryEdges := gs.GetOutgoingEdges(user.ID, "MASTERY")
+        conceptCount := len(masteryEdges)
+
+        // Count verified/mastered
+        verifiedCount := 0
+        for _, edge := range masteryEdges {
+            status, _ := edge.Properties["status"].AsString()
+            if status == "verified" || status == "mastered" {
+                verifiedCount++
+            }
+        }
+
+        // Update node
+        gs.UpdateNode(user.ID, map[string]storage.Value{
+            "conceptCount":  storage.IntValue(int64(conceptCount)),
+            "verifiedCount": storage.IntValue(int64(verifiedCount)),
+        })
+    }
+    return nil
+}
+
+// ComputeConceptPageRank - Run daily
+// Uses the built-in PageRank algorithm
+func ComputeConceptPageRank(gs *storage.GraphStorage) error {
+    concepts := gs.FindNodesByLabel("Concept")
+    conceptIDs := make([]uint64, len(concepts))
+    for i, c := range concepts {
+        conceptIDs[i] = c.ID
+    }
+
+    // Run PageRank on PREREQUISITE subgraph
+    ranks, err := algorithms.PageRank(gs, conceptIDs, 0.85, 20)
+    if err != nil {
+        return err
+    }
+
+    // Update nodes
+    for nodeID, rank := range ranks {
+        gs.UpdateNode(nodeID, map[string]storage.Value{
+            "pageRank": storage.FloatValue(rank),
+        })
+    }
+    return nil
+}
+```
+
+### What Stays in PostgreSQL
+
+| Data | Why Not Graph |
+|------|---------------|
+| Submission text/audio | Too large, not traversed |
+| Embeddings | Vector ops belong in pgvector |
+| Point transactions | Append-only log, not relationships |
+| Verification attempts | Historical audit trail |
+| Session history | Time-series data |
+
+**Rule:** If you're not traversing relationships, it doesn't belong in the graph.
+
+### Capacity Planning
+
+| Entity | Expected Count | Growth Rate |
+|--------|---------------|-------------|
+| Users | 10k → 100k | 10x/year |
+| Concepts | 5k → 20k | 4x/year |
+| MASTERY edges | 500k → 5M | 10x/year |
+| AnswerClusters | 1k → 10k | 10x/year |
+
+At 100k users with 200 concepts each = 20M MASTERY edges maximum. GraphDB handles this well with disk-backed edges enabled.
+
+### Known Limitations
+
+1. **No native array types** - Use `BytesValue` with JSON/msgpack encoding
+2. **No unique constraints** - Enforce at application level or use property index with dedup
+3. **No composite indexes** - Use query engine with multiple WHERE conditions
+4. **Variable-length paths can be slow** - Set query timeouts for user-facing paths

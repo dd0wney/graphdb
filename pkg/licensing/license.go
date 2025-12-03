@@ -66,6 +66,11 @@ func GenerateLicenseKey(licenseType LicenseType, email string) (string, error) {
 		}
 	}
 
+	// Ensure we have enough parts (defensive check)
+	for len(parts) < 5 {
+		parts = append(parts, "XXXX")
+	}
+
 	return fmt.Sprintf("%s-%s-%s-%s-%s", parts[0], parts[1], parts[2], parts[3], parts[4]), nil
 }
 
@@ -82,11 +87,14 @@ func ValidateLicenseKey(key string) bool {
 	return true
 }
 
-// GenerateLicenseID creates a unique license ID
-func GenerateLicenseID() string {
+// GenerateLicenseID creates a unique license ID.
+// Returns an error if random generation fails.
+func GenerateLicenseID() (string, error) {
 	randomBytes := make([]byte, 16)
-	rand.Read(randomBytes)
-	return "lic_" + hex.EncodeToString(randomBytes)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "", fmt.Errorf("failed to generate license ID: %w", err)
+	}
+	return "lic_" + hex.EncodeToString(randomBytes), nil
 }
 
 // IsExpired checks if a license has expired

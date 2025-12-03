@@ -50,7 +50,7 @@ func GenerateSchemaWithComplexity(gs *storage.GraphStorage, config *ComplexityCo
 }
 
 // calculateQueryComplexity calculates the complexity score of a GraphQL query
-func calculateQueryComplexity(document *ast.Document, config *ComplexityConfig, variableValues map[string]interface{}) int {
+func calculateQueryComplexity(document *ast.Document, config *ComplexityConfig, variableValues map[string]any) int {
 	totalComplexity := 0
 
 	for _, definition := range document.Definitions {
@@ -65,7 +65,7 @@ func calculateQueryComplexity(document *ast.Document, config *ComplexityConfig, 
 }
 
 // calculateSelectionSetComplexity recursively calculates complexity of a selection set
-func calculateSelectionSetComplexity(selectionSet *ast.SelectionSet, config *ComplexityConfig, variableValues map[string]interface{}, multiplier int) int {
+func calculateSelectionSetComplexity(selectionSet *ast.SelectionSet, config *ComplexityConfig, variableValues map[string]any, multiplier int) int {
 	if selectionSet == nil || len(selectionSet.Selections) == 0 {
 		return 0
 	}
@@ -143,7 +143,7 @@ func isListField(fieldName string) bool {
 }
 
 // extractLimitFromArguments extracts the limit value from field arguments
-func extractLimitFromArguments(arguments []*ast.Argument, variableValues map[string]interface{}, defaultLimit int) int {
+func extractLimitFromArguments(arguments []*ast.Argument, variableValues map[string]any, defaultLimit int) int {
 	for _, arg := range arguments {
 		if arg.Name.Value == "limit" || arg.Name.Value == "first" || arg.Name.Value == "last" {
 			// Try to extract the value
@@ -170,7 +170,7 @@ func extractLimitFromArguments(arguments []*ast.Argument, variableValues map[str
 }
 
 // ValidateQueryComplexity validates a query against the complexity limit
-func ValidateQueryComplexity(query string, config *ComplexityConfig, variableValues map[string]interface{}) (int, error) {
+func ValidateQueryComplexity(query string, config *ComplexityConfig, variableValues map[string]any) (int, error) {
 	// Parse the query
 	document, err := parser.Parse(parser.ParseParams{
 		Source: query,
@@ -191,7 +191,7 @@ func ValidateQueryComplexity(query string, config *ComplexityConfig, variableVal
 }
 
 // ExecuteWithComplexity executes a GraphQL query with complexity validation
-func ExecuteWithComplexity(schema graphql.Schema, query string, maxComplexity int, variableValues map[string]interface{}) *graphql.Result {
+func ExecuteWithComplexity(schema graphql.Schema, query string, maxComplexity int, variableValues map[string]any) *graphql.Result {
 	// Create config for validation
 	config := &ComplexityConfig{
 		MaxComplexity:    maxComplexity,

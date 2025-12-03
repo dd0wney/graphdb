@@ -5,21 +5,25 @@ import (
 	"math"
 )
 
+// ErrDimensionMismatch is returned when vector dimensions don't match
+var ErrDimensionMismatch = fmt.Errorf("vector dimensions mismatch")
+
 // DistanceMetric represents the type of distance calculation
 type DistanceMetric string
 
 const (
-	MetricCosine    DistanceMetric = "cosine"
-	MetricEuclidean DistanceMetric = "euclidean"
+	MetricCosine     DistanceMetric = "cosine"
+	MetricEuclidean  DistanceMetric = "euclidean"
 	MetricDotProduct DistanceMetric = "dot_product"
 )
 
 // CosineSimilarity calculates the cosine similarity between two vectors
 // Returns a value between -1 (opposite) and 1 (identical)
 // Formula: (a · b) / (||a|| * ||b||)
-func CosineSimilarity(a, b []float32) float32 {
+// Returns error if vector dimensions don't match
+func CosineSimilarity(a, b []float32) (float32, error) {
 	if len(a) != len(b) {
-		panic(fmt.Sprintf("vector dimensions mismatch: %d != %d", len(a), len(b)))
+		return 0, fmt.Errorf("%w: %d != %d", ErrDimensionMismatch, len(a), len(b))
 	}
 
 	dotProd := float32(0.0)
@@ -34,24 +38,30 @@ func CosineSimilarity(a, b []float32) float32 {
 
 	// Handle zero vectors
 	if normA == 0 || normB == 0 {
-		return 0
+		return 0, nil
 	}
 
-	return dotProd / (float32(math.Sqrt(float64(normA))) * float32(math.Sqrt(float64(normB))))
+	return dotProd / (float32(math.Sqrt(float64(normA))) * float32(math.Sqrt(float64(normB)))), nil
 }
 
 // CosineDistance calculates the cosine distance between two vectors
 // Returns a value between 0 (identical) and 2 (opposite)
 // Formula: 1 - cosine_similarity(a, b)
-func CosineDistance(a, b []float32) float32 {
-	return 1.0 - CosineSimilarity(a, b)
+// Returns error if vector dimensions don't match
+func CosineDistance(a, b []float32) (float32, error) {
+	sim, err := CosineSimilarity(a, b)
+	if err != nil {
+		return 0, err
+	}
+	return 1.0 - sim, nil
 }
 
 // EuclideanDistance calculates the Euclidean (L2) distance between two vectors
 // Formula: sqrt(sum((a[i] - b[i])^2))
-func EuclideanDistance(a, b []float32) float32 {
+// Returns error if vector dimensions don't match
+func EuclideanDistance(a, b []float32) (float32, error) {
 	if len(a) != len(b) {
-		panic(fmt.Sprintf("vector dimensions mismatch: %d != %d", len(a), len(b)))
+		return 0, fmt.Errorf("%w: %d != %d", ErrDimensionMismatch, len(a), len(b))
 	}
 
 	sum := float32(0.0)
@@ -60,14 +70,15 @@ func EuclideanDistance(a, b []float32) float32 {
 		sum += diff * diff
 	}
 
-	return float32(math.Sqrt(float64(sum)))
+	return float32(math.Sqrt(float64(sum))), nil
 }
 
 // DotProduct calculates the dot product of two vectors
 // Formula: sum(a[i] * b[i])
-func DotProduct(a, b []float32) float32 {
+// Returns error if vector dimensions don't match
+func DotProduct(a, b []float32) (float32, error) {
 	if len(a) != len(b) {
-		panic(fmt.Sprintf("vector dimensions mismatch: %d != %d", len(a), len(b)))
+		return 0, fmt.Errorf("%w: %d != %d", ErrDimensionMismatch, len(a), len(b))
 	}
 
 	result := float32(0.0)
@@ -75,7 +86,7 @@ func DotProduct(a, b []float32) float32 {
 		result += a[i] * b[i]
 	}
 
-	return result
+	return result, nil
 }
 
 // Normalize normalizes a vector to unit length
@@ -102,7 +113,8 @@ func Normalize(v []float32) []float32 {
 }
 
 // Distance calculates the distance between two vectors using the specified metric
-func Distance(a, b []float32, metric DistanceMetric) float32 {
+// Returns error if vector dimensions don't match
+func Distance(a, b []float32, metric DistanceMetric) (float32, error) {
 	switch metric {
 	case MetricCosine:
 		return CosineDistance(a, b)
@@ -111,7 +123,11 @@ func Distance(a, b []float32, metric DistanceMetric) float32 {
 	case MetricDotProduct:
 		// For dot product, we negate to make "closer" values smaller
 		// (since we typically want to minimize distance)
-		return -DotProduct(a, b)
+		dot, err := DotProduct(a, b)
+		if err != nil {
+			return 0, err
+		}
+		return -dot, nil
 	default:
 		// Default to cosine distance
 		return CosineDistance(a, b)

@@ -1,6 +1,7 @@
 package vector
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -54,7 +55,10 @@ func TestCosineSimilarity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CosineSimilarity(tt.a, tt.b)
+			result, err := CosineSimilarity(tt.a, tt.b)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if math.Abs(float64(result-tt.expected)) > float64(tt.epsilon) {
 				t.Errorf("CosineSimilarity(%v, %v) = %v, want %v (±%v)",
 					tt.a, tt.b, result, tt.expected, tt.epsilon)
@@ -97,7 +101,10 @@ func TestCosineDistance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CosineDistance(tt.a, tt.b)
+			result, err := CosineDistance(tt.a, tt.b)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if math.Abs(float64(result-tt.expected)) > float64(tt.epsilon) {
 				t.Errorf("CosineDistance(%v, %v) = %v, want %v (±%v)",
 					tt.a, tt.b, result, tt.expected, tt.epsilon)
@@ -147,7 +154,10 @@ func TestEuclideanDistance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EuclideanDistance(tt.a, tt.b)
+			result, err := EuclideanDistance(tt.a, tt.b)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if math.Abs(float64(result-tt.expected)) > float64(tt.epsilon) {
 				t.Errorf("EuclideanDistance(%v, %v) = %v, want %v (±%v)",
 					tt.a, tt.b, result, tt.expected, tt.epsilon)
@@ -197,7 +207,10 @@ func TestDotProduct(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := DotProduct(tt.a, tt.b)
+			result, err := DotProduct(tt.a, tt.b)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if math.Abs(float64(result-tt.expected)) > float64(tt.epsilon) {
 				t.Errorf("DotProduct(%v, %v) = %v, want %v (±%v)",
 					tt.a, tt.b, result, tt.expected, tt.epsilon)
@@ -252,15 +265,24 @@ func TestMismatchedDimensions(t *testing.T) {
 	a := []float32{1, 2, 3}
 	b := []float32{1, 2}
 
-	// These should panic or return NaN/Inf
-	// For now, we'll just test they don't crash
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Expected panic for mismatched dimensions, but didn't get one")
-		}
-	}()
+	// Test that mismatched dimensions return an error
+	_, err := CosineSimilarity(a, b)
+	if err == nil {
+		t.Error("Expected error for mismatched dimensions, but got nil")
+	}
+	if !errors.Is(err, ErrDimensionMismatch) {
+		t.Errorf("Expected ErrDimensionMismatch, got: %v", err)
+	}
 
-	_ = CosineSimilarity(a, b)
+	_, err = EuclideanDistance(a, b)
+	if err == nil {
+		t.Error("Expected error for mismatched dimensions, but got nil")
+	}
+
+	_, err = DotProduct(a, b)
+	if err == nil {
+		t.Error("Expected error for mismatched dimensions, but got nil")
+	}
 }
 
 // BenchmarkCosineSimilarity benchmarks cosine similarity for different dimensions
@@ -278,7 +300,7 @@ func BenchmarkCosineSimilarity(b *testing.B) {
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = CosineSimilarity(v1, v2)
+				_, _ = CosineSimilarity(v1, v2)
 			}
 		})
 	}
@@ -295,6 +317,6 @@ func BenchmarkEuclideanDistance(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = EuclideanDistance(v1, v2)
+		_, _ = EuclideanDistance(v1, v2)
 	}
 }

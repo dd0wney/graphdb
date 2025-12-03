@@ -344,3 +344,168 @@ func TestValidator_TimestampRecorded(t *testing.T) {
 		t.Error("CheckedAt timestamp not within expected range")
 	}
 }
+
+// TestValidator_AddConstraints tests adding multiple constraints at once
+func TestValidator_AddConstraints(t *testing.T) {
+	validator := NewValidator()
+
+	constraints := []Constraint{
+		&PropertyConstraint{
+			NodeLabel:    "User",
+			PropertyName: "email",
+			Required:     true,
+		},
+		&PropertyConstraint{
+			NodeLabel:    "User",
+			PropertyName: "age",
+			Type:         storage.TypeInt,
+		},
+		&CardinalityConstraint{
+			NodeLabel: "User",
+			EdgeType:  "FOLLOWS",
+			Direction: Outgoing,
+			Max:       100,
+		},
+	}
+
+	validator.AddConstraints(constraints)
+
+	// Verify constraints were added
+	if len(validator.constraints) != 3 {
+		t.Errorf("Expected 3 constraints, got %d", len(validator.constraints))
+	}
+}
+
+// TestValidator_GetConstraints tests retrieving all constraints
+func TestValidator_GetConstraints(t *testing.T) {
+	validator := NewValidator()
+
+	// Initially empty
+	if len(validator.GetConstraints()) != 0 {
+		t.Error("Expected no constraints initially")
+	}
+
+	// Add some constraints
+	constraint1 := &PropertyConstraint{
+		NodeLabel:    "User",
+		PropertyName: "email",
+		Required:     true,
+	}
+	constraint2 := &CardinalityConstraint{
+		NodeLabel: "Account",
+		EdgeType:  "OWNS",
+		Direction: Incoming,
+		Min:       1,
+	}
+
+	validator.AddConstraint(constraint1)
+	validator.AddConstraint(constraint2)
+
+	constraints := validator.GetConstraints()
+	if len(constraints) != 2 {
+		t.Errorf("Expected 2 constraints, got %d", len(constraints))
+	}
+
+	// Verify returned constraints are the same
+	found1 := false
+	found2 := false
+	for _, c := range constraints {
+		if c == constraint1 {
+			found1 = true
+		}
+		if c == constraint2 {
+			found2 = true
+		}
+	}
+
+	if !found1 || !found2 {
+		t.Error("GetConstraints did not return expected constraints")
+	}
+}
+
+// TestValidator_ClearConstraints tests clearing all constraints
+func TestValidator_ClearConstraints(t *testing.T) {
+	validator := NewValidator()
+
+	// Add some constraints
+	validator.AddConstraint(&PropertyConstraint{
+		NodeLabel:    "User",
+		PropertyName: "email",
+		Required:     true,
+	})
+	validator.AddConstraint(&CardinalityConstraint{
+		NodeLabel: "Account",
+		EdgeType:  "OWNS",
+		Direction: Incoming,
+		Min:       1,
+	})
+
+	// Verify constraints exist
+	if len(validator.constraints) != 2 {
+		t.Errorf("Expected 2 constraints before clear, got %d", len(validator.constraints))
+	}
+
+	// Clear constraints
+	validator.ClearConstraints()
+
+	// Verify all cleared
+	if len(validator.constraints) != 0 {
+		t.Errorf("Expected 0 constraints after clear, got %d", len(validator.constraints))
+	}
+
+	if len(validator.GetConstraints()) != 0 {
+		t.Error("GetConstraints should return empty slice after clear")
+	}
+}
+
+// TestValidator_AddConstraints_Empty tests adding empty constraint list
+func TestValidator_AddConstraints_Empty(t *testing.T) {
+	validator := NewValidator()
+
+	// Add empty list - should not fail
+	validator.AddConstraints([]Constraint{})
+
+	if len(validator.constraints) != 0 {
+		t.Error("Expected no constraints after adding empty list")
+	}
+}
+
+// TestValidator_GetConstraints_Immutability tests that returned slice is safe to modify
+func TestValidator_GetConstraints_Immutability(t *testing.T) {
+	validator := NewValidator()
+
+	constraint := &PropertyConstraint{
+		NodeLabel:    "User",
+		PropertyName: "email",
+		Required:     true,
+	}
+	validator.AddConstraint(constraint)
+
+	// Get constraints
+	constraints := validator.GetConstraints()
+
+	// Modify returned slice (should not affect validator)
+	constraints = append(constraints, &PropertyConstraint{
+		NodeLabel:    "User",
+		PropertyName: "name",
+		Required:     true,
+	})
+
+	// Original validator should still have only 1 constraint
+	if len(validator.constraints) != 1 {
+		t.Error("Modifying returned slice affected validator state")
+	}
+}
+
+// TestValidator_ClearConstraints_Idempotent tests clearing already-clear validator
+func TestValidator_ClearConstraints_Idempotent(t *testing.T) {
+	validator := NewValidator()
+
+	// Clear when already empty (should not fail)
+	validator.ClearConstraints()
+	validator.ClearConstraints()
+
+	if len(validator.constraints) != 0 {
+		t.Error("Multiple clears caused issues")
+	}
+}

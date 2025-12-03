@@ -17,40 +17,40 @@ func TestCreateNode_ValidationErrors(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		request        interface{}
+		request        any
 		expectedStatus int
 		expectedError  string
 	}{
 		{
 			name: "Empty labels - should fail",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"labels":     []string{},
-				"properties": map[string]interface{}{"name": "Test"},
+				"properties": map[string]any{"name": "Test"},
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "Labels",
 		},
 		{
 			name: "Too many labels - should fail",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"labels":     []string{"L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11"},
-				"properties": map[string]interface{}{"name": "Test"},
+				"properties": map[string]any{"name": "Test"},
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "Labels",
 		},
 		{
 			name: "Label with special characters - should fail",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"labels":     []string{"Person<script>"},
-				"properties": map[string]interface{}{"name": "Test"},
+				"properties": map[string]any{"name": "Test"},
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "invalid characters",
 		},
 		{
 			name: "Too many properties - should fail",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"labels":     []string{"Person"},
 				"properties": createLargePropertyMap(101),
 			},
@@ -59,9 +59,9 @@ func TestCreateNode_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "Invalid property key - should fail",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"labels": []string{"Person"},
-				"properties": map[string]interface{}{
+				"properties": map[string]any{
 					"invalid-key": "value",
 				},
 			},
@@ -70,9 +70,9 @@ func TestCreateNode_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "XSS in property value - should sanitize",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"labels": []string{"Person"},
-				"properties": map[string]interface{}{
+				"properties": map[string]any{
 					"bio": "<script>alert('XSS')</script>",
 				},
 			},
@@ -81,9 +81,9 @@ func TestCreateNode_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "Valid request - should succeed",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"labels": []string{"Person"},
-				"properties": map[string]interface{}{
+				"properties": map[string]any{
 					"name": "Alice",
 					"age":  30,
 				},
@@ -127,9 +127,9 @@ func TestCreateNode_PropertySanitization(t *testing.T) {
 
 	for _, dangerous := range dangerousInputs {
 		t.Run(dangerous, func(t *testing.T) {
-			request := map[string]interface{}{
+			request := map[string]any{
 				"labels": []string{"Person"},
-				"properties": map[string]interface{}{
+				"properties": map[string]any{
 					"bio": dangerous,
 				},
 			}
@@ -192,13 +192,13 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		request        interface{}
+		request        any
 		expectedStatus int
 		expectedError  string
 	}{
 		{
 			name: "Missing type - should fail",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"fromNodeId": node1.ID,
 				"toNodeId":   node2.ID,
 				"type":       "",
@@ -208,7 +208,7 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "Zero fromNodeId - should fail",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"fromNodeId": 0,
 				"toNodeId":   node2.ID,
 				"type":       "KNOWS",
@@ -218,7 +218,7 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "Zero toNodeId - should fail",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"fromNodeId": node1.ID,
 				"toNodeId":   0,
 				"type":       "KNOWS",
@@ -228,7 +228,7 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "Type with special characters - should fail",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"fromNodeId": node1.ID,
 				"toNodeId":   node2.ID,
 				"type":       "KNOWS<script>",
@@ -238,7 +238,7 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "Too many properties - should fail",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"fromNodeId": node1.ID,
 				"toNodeId":   node2.ID,
 				"type":       "KNOWS",
@@ -249,11 +249,11 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		},
 		{
 			name: "Valid request - should succeed",
-			request: map[string]interface{}{
+			request: map[string]any{
 				"fromNodeId": node1.ID,
 				"toNodeId":   node2.ID,
 				"type":       "KNOWS",
-				"properties": map[string]interface{}{
+				"properties": map[string]any{
 					"since": 2020,
 				},
 			},
@@ -322,15 +322,15 @@ func TestCreateNodeBatch_ValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			nodes := make([]map[string]interface{}, tt.batchSize)
+			nodes := make([]map[string]any, tt.batchSize)
 			for i := 0; i < tt.batchSize; i++ {
-				nodes[i] = map[string]interface{}{
+				nodes[i] = map[string]any{
 					"labels":     []string{"Person"},
-					"properties": map[string]interface{}{"id": i},
+					"properties": map[string]any{"id": i},
 				}
 			}
 
-			batch := map[string]interface{}{
+			batch := map[string]any{
 				"nodes": nodes,
 			}
 
@@ -366,7 +366,7 @@ func TestQueryValidation(t *testing.T) {
 
 	for _, tt := range dangerousQueries {
 		t.Run(tt.name, func(t *testing.T) {
-			reqBody := map[string]interface{}{
+			reqBody := map[string]any{
 				"query": tt.query,
 			}
 			body, _ := json.Marshal(reqBody)
@@ -385,8 +385,8 @@ func TestQueryValidation(t *testing.T) {
 }
 
 // Helper function to create large property maps for testing
-func createLargePropertyMap(size int) map[string]interface{} {
-	props := make(map[string]interface{}, size)
+func createLargePropertyMap(size int) map[string]any {
+	props := make(map[string]any, size)
 	for i := 0; i < size; i++ {
 		key := fmt.Sprintf("prop_%d", i)
 		props[key] = i

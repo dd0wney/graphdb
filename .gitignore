@@ -150,3 +150,22 @@ Temporary Items
 # Enterprise plugins (closed source)
 enterprise-plugins/
 plugins/*.so
+.graphdb_admin_password
+
+# Working notes and reports (not part of codebase)
+GOCERT*.md
+GOCERT*.txt
+*-SUMMARY.md
+*-REPORT.md
+*-CHECKLIST.md
+PRODUCTION-READINESS*.md
+TXN-*.md
+TASKS.md
+node_modules/
+
+# Compiled binaries
+graphdb-server
+graphdb-nng-primary
+graphdb-nng-replica
+graphdb-*-replica
+graphdb-*-primary

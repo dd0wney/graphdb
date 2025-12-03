@@ -2,37 +2,14 @@ package wal
 
 import (
 	"bufio"
-	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
 )
-
-// OpType represents the type of operation in the WAL
-type OpType uint8
-
-const (
-	OpCreateNode OpType = iota
-	OpUpdateNode
-	OpDeleteNode
-	OpCreateEdge
-	OpUpdateEdge
-	OpDeleteEdge
-	OpCreatePropertyIndex
-	OpDropPropertyIndex
-)
-
-// Entry represents a single WAL entry
-type Entry struct {
-	LSN       uint64 // Log Sequence Number
-	OpType    OpType
-	Data      []byte
-	Checksum  uint32
-	Timestamp int64
-}
 
 // WAL is a Write-Ahead Log for durability
 type WAL struct {
@@ -65,6 +42,7 @@ func NewWAL(dataDir string) (*WAL, error) {
 
 	// Read existing entries to set currentLSN
 	if err := wal.recoverLSN(); err != nil {
+		file.Close()
 		return nil, fmt.Errorf("failed to recover LSN: %w", err)
 	}
 
@@ -109,52 +87,19 @@ func (w *WAL) Append(opType OpType, data []byte) (uint64, error) {
 	return lsn, nil
 }
 
-// writeEntry writes a single entry to the WAL
-// Format: [LSN:8][OpType:1][DataLen:4][Data:N][Checksum:4][Timestamp:8]
-func (w *WAL) writeEntry(entry *Entry) error {
-	// Write LSN
-	if err := binary.Write(w.writer, binary.LittleEndian, entry.LSN); err != nil {
-		return err
-	}
-
-	// Write OpType
-	if err := w.writer.WriteByte(byte(entry.OpType)); err != nil {
-		return err
-	}
-
-	// Write data length
-	dataLen := uint32(len(entry.Data))
-	if err := binary.Write(w.writer, binary.LittleEndian, dataLen); err != nil {
-		return err
-	}
-
-	// Write data
-	if _, err := w.writer.Write(entry.Data); err != nil {
-		return err
-	}
-
-	// Write checksum
-	if err := binary.Write(w.writer, binary.LittleEndian, entry.Checksum); err != nil {
-		return err
-	}
-
-	// Write timestamp
-	if err := binary.Write(w.writer, binary.LittleEndian, entry.Timestamp); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // ReadAll reads all entries from the WAL
+// Returns all valid entries read before any corruption is detected.
+// Corruption is logged but does not return an error to allow partial recovery.
 func (w *WAL) ReadAll() ([]*Entry, error) {
 	// Seek to beginning
 	if _, err := w.file.Seek(0, 0); err != nil {
 		return nil, err
 	}
 
+	// Note: bufio.NewReader does not return an error - it always succeeds
 	reader := bufio.NewReader(w.file)
 	entries := make([]*Entry, 0)
+	var entriesRead int
 
 	for {
 		entry, err := w.readEntry(reader)
@@ -162,17 +107,24 @@ func (w *WAL) ReadAll() ([]*Entry, error) {
 			break
 		}
 		if err != nil {
-			// Corrupted entry, stop reading
+			// Log corruption details for debugging
+			log.Printf("WARNING: WAL corruption detected after %d entries: read error: %v", entriesRead, err)
+			log.Printf("WARNING: WAL recovery stopped, %d entries recovered successfully", entriesRead)
 			break
 		}
 
 		// Verify checksum
-		if crc32.ChecksumIEEE(entry.Data) != entry.Checksum {
-			// Corrupted entry, stop reading
+		expectedChecksum := crc32.ChecksumIEEE(entry.Data)
+		if expectedChecksum != entry.Checksum {
+			// Log checksum mismatch with details
+			log.Printf("WARNING: WAL checksum mismatch at LSN %d (entry %d): expected %08x, got %08x",
+				entry.LSN, entriesRead, expectedChecksum, entry.Checksum)
+			log.Printf("WARNING: WAL recovery stopped, %d entries recovered successfully", entriesRead)
 			break
 		}
 
 		entries = append(entries, entry)
+		entriesRead++
 	}
 
 	// Seek back to end for appending
@@ -181,47 +133,6 @@ func (w *WAL) ReadAll() ([]*Entry, error) {
 	}
 
 	return entries, nil
-}
-
-// readEntry reads a single entry from the reader
-func (w *WAL) readEntry(reader *bufio.Reader) (*Entry, error) {
-	entry := &Entry{}
-
-	// Read LSN
-	if err := binary.Read(reader, binary.LittleEndian, &entry.LSN); err != nil {
-		return nil, err
-	}
-
-	// Read OpType
-	opTypeByte, err := reader.ReadByte()
-	if err != nil {
-		return nil, err
-	}
-	entry.OpType = OpType(opTypeByte)
-
-	// Read data length
-	var dataLen uint32
-	if err := binary.Read(reader, binary.LittleEndian, &dataLen); err != nil {
-		return nil, err
-	}
-
-	// Read data
-	entry.Data = make([]byte, dataLen)
-	if _, err := io.ReadFull(reader, entry.Data); err != nil {
-		return nil, err
-	}
-
-	// Read checksum
-	if err := binary.Read(reader, binary.LittleEndian, &entry.Checksum); err != nil {
-		return nil, err
-	}
-
-	// Read timestamp
-	if err := binary.Read(reader, binary.LittleEndian, &entry.Timestamp); err != nil {
-		return nil, err
-	}
-
-	return entry, nil
 }
 
 // recoverLSN recovers the current LSN from existing WAL entries
@@ -243,26 +154,44 @@ func (w *WAL) Truncate() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// Close current file
-	if err := w.file.Close(); err != nil {
-		return err
-	}
-
-	// Truncate file
 	walPath := filepath.Join(w.dataDir, "wal.log")
-	if err := os.Truncate(walPath, 0); err != nil {
-		return err
+
+	// Flush any pending writes before truncating
+	if err := w.writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush WAL before truncate: %w", err)
 	}
 
-	// Reopen file
-	file, err := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	// Create the new file BEFORE closing the old one to ensure we have a valid handle
+	newFile, err := os.OpenFile(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create new WAL file: %w", err)
 	}
 
-	w.file = file
-	w.writer = bufio.NewWriter(file)
+	// Close current file
+	closeErr := w.file.Close()
+
+	// Rename new file to replace old file (atomic on POSIX)
+	if err := os.Rename(walPath+".new", walPath); err != nil {
+		// Failed to rename - close new file and return error
+		newFile.Close()
+		// Try to reopen old file to maintain consistent state
+		if oldFile, reopenErr := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644); reopenErr == nil {
+			w.file = oldFile
+			w.writer = bufio.NewWriter(oldFile)
+		}
+		return fmt.Errorf("failed to rename WAL file: %w (close error: %v)", err, closeErr)
+	}
+
+	// Update state with new file
+	w.file = newFile
+	w.writer = bufio.NewWriter(newFile)
 	w.currentLSN = 0
+
+	// Return close error if rename succeeded but close failed (non-fatal but worth logging)
+	if closeErr != nil {
+		// Log but don't fail - we successfully truncated
+		fmt.Printf("WARNING: failed to close old WAL file during truncate: %v\n", closeErr)
+	}
 
 	return nil
 }

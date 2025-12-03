@@ -103,9 +103,10 @@ func main() {
 	var store licensing.LicenseStore
 	var err error
 
+	ctx := context.Background()
 	if *databaseURL != "" {
 		logger.Info("initializing PostgreSQL store")
-		store, err = licensing.NewPGStore(*databaseURL)
+		store, err = licensing.NewPGStore(ctx, *databaseURL)
 		if err != nil {
 			logger.Error("failed to initialize PostgreSQL store", "error", err)
 			logger.Info("falling back to JSON file store")
@@ -212,10 +213,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Check database connection (Railway best practice)
-	if err := s.store.Ping(); err != nil {
+	if err := s.store.Ping(r.Context()); err != nil {
 		s.logger.Error("health check failed", "error", err)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"status":   "unhealthy",
 			"database": "disconnected",
 			"error":    err.Error(),
@@ -224,7 +225,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"status":   "healthy",
 		"database": "connected",
 		"uptime":   time.Since(s.startTime).Seconds(),
@@ -234,7 +235,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // handleMetrics returns custom metrics
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"licenses_validated": s.licensesValidated.Load(),
 		"licenses_failed":    s.licensesFailed.Load(),
 		"uptime_seconds":     time.Since(s.startTime).Seconds(),
@@ -263,7 +264,7 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 		s.logger.Info("license validation failed", "reason", "invalid_format", "key", req.LicenseKey)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"valid":  false,
 			"reason": "invalid_format",
 		})
@@ -271,13 +272,13 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Look up license
-	license, err := s.store.GetLicenseByKey(req.LicenseKey)
+	license, err := s.store.GetLicenseByKey(r.Context(), req.LicenseKey)
 	if err != nil {
 		s.licensesFailed.Add(1)
 		s.logger.Info("license validation failed", "reason", "not_found", "key", req.LicenseKey)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"valid":  false,
 			"reason": "not_found",
 		})
@@ -290,7 +291,7 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 		s.logger.Info("license validation failed", "reason", "inactive", "key", req.LicenseKey, "status", license.Status)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"valid":  false,
 			"reason": "inactive",
 			"status": license.Status,
@@ -303,7 +304,7 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("license validated", "key", req.LicenseKey, "type", license.Type, "email", license.Email)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"valid":      true,
 		"type":       license.Type,
 		"email":      license.Email,
@@ -385,8 +386,13 @@ func (s *Server) handleCheckoutCompleted(data json.RawMessage) {
 	}
 
 	// Create license
+	licenseID, err := licensing.GenerateLicenseID()
+	if err != nil {
+		s.logger.Error("error generating license ID", "error", err)
+		return
+	}
 	license := &licensing.License{
-		ID:             licensing.GenerateLicenseID(),
+		ID:             licenseID,
 		Key:            licenseKey,
 		Type:           licenseType,
 		Email:          session.Object.CustomerEmail,
@@ -397,7 +403,7 @@ func (s *Server) handleCheckoutCompleted(data json.RawMessage) {
 		Metadata:       session.Object.Metadata,
 	}
 
-	if err := s.store.CreateLicense(license); err != nil {
+	if err := s.store.CreateLicense(context.Background(), license); err != nil {
 		s.logger.Error("error creating license", "error", err)
 		return
 	}
@@ -437,7 +443,7 @@ func (s *Server) handleSubscriptionUpdated(data json.RawMessage) {
 	}
 
 	// Find license by customer ID
-	license, err := s.store.GetLicenseByCustomer(subscription.Object.Customer)
+	license, err := s.store.GetLicenseByCustomer(context.Background(), subscription.Object.Customer)
 	if err != nil {
 		s.logger.Warn("license not found for customer", "customer_id", subscription.Object.Customer)
 		return
@@ -445,7 +451,7 @@ func (s *Server) handleSubscriptionUpdated(data json.RawMessage) {
 
 	// Update status
 	license.Status = subscription.Object.Status
-	if err := s.store.UpdateLicense(license); err != nil {
+	if err := s.store.UpdateLicense(context.Background(), license); err != nil {
 		s.logger.Error("error updating license", "error", err)
 		return
 	}
@@ -471,7 +477,7 @@ func (s *Server) handleSubscriptionDeleted(data json.RawMessage) {
 	}
 
 	// Find license by customer ID
-	license, err := s.store.GetLicenseByCustomer(subscription.Object.Customer)
+	license, err := s.store.GetLicenseByCustomer(context.Background(), subscription.Object.Customer)
 	if err != nil {
 		s.logger.Warn("license not found for customer", "customer_id", subscription.Object.Customer)
 		return
@@ -479,7 +485,7 @@ func (s *Server) handleSubscriptionDeleted(data json.RawMessage) {
 
 	// Mark as cancelled
 	license.Status = "cancelled"
-	if err := s.store.UpdateLicense(license); err != nil {
+	if err := s.store.UpdateLicense(context.Background(), license); err != nil {
 		s.logger.Error("error updating license", "error", err)
 		return
 	}
@@ -494,10 +500,15 @@ func (s *Server) handleListLicenses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	licenses := s.store.ListLicenses()
+	licenses, err := s.store.ListLicenses(r.Context())
+	if err != nil {
+		s.logger.Error("error listing licenses", "error", err)
+		http.Error(w, "Error listing licenses", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"licenses": licenses,
 		"count":    len(licenses),
 	})
@@ -528,8 +539,13 @@ func (s *Server) handleCreateLicense(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create license
+	licenseID, err := licensing.GenerateLicenseID()
+	if err != nil {
+		http.Error(w, "Error generating license ID", http.StatusInternalServerError)
+		return
+	}
 	license := &licensing.License{
-		ID:        licensing.GenerateLicenseID(),
+		ID:        licenseID,
 		Key:       licenseKey,
 		Type:      req.Type,
 		Email:     req.Email,
@@ -537,7 +553,7 @@ func (s *Server) handleCreateLicense(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 	}
 
-	if err := s.store.CreateLicense(license); err != nil {
+	if err := s.store.CreateLicense(r.Context(), license); err != nil {
 		http.Error(w, "Error creating license", http.StatusInternalServerError)
 		return
 	}

@@ -26,7 +26,12 @@ func setupTestServer(t *testing.T) (*Server, func()) {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
 
-	server := NewServer(gs, 8080)
+	server, err := NewServer(gs, 8080)
+	if err != nil {
+		gs.Close()
+		os.RemoveAll(tmpDir)
+		t.Fatalf("Failed to create server: %v", err)
+	}
 
 	cleanup := func() {
 		gs.Close()
@@ -109,13 +114,13 @@ func TestAPI_Query_Aggregations(t *testing.T) {
 		name          string
 		query         string
 		expectedCount int
-		verifyRow     func(t *testing.T, row map[string]interface{})
+		verifyRow     func(t *testing.T, row map[string]any)
 	}{
 		{
 			name:          "COUNT aggregation",
 			query:         "MATCH (e:Employee) RETURN COUNT(e.name) AS total",
 			expectedCount: 1,
-			verifyRow: func(t *testing.T, row map[string]interface{}) {
+			verifyRow: func(t *testing.T, row map[string]any) {
 				if row["total"].(float64) != 5 {
 					t.Errorf("Expected COUNT=5, got %v", row["total"])
 				}
@@ -125,7 +130,7 @@ func TestAPI_Query_Aggregations(t *testing.T) {
 			name:          "SUM aggregation",
 			query:         "MATCH (e:Employee) RETURN SUM(e.salary) AS total_salary",
 			expectedCount: 1,
-			verifyRow: func(t *testing.T, row map[string]interface{}) {
+			verifyRow: func(t *testing.T, row map[string]any) {
 				expected := float64(80000 + 60000 + 70000 + 50000 + 90000)
 				if row["total_salary"].(float64) != expected {
 					t.Errorf("Expected SUM=%v, got %v", expected, row["total_salary"])
@@ -136,7 +141,7 @@ func TestAPI_Query_Aggregations(t *testing.T) {
 			name:          "AVG aggregation",
 			query:         "MATCH (e:Employee) RETURN AVG(e.salary) AS avg_salary",
 			expectedCount: 1,
-			verifyRow: func(t *testing.T, row map[string]interface{}) {
+			verifyRow: func(t *testing.T, row map[string]any) {
 				expected := float64(350000) / 5.0
 				if row["avg_salary"].(float64) != expected {
 					t.Errorf("Expected AVG=%v, got %v", expected, row["avg_salary"])
@@ -147,7 +152,7 @@ func TestAPI_Query_Aggregations(t *testing.T) {
 			name:          "MIN aggregation",
 			query:         "MATCH (e:Employee) RETURN MIN(e.salary) AS min_salary",
 			expectedCount: 1,
-			verifyRow: func(t *testing.T, row map[string]interface{}) {
+			verifyRow: func(t *testing.T, row map[string]any) {
 				if row["min_salary"].(float64) != 50000 {
 					t.Errorf("Expected MIN=50000, got %v", row["min_salary"])
 				}
@@ -157,7 +162,7 @@ func TestAPI_Query_Aggregations(t *testing.T) {
 			name:          "MAX aggregation",
 			query:         "MATCH (e:Employee) RETURN MAX(e.salary) AS max_salary",
 			expectedCount: 1,
-			verifyRow: func(t *testing.T, row map[string]interface{}) {
+			verifyRow: func(t *testing.T, row map[string]any) {
 				if row["max_salary"].(float64) != 90000 {
 					t.Errorf("Expected MAX=90000, got %v", row["max_salary"])
 				}
@@ -435,10 +440,13 @@ func TestAPI_GraphQL_Integration(t *testing.T) {
 	})
 
 	// Now create server with schema that knows about Employee label
-	server := NewServer(gs, 8080)
+	server, err := NewServer(gs, 8080)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
 
 	// GraphQL query request
-	queryReq := map[string]interface{}{
+	queryReq := map[string]any{
 		"query": `{
 			employees {
 				id
@@ -465,7 +473,7 @@ func TestAPI_GraphQL_Integration(t *testing.T) {
 	}
 
 	// Parse GraphQL response
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -502,17 +510,20 @@ func TestAPI_GraphQL_VariableSupport(t *testing.T) {
 	})
 
 	// Now create server
-	server := NewServer(gs, 8080)
+	server, err := NewServer(gs, 8080)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
 
 	// GraphQL query with variables
-	queryReq := map[string]interface{}{
+	queryReq := map[string]any{
 		"query": `query GetEmployee($id: ID!) {
 			employee(id: $id) {
 				id
 				labels
 			}
 		}`,
-		"variables": map[string]interface{}{
+		"variables": map[string]any{
 			"id": "1",
 		},
 	}
@@ -534,7 +545,7 @@ func TestAPI_GraphQL_VariableSupport(t *testing.T) {
 			status, http.StatusOK)
 	}
 
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -550,7 +561,7 @@ func TestAPI_GraphQL_CORS(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	queryReq := map[string]interface{}{
+	queryReq := map[string]any{
 		"query": `{ health }`,
 	}
 

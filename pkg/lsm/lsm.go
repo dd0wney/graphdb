@@ -3,73 +3,7 @@ package lsm
 import (
 	"fmt"
 	"os"
-	"sync"
-	"time"
 )
-
-// LSMStorage is the main LSM-tree storage engine
-type LSMStorage struct {
-	mu sync.RWMutex
-
-	// Write path
-	memTable       *MemTable
-	immutableTable *MemTable // Being flushed to disk
-
-	// Read path
-	levels [][]*SSTable
-	cache  *BlockCache // LRU cache for hot data
-
-	// Configuration
-	dataDir            string
-	memTableSize       int
-	compactionStrategy CompactionStrategy
-	compactor          *Compactor
-
-	// Background workers
-	flushChan      chan struct{}
-	compactionChan chan struct{}
-	stopChan       chan struct{}
-	wg             sync.WaitGroup
-
-	// State
-	closed bool
-
-	// Statistics
-	stats LSMStats
-}
-
-// LSMStats tracks LSM storage statistics
-type LSMStats struct {
-	mu sync.Mutex
-
-	WriteCount      int64
-	ReadCount       int64
-	FlushCount      int64
-	CompactionCount int64
-	BytesWritten    int64
-	BytesRead       int64
-	MemTableSize    int
-	SSTableCount    int
-	Level0FileCount int
-}
-
-// LSMOptions configures LSM storage
-type LSMOptions struct {
-	DataDir              string
-	MemTableSize         int // Bytes (default 4MB)
-	CompactionStrategy   CompactionStrategy
-	EnableAutoCompaction bool
-}
-
-// DefaultLSMOptions returns default LSM configuration
-func DefaultLSMOptions(dataDir string) LSMOptions {
-	return LSMOptions{
-		DataDir:              dataDir,
-		MemTableSize:         4 * 1024 * 1024, // 4MB
-		CompactionStrategy:   DefaultLeveledCompaction(),
-		EnableAutoCompaction: true,
-	}
-}
 
 // NewLSMStorage creates a new LSM storage engine
 func NewLSMStorage(opts LSMOptions) (*LSMStorage, error) {
@@ -122,11 +56,9 @@ func (lsm *LSMStorage) Put(key, value []byte) error {
 		return err
 	}
 
-	// Update stats
-	lsm.stats.mu.Lock()
-	lsm.stats.WriteCount++
-	lsm.stats.BytesWritten += int64(len(key) + len(value))
-	lsm.stats.mu.Unlock()
+	// Update stats atomically (lock-free)
+	lsm.stats.WriteCount.Add(1)
+	lsm.stats.BytesWritten.Add(int64(len(key) + len(value)))
 
 	// Check if MemTable is full
 	needsFlush := lsm.memTable.IsFull()
@@ -144,10 +76,8 @@ func (lsm *LSMStorage) Get(key []byte) ([]byte, bool) {
 	lsm.mu.RLock()
 	defer lsm.mu.RUnlock()
 
-	// Update stats
-	lsm.stats.mu.Lock()
-	lsm.stats.ReadCount++
-	lsm.stats.mu.Unlock()
+	// Update stats atomically (lock-free)
+	lsm.stats.ReadCount.Add(1)
 
 	// 0. Check cache first
 	cacheKey := string(key)
@@ -238,14 +168,6 @@ func (lsm *LSMStorage) Scan(start, end []byte) (map[string][]byte, error) {
 	return results, nil
 }
 
-// triggerFlush signals the flush worker
-func (lsm *LSMStorage) triggerFlush() {
-	select {
-	case lsm.flushChan <- struct{}{}:
-	default:
-	}
-}
-
 // Sync forces a flush of the current memtable to disk
 func (lsm *LSMStorage) Sync() error {
 	lsm.mu.Lock()
@@ -253,210 +175,38 @@ func (lsm *LSMStorage) Sync() error {
 	lsm.mu.Unlock()
 
 	if needsFlush {
-		lsm.flush()
+		if err := lsm.flush(); err != nil {
+			return fmt.Errorf("failed to flush memtable: %w", err)
+		}
 	}
 	return nil
 }
 
-// triggerCompaction signals the compaction worker
-func (lsm *LSMStorage) triggerCompaction() {
-	select {
-	case lsm.compactionChan <- struct{}{}:
-	default:
-	}
-}
-
-// flushWorker handles MemTable -> SSTable flushes
-func (lsm *LSMStorage) flushWorker() {
-	defer lsm.wg.Done()
-
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-lsm.flushChan:
-			lsm.flush()
-		case <-ticker.C:
-			// Periodic check
-			lsm.mu.RLock()
-			needsFlush := lsm.memTable.IsFull()
-			lsm.mu.RUnlock()
-			if needsFlush {
-				lsm.flush()
-			}
-		case <-lsm.stopChan:
-			return
-		}
-	}
-}
-
-// flush writes MemTable to SSTable
-func (lsm *LSMStorage) flush() error {
-	lsm.mu.Lock()
-
-	// Swap MemTable to immutable
-	if lsm.immutableTable != nil {
-		lsm.mu.Unlock()
-		return nil // Already flushing
-	}
-
-	lsm.immutableTable = lsm.memTable
-	lsm.memTable = NewMemTable(lsm.memTableSize)
-	lsm.mu.Unlock()
-
-	// Get entries from immutable table
-	entries := lsm.immutableTable.Iterator()
-
-	if len(entries) == 0 {
-		lsm.mu.Lock()
-		lsm.immutableTable = nil
-		lsm.mu.Unlock()
-		return nil
-	}
-
-	// Create SSTable
-	sstPath := SSTablePath(lsm.dataDir, 0, int(time.Now().UnixNano()))
-	sst, err := NewSSTable(sstPath, entries)
-	if err != nil {
-		return err
-	}
-
-	// Add to L0
-	lsm.mu.Lock()
-	if len(lsm.levels) == 0 {
-		lsm.levels = make([][]*SSTable, 1)
-	}
-	lsm.levels[0] = append(lsm.levels[0], sst)
-	lsm.immutableTable = nil
-
-	// Update stats
+// GetStats returns current statistics as a snapshot
+func (lsm *LSMStorage) GetStats() LSMStatsSnapshot {
+	// Get mutex-protected stats
 	lsm.stats.mu.Lock()
-	lsm.stats.FlushCount++
-	lsm.stats.SSTableCount++
-	lsm.stats.Level0FileCount = len(lsm.levels[0])
-	lsm.stats.mu.Unlock()
-
-	lsm.mu.Unlock()
-
-	// Trigger compaction if needed
-	lsm.triggerCompaction()
-
-	return nil
-}
-
-// compactionWorker handles SSTable compaction
-func (lsm *LSMStorage) compactionWorker() {
-	defer lsm.wg.Done()
-
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-lsm.compactionChan:
-			lsm.compact()
-		case <-ticker.C:
-			lsm.compact()
-		case <-lsm.stopChan:
-			return
-		}
-	}
-}
-
-// compact performs compaction based on strategy
-func (lsm *LSMStorage) compact() error {
 	lsm.mu.RLock()
-	plan := lsm.compactionStrategy.SelectCompaction(lsm.levels)
-	lsm.mu.RUnlock()
-
-	if plan == nil {
-		return nil // No compaction needed
-	}
-
-	// Perform compaction
-	newSSTables, err := lsm.compactor.Compact(plan)
-	if err != nil {
-		return err
-	}
-
-	// Update levels using copy-on-write to avoid race with concurrent reads
-	lsm.mu.Lock()
-
-	// Create a new copy of levels to avoid modifying while readers have references
-	newLevels := make([][]*SSTable, len(lsm.levels))
-	for i := range lsm.levels {
-		if i == plan.Level {
-			// Skip old SSTables from source level (remove them)
-			newLevels[i] = make([]*SSTable, 0)
-		} else {
-			// Copy other levels unchanged
-			newLevels[i] = lsm.levels[i]
-		}
-	}
-
-	// Add new SSTables to output level
-	if plan.OutputLevel >= len(newLevels) {
-		// Extend levels array
-		for i := len(newLevels); i <= plan.OutputLevel; i++ {
-			newLevels = append(newLevels, make([]*SSTable, 0))
-		}
-	}
-	newLevels[plan.OutputLevel] = append(newLevels[plan.OutputLevel], newSSTables...)
-
-	// Atomically replace levels (readers with old reference will continue safely)
-	lsm.levels = newLevels
-
-	// Update stats
-	lsm.stats.mu.Lock()
-	lsm.stats.CompactionCount++
-	lsm.stats.SSTableCount = lsm.countSSTables()
+	memTableSize := lsm.memTable.Size()
+	ssTableCount := lsm.countSSTables()
+	level0Count := 0
 	if len(lsm.levels) > 0 {
-		lsm.stats.Level0FileCount = len(lsm.levels[0])
-	}
-	lsm.stats.mu.Unlock()
-
-	lsm.mu.Unlock()
-
-	// Cleanup old SSTables
-	lsm.compactor.CleanupOldSSTables(plan.SSTables)
-
-	return nil
-}
-
-// countSSTables returns total number of SSTables
-func (lsm *LSMStorage) countSSTables() int {
-	count := 0
-	for _, level := range lsm.levels {
-		count += len(level)
-	}
-	return count
-}
-
-// GetStats returns current statistics
-func (lsm *LSMStorage) GetStats() LSMStats {
-	lsm.stats.mu.Lock()
-	defer lsm.stats.mu.Unlock()
-
-	lsm.mu.RLock()
-	lsm.stats.MemTableSize = lsm.memTable.Size()
-	lsm.stats.SSTableCount = lsm.countSSTables()
-	if len(lsm.levels) > 0 {
-		lsm.stats.Level0FileCount = len(lsm.levels[0])
+		level0Count = len(lsm.levels[0])
 	}
 	lsm.mu.RUnlock()
+	lsm.stats.mu.Unlock()
 
-	// Return a copy without the mutex to avoid copying lock value
-	return LSMStats{
-		WriteCount:      lsm.stats.WriteCount,
-		ReadCount:       lsm.stats.ReadCount,
-		FlushCount:      lsm.stats.FlushCount,
-		CompactionCount: lsm.stats.CompactionCount,
-		BytesWritten:    lsm.stats.BytesWritten,
-		BytesRead:       lsm.stats.BytesRead,
-		MemTableSize:    lsm.stats.MemTableSize,
-		SSTableCount:    lsm.stats.SSTableCount,
-		Level0FileCount: lsm.stats.Level0FileCount,
+	// Return snapshot with atomic loads for high-frequency counters
+	return LSMStatsSnapshot{
+		WriteCount:      lsm.stats.WriteCount.Load(),
+		ReadCount:       lsm.stats.ReadCount.Load(),
+		FlushCount:      lsm.stats.FlushCount.Load(),
+		CompactionCount: lsm.stats.CompactionCount.Load(),
+		BytesWritten:    lsm.stats.BytesWritten.Load(),
+		BytesRead:       lsm.stats.BytesRead.Load(),
+		MemTableSize:    memTableSize,
+		SSTableCount:    ssTableCount,
+		Level0FileCount: level0Count,
 	}
 }
 
@@ -476,17 +226,26 @@ func (lsm *LSMStorage) Close() error {
 
 	// Final flush
 	if lsm.memTable.Size() > 0 {
-		lsm.flush()
+		if err := lsm.flush(); err != nil {
+			return fmt.Errorf("final flush failed: %w", err)
+		}
 	}
 
 	// Close all SSTables
 	lsm.mu.Lock()
 	defer lsm.mu.Unlock()
 
+	var closeErrors []error
 	for _, level := range lsm.levels {
 		for _, sst := range level {
-			sst.Close()
+			if err := sst.Close(); err != nil {
+				closeErrors = append(closeErrors, err)
+			}
 		}
+	}
+
+	if len(closeErrors) > 0 {
+		return fmt.Errorf("failed to close %d SSTables: %v", len(closeErrors), closeErrors[0])
 	}
 
 	return nil

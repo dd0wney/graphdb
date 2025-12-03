@@ -86,12 +86,14 @@ func (bf *BloomFilter) Contains(key []byte) bool {
 func (bf *BloomFilter) hash(key []byte, i int) int {
 	// Calculate two independent hash values
 	h1 := fnv.New64a()
-	h1.Write(key)
+	// Note: hash.Hash.Write never returns an error according to the interface contract
+	_, _ = h1.Write(key)
 	hash1 := h1.Sum64()
 
 	h2 := fnv.New64a()
-	h2.Write(key)
-	h2.Write([]byte{0xFF}) // Different seed for hash2
+	// Note: hash.Hash.Write never returns an error according to the interface contract
+	_, _ = h2.Write(key)
+	_, _ = h2.Write([]byte{0xFF}) // Different seed for hash2
 	hash2 := h2.Sum64()
 
 	// Ensure hash2 is odd to avoid clustering (coprime with size)

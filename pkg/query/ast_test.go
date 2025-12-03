@@ -2,6 +2,8 @@ package query
 
 import (
 	"testing"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // TestBinaryExpression_AND tests AND logic evaluation
@@ -96,8 +98,8 @@ func TestBinaryExpression_OR(t *testing.T) {
 
 // TestBinaryExpression_Equals tests equality comparison
 func TestBinaryExpression_Equals(t *testing.T) {
-	context := map[string]interface{}{
-		"person": map[string]interface{}{
+	context := map[string]any{
+		"person": map[string]any{
 			"name": "Alice",
 			"age":  int64(30),
 		},
@@ -148,8 +150,8 @@ func TestBinaryExpression_Equals(t *testing.T) {
 
 // TestBinaryExpression_NotEquals tests inequality comparison
 func TestBinaryExpression_NotEquals(t *testing.T) {
-	context := map[string]interface{}{
-		"person": map[string]interface{}{
+	context := map[string]any{
+		"person": map[string]any{
 			"name": "Alice",
 		},
 	}
@@ -170,8 +172,8 @@ func TestBinaryExpression_NotEquals(t *testing.T) {
 
 // TestBinaryExpression_Comparisons tests <, >, <=, >=
 func TestBinaryExpression_Comparisons(t *testing.T) {
-	context := map[string]interface{}{
-		"person": map[string]interface{}{
+	context := map[string]any{
+		"person": map[string]any{
 			"age": int64(30),
 		},
 	}
@@ -216,8 +218,8 @@ func TestBinaryExpression_Comparisons(t *testing.T) {
 
 // TestBinaryExpression_FloatComparisons tests float comparisons
 func TestBinaryExpression_FloatComparisons(t *testing.T) {
-	context := map[string]interface{}{
-		"product": map[string]interface{}{
+	context := map[string]any{
+		"product": map[string]any{
 			"price": 29.99,
 		},
 	}
@@ -253,8 +255,8 @@ func TestBinaryExpression_FloatComparisons(t *testing.T) {
 
 // TestBinaryExpression_StringComparisons tests string comparisons
 func TestBinaryExpression_StringComparisons(t *testing.T) {
-	context := map[string]interface{}{
-		"person": map[string]interface{}{
+	context := map[string]any{
+		"person": map[string]any{
 			"name": "Bob",
 		},
 	}
@@ -303,8 +305,8 @@ func TestBinaryExpression_UnknownOperator(t *testing.T) {
 
 // TestPropertyExpression_Eval tests property access
 func TestPropertyExpression_Eval(t *testing.T) {
-	context := map[string]interface{}{
-		"person": map[string]interface{}{
+	context := map[string]any{
+		"person": map[string]any{
 			"name": "Alice",
 		},
 	}
@@ -352,8 +354,8 @@ func TestLiteralExpression_NonBoolean(t *testing.T) {
 // TestCompareValues_IntComparison tests integer comparison
 func TestCompareValues_IntComparison(t *testing.T) {
 	// This tests the internal compareValues function via BinaryExpression
-	context := map[string]interface{}{
-		"item": map[string]interface{}{
+	context := map[string]any{
+		"item": map[string]any{
 			"count": 5,
 		},
 	}
@@ -374,8 +376,8 @@ func TestCompareValues_IntComparison(t *testing.T) {
 
 // TestExtractValue_MissingProperty tests extracting non-existent property
 func TestExtractValue_MissingProperty(t *testing.T) {
-	context := map[string]interface{}{
-		"person": map[string]interface{}{
+	context := map[string]any{
+		"person": map[string]any{
 			"name": "Alice",
 		},
 	}
@@ -398,8 +400,8 @@ func TestExtractValue_MissingProperty(t *testing.T) {
 
 // TestExtractValue_MissingVariable tests extracting from non-existent variable
 func TestExtractValue_MissingVariable(t *testing.T) {
-	context := map[string]interface{}{
-		"person": map[string]interface{}{
+	context := map[string]any{
+		"person": map[string]any{
 			"name": "Alice",
 		},
 	}
@@ -422,8 +424,8 @@ func TestExtractValue_MissingVariable(t *testing.T) {
 
 // TestComplexExpression tests nested AND/OR expressions
 func TestComplexExpression(t *testing.T) {
-	context := map[string]interface{}{
-		"person": map[string]interface{}{
+	context := map[string]any{
+		"person": map[string]any{
 			"age":    int64(25),
 			"active": true,
 		},
@@ -475,8 +477,8 @@ func TestDirection_String(t *testing.T) {
 
 // TestCompareValues_TypeMismatch tests comparing different types
 func TestCompareValues_TypeMismatch(t *testing.T) {
-	context := map[string]interface{}{
-		"item": map[string]interface{}{
+	context := map[string]any{
+		"item": map[string]any{
 			"name": "Product",
 		},
 	}
@@ -495,4 +497,230 @@ func TestCompareValues_TypeMismatch(t *testing.T) {
 	if result {
 		t.Error("Expected type mismatch comparison to be false")
 	}
+}
+
+// TestBinaryExpression_CompareFloats tests float comparisons including equality
+func TestBinaryExpression_CompareFloats(t *testing.T) {
+	context := map[string]any{
+		"a": &storage.Node{
+			ID:         1,
+			Properties: map[string]storage.Value{"value": storage.FloatValue(3.14)},
+		},
+		"b": &storage.Node{
+			ID:         2,
+			Properties: map[string]storage.Value{"value": storage.FloatValue(3.14)},
+		},
+	}
+
+	// Test equal floats (triggers line 280: return 0)
+	expr := &BinaryExpression{
+		Left:     &PropertyExpression{Variable: "a", Property: "value"},
+		Operator: "=",
+		Right:    &PropertyExpression{Variable: "b", Property: "value"},
+	}
+	result, err := expr.Eval(context)
+	if err != nil {
+		t.Fatalf("Eval failed: %v", err)
+	}
+	if !result {
+		t.Error("Expected equal floats to be true")
+	}
+}
+
+// TestBinaryExpression_MixedIntFloat tests mixed int/float comparisons
+func TestBinaryExpression_MixedIntFloat(t *testing.T) {
+	// Test int on left, float on right (lines 284-291)
+	context1 := map[string]any{
+		"a": &storage.Node{
+			ID:         1,
+			Properties: map[string]storage.Value{"value": storage.IntValue(5)},
+		},
+	}
+	expr1 := &BinaryExpression{
+		Left:     &PropertyExpression{Variable: "a", Property: "value"},
+		Operator: "<",
+		Right:    &LiteralExpression{Value: float64(5.5)},
+	}
+	result1, err := expr1.Eval(context1)
+	if err != nil {
+		t.Fatalf("Eval failed: %v", err)
+	}
+	if !result1 {
+		t.Error("Expected 5 < 5.5 to be true")
+	}
+
+	// Test float on left, int on right (lines 295-302)
+	context2 := map[string]any{
+		"a": &storage.Node{
+			ID:         1,
+			Properties: map[string]storage.Value{"value": storage.FloatValue(5.5)},
+		},
+	}
+	expr2 := &BinaryExpression{
+		Left:     &PropertyExpression{Variable: "a", Property: "value"},
+		Operator: ">",
+		Right:    &LiteralExpression{Value: int64(5)},
+	}
+	result2, err := expr2.Eval(context2)
+	if err != nil {
+		t.Fatalf("Eval failed: %v", err)
+	}
+	if !result2 {
+		t.Error("Expected 5.5 > 5 to be true")
+	}
+
+	// Test equal mixed types - mixed int/float with equality
+	// This tests the return 0 paths in lines 291 and 302
+	expr3 := &BinaryExpression{
+		Left:     &LiteralExpression{Value: int64(10)},
+		Operator: ">=",
+		Right:    &LiteralExpression{Value: float64(10.0)},
+	}
+	result3, err := expr3.Eval(map[string]any{})
+	if err != nil {
+		t.Fatalf("Eval failed: %v", err)
+	}
+	if !result3 {
+		t.Error("Expected 10 >= 10.0 to be true")
+	}
+}
+
+// TestBinaryExpression_CompareStrings tests string comparisons including equality
+func TestBinaryExpression_CompareStrings(t *testing.T) {
+	context := map[string]any{
+		"a": &storage.Node{
+			ID:         1,
+			Properties: map[string]storage.Value{"name": storage.StringValue("alice")},
+		},
+		"b": &storage.Node{
+			ID:         2,
+			Properties: map[string]storage.Value{"name": storage.StringValue("alice")},
+		},
+	}
+
+	// Test equal strings (triggers line 321: return 0)
+	expr := &BinaryExpression{
+		Left:     &PropertyExpression{Variable: "a", Property: "name"},
+		Operator: "=",
+		Right:    &PropertyExpression{Variable: "b", Property: "name"},
+	}
+	result, err := expr.Eval(context)
+	if err != nil {
+		t.Fatalf("Eval failed: %v", err)
+	}
+	if !result {
+		t.Error("Expected equal strings to be true")
+	}
+}
+
+// TestBinaryExpression_ExtractBoolValue tests bool value extraction
+func TestBinaryExpression_ExtractBoolValue(t *testing.T) {
+	context := map[string]any{
+		"a": &storage.Node{
+			ID:         1,
+			Properties: map[string]storage.Value{"active": storage.BoolValue(true)},
+		},
+	}
+
+	// Test bool extraction (lines 236-239)
+	expr := &BinaryExpression{
+		Left:     &PropertyExpression{Variable: "a", Property: "active"},
+		Operator: "=",
+		Right:    &LiteralExpression{Value: true},
+	}
+	result, err := expr.Eval(context)
+	if err != nil {
+		t.Fatalf("Eval failed: %v", err)
+	}
+	if !result {
+		t.Error("Expected bool comparison to be true")
+	}
+}
+
+// TestBinaryExpression_MissingProperty tests missing property returns nil
+func TestBinaryExpression_MissingProperty(t *testing.T) {
+	context := map[string]any{
+		"a": &storage.Node{
+			ID:         1,
+			Properties: map[string]storage.Value{}, // Empty properties
+		},
+	}
+
+	// Test missing property (line 242: return nil)
+	expr := &BinaryExpression{
+		Left:     &PropertyExpression{Variable: "a", Property: "nonexistent"},
+		Operator: "=",
+		Right:    &LiteralExpression{Value: int64(0)},
+	}
+	result, err := expr.Eval(context)
+	if err != nil {
+		t.Fatalf("Eval failed: %v", err)
+	}
+	// Comparing nil to int should return false
+	if result {
+		t.Error("Expected missing property comparison to be false")
+	}
+}
+
+// TestBinaryExpression_UnknownComparisonOperator tests unknown operator error
+func TestBinaryExpression_UnknownComparisonOperator(t *testing.T) {
+	context := map[string]any{
+		"a": &storage.Node{
+			ID:         1,
+			Properties: map[string]storage.Value{"value": storage.IntValue(5)},
+		},
+	}
+
+	// Test unknown operator (line 209-210)
+	expr := &BinaryExpression{
+		Left:     &PropertyExpression{Variable: "a", Property: "value"},
+		Operator: "~=", // Unknown operator
+		Right:    &LiteralExpression{Value: int64(5)},
+	}
+	_, err := expr.Eval(context)
+	if err == nil {
+		t.Error("Expected error for unknown operator")
+	}
+	if err != nil && !errorContains(err.Error(), "unknown operator") {
+		t.Errorf("Expected 'unknown operator' error, got: %v", err)
+	}
+}
+
+// TestBinaryExpression_DefaultExtractValue tests default case in extractValue
+func TestBinaryExpression_DefaultExtractValue(t *testing.T) {
+	// Create an unsupported expression type for the default case (line 252-253)
+	// Since BinaryExpression isn't typically used as a value expression,
+	// this tests the defensive programming in extractValue
+
+	// We can't easily construct this scenario since all Expression types are handled,
+	// but we can verify nil is returned for missing variables
+	context := map[string]any{} // Empty context
+
+	expr := &BinaryExpression{
+		Left:     &PropertyExpression{Variable: "nonexistent", Property: "value"},
+		Operator: "=",
+		Right:    &LiteralExpression{Value: int64(0)},
+	}
+	result, err := expr.Eval(context)
+	if err != nil {
+		t.Fatalf("Eval failed: %v", err)
+	}
+	// Comparing nil to int should return false
+	if result {
+		t.Error("Expected comparison with nonexistent variable to be false")
+	}
+}
+
+// Helper function to check if error contains string
+func errorContains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && errorContainsSubstring(s, substr))
+}
+
+func errorContainsSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

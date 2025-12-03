@@ -80,14 +80,14 @@ func TestCreateNodeMutation(t *testing.T) {
 	}
 
 	// Verify result
-	data := result.Data.(map[string]interface{})
-	createNodeData := data["createNode"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	createNodeData := data["createNode"].(map[string]any)
 
 	if createNodeData["id"] == nil {
 		t.Error("Created node missing ID")
 	}
 
-	labels := createNodeData["labels"].([]interface{})
+	labels := createNodeData["labels"].([]any)
 	if len(labels) != 1 || labels[0].(string) != "Person" {
 		t.Errorf("Expected labels [Person], got %v", labels)
 	}
@@ -225,8 +225,8 @@ func TestDeleteNodeMutation(t *testing.T) {
 	}
 
 	// Verify result
-	data := result.Data.(map[string]interface{})
-	deleteNodeData := data["deleteNode"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	deleteNodeData := data["deleteNode"].(map[string]any)
 
 	if success, ok := deleteNodeData["success"].(bool); !ok || !success {
 		t.Error("Expected success: true")
@@ -269,7 +269,7 @@ func TestCreateNodeMutationWithVariables(t *testing.T) {
 		}
 	`
 
-	variables := map[string]interface{}{
+	variables := map[string]any{
 		"labels":     []string{"Person"},
 		"properties": "{\"name\": \"Charlie\", \"age\": 25}",
 	}
@@ -285,14 +285,14 @@ func TestCreateNodeMutationWithVariables(t *testing.T) {
 	}
 
 	// Verify result
-	data := result.Data.(map[string]interface{})
-	createNodeData := data["createNode"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	createNodeData := data["createNode"].(map[string]any)
 
 	if createNodeData["id"] == nil {
 		t.Error("Created node missing ID")
 	}
 
-	labels := createNodeData["labels"].([]interface{})
+	labels := createNodeData["labels"].([]any)
 	if len(labels) != 1 || labels[0].(string) != "Person" {
 		t.Errorf("Expected labels [Person], got %v", labels)
 	}

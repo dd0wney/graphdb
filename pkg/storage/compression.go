@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
+	"log"
 	"sort"
 )
 
@@ -15,13 +16,14 @@ type CompressedEdgeList struct {
 }
 
 // NewCompressedEdgeList creates a compressed edge list from node IDs
-// Uses buffer pooling to reduce GC pressure
-func NewCompressedEdgeList(nodeIDs []uint64) *CompressedEdgeList {
+// Uses buffer pooling to reduce GC pressure.
+// Returns error if data corruption is detected (should never happen in normal operation).
+func NewCompressedEdgeList(nodeIDs []uint64) (*CompressedEdgeList, error) {
 	if len(nodeIDs) == 0 {
 		return &CompressedEdgeList{
 			Deltas:    []byte{},
 			EdgeCount: 0,
-		}
+		}, nil
 	}
 
 	// Sort node IDs for better compression with delta encoding
@@ -41,12 +43,12 @@ func NewCompressedEdgeList(nodeIDs []uint64) *CompressedEdgeList {
 	for i := 1; i < len(sorted); i++ {
 		// Validate sorted order to prevent underflow
 		if sorted[i] < sorted[i-1] {
-			// Return buffers before panicking
+			// Return buffers before returning error
 			putUint64Slice(sorted)
 			putByteSlice(buf)
 			// This should never happen due to sort above, but guards against bugs
-			panic(fmt.Sprintf("compression: unsorted data detected at index %d (%d < %d)",
-				i, sorted[i], sorted[i-1]))
+			return nil, fmt.Errorf("compression: unsorted data detected at index %d (%d < %d)",
+				i, sorted[i], sorted[i-1])
 		}
 		delta := sorted[i] - sorted[i-1]
 		buf = binary.AppendUvarint(buf, delta)
@@ -64,7 +66,7 @@ func NewCompressedEdgeList(nodeIDs []uint64) *CompressedEdgeList {
 		BaseNodeID: base,
 		Deltas:     deltas,
 		EdgeCount:  len(nodeIDs),
-	}
+	}, nil
 }
 
 // Decompress returns the original list of node IDs
@@ -88,17 +90,27 @@ func (c *CompressedEdgeList) Decompress() []uint64 {
 	for len(buf) > 0 {
 		delta, n := binary.Uvarint(buf)
 		if n <= 0 {
-			// Corrupted data
+			// Defensive: log corrupted data detection
+			log.Printf("Warning: corrupted varint detected in compressed edge list (baseID=%d, expected=%d, got=%d edges)",
+				c.BaseNodeID, c.EdgeCount, len(result))
 			break
 		}
 		// Check for overflow before adding
 		if current > ^uint64(0)-delta { // Would overflow
-			// Corrupted compressed data
+			// Defensive: log overflow detection
+			log.Printf("Warning: overflow detected in compressed edge list (baseID=%d, current=%d, delta=%d)",
+				c.BaseNodeID, current, delta)
 			break
 		}
 		current += delta
 		result = append(result, current)
 		buf = buf[n:]
+	}
+
+	// Defensive: verify we got expected number of edges
+	if len(result) != c.EdgeCount {
+		log.Printf("Warning: edge count mismatch in decompression (baseID=%d, expected=%d, got=%d)",
+			c.BaseNodeID, c.EdgeCount, len(result))
 	}
 
 	return result
@@ -129,7 +141,7 @@ func (c *CompressedEdgeList) CompressionRatio() float64 {
 
 // Add adds a new node ID to the compressed list
 // Note: This is less efficient than batch creation and should be used sparingly
-func (c *CompressedEdgeList) Add(nodeID uint64) *CompressedEdgeList {
+func (c *CompressedEdgeList) Add(nodeID uint64) (*CompressedEdgeList, error) {
 	// Decompress, add, and recompress
 	nodeIDs := c.Decompress()
 	nodeIDs = append(nodeIDs, nodeID)
@@ -138,7 +150,7 @@ func (c *CompressedEdgeList) Add(nodeID uint64) *CompressedEdgeList {
 
 // Remove removes a node ID from the compressed list
 // Note: This is less efficient than batch creation and should be used sparingly
-func (c *CompressedEdgeList) Remove(nodeID uint64) *CompressedEdgeList {
+func (c *CompressedEdgeList) Remove(nodeID uint64) (*CompressedEdgeList, error) {
 	// Decompress, remove, and recompress
 	nodeIDs := c.Decompress()
 
@@ -188,88 +200,4 @@ func (c *CompressedEdgeList) Contains(nodeID uint64) bool {
 	}
 
 	return false
-}
-
-// CompressionStats tracks compression statistics across all edge lists
-type CompressionStats struct {
-	TotalLists        int
-	TotalEdges        int64
-	UncompressedBytes int64
-	CompressedBytes   int64
-	AverageRatio      float64
-}
-
-// CalculateCompressionStats calculates statistics for multiple compressed lists
-func CalculateCompressionStats(lists []*CompressedEdgeList) CompressionStats {
-	stats := CompressionStats{
-		TotalLists: len(lists),
-	}
-
-	totalRatio := 0.0
-
-	for _, list := range lists {
-		// Accumulate with overflow checking
-		newEdges := stats.TotalEdges + int64(list.Count())
-		newUncompressed := stats.UncompressedBytes + int64(list.UncompressedSize())
-		newCompressed := stats.CompressedBytes + int64(list.Size())
-
-		// Check for overflow (defensive programming)
-		if newEdges < stats.TotalEdges || newUncompressed < stats.UncompressedBytes || newCompressed < stats.CompressedBytes {
-			// Overflow detected, cap at max value
-			stats.TotalEdges = 9223372036854775807 // math.MaxInt64
-			stats.UncompressedBytes = 9223372036854775807
-			stats.CompressedBytes = 9223372036854775807
-			break
-		}
-
-		stats.TotalEdges = newEdges
-		stats.UncompressedBytes = newUncompressed
-		stats.CompressedBytes = newCompressed
-		totalRatio += list.CompressionRatio()
-	}
-
-	if stats.TotalLists > 0 {
-		stats.AverageRatio = totalRatio / float64(stats.TotalLists)
-	}
-
-	return stats
-}
-
-// CompressEdgeLists compresses all uncompressed edge lists
-// This can be called periodically to reduce memory usage
-func (gs *GraphStorage) CompressEdgeLists() error {
-	if !gs.useEdgeCompression {
-		return fmt.Errorf("edge compression is not enabled")
-	}
-
-	gs.mu.Lock()
-	defer gs.mu.Unlock()
-
-	// Compress all edge lists using helper
-	gs.compressAllEdgeLists()
-
-	return nil
-}
-
-// GetCompressionStats returns compression statistics
-func (gs *GraphStorage) GetCompressionStats() CompressionStats {
-	if !gs.useEdgeCompression {
-		return CompressionStats{}
-	}
-
-	gs.mu.RLock()
-	defer gs.mu.RUnlock()
-
-	outgoingLists := make([]*CompressedEdgeList, 0, len(gs.compressedOutgoing))
-	for _, list := range gs.compressedOutgoing {
-		outgoingLists = append(outgoingLists, list)
-	}
-
-	incomingLists := make([]*CompressedEdgeList, 0, len(gs.compressedIncoming))
-	for _, list := range gs.compressedIncoming {
-		incomingLists = append(incomingLists, list)
-	}
-
-	allLists := append(outgoingLists, incomingLists...)
-	return CalculateCompressionStats(allLists)
 }

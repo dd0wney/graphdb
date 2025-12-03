@@ -166,7 +166,7 @@ func ValidateQueryDepth(query string, maxDepth int) error {
 }
 
 // ExecuteWithDepthLimit executes a GraphQL query with depth validation
-func ExecuteWithDepthLimit(schema graphql.Schema, query string, maxDepth int, variableValues map[string]interface{}) *graphql.Result {
+func ExecuteWithDepthLimit(schema graphql.Schema, query string, maxDepth int, variableValues map[string]any) *graphql.Result {
 	// Validate depth first
 	if err := ValidateQueryDepth(query, maxDepth); err != nil {
 		return &graphql.Result{

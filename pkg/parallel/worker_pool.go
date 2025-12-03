@@ -16,16 +16,22 @@ type WorkerPool struct {
 	closed    bool         // Protected by mu
 }
 
-// NewWorkerPool creates a new worker pool with specified number of workers
-func NewWorkerPool(workers int) *WorkerPool {
+// ErrTooManyWorkers is returned when the worker count exceeds the maximum allowed.
+var ErrTooManyWorkers = fmt.Errorf("worker count exceeds maximum")
+
+// MaxWorkers is the maximum number of workers allowed in a pool.
+const MaxWorkers = math.MaxInt / 2
+
+// NewWorkerPool creates a new worker pool with specified number of workers.
+// Returns an error if the worker count exceeds MaxWorkers.
+func NewWorkerPool(workers int) (*WorkerPool, error) {
 	if workers <= 0 {
 		workers = 1
 	}
 
 	// Prevent overflow in buffer size calculation
-	const maxWorkers = math.MaxInt / 2
-	if workers > maxWorkers {
-		panic(fmt.Sprintf("worker count %d exceeds maximum %d", workers, maxWorkers))
+	if workers > MaxWorkers {
+		return nil, fmt.Errorf("%w: %d exceeds %d", ErrTooManyWorkers, workers, MaxWorkers)
 	}
 
 	pool := &WorkerPool{
@@ -34,7 +40,7 @@ func NewWorkerPool(workers int) *WorkerPool {
 	}
 
 	pool.start()
-	return pool
+	return pool, nil
 }
 
 // start initializes the worker goroutines

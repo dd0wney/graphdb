@@ -98,8 +98,8 @@ func TestQueryEdgeByID(t *testing.T) {
 	}
 
 	// Verify result
-	data := result.Data.(map[string]interface{})
-	edgeData := data["edge"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	edgeData := data["edge"].(map[string]any)
 
 	if edgeData["type"] != "KNOWS" {
 		t.Errorf("Expected type KNOWS, got %v", edgeData["type"])
@@ -178,8 +178,8 @@ func TestQueryAllEdges(t *testing.T) {
 	}
 
 	// Verify result
-	data := result.Data.(map[string]interface{})
-	edges := data["edges"].([]interface{})
+	data := result.Data.(map[string]any)
+	edges := data["edges"].([]any)
 
 	if len(edges) != 2 {
 		t.Errorf("Expected 2 edges, got %d", len(edges))
@@ -243,8 +243,8 @@ func TestCreateEdgeMutation(t *testing.T) {
 	}
 
 	// Verify result
-	data := result.Data.(map[string]interface{})
-	edgeData := data["createEdge"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	edgeData := data["createEdge"].(map[string]any)
 
 	if edgeData["type"] != "KNOWS" {
 		t.Errorf("Expected type KNOWS, got %v", edgeData["type"])
@@ -309,8 +309,8 @@ func TestDeleteEdgeMutation(t *testing.T) {
 	}
 
 	// Verify result
-	data := result.Data.(map[string]interface{})
-	deleteData := data["deleteEdge"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	deleteData := data["deleteEdge"].(map[string]any)
 
 	if success, ok := deleteData["success"].(bool); !ok || !success {
 		t.Error("Expected success: true")
@@ -377,8 +377,8 @@ func TestUpdateEdgeMutation(t *testing.T) {
 	}
 
 	// Verify result
-	data := result.Data.(map[string]interface{})
-	edgeData := data["updateEdge"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	edgeData := data["updateEdge"].(map[string]any)
 
 	if edgeData["id"] != "1" {
 		t.Errorf("Expected id 1, got %v", edgeData["id"])
@@ -705,9 +705,9 @@ func TestNodeEdgeTraversal(t *testing.T) {
 	}
 
 	// Verify result
-	data := result.Data.(map[string]interface{})
-	personData := data["person"].(map[string]interface{})
-	outgoingEdges := personData["outgoingEdges"].([]interface{})
+	data := result.Data.(map[string]any)
+	personData := data["person"].(map[string]any)
+	outgoingEdges := personData["outgoingEdges"].([]any)
 
 	if len(outgoingEdges) != 2 {
 		t.Errorf("Expected 2 outgoing edges, got %d", len(outgoingEdges))

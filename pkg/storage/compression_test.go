@@ -4,6 +4,38 @@ import (
 	"testing"
 )
 
+// mustNewCompressedEdgeList is a test helper that creates a compressed edge list or fails the test
+func mustNewCompressedEdgeList(t testing.TB, nodeIDs []uint64) *CompressedEdgeList {
+	if tt, ok := t.(*testing.T); ok {
+		tt.Helper()
+	}
+	cel, err := NewCompressedEdgeList(nodeIDs)
+	if err != nil {
+		t.Fatalf("failed to create compressed edge list: %v", err)
+	}
+	return cel
+}
+
+// mustAdd is a test helper that adds a node or fails the test
+func mustAdd(t *testing.T, cel *CompressedEdgeList, nodeID uint64) *CompressedEdgeList {
+	t.Helper()
+	newCel, err := cel.Add(nodeID)
+	if err != nil {
+		t.Fatalf("failed to add node %d: %v", nodeID, err)
+	}
+	return newCel
+}
+
+// mustRemove is a test helper that removes a node or fails the test
+func mustRemove(t *testing.T, cel *CompressedEdgeList, nodeID uint64) *CompressedEdgeList {
+	t.Helper()
+	newCel, err := cel.Remove(nodeID)
+	if err != nil {
+		t.Fatalf("failed to remove node %d: %v", nodeID, err)
+	}
+	return newCel
+}
+
 // TestCompressedEdgeList_Size tests the Size method
 func TestCompressedEdgeList_Size(t *testing.T) {
 	tests := []struct {
@@ -18,7 +50,7 @@ func TestCompressedEdgeList_Size(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cel := NewCompressedEdgeList(tt.nodeIDs)
+			cel := mustNewCompressedEdgeList(t, tt.nodeIDs)
 
 			size := cel.Size()
 
@@ -51,7 +83,7 @@ func TestCompressedEdgeList_UncompressedSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cel := NewCompressedEdgeList(tt.nodeIDs)
+			cel := mustNewCompressedEdgeList(t, tt.nodeIDs)
 
 			size := cel.UncompressedSize()
 
@@ -77,7 +109,7 @@ func TestCompressedEdgeList_CompressionRatio(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cel := NewCompressedEdgeList(tt.nodeIDs)
+			cel := mustNewCompressedEdgeList(t, tt.nodeIDs)
 
 			ratio := cel.CompressionRatio()
 
@@ -113,10 +145,10 @@ func TestCompressedEdgeList_CompressionRatio(t *testing.T) {
 // TestCompressedEdgeList_Add tests adding nodes to compressed list
 func TestCompressedEdgeList_Add(t *testing.T) {
 	// Start with empty list
-	cel := NewCompressedEdgeList([]uint64{})
+	cel := mustNewCompressedEdgeList(t, []uint64{})
 
 	// Add first node
-	cel = cel.Add(10)
+	cel = mustAdd(t, cel, 10)
 	if cel.Count() != 1 {
 		t.Errorf("Expected count 1 after adding first node, got %d", cel.Count())
 	}
@@ -127,7 +159,7 @@ func TestCompressedEdgeList_Add(t *testing.T) {
 	}
 
 	// Add second node
-	cel = cel.Add(5)
+	cel = mustAdd(t, cel, 5)
 	if cel.Count() != 2 {
 		t.Errorf("Expected count 2 after adding second node, got %d", cel.Count())
 	}
@@ -142,7 +174,7 @@ func TestCompressedEdgeList_Add(t *testing.T) {
 	}
 
 	// Add duplicate
-	cel = cel.Add(5)
+	cel = mustAdd(t, cel, 5)
 	if cel.Count() != 3 {
 		t.Errorf("Expected count 3 after adding duplicate, got %d", cel.Count())
 	}
@@ -151,10 +183,10 @@ func TestCompressedEdgeList_Add(t *testing.T) {
 // TestCompressedEdgeList_Remove tests removing nodes from compressed list
 func TestCompressedEdgeList_Remove(t *testing.T) {
 	// Create list with nodes
-	cel := NewCompressedEdgeList([]uint64{1, 2, 3, 4, 5})
+	cel := mustNewCompressedEdgeList(t, []uint64{1, 2, 3, 4, 5})
 
 	// Remove middle node
-	cel = cel.Remove(3)
+	cel = mustRemove(t, cel, 3)
 	if cel.Count() != 4 {
 		t.Errorf("Expected count 4 after removal, got %d", cel.Count())
 	}
@@ -171,19 +203,19 @@ func TestCompressedEdgeList_Remove(t *testing.T) {
 	}
 
 	// Remove first node
-	cel = cel.Remove(1)
+	cel = mustRemove(t, cel, 1)
 	if cel.Count() != 3 {
 		t.Errorf("Expected count 3 after second removal, got %d", cel.Count())
 	}
 
 	// Remove last node
-	cel = cel.Remove(5)
+	cel = mustRemove(t, cel, 5)
 	if cel.Count() != 2 {
 		t.Errorf("Expected count 2 after third removal, got %d", cel.Count())
 	}
 
 	// Try to remove non-existent node
-	cel = cel.Remove(999)
+	cel = mustRemove(t, cel, 999)
 	if cel.Count() != 2 {
 		t.Errorf("Count should not change when removing non-existent node, got %d", cel.Count())
 	}
@@ -191,9 +223,9 @@ func TestCompressedEdgeList_Remove(t *testing.T) {
 
 // TestCompressedEdgeList_RemoveAll tests removing all nodes
 func TestCompressedEdgeList_RemoveAll(t *testing.T) {
-	cel := NewCompressedEdgeList([]uint64{42})
+	cel := mustNewCompressedEdgeList(t, []uint64{42})
 
-	cel = cel.Remove(42)
+	cel = mustRemove(t, cel, 42)
 
 	if cel.Count() != 0 {
 		t.Errorf("Expected count 0 after removing only node, got %d", cel.Count())
@@ -208,9 +240,9 @@ func TestCompressedEdgeList_RemoveAll(t *testing.T) {
 // TestCalculateCompressionStats tests compression statistics calculation
 func TestCalculateCompressionStats(t *testing.T) {
 	lists := []*CompressedEdgeList{
-		NewCompressedEdgeList([]uint64{1, 2, 3, 4, 5}),
-		NewCompressedEdgeList([]uint64{10, 20, 30}),
-		NewCompressedEdgeList([]uint64{100, 200}),
+		mustNewCompressedEdgeList(t, []uint64{1, 2, 3, 4, 5}),
+		mustNewCompressedEdgeList(t, []uint64{10, 20, 30}),
+		mustNewCompressedEdgeList(t, []uint64{100, 200}),
 	}
 
 	stats := CalculateCompressionStats(lists)
@@ -279,9 +311,9 @@ func TestCalculateCompressionStats_EmptyLists(t *testing.T) {
 // TestCalculateCompressionStats_WithEmptyList tests with mix of empty and non-empty
 func TestCalculateCompressionStats_WithEmptyList(t *testing.T) {
 	lists := []*CompressedEdgeList{
-		NewCompressedEdgeList([]uint64{1, 2, 3}),
-		NewCompressedEdgeList([]uint64{}),
-		NewCompressedEdgeList([]uint64{10, 20}),
+		mustNewCompressedEdgeList(t, []uint64{1, 2, 3}),
+		mustNewCompressedEdgeList(t, []uint64{}),
+		mustNewCompressedEdgeList(t, []uint64{10, 20}),
 	}
 
 	stats := CalculateCompressionStats(lists)
@@ -298,11 +330,11 @@ func TestCalculateCompressionStats_WithEmptyList(t *testing.T) {
 
 // TestCompressedEdgeList_AddRemoveSequence tests a sequence of add and remove operations
 func TestCompressedEdgeList_AddRemoveSequence(t *testing.T) {
-	cel := NewCompressedEdgeList([]uint64{1, 5, 10})
+	cel := mustNewCompressedEdgeList(t, []uint64{1, 5, 10})
 
 	// Add some nodes
-	cel = cel.Add(3)
-	cel = cel.Add(7)
+	cel = mustAdd(t, cel, 3)
+	cel = mustAdd(t, cel, 7)
 
 	if cel.Count() != 5 {
 		t.Errorf("Expected count 5, got %d", cel.Count())
@@ -321,8 +353,8 @@ func TestCompressedEdgeList_AddRemoveSequence(t *testing.T) {
 	}
 
 	// Remove some nodes
-	cel = cel.Remove(5)
-	cel = cel.Remove(1)
+	cel = mustRemove(t, cel, 5)
+	cel = mustRemove(t, cel, 1)
 
 	if cel.Count() != 3 {
 		t.Errorf("Expected count 3, got %d", cel.Count())
@@ -348,7 +380,7 @@ func TestCompressedEdgeList_SizeComparison(t *testing.T) {
 		sequential[i] = uint64(i + 1)
 	}
 
-	cel := NewCompressedEdgeList(sequential)
+	cel := mustNewCompressedEdgeList(t, sequential)
 
 	compressedSize := cel.Size()
 	uncompressedSize := cel.UncompressedSize()
@@ -377,7 +409,7 @@ func TestCompressedEdgeList_LargeNumbers(t *testing.T) {
 		1000000000100,
 	}
 
-	cel := NewCompressedEdgeList(nodeIDs)
+	cel := mustNewCompressedEdgeList(t, nodeIDs)
 
 	decompressed := cel.Decompress()
 
@@ -404,7 +436,7 @@ func BenchmarkCompressedEdgeList_NewSequential(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		NewCompressedEdgeList(nodeIDs)
+		_, _ = NewCompressedEdgeList(nodeIDs)
 	}
 }
 
@@ -418,7 +450,7 @@ func BenchmarkCompressedEdgeList_NewSparse(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		NewCompressedEdgeList(nodeIDs)
+		_, _ = NewCompressedEdgeList(nodeIDs)
 	}
 }
 
@@ -428,7 +460,7 @@ func BenchmarkCompressedEdgeList_Decompress(b *testing.B) {
 	for i := 0; i < 1000; i++ {
 		nodeIDs[i] = uint64(i + 1)
 	}
-	cel := NewCompressedEdgeList(nodeIDs)
+	cel := mustNewCompressedEdgeList(b, nodeIDs)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -442,11 +474,11 @@ func BenchmarkCompressedEdgeList_Add(b *testing.B) {
 	for i := 0; i < 1000; i++ {
 		nodeIDs[i] = uint64(i * 2)
 	}
-	cel := NewCompressedEdgeList(nodeIDs)
+	cel := mustNewCompressedEdgeList(b, nodeIDs)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cel = cel.Add(uint64(i*2 + 1))
+		cel, _ = cel.Add(uint64(i*2 + 1))
 	}
 }
 
@@ -460,9 +492,10 @@ func BenchmarkCompressedEdgeList_Remove(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		cel := NewCompressedEdgeList(nodeIDs)
+		cel := mustNewCompressedEdgeList(b, nodeIDs)
 		b.StartTimer()
-		cel = cel.Remove(uint64(500))
+		cel, _ = cel.Remove(uint64(500))
+		_ = cel
 	}
 }
 
@@ -472,7 +505,7 @@ func BenchmarkCompressedEdgeList_CompressionRatio(b *testing.B) {
 	for i := 0; i < 1000; i++ {
 		nodeIDs[i] = uint64(i + 1)
 	}
-	cel := NewCompressedEdgeList(nodeIDs)
+	cel := mustNewCompressedEdgeList(b, nodeIDs)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -488,7 +521,7 @@ func BenchmarkCalculateCompressionStats(b *testing.B) {
 		for j := 0; j < 100; j++ {
 			nodeIDs[j] = uint64(i*100 + j)
 		}
-		lists[i] = NewCompressedEdgeList(nodeIDs)
+		lists[i] = mustNewCompressedEdgeList(b, nodeIDs)
 	}
 
 	b.ResetTimer()

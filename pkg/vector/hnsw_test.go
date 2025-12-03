@@ -261,13 +261,13 @@ func TestHNSWConcurrentInsert(t *testing.T) {
 func TestHNSWAccuracy(t *testing.T) {
 	index, _ := NewHNSWIndex(10, 16, 200, MetricEuclidean)
 
-	// Insert 100 random vectors
-	rand.Seed(42)
+	// Insert 100 random vectors using seeded source for reproducibility
+	rng := rand.New(rand.NewSource(42))
 	vectors := make([][]float32, 100)
 	for i := 0; i < 100; i++ {
 		vec := make([]float32, 10)
 		for j := 0; j < 10; j++ {
-			vec[j] = rand.Float32()
+			vec[j] = rng.Float32()
 		}
 		vectors[i] = vec
 		index.Insert(uint64(i), vec)
@@ -325,12 +325,12 @@ func BenchmarkHNSWInsert(b *testing.B) {
 func BenchmarkHNSWSearch(b *testing.B) {
 	index, _ := NewHNSWIndex(768, 16, 200, MetricCosine)
 
-	// Insert 10k vectors
-	rand.Seed(42)
+	// Insert 10k vectors using seeded source for reproducibility
+	rng := rand.New(rand.NewSource(42))
 	for i := 0; i < 10000; i++ {
 		vec := make([]float32, 768)
 		for j := 0; j < 768; j++ {
-			vec[j] = rand.Float32()
+			vec[j] = rng.Float32()
 		}
 		index.Insert(uint64(i), vec)
 	}
@@ -338,7 +338,7 @@ func BenchmarkHNSWSearch(b *testing.B) {
 	// Benchmark search
 	query := make([]float32, 768)
 	for j := 0; j < 768; j++ {
-		query[j] = rand.Float32()
+		query[j] = rng.Float32()
 	}
 
 	b.ResetTimer()

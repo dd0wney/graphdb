@@ -23,7 +23,9 @@ func (gs *GraphStorage) CreatePropertyIndex(propertyKey string, valueType ValueT
 	for nodeID, node := range gs.nodes {
 		if prop, exists := node.Properties[propertyKey]; exists {
 			if prop.Type == valueType {
-				idx.Insert(nodeID, prop)
+				if err := idx.Insert(nodeID, prop); err != nil {
+					return fmt.Errorf("failed to insert node %d into property index %s: %w", nodeID, propertyKey, err)
+				}
 			}
 		}
 	}

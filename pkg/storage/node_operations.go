@@ -10,11 +10,19 @@ import (
 
 // CreateNode creates a new node
 func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value) (*Node, error) {
+	start := time.Now()
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
+	// Check if storage is closed
+	if err := gs.checkClosed(); err != nil {
+		gs.recordOperation("create_node", "error", start)
+		return nil, err
+	}
+
 	// Check for ID space exhaustion
 	if gs.nextNodeID == ^uint64(0) { // MaxUint64
+		gs.recordOperation("create_node", "error", start)
 		return nil, fmt.Errorf("node ID space exhausted")
 	}
 
@@ -44,27 +52,40 @@ func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value)
 	atomic.AddUint64(&gs.stats.NodeCount, 1)
 
 	// Update property indexes
-	gs.insertNodeIntoPropertyIndexes(nodeID, properties)
+	if err := gs.insertNodeIntoPropertyIndexes(nodeID, properties); err != nil {
+		gs.recordOperation("create_node", "error", start)
+		return nil, err
+	}
 
 	// Write to WAL for durability
 	gs.writeToWAL(wal.OpCreateNode, node)
 
+	gs.recordOperation("create_node", "success", start)
 	return node.Clone(), nil
 }
 
 // GetNode retrieves a node by ID
 func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
+	start := time.Now()
 	defer gs.startQueryTiming()()
 
 	// Use global read lock to properly synchronize with CreateNode's write lock
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
+	// Check if storage is closed
+	if err := gs.checkClosed(); err != nil {
+		gs.recordOperation("get_node", "error", start)
+		return nil, err
+	}
+
 	node, exists := gs.nodes[nodeID]
 	if !exists {
+		gs.recordOperation("get_node", "error", start)
 		return nil, ErrNodeNotFound
 	}
 
+	gs.recordOperation("get_node", "success", start)
 	return node.Clone(), nil
 }
 
@@ -79,7 +100,9 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	}
 
 	// Update property indexes
-	gs.updatePropertyIndexes(nodeID, node, properties)
+	if err := gs.updatePropertyIndexes(nodeID, node, properties); err != nil {
+		return err
+	}
 
 	// Update properties
 	for k, v := range properties {
@@ -112,8 +135,15 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	// Get edges to delete (disk-backed or in-memory)
 	var outgoingEdgeIDs, incomingEdgeIDs []uint64
 	if gs.useDiskBackedEdges {
-		outgoingEdgeIDs, _ = gs.edgeStore.GetOutgoingEdges(nodeID)
-		incomingEdgeIDs, _ = gs.edgeStore.GetIncomingEdges(nodeID)
+		var err error
+		outgoingEdgeIDs, err = gs.edgeStore.GetOutgoingEdges(nodeID)
+		if err != nil {
+			return fmt.Errorf("failed to get outgoing edges for node %d: %w", nodeID, err)
+		}
+		incomingEdgeIDs, err = gs.edgeStore.GetIncomingEdges(nodeID)
+		if err != nil {
+			return fmt.Errorf("failed to get incoming edges for node %d: %w", nodeID, err)
+		}
 	} else {
 		outgoingEdgeIDs = gs.outgoingEdges[nodeID]
 		incomingEdgeIDs = gs.incomingEdges[nodeID]
@@ -121,12 +151,16 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 
 	// Cascade delete all outgoing edges
 	for _, edgeID := range outgoingEdgeIDs {
-		gs.cascadeDeleteOutgoingEdge(edgeID)
+		if err := gs.cascadeDeleteOutgoingEdge(edgeID); err != nil {
+			return fmt.Errorf("failed to cascade delete outgoing edge %d: %w", edgeID, err)
+		}
 	}
 
 	// Cascade delete all incoming edges
 	for _, edgeID := range incomingEdgeIDs {
-		gs.cascadeDeleteIncomingEdge(edgeID)
+		if err := gs.cascadeDeleteIncomingEdge(edgeID); err != nil {
+			return fmt.Errorf("failed to cascade delete incoming edge %d: %w", edgeID, err)
+		}
 	}
 
 	// Remove from label indexes
@@ -135,13 +169,17 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	}
 
 	// Remove from property indexes
-	gs.removeNodeFromPropertyIndexes(nodeID, node.Properties)
+	if err := gs.removeNodeFromPropertyIndexes(nodeID, node.Properties); err != nil {
+		return err
+	}
 
 	// Delete node
 	delete(gs.nodes, nodeID)
 
 	// Delete adjacency lists (disk-backed or in-memory)
-	gs.clearNodeAdjacency(nodeID)
+	if err := gs.clearNodeAdjacency(nodeID); err != nil {
+		return fmt.Errorf("failed to clear adjacency for node %d: %w", nodeID, err)
+	}
 
 	// Atomic decrement with underflow protection
 	atomicDecrementWithUnderflowProtection(&gs.stats.NodeCount)
@@ -152,123 +190,43 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	return nil
 }
 
-// Property index helper methods
+// GetAllNodeIDs returns all node IDs in the storage.
+// This is the preferred way to iterate over all nodes, as it handles
+// deleted nodes correctly (unlike iterating from 1 to NodeCount).
+func (gs *GraphStorage) GetAllNodeIDs() []uint64 {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
 
-// updatePropertyIndexes updates property indexes when a node's properties change
-func (gs *GraphStorage) updatePropertyIndexes(nodeID uint64, node *Node, properties map[string]Value) {
-	for k, newValue := range properties {
-		if idx, exists := gs.propertyIndexes[k]; exists {
-			// Remove old value from index if it exists
-			if oldValue, exists := node.Properties[k]; exists {
-				idx.Remove(nodeID, oldValue)
-			}
-			// Add new value to index
-			idx.Insert(nodeID, newValue)
-		}
+	nodeIDs := make([]uint64, 0, len(gs.nodes))
+	for id := range gs.nodes {
+		nodeIDs = append(nodeIDs, id)
 	}
+	return nodeIDs
 }
 
-// insertNodeIntoPropertyIndexes inserts a node into all matching property indexes
-func (gs *GraphStorage) insertNodeIntoPropertyIndexes(nodeID uint64, properties map[string]Value) {
-	for key, value := range properties {
-		if idx, exists := gs.propertyIndexes[key]; exists {
-			idx.Insert(nodeID, value)
-		}
+// GetAllNodes returns all nodes in the storage.
+// Returns cloned nodes to prevent modification of internal data.
+func (gs *GraphStorage) GetAllNodes() []*Node {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+
+	nodes := make([]*Node, 0, len(gs.nodes))
+	for _, node := range gs.nodes {
+		nodes = append(nodes, node.Clone())
 	}
+	return nodes
 }
 
-// removeNodeFromPropertyIndexes removes a node from all property indexes
-func (gs *GraphStorage) removeNodeFromPropertyIndexes(nodeID uint64, properties map[string]Value) {
-	for key, value := range properties {
-		if idx, exists := gs.propertyIndexes[key]; exists {
-			idx.Remove(nodeID, value)
-		}
-	}
-}
+// ForEachNode iterates over all nodes, calling the provided function for each.
+// The function receives a cloned node to prevent modification.
+// Iteration stops early if the function returns false.
+func (gs *GraphStorage) ForEachNode(fn func(*Node) bool) {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
 
-// Adjacency and cascade delete helper methods
-
-// clearNodeAdjacency clears a node's adjacency lists (disk or memory)
-func (gs *GraphStorage) clearNodeAdjacency(nodeID uint64) {
-	if gs.useDiskBackedEdges {
-		gs.edgeStore.StoreOutgoingEdges(nodeID, []uint64{})
-		gs.edgeStore.StoreIncomingEdges(nodeID, []uint64{})
-	} else {
-		delete(gs.outgoingEdges, nodeID)
-		delete(gs.incomingEdges, nodeID)
-	}
-}
-
-// removeOutgoingEdge removes an edge from a node's outgoing adjacency list (disk or memory)
-func (gs *GraphStorage) removeOutgoingEdge(nodeID, edgeID uint64) {
-	if gs.useDiskBackedEdges {
-		outgoing, _ := gs.edgeStore.GetOutgoingEdges(nodeID)
-		gs.edgeStore.StoreOutgoingEdges(nodeID, removeEdgeFromList(outgoing, edgeID))
-	} else {
-		gs.outgoingEdges[nodeID] = removeEdgeFromList(gs.outgoingEdges[nodeID], edgeID)
-	}
-}
-
-// removeIncomingEdge removes an edge from a node's incoming adjacency list (disk or memory)
-func (gs *GraphStorage) removeIncomingEdge(nodeID, edgeID uint64) {
-	if gs.useDiskBackedEdges {
-		incoming, _ := gs.edgeStore.GetIncomingEdges(nodeID)
-		gs.edgeStore.StoreIncomingEdges(nodeID, removeEdgeFromList(incoming, edgeID))
-	} else {
-		gs.incomingEdges[nodeID] = removeEdgeFromList(gs.incomingEdges[nodeID], edgeID)
-	}
-}
-
-// removeEdgeFromTypeIndex removes an edge from the type index
-func (gs *GraphStorage) removeEdgeFromTypeIndex(edgeType string, edgeID uint64) {
-	if edgeList, exists := gs.edgesByType[edgeType]; exists {
-		gs.edgesByType[edgeType] = removeEdgeFromList(edgeList, edgeID)
-	}
-}
-
-// cascadeDeleteOutgoingEdge deletes an outgoing edge and removes it from the target node's incoming list
-func (gs *GraphStorage) cascadeDeleteOutgoingEdge(edgeID uint64) {
-	if edge, exists := gs.edges[edgeID]; exists {
-		// Remove from target node's incoming edges
-		gs.removeIncomingEdge(edge.ToNodeID, edgeID)
-
-		// Remove from type index
-		gs.removeEdgeFromTypeIndex(edge.Type, edgeID)
-
-		// Delete edge object
-		delete(gs.edges, edgeID)
-
-		// Decrement stats with underflow protection
-		atomicDecrementWithUnderflowProtection(&gs.stats.EdgeCount)
-	}
-}
-
-// cascadeDeleteIncomingEdge deletes an incoming edge and removes it from the source node's outgoing list
-func (gs *GraphStorage) cascadeDeleteIncomingEdge(edgeID uint64) {
-	if edge, exists := gs.edges[edgeID]; exists {
-		// Remove from source node's outgoing edges
-		gs.removeOutgoingEdge(edge.FromNodeID, edgeID)
-
-		// Remove from type index
-		gs.removeEdgeFromTypeIndex(edge.Type, edgeID)
-
-		// Delete edge object
-		delete(gs.edges, edgeID)
-
-		// Decrement stats with underflow protection
-		atomicDecrementWithUnderflowProtection(&gs.stats.EdgeCount)
-	}
-}
-
-// removeFromLabelIndex removes a node from a label index
-func (gs *GraphStorage) removeFromLabelIndex(label string, nodeID uint64) {
-	nodeIDs := gs.nodesByLabel[label]
-	for i, id := range nodeIDs {
-		if id == nodeID {
-			// Remove by swapping with last element and truncating
-			nodeIDs[i] = nodeIDs[len(nodeIDs)-1]
-			gs.nodesByLabel[label] = nodeIDs[:len(nodeIDs)-1]
-			break
+	for _, node := range gs.nodes {
+		if !fn(node.Clone()) {
+			return
 		}
 	}
 }

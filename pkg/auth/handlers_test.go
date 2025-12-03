@@ -11,7 +11,7 @@ import (
 // TestAuthHandler_Login tests the login endpoint
 func TestAuthHandler_Login(t *testing.T) {
 	store := NewUserStore()
-	jwtManager := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
+	jwtManager, _ := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
 	handler := NewAuthHandler(store, jwtManager)
 
 	// Create test user
@@ -22,19 +22,19 @@ func TestAuthHandler_Login(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		requestBody    map[string]interface{}
+		requestBody    map[string]any
 		expectedStatus int
 		checkResponse  func(*testing.T, *httptest.ResponseRecorder)
 	}{
 		{
 			name: "Valid login",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"username": "alice",
 				"password": "AlicePass123!",
 			},
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				var response map[string]interface{}
+				var response map[string]any
 				if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 					t.Fatalf("Failed to parse response: %v", err)
 				}
@@ -52,7 +52,7 @@ func TestAuthHandler_Login(t *testing.T) {
 		},
 		{
 			name: "Wrong password",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"username": "alice",
 				"password": "WrongPass123!",
 			},
@@ -61,7 +61,7 @@ func TestAuthHandler_Login(t *testing.T) {
 		},
 		{
 			name: "Non-existent user",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"username": "nonexistent",
 				"password": "password",
 			},
@@ -70,7 +70,7 @@ func TestAuthHandler_Login(t *testing.T) {
 		},
 		{
 			name: "Empty username",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"username": "",
 				"password": "password",
 			},
@@ -79,7 +79,7 @@ func TestAuthHandler_Login(t *testing.T) {
 		},
 		{
 			name: "Empty password",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"username": "alice",
 				"password": "",
 			},
@@ -123,7 +123,7 @@ func TestAuthHandler_Login(t *testing.T) {
 // TestAuthHandler_Refresh tests the refresh token endpoint
 func TestAuthHandler_Refresh(t *testing.T) {
 	store := NewUserStore()
-	jwtManager := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
+	jwtManager, _ := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
 	handler := NewAuthHandler(store, jwtManager)
 
 	// Create test user
@@ -140,18 +140,18 @@ func TestAuthHandler_Refresh(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		requestBody    map[string]interface{}
+		requestBody    map[string]any
 		expectedStatus int
 		checkResponse  func(*testing.T, *httptest.ResponseRecorder)
 	}{
 		{
 			name: "Valid refresh token",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"refresh_token": validRefreshToken,
 			},
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				var response map[string]interface{}
+				var response map[string]any
 				if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 					t.Fatalf("Failed to parse response: %v", err)
 				}
@@ -163,7 +163,7 @@ func TestAuthHandler_Refresh(t *testing.T) {
 		},
 		{
 			name: "Invalid refresh token",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"refresh_token": "invalid.token.here",
 			},
 			expectedStatus: http.StatusUnauthorized,
@@ -171,7 +171,7 @@ func TestAuthHandler_Refresh(t *testing.T) {
 		},
 		{
 			name: "Empty refresh token",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"refresh_token": "",
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -202,7 +202,7 @@ func TestAuthHandler_Refresh(t *testing.T) {
 // TestAuthHandler_Register tests user registration
 func TestAuthHandler_Register(t *testing.T) {
 	store := NewUserStore()
-	jwtManager := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
+	jwtManager, _ := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
 	handler := NewAuthHandler(store, jwtManager)
 
 	// Create admin user for authorization
@@ -219,14 +219,14 @@ func TestAuthHandler_Register(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		requestBody    map[string]interface{}
+		requestBody    map[string]any
 		authToken      string
 		expectedStatus int
 		checkResponse  func(*testing.T, *httptest.ResponseRecorder)
 	}{
 		{
 			name: "Valid registration by admin",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"username": "newuser",
 				"password": "NewUserPass123!",
 				"role":     RoleViewer,
@@ -234,12 +234,12 @@ func TestAuthHandler_Register(t *testing.T) {
 			authToken:      adminToken,
 			expectedStatus: http.StatusCreated,
 			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				var response map[string]interface{}
+				var response map[string]any
 				if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 					t.Fatalf("Failed to parse response: %v", err)
 				}
 
-				user, ok := response["user"].(map[string]interface{})
+				user, ok := response["user"].(map[string]any)
 				if !ok {
 					t.Fatal("Expected user object in response")
 				}
@@ -251,7 +251,7 @@ func TestAuthHandler_Register(t *testing.T) {
 		},
 		{
 			name: "Missing authorization",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"username": "unauthorized",
 				"password": "Pass123!",
 				"role":     RoleViewer,
@@ -262,7 +262,7 @@ func TestAuthHandler_Register(t *testing.T) {
 		},
 		{
 			name: "Weak password",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"username": "weakpass",
 				"password": "weak",
 				"role":     RoleViewer,
@@ -273,7 +273,7 @@ func TestAuthHandler_Register(t *testing.T) {
 		},
 		{
 			name: "Invalid role",
-			requestBody: map[string]interface{}{
+			requestBody: map[string]any{
 				"username": "invalidrole",
 				"password": "ValidPass123!",
 				"role":     "superadmin",
@@ -311,7 +311,7 @@ func TestAuthHandler_Register(t *testing.T) {
 // TestAuthHandler_Me tests the current user endpoint
 func TestAuthHandler_Me(t *testing.T) {
 	store := NewUserStore()
-	jwtManager := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
+	jwtManager, _ := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
 	handler := NewAuthHandler(store, jwtManager)
 
 	// Create test user
@@ -337,12 +337,12 @@ func TestAuthHandler_Me(t *testing.T) {
 			authToken:      validToken,
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				var response map[string]interface{}
+				var response map[string]any
 				if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 					t.Fatalf("Failed to parse response: %v", err)
 				}
 
-				userObj, ok := response["user"].(map[string]interface{})
+				userObj, ok := response["user"].(map[string]any)
 				if !ok {
 					t.Fatal("Expected user object in response")
 				}
@@ -394,7 +394,7 @@ func TestAuthHandler_Me(t *testing.T) {
 // TestAuthHandler_Routes tests that routes are properly configured
 func TestAuthHandler_Routes(t *testing.T) {
 	store := NewUserStore()
-	jwtManager := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
+	jwtManager, _ := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
 	handler := NewAuthHandler(store, jwtManager)
 
 	tests := []struct {

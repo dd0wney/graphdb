@@ -16,7 +16,7 @@ func TestValidateNodeRequest(t *testing.T) {
 			name: "Valid node request",
 			req: NodeRequest{
 				Labels:     []string{"Person"},
-				Properties: map[string]interface{}{"name": "Alice", "age": 30},
+				Properties: map[string]any{"name": "Alice", "age": 30},
 			},
 			expectError: false,
 		},
@@ -24,7 +24,7 @@ func TestValidateNodeRequest(t *testing.T) {
 			name: "Multiple valid labels",
 			req: NodeRequest{
 				Labels:     []string{"Person", "Employee", "Manager"},
-				Properties: map[string]interface{}{"name": "Bob"},
+				Properties: map[string]any{"name": "Bob"},
 			},
 			expectError: false,
 		},
@@ -32,7 +32,7 @@ func TestValidateNodeRequest(t *testing.T) {
 			name: "Empty labels - invalid",
 			req: NodeRequest{
 				Labels:     []string{},
-				Properties: map[string]interface{}{"name": "Charlie"},
+				Properties: map[string]any{"name": "Charlie"},
 			},
 			expectError: true,
 			errorField:  "Labels",
@@ -41,7 +41,7 @@ func TestValidateNodeRequest(t *testing.T) {
 			name: "Nil labels - invalid",
 			req: NodeRequest{
 				Labels:     nil,
-				Properties: map[string]interface{}{"name": "Diana"},
+				Properties: map[string]any{"name": "Diana"},
 			},
 			expectError: true,
 			errorField:  "Labels",
@@ -50,7 +50,7 @@ func TestValidateNodeRequest(t *testing.T) {
 			name: "Too many labels - invalid",
 			req: NodeRequest{
 				Labels:     []string{"L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11"},
-				Properties: map[string]interface{}{"name": "Eve"},
+				Properties: map[string]any{"name": "Eve"},
 			},
 			expectError: true,
 			errorField:  "Labels",
@@ -59,7 +59,7 @@ func TestValidateNodeRequest(t *testing.T) {
 			name: "Label with special characters - invalid",
 			req: NodeRequest{
 				Labels:     []string{"Person<script>"},
-				Properties: map[string]interface{}{"name": "Frank"},
+				Properties: map[string]any{"name": "Frank"},
 			},
 			expectError: true,
 			errorField:  "Labels",
@@ -68,7 +68,7 @@ func TestValidateNodeRequest(t *testing.T) {
 			name: "Label too long - invalid",
 			req: NodeRequest{
 				Labels:     []string{string(make([]byte, 51))}, // 51 chars
-				Properties: map[string]interface{}{"name": "Grace"},
+				Properties: map[string]any{"name": "Grace"},
 			},
 			expectError: true,
 			errorField:  "Labels",
@@ -94,7 +94,7 @@ func TestValidateNodeRequest(t *testing.T) {
 			name: "Empty properties - valid",
 			req: NodeRequest{
 				Labels:     []string{"Person"},
-				Properties: map[string]interface{}{},
+				Properties: map[string]any{},
 			},
 			expectError: false,
 		},
@@ -145,7 +145,7 @@ func TestValidateEdgeRequest(t *testing.T) {
 				ToNodeID:   2,
 				Type:       "KNOWS",
 				Weight:     floatPtr(1.0),
-				Properties: map[string]interface{}{"since": 2020},
+				Properties: map[string]any{"since": 2020},
 			},
 			expectError: false,
 		},
@@ -155,7 +155,7 @@ func TestValidateEdgeRequest(t *testing.T) {
 				FromNodeID: 1,
 				ToNodeID:   2,
 				Type:       "FOLLOWS",
-				Properties: map[string]interface{}{"active": true},
+				Properties: map[string]any{"active": true},
 			},
 			expectError: false,
 		},
@@ -312,7 +312,7 @@ func TestValidateBatchRequest(t *testing.T) {
 			for i := 0; i < tt.itemCount; i++ {
 				batch[i] = NodeRequest{
 					Labels:     []string{"Person"},
-					Properties: map[string]interface{}{"id": i},
+					Properties: map[string]any{"id": i},
 				}
 			}
 
@@ -423,8 +423,8 @@ func TestValidatePropertyKey(t *testing.T) {
 
 // Helper functions
 
-func createLargeMap(size int) map[string]interface{} {
-	m := make(map[string]interface{}, size)
+func createLargeMap(size int) map[string]any {
+	m := make(map[string]any, size)
 	for i := 0; i < size; i++ {
 		m[string(rune('a'+i%26))+string(rune('0'+i/26))] = i
 	}

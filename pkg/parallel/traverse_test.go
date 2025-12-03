@@ -33,7 +33,7 @@ func TestNewParallelTraverser(t *testing.T) {
 	gs := setupTraverseTestGraph(t)
 
 	// Test with default workers (0 should use NumCPU)
-	pt := NewParallelTraverser(gs, 0)
+	pt, _ := NewParallelTraverser(gs, 0)
 	if pt == nil {
 		t.Fatal("Expected non-nil traverser")
 	}
@@ -43,14 +43,14 @@ func TestNewParallelTraverser(t *testing.T) {
 	pt.Close()
 
 	// Test with specific worker count
-	pt2 := NewParallelTraverser(gs, 4)
+	pt2, _ := NewParallelTraverser(gs, 4)
 	if pt2.numWorkers != 4 {
 		t.Errorf("Expected 4 workers, got %d", pt2.numWorkers)
 	}
 	pt2.Close()
 
 	// Test with negative workers (should default to NumCPU)
-	pt3 := NewParallelTraverser(gs, -1)
+	pt3, _ := NewParallelTraverser(gs, -1)
 	if pt3.numWorkers <= 0 {
 		t.Errorf("Expected positive numWorkers for negative input, got %d", pt3.numWorkers)
 	}
@@ -60,7 +60,7 @@ func TestNewParallelTraverser(t *testing.T) {
 // TestTraverseBFS_EmptyStartNodes tests BFS with empty start nodes
 func TestTraverseBFS_EmptyStartNodes(t *testing.T) {
 	gs := setupTraverseTestGraph(t)
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	result := pt.TraverseBFS([]uint64{}, 5)
@@ -82,7 +82,7 @@ func TestTraverseBFS_SingleNode(t *testing.T) {
 	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	result := pt.TraverseBFS([]uint64{nodeA.ID}, 3)
@@ -107,7 +107,7 @@ func TestTraverseBFS_MaxDepth(t *testing.T) {
 	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	// Depth 1 should only reach B
@@ -142,7 +142,7 @@ func TestTraverseBFS_MultipleStartNodes(t *testing.T) {
 	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	// Start from both A and C
@@ -167,7 +167,7 @@ func TestTraverseBFS_Cycle(t *testing.T) {
 	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	result := pt.TraverseBFS([]uint64{nodeA.ID}, 10)
@@ -190,7 +190,7 @@ func TestTraverseDFS_SingleNode(t *testing.T) {
 	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	result := pt.TraverseDFS(nodeA.ID, 10)
@@ -215,7 +215,7 @@ func TestTraverseDFS_MaxDepth(t *testing.T) {
 	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	// Depth 1 should only reach A
@@ -244,7 +244,7 @@ func TestTraverseDFS_Cycle(t *testing.T) {
 	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	result := pt.TraverseDFS(nodeA.ID, 10)
@@ -269,7 +269,7 @@ func TestTraverseDFS_HighDegreeNode(t *testing.T) {
 		gs.CreateEdge(hub.ID, spoke.ID, "LINKS", nil, 1.0)
 	}
 
-	pt := NewParallelTraverser(gs, 4)
+	pt, _ := NewParallelTraverser(gs, 4)
 	defer pt.Close()
 
 	result := pt.TraverseDFS(hub.ID, 5)
@@ -286,7 +286,7 @@ func TestParallelShortestPath_SameNode(t *testing.T) {
 
 	node, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	path, err := pt.ParallelShortestPath(node.ID, node.ID, 5)
@@ -309,7 +309,7 @@ func TestParallelShortestPath_DirectConnection(t *testing.T) {
 
 	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	path, err := pt.ParallelShortestPath(nodeA.ID, nodeB.ID, 5)
@@ -338,7 +338,7 @@ func TestParallelShortestPath_LinearPath(t *testing.T) {
 	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	path, err := pt.ParallelShortestPath(nodeA.ID, nodeC.ID, 5)
@@ -365,7 +365,7 @@ func TestParallelShortestPath_NoPath(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	// No edges between A and B
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	path, err := pt.ParallelShortestPath(nodeA.ID, nodeB.ID, 5)
@@ -393,7 +393,7 @@ func TestParallelShortestPath_MaxDepth(t *testing.T) {
 	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	// With maxDepth=2, can only reach B and C, not D
@@ -423,7 +423,7 @@ func TestParallelShortestPath_MultiplePaths(t *testing.T) {
 	gs.CreateEdge(nodeB.ID, nodeD.ID, "LINKS", nil, 1.0)
 	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
 
 	path, err := pt.ParallelShortestPath(nodeA.ID, nodeD.ID, 5)
@@ -446,7 +446,7 @@ func TestParallelShortestPath_MultiplePaths(t *testing.T) {
 func TestClose(t *testing.T) {
 	gs := setupTraverseTestGraph(t)
 
-	pt := NewParallelTraverser(gs, 2)
+	pt, _ := NewParallelTraverser(gs, 2)
 	pt.Close()
 
 	// Closing twice should not panic

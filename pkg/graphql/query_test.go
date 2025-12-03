@@ -52,13 +52,13 @@ func TestExecuteQuerySingleNode(t *testing.T) {
 	}
 
 	// Verify result contains the node data
-	data := result.Data.(map[string]interface{})
+	data := result.Data.(map[string]any)
 	person := data["person"]
 	if person == nil {
 		t.Fatal("Query result missing 'person' field")
 	}
 
-	personData := person.(map[string]interface{})
+	personData := person.(map[string]any)
 	if personData["id"] == nil {
 		t.Error("Person data missing 'id' field")
 	}
@@ -122,13 +122,13 @@ func TestExecuteQueryMultipleNodes(t *testing.T) {
 	}
 
 	// Verify result contains multiple persons
-	data := result.Data.(map[string]interface{})
+	data := result.Data.(map[string]any)
 	persons := data["persons"]
 	if persons == nil {
 		t.Fatal("Query result missing 'persons' field")
 	}
 
-	personsList := persons.([]interface{})
+	personsList := persons.([]any)
 	if len(personsList) != 2 {
 		t.Errorf("Expected 2 persons, got %d", len(personsList))
 	}
@@ -178,8 +178,8 @@ func TestExecuteQueryWithProperties(t *testing.T) {
 	}
 
 	// Verify properties are returned
-	data := result.Data.(map[string]interface{})
-	person := data["person"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	person := data["person"].(map[string]any)
 	properties := person["properties"]
 
 	if properties == nil {
@@ -193,7 +193,7 @@ func TestExecuteQueryWithProperties(t *testing.T) {
 	}
 
 	// Verify it's valid JSON
-	var propsMap map[string]interface{}
+	var propsMap map[string]any
 	if err := json.Unmarshal([]byte(propsStr), &propsMap); err != nil {
 		t.Errorf("Properties not valid JSON: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestExecuteQueryNotFound(t *testing.T) {
 	}
 
 	// Result should be null or empty
-	data := result.Data.(map[string]interface{})
+	data := result.Data.(map[string]any)
 	person := data["person"]
 	if person != nil {
 		t.Errorf("Expected null for non-existent node, got %v", person)
@@ -314,7 +314,7 @@ func TestExecuteQueryEmptyDatabase(t *testing.T) {
 	}
 
 	// Should return schema introspection data
-	data := result.Data.(map[string]interface{})
+	data := result.Data.(map[string]any)
 	schemaData := data["__schema"]
 	if schemaData == nil {
 		t.Error("Schema introspection failed")

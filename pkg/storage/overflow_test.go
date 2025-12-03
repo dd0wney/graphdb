@@ -6,6 +6,26 @@ import (
 	"testing"
 )
 
+// mustNewCompressedEdgeListForOverflow is a test helper that creates a compressed edge list or fails the test
+func mustNewCompressedEdgeListForOverflow(t *testing.T, nodeIDs []uint64) *CompressedEdgeList {
+	t.Helper()
+	cel, err := NewCompressedEdgeList(nodeIDs)
+	if err != nil {
+		t.Fatalf("failed to create compressed edge list: %v", err)
+	}
+	return cel
+}
+
+// mustNewCompressedEdgeListForOverflowBench is a benchmark helper
+func mustNewCompressedEdgeListForOverflowBench(b *testing.B, nodeIDs []uint64) *CompressedEdgeList {
+	b.Helper()
+	cel, err := NewCompressedEdgeList(nodeIDs)
+	if err != nil {
+		b.Fatalf("failed to create compressed edge list: %v", err)
+	}
+	return cel
+}
+
 // TestIDGenerationOverflow tests that we detect ID space exhaustion
 func TestNodeIDGenerationOverflow(t *testing.T) {
 	// Clean up
@@ -89,7 +109,7 @@ func TestCompressionDeltaUnderflow(t *testing.T) {
 	nodeIDs := []uint64{100, 50, 150, 75} // Unsorted
 
 	// Should not panic - sorts internally
-	compressed := NewCompressedEdgeList(nodeIDs)
+	compressed := mustNewCompressedEdgeListForOverflow(t, nodeIDs)
 
 	// Decompress and verify correct order
 	decompressed := compressed.Decompress()
@@ -110,7 +130,7 @@ func TestCompressionDeltaUnderflow(t *testing.T) {
 func TestCompressionDecompressionOverflow(t *testing.T) {
 	// Create a compressed list
 	nodeIDs := []uint64{1, 2, 3}
-	compressed := NewCompressedEdgeList(nodeIDs)
+	compressed := mustNewCompressedEdgeListForOverflow(t, nodeIDs)
 
 	// Manually corrupt the deltas to cause overflow
 	// This would happen if disk corruption occurred
@@ -139,7 +159,7 @@ func TestCompressionBinarySearchOverflow(t *testing.T) {
 		nodeIDs[i] = uint64(i * 1000)
 	}
 
-	compressed := NewCompressedEdgeList(nodeIDs)
+	compressed := mustNewCompressedEdgeListForOverflow(t, nodeIDs)
 
 	// Test Contains with various values
 	testCases := []struct {
@@ -163,7 +183,7 @@ func TestCompressionBinarySearchOverflow(t *testing.T) {
 
 func TestCompressionEmptyList(t *testing.T) {
 	// Test edge case: empty list
-	compressed := NewCompressedEdgeList([]uint64{})
+	compressed := mustNewCompressedEdgeListForOverflow(t, []uint64{})
 
 	if compressed.Count() != 0 {
 		t.Errorf("Expected count 0, got %d", compressed.Count())
@@ -182,7 +202,7 @@ func TestCompressionEmptyList(t *testing.T) {
 
 func TestCompressionSingleElement(t *testing.T) {
 	// Test edge case: single element
-	compressed := NewCompressedEdgeList([]uint64{42})
+	compressed := mustNewCompressedEdgeListForOverflow(t, []uint64{42})
 
 	if compressed.Count() != 1 {
 		t.Errorf("Expected count 1, got %d", compressed.Count())
@@ -215,7 +235,7 @@ func TestCompressionMaxValues(t *testing.T) {
 		math.MaxUint64 - 1,
 	}
 
-	compressed := NewCompressedEdgeList(nodeIDs)
+	compressed := mustNewCompressedEdgeListForOverflow(t, nodeIDs)
 	decompressed := compressed.Decompress()
 
 	if len(decompressed) != len(nodeIDs) {
@@ -233,7 +253,7 @@ func TestCompressionDuplicates(t *testing.T) {
 	// Test with duplicate values
 	nodeIDs := []uint64{10, 10, 20, 20, 30}
 
-	compressed := NewCompressedEdgeList(nodeIDs)
+	compressed := mustNewCompressedEdgeListForOverflow(t, nodeIDs)
 	decompressed := compressed.Decompress()
 
 	// After sorting, duplicates should remain
@@ -260,7 +280,7 @@ func BenchmarkCompression(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		NewCompressedEdgeList(nodeIDs)
+		mustNewCompressedEdgeListForOverflowBench(b, nodeIDs)
 	}
 }
 
@@ -269,7 +289,7 @@ func BenchmarkDecompression(b *testing.B) {
 	for i := 0; i < 1000; i++ {
 		nodeIDs[i] = uint64(i * 10)
 	}
-	compressed := NewCompressedEdgeList(nodeIDs)
+	compressed := mustNewCompressedEdgeListForOverflowBench(b, nodeIDs)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -282,7 +302,7 @@ func BenchmarkContains(b *testing.B) {
 	for i := 0; i < 1000; i++ {
 		nodeIDs[i] = uint64(i * 10)
 	}
-	compressed := NewCompressedEdgeList(nodeIDs)
+	compressed := mustNewCompressedEdgeListForOverflowBench(b, nodeIDs)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

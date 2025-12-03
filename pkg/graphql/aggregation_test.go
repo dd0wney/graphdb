@@ -51,8 +51,8 @@ func TestAggregateCount(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	aggregate := data["personsAggregate"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	aggregate := data["personsAggregate"].(map[string]any)
 	count := int(aggregate["count"].(int))
 
 	if count != 5 {
@@ -115,10 +115,10 @@ func TestAggregateMinMax(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	aggregate := data["personsAggregate"].(map[string]interface{})
-	min := aggregate["min"].(map[string]interface{})
-	max := aggregate["max"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	aggregate := data["personsAggregate"].(map[string]any)
+	min := aggregate["min"].(map[string]any)
+	max := aggregate["max"].(map[string]any)
 
 	minAge := min["age"].(float64)
 	maxAge := max["age"].(float64)
@@ -183,9 +183,9 @@ func TestAggregateAverage(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	aggregate := data["personsAggregate"].(map[string]interface{})
-	avg := aggregate["avg"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	aggregate := data["personsAggregate"].(map[string]any)
+	avg := aggregate["avg"].(map[string]any)
 
 	avgScore := avg["score"].(float64)
 
@@ -246,9 +246,9 @@ func TestAggregateSum(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	aggregate := data["personsAggregate"].(map[string]interface{})
-	sum := aggregate["sum"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	aggregate := data["personsAggregate"].(map[string]any)
+	sum := aggregate["sum"].(map[string]any)
 
 	sumScore := sum["score"].(float64)
 
@@ -309,15 +309,15 @@ func TestAggregateMultipleFields(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	aggregate := data["personsAggregate"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	aggregate := data["personsAggregate"].(map[string]any)
 
 	count := int(aggregate["count"].(int))
 	if count != 2 {
 		t.Errorf("Expected count to be 2, got %d", count)
 	}
 
-	avg := aggregate["avg"].(map[string]interface{})
+	avg := aggregate["avg"].(map[string]any)
 	avgAge := avg["age"].(float64)
 	avgScore := avg["score"].(float64)
 
@@ -386,28 +386,28 @@ func TestAggregateEdges(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	aggregate := data["edgesAggregate"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	aggregate := data["edgesAggregate"].(map[string]any)
 
 	count := int(aggregate["count"].(int))
 	if count != 3 {
 		t.Errorf("Expected count to be 3, got %d", count)
 	}
 
-	avg := aggregate["avg"].(map[string]interface{})
+	avg := aggregate["avg"].(map[string]any)
 	avgWeight := avg["weight"].(float64)
 	// (1.5 + 2.5 + 3.0) / 3 = 7.0 / 3 ≈ 2.333...
 	if avgWeight < 2.33 || avgWeight > 2.34 {
 		t.Errorf("Expected avg weight to be ~2.33, got %f", avgWeight)
 	}
 
-	min := aggregate["min"].(map[string]interface{})
+	min := aggregate["min"].(map[string]any)
 	minWeight := min["weight"].(float64)
 	if minWeight != 1.5 {
 		t.Errorf("Expected min weight to be 1.5, got %f", minWeight)
 	}
 
-	max := aggregate["max"].(map[string]interface{})
+	max := aggregate["max"].(map[string]any)
 	maxWeight := max["weight"].(float64)
 	if maxWeight != 3.0 {
 		t.Errorf("Expected max weight to be 3.0, got %f", maxWeight)
@@ -456,8 +456,8 @@ func TestAggregateEmptyResult(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	aggregate := data["personsAggregate"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	aggregate := data["personsAggregate"].(map[string]any)
 	count := int(aggregate["count"].(int))
 
 	if count != 0 {

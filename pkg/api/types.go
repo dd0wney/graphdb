@@ -6,14 +6,15 @@ import "time"
 
 // QueryRequest represents a query execution request
 type QueryRequest struct {
-	Query      string                 `json:"query"`
-	Parameters map[string]interface{} `json:"parameters,omitempty"`
+	Query          string         `json:"query"`
+	Parameters     map[string]any `json:"parameters,omitempty"`
+	TimeoutSeconds *int           `json:"timeout_seconds,omitempty"` // Optional per-query timeout (1-300 seconds)
 }
 
 // QueryResponse represents a query execution response
 type QueryResponse struct {
 	Columns []string                 `json:"columns"`
-	Rows    []map[string]interface{} `json:"rows"`
+	Rows    []map[string]any `json:"rows"`
 	Count   int                      `json:"count"`
 	Time    string                   `json:"time"`
 }
@@ -21,22 +22,22 @@ type QueryResponse struct {
 // NodeRequest represents a node creation/update request
 type NodeRequest struct {
 	Labels     []string               `json:"labels"`
-	Properties map[string]interface{} `json:"properties"`
+	Properties map[string]any `json:"properties"`
 }
 
 // NodeResponse represents a node in API responses
 type NodeResponse struct {
 	ID         uint64                 `json:"id"`
 	Labels     []string               `json:"labels"`
-	Properties map[string]interface{} `json:"properties"`
+	Properties map[string]any `json:"properties"`
 }
 
 // EdgeRequest represents an edge creation request
 type EdgeRequest struct {
-	FromNodeID uint64                 `json:"fromNodeId"`
-	ToNodeID   uint64                 `json:"toNodeId"`
+	FromNodeID uint64                 `json:"from_node_id"`
+	ToNodeID   uint64                 `json:"to_node_id"`
 	Type       string                 `json:"type"`
-	Properties map[string]interface{} `json:"properties,omitempty"`
+	Properties map[string]any `json:"properties,omitempty"`
 	Weight     float64                `json:"weight"`
 }
 
@@ -46,7 +47,7 @@ type EdgeResponse struct {
 	FromNodeID uint64                 `json:"from_node_id"`
 	ToNodeID   uint64                 `json:"to_node_id"`
 	Type       string                 `json:"type"`
-	Properties map[string]interface{} `json:"properties"`
+	Properties map[string]any `json:"properties"`
 	Weight     float64                `json:"weight"`
 }
 
@@ -82,21 +83,32 @@ type ShortestPathResponse struct {
 
 // HealthResponse represents health check response
 type HealthResponse struct {
-	Status    string   `json:"status"`
-	Timestamp time.Time `json:"timestamp"`
-	Version   string   `json:"version"`
-	Edition   string   `json:"edition"`
-	Features  []string `json:"features"`
-	Uptime    string   `json:"uptime"`
+	Status    string                    `json:"status"`
+	Timestamp time.Time                 `json:"timestamp"`
+	Version   string                    `json:"version"`
+	Edition   string                    `json:"edition"`
+	Features  []string                  `json:"features"`
+	Uptime    string                    `json:"uptime"`
+	Checks    map[string]any    `json:"checks,omitempty"`
 }
 
 // MetricsResponse represents database metrics
 type MetricsResponse struct {
+	// Database stats
 	NodeCount    uint64  `json:"node_count"`
 	EdgeCount    uint64  `json:"edge_count"`
 	TotalQueries uint64  `json:"total_queries"`
 	AvgQueryTime float64 `json:"avg_query_time_ms"`
-	Uptime       string  `json:"uptime"`
+
+	// System stats
+	MemoryUsedMB  uint64 `json:"memory_used_mb"`
+	MemoryTotalMB uint64 `json:"memory_total_mb"`
+	NumGoroutines int    `json:"num_goroutines"`
+	NumCPU        int    `json:"num_cpu"`
+
+	// Server stats
+	Uptime        string `json:"uptime"`
+	UptimeSeconds int64  `json:"uptime_seconds"`
 }
 
 // ErrorResponse represents an error response
@@ -133,12 +145,12 @@ type BatchEdgeResponse struct {
 // AlgorithmRequest represents a graph algorithm execution request
 type AlgorithmRequest struct {
 	Algorithm  string                 `json:"algorithm"` // "pagerank", "betweenness", "louvain"
-	Parameters map[string]interface{} `json:"parameters,omitempty"`
+	Parameters map[string]any `json:"parameters,omitempty"`
 }
 
 // AlgorithmResponse represents algorithm execution results
 type AlgorithmResponse struct {
 	Algorithm string                 `json:"algorithm"`
-	Results   map[string]interface{} `json:"results"`
+	Results   map[string]any `json:"results"`
 	Time      string                 `json:"time"`
 }

@@ -106,7 +106,10 @@ func (p *Parser) parsePrimaryExpression() (Expression, error) {
 		variable := p.advance().Value
 		if p.peek().Type == TokenDot {
 			p.advance()
-			propertyToken := p.expect(TokenIdentifier)
+			propertyToken, err := p.expect(TokenIdentifier)
+			if err != nil {
+				return nil, err
+			}
 			return &PropertyExpression{
 				Variable: variable,
 				Property: propertyToken.Value,

@@ -47,7 +47,7 @@ func (p *Parser) parseNode() (*NodePattern, error) {
 
 	node := &NodePattern{
 		Labels:     make([]string, 0),
-		Properties: make(map[string]interface{}),
+		Properties: make(map[string]any),
 	}
 
 	// Variable (optional)
@@ -89,7 +89,7 @@ func (p *Parser) parseNode() (*NodePattern, error) {
 func (p *Parser) parseRelationship(fromNode *NodePattern) (*RelationshipPattern, *NodePattern, error) {
 	rel := &RelationshipPattern{
 		From:       fromNode,
-		Properties: make(map[string]interface{}),
+		Properties: make(map[string]any),
 		MinHops:    1,
 		MaxHops:    1,
 	}
@@ -128,7 +128,10 @@ func (p *Parser) parseRelationship(fromNode *NodePattern) (*RelationshipPattern,
 		// Type (optional)
 		if p.peek().Type == TokenColon {
 			p.advance() // consume :
-			typeToken := p.expect(TokenIdentifier)
+			typeToken, err := p.expect(TokenIdentifier)
+			if err != nil {
+				return nil, nil, err
+			}
 			rel.Type = typeToken.Value
 		}
 

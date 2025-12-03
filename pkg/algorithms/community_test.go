@@ -332,7 +332,18 @@ func TestClusteringCoefficient_SingleNode(t *testing.T) {
 
 // TestClusteringCoefficient_Triangle tests complete triangle
 func TestClusteringCoefficient_Triangle(t *testing.T) {
-	gs := setupCommunityTestGraph(t)
+	// Create dedicated temp dir with unique name to avoid interference
+	tmpDir, err := os.MkdirTemp("", "cluster-triangle-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+
+	gs, err := storage.NewGraphStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create graph storage: %v", err)
+	}
+	t.Cleanup(func() { gs.Close() })
 
 	// Create complete triangle: A -> B, B -> C, C -> A, and reverse
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -344,13 +355,15 @@ func TestClusteringCoefficient_Triangle(t *testing.T) {
 	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	result, err := ClusteringCoefficient(gs)
-
 	if err != nil {
 		t.Fatalf("ClusteringCoefficient failed: %v", err)
 	}
 
 	// In complete triangle, clustering coefficient should be 1.0
-	coefA := result[nodeA.ID]
+	coefA, exists := result[nodeA.ID]
+	if !exists {
+		t.Fatalf("Node A (ID=%d) not found in result map", nodeA.ID)
+	}
 
 	// Should be 1.0 (all neighbors are connected)
 	if math.Abs(coefA-1.0) > 0.001 {

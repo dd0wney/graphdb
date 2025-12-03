@@ -415,3 +415,106 @@ func TestLexerBooleanLiterals(t *testing.T) {
 		}
 	}
 }
+
+// TestLexer_StringEscapeSequences tests string escape sequences
+func TestLexer_StringEscapeSequences(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "newline escape",
+			input:    `"hello\nworld"`,
+			expected: "hello\nworld",
+		},
+		{
+			name:     "tab escape",
+			input:    `"hello\tworld"`,
+			expected: "hello\tworld",
+		},
+		{
+			name:     "carriage return escape",
+			input:    `"hello\rworld"`,
+			expected: "hello\rworld",
+		},
+		{
+			name:     "backslash escape",
+			input:    `"hello\\world"`,
+			expected: "hello\\world",
+		},
+		{
+			name:     "quote escape in double quotes",
+			input:    `"hello\"world"`,
+			expected: `hello"world`,
+		},
+		{
+			name:     "quote escape in single quotes",
+			input:    `'hello\'world'`,
+			expected: `hello'world`,
+		},
+		{
+			name:     "unknown escape sequence (default case)",
+			input:    `"hello\xworld"`,
+			expected: "helloxworld", // \x -> x (unknown escape becomes the char itself)
+		},
+		{
+			name:     "multiple escapes",
+			input:    `"line1\nline2\ttab\rcarriage"`,
+			expected: "line1\nline2\ttab\rcarriage",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lexer := NewLexer(tt.input)
+			tokens, err := lexer.Tokenize()
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if len(tokens) < 1 {
+				t.Fatal("Expected at least one token")
+			}
+
+			token := tokens[0]
+			if token.Type != TokenString {
+				t.Errorf("Expected TokenString, got %v", token.Type)
+			}
+
+			if token.Value != tt.expected {
+				t.Errorf("Expected value %q, got %q", tt.expected, token.Value)
+			}
+		})
+	}
+}
+
+// TestTokenType_String tests the String method of TokenType
+func TestTokenType_String(t *testing.T) {
+	tests := []struct {
+		tokenType TokenType
+		expected  string
+	}{
+		{TokenEOF, "EOF"},
+		{TokenError, "ERROR"},
+		{TokenMatch, "MATCH"},
+		{TokenWhere, "WHERE"},
+		{TokenReturn, "RETURN"},
+		{TokenCreate, "CREATE"},
+		{TokenDelete, "DELETE"},
+		{TokenIdentifier, "IDENTIFIER"},
+		{TokenString, "STRING"},
+		{TokenNumber, "NUMBER"},
+		{TokenType(999), "Token(999)"}, // Unknown token type
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			result := tt.tokenType.String()
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}

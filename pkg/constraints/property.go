@@ -22,7 +22,7 @@ func (pc *PropertyConstraint) Name() string {
 }
 
 // Validate checks the property constraint against all nodes with the target label
-func (pc *PropertyConstraint) Validate(graph *storage.GraphStorage) ([]Violation, error) {
+func (pc *PropertyConstraint) Validate(graph GraphReader) ([]Violation, error) {
 	violations := make([]Violation, 0)
 
 	// Get all nodes with the target label
@@ -45,7 +45,7 @@ func (pc *PropertyConstraint) Validate(graph *storage.GraphStorage) ([]Violation
 					NodeID:     &nodeID,
 					Constraint: pc.Name(),
 					Message:    fmt.Sprintf("Node %d missing required property '%s'", node.ID, pc.PropertyName),
-					Details: map[string]interface{}{
+					Details: map[string]any{
 						"label":    pc.NodeLabel,
 						"property": pc.PropertyName,
 					},
@@ -64,7 +64,7 @@ func (pc *PropertyConstraint) Validate(graph *storage.GraphStorage) ([]Violation
 				Constraint: pc.Name(),
 				Message: fmt.Sprintf("Node %d property '%s' has wrong type",
 					node.ID, pc.PropertyName),
-				Details: map[string]interface{}{
+				Details: map[string]any{
 					"label":        pc.NodeLabel,
 					"property":     pc.PropertyName,
 					"actual_type":  propValue.Type,
@@ -109,7 +109,7 @@ func (pc *PropertyConstraint) validateRange(node *storage.Node, propValue storag
 					Constraint: pc.Name(),
 					Message: fmt.Sprintf("Node %d property '%s' value %d is below minimum %d",
 						node.ID, pc.PropertyName, value, minVal),
-					Details: map[string]interface{}{
+					Details: map[string]any{
 						"label":    pc.NodeLabel,
 						"property": pc.PropertyName,
 						"value":    value,
@@ -132,7 +132,7 @@ func (pc *PropertyConstraint) validateRange(node *storage.Node, propValue storag
 					Constraint: pc.Name(),
 					Message: fmt.Sprintf("Node %d property '%s' value %d is above maximum %d",
 						node.ID, pc.PropertyName, value, maxVal),
-					Details: map[string]interface{}{
+					Details: map[string]any{
 						"label":    pc.NodeLabel,
 						"property": pc.PropertyName,
 						"value":    value,
@@ -161,7 +161,7 @@ func (pc *PropertyConstraint) validateRange(node *storage.Node, propValue storag
 					Constraint: pc.Name(),
 					Message: fmt.Sprintf("Node %d property '%s' value %.2f is below minimum %.2f",
 						node.ID, pc.PropertyName, value, minVal),
-					Details: map[string]interface{}{
+					Details: map[string]any{
 						"label":    pc.NodeLabel,
 						"property": pc.PropertyName,
 						"value":    value,
@@ -184,7 +184,7 @@ func (pc *PropertyConstraint) validateRange(node *storage.Node, propValue storag
 					Constraint: pc.Name(),
 					Message: fmt.Sprintf("Node %d property '%s' value %.2f is above maximum %.2f",
 						node.ID, pc.PropertyName, value, maxVal),
-					Details: map[string]interface{}{
+					Details: map[string]any{
 						"label":    pc.NodeLabel,
 						"property": pc.PropertyName,
 						"value":    value,

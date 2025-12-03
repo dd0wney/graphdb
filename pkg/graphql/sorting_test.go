@@ -57,20 +57,20 @@ func TestSortNodesByPropertyAscending(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	if len(persons) != 3 {
 		t.Fatalf("Expected 3 persons, got %d", len(persons))
 	}
 
 	// Verify sorted order (age: 20, 25, 30)
-	props := persons[0].(map[string]interface{})["properties"].(string)
+	props := persons[0].(map[string]any)["properties"].(string)
 	if !contains(props, "Bob") || !contains(props, "20") {
 		t.Errorf("Expected first person to be Bob (age 20), got %s", props)
 	}
 
-	props = persons[2].(map[string]interface{})["properties"].(string)
+	props = persons[2].(map[string]any)["properties"].(string)
 	if !contains(props, "Alice") || !contains(props, "30") {
 		t.Errorf("Expected last person to be Alice (age 30), got %s", props)
 	}
@@ -123,20 +123,20 @@ func TestSortNodesByPropertyDescending(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	if len(persons) != 3 {
 		t.Fatalf("Expected 3 persons, got %d", len(persons))
 	}
 
 	// Verify sorted order (name: Charlie, Bob, Alice)
-	props := persons[0].(map[string]interface{})["properties"].(string)
+	props := persons[0].(map[string]any)["properties"].(string)
 	if !contains(props, "Charlie") {
 		t.Errorf("Expected first person to be Charlie, got %s", props)
 	}
 
-	props = persons[2].(map[string]interface{})["properties"].(string)
+	props = persons[2].(map[string]any)["properties"].(string)
 	if !contains(props, "Alice") {
 		t.Errorf("Expected last person to be Alice, got %s", props)
 	}
@@ -187,15 +187,15 @@ func TestSortWithPagination(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	if len(persons) != 3 {
 		t.Errorf("Expected 3 persons with limit, got %d", len(persons))
 	}
 
 	// Verify first is highest score (50)
-	props := persons[0].(map[string]interface{})["properties"].(string)
+	props := persons[0].(map[string]any)["properties"].(string)
 	if !contains(props, "50") {
 		t.Errorf("Expected first person to have score 50, got %s", props)
 	}
@@ -250,17 +250,17 @@ func TestSortWithCursorPagination(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	connection := data["personsConnection"].(map[string]interface{})
-	edges := connection["edges"].([]interface{})
+	data := result.Data.(map[string]any)
+	connection := data["personsConnection"].(map[string]any)
+	edges := connection["edges"].([]any)
 
 	if len(edges) != 5 {
 		t.Errorf("Expected 5 edges, got %d", len(edges))
 	}
 
 	// Verify first is highest score (100)
-	firstEdge := edges[0].(map[string]interface{})
-	node := firstEdge["node"].(map[string]interface{})
+	firstEdge := edges[0].(map[string]any)
+	node := firstEdge["node"].(map[string]any)
 	props := node["properties"].(string)
 	if !contains(props, "100") {
 		t.Errorf("Expected first node to have score 100, got %s", props)
@@ -316,16 +316,16 @@ func TestSortEdgesByWeight(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	edges := data["edges"].([]interface{})
+	data := result.Data.(map[string]any)
+	edges := data["edges"].([]any)
 
 	if len(edges) != 3 {
 		t.Fatalf("Expected 3 edges, got %d", len(edges))
 	}
 
 	// Verify sorted order (weight: 1.0, 2.0, 3.0)
-	weight1 := edges[0].(map[string]interface{})["weight"].(float64)
-	weight3 := edges[2].(map[string]interface{})["weight"].(float64)
+	weight1 := edges[0].(map[string]any)["weight"].(float64)
+	weight3 := edges[2].(map[string]any)["weight"].(float64)
 
 	if weight1 != 1.0 {
 		t.Errorf("Expected first edge weight to be 1.0, got %f", weight1)
@@ -380,8 +380,8 @@ func TestSortWithoutOrderBy(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	if len(persons) != 2 {
 		t.Errorf("Expected 2 persons, got %d", len(persons))

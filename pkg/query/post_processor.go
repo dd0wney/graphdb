@@ -20,7 +20,7 @@ func (e *Executor) applyPostProcessing(resultSet *ResultSet, returnClause *Retur
 	// Apply SKIP
 	if skip > 0 {
 		if skip >= len(resultSet.Rows) {
-			resultSet.Rows = []map[string]interface{}{}
+			resultSet.Rows = []map[string]any{}
 		} else {
 			resultSet.Rows = resultSet.Rows[skip:]
 		}
@@ -35,9 +35,9 @@ func (e *Executor) applyPostProcessing(resultSet *ResultSet, returnClause *Retur
 }
 
 // deduplicateRows removes duplicate rows from results
-func (e *Executor) deduplicateRows(rows []map[string]interface{}) []map[string]interface{} {
+func (e *Executor) deduplicateRows(rows []map[string]any) []map[string]any {
 	seen := make(map[string]bool)
-	result := make([]map[string]interface{}, 0)
+	result := make([]map[string]any, 0)
 
 	for _, row := range rows {
 		key := fmt.Sprintf("%v", row)
@@ -51,7 +51,7 @@ func (e *Executor) deduplicateRows(rows []map[string]interface{}) []map[string]i
 }
 
 // sortRows sorts result rows according to ORDER BY criteria
-func (e *Executor) sortRows(rows []map[string]interface{}, orderBy []*OrderByItem) {
+func (e *Executor) sortRows(rows []map[string]any, orderBy []*OrderByItem) {
 	if len(orderBy) == 0 {
 		return
 	}

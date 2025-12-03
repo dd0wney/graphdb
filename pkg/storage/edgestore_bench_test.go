@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+// mustNewCompressedEdgeListForBench is a helper for benchmarks
+func mustNewCompressedEdgeListForBench(b *testing.B, nodeIDs []uint64) *CompressedEdgeList {
+	b.Helper()
+	cel, err := NewCompressedEdgeList(nodeIDs)
+	if err != nil {
+		b.Fatalf("failed to create compressed edge list: %v", err)
+	}
+	return cel
+}
+
 // BenchmarkEdgeStore_CacheHit measures performance when data is in cache
 func BenchmarkEdgeStore_CacheHit(b *testing.B) {
 	dataDir := b.TempDir()
@@ -137,7 +147,7 @@ func BenchmarkEdgeStore_LargeEdgeList(b *testing.B) {
 func BenchmarkEdgeCache_Hit(b *testing.B) {
 	cache := NewEdgeCache(1000)
 
-	edges := NewCompressedEdgeList([]uint64{1, 2, 3, 4, 5})
+	edges := mustNewCompressedEdgeListForBench(b, []uint64{1, 2, 3, 4, 5})
 	cache.Put("test-key", edges)
 
 	b.ResetTimer()
@@ -153,7 +163,7 @@ func BenchmarkEdgeCache_Miss(b *testing.B) {
 	// Add some entries, but not the one we'll query
 	for i := 0; i < 100; i++ {
 		key := fmt.Sprintf("key-%d", i)
-		edges := NewCompressedEdgeList([]uint64{uint64(i)})
+		edges := mustNewCompressedEdgeListForBench(b, []uint64{uint64(i)})
 		cache.Put(key, edges)
 	}
 
@@ -167,7 +177,7 @@ func BenchmarkEdgeCache_Miss(b *testing.B) {
 func BenchmarkEdgeCache_Put(b *testing.B) {
 	cache := NewEdgeCache(10000)
 
-	edges := NewCompressedEdgeList([]uint64{1, 2, 3, 4, 5})
+	edges := mustNewCompressedEdgeListForBench(b, []uint64{1, 2, 3, 4, 5})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

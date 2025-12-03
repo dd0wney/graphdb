@@ -85,7 +85,11 @@ func (ec *EdgeCache) evictOldest() {
 		return
 	}
 
-	entry := oldest.Value.(*cacheEntry)
+	// Defensive: safe type assertion with ok check
+	entry, ok := oldest.Value.(*cacheEntry)
+	if !ok {
+		return
+	}
 	ec.lru.Remove(oldest)
 	delete(ec.cache, entry.key)
 }

@@ -474,3 +474,384 @@ func TestNode_EmptyProperties(t *testing.T) {
 		t.Error("Cloned empty properties should also be empty")
 	}
 }
+
+// === Array Type Tests ===
+
+// TestStringArrayValue tests string array creation and decoding
+func TestStringArrayValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []string
+	}{
+		{"empty array", []string{}},
+		{"single element", []string{"hello"}},
+		{"multiple elements", []string{"a", "b", "c"}},
+		{"with empty strings", []string{"", "middle", ""}},
+		{"unicode strings", []string{"Hello", "世界", "🌍"}},
+		{"long strings", []string{string(make([]byte, 100)), "short"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val := StringArrayValue(tt.input)
+
+			if val.Type != TypeStringArray {
+				t.Errorf("Expected type TypeStringArray, got %v", val.Type)
+			}
+
+			decoded, err := val.AsStringArray()
+			if err != nil {
+				t.Fatalf("AsStringArray failed: %v", err)
+			}
+
+			if len(decoded) != len(tt.input) {
+				t.Fatalf("Expected %d elements, got %d", len(tt.input), len(decoded))
+			}
+
+			for i, s := range tt.input {
+				if decoded[i] != s {
+					t.Errorf("Element %d: expected %q, got %q", i, s, decoded[i])
+				}
+			}
+		})
+	}
+}
+
+// TestIntArrayValue tests int64 array creation and decoding
+func TestIntArrayValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []int64
+	}{
+		{"empty array", []int64{}},
+		{"single element", []int64{42}},
+		{"multiple elements", []int64{1, 2, 3, 4, 5}},
+		{"negative numbers", []int64{-100, 0, 100}},
+		{"extreme values", []int64{math.MinInt64, 0, math.MaxInt64}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val := IntArrayValue(tt.input)
+
+			if val.Type != TypeIntArray {
+				t.Errorf("Expected type TypeIntArray, got %v", val.Type)
+			}
+
+			decoded, err := val.AsIntArray()
+			if err != nil {
+				t.Fatalf("AsIntArray failed: %v", err)
+			}
+
+			if len(decoded) != len(tt.input) {
+				t.Fatalf("Expected %d elements, got %d", len(tt.input), len(decoded))
+			}
+
+			for i, v := range tt.input {
+				if decoded[i] != v {
+					t.Errorf("Element %d: expected %d, got %d", i, v, decoded[i])
+				}
+			}
+		})
+	}
+}
+
+// TestFloatArrayValue tests float64 array creation and decoding
+func TestFloatArrayValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []float64
+	}{
+		{"empty array", []float64{}},
+		{"single element", []float64{3.14}},
+		{"multiple elements", []float64{1.1, 2.2, 3.3}},
+		{"special values", []float64{0, -0, math.Inf(1), math.Inf(-1)}},
+		{"small values", []float64{1e-10, 1e-20, 1e-100}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val := FloatArrayValue(tt.input)
+
+			if val.Type != TypeFloatArray {
+				t.Errorf("Expected type TypeFloatArray, got %v", val.Type)
+			}
+
+			decoded, err := val.AsFloatArray()
+			if err != nil {
+				t.Fatalf("AsFloatArray failed: %v", err)
+			}
+
+			if len(decoded) != len(tt.input) {
+				t.Fatalf("Expected %d elements, got %d", len(tt.input), len(decoded))
+			}
+
+			for i, v := range tt.input {
+				if decoded[i] != v && !(math.IsNaN(v) && math.IsNaN(decoded[i])) {
+					t.Errorf("Element %d: expected %v, got %v", i, v, decoded[i])
+				}
+			}
+		})
+	}
+}
+
+// TestBoolArrayValue tests bool array creation and decoding
+func TestBoolArrayValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []bool
+	}{
+		{"empty array", []bool{}},
+		{"single true", []bool{true}},
+		{"single false", []bool{false}},
+		{"mixed", []bool{true, false, true, true, false}},
+		{"all true", []bool{true, true, true}},
+		{"all false", []bool{false, false, false}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val := BoolArrayValue(tt.input)
+
+			if val.Type != TypeBoolArray {
+				t.Errorf("Expected type TypeBoolArray, got %v", val.Type)
+			}
+
+			decoded, err := val.AsBoolArray()
+			if err != nil {
+				t.Fatalf("AsBoolArray failed: %v", err)
+			}
+
+			if len(decoded) != len(tt.input) {
+				t.Fatalf("Expected %d elements, got %d", len(tt.input), len(decoded))
+			}
+
+			for i, v := range tt.input {
+				if decoded[i] != v {
+					t.Errorf("Element %d: expected %v, got %v", i, v, decoded[i])
+				}
+			}
+		})
+	}
+}
+
+// TestArrayContains tests the ArrayContains method
+func TestArrayContains(t *testing.T) {
+	t.Run("string array", func(t *testing.T) {
+		arr := StringArrayValue([]string{"apple", "banana", "cherry"})
+
+		contains, err := arr.ArrayContains(StringValue("banana"))
+		if err != nil {
+			t.Fatalf("ArrayContains failed: %v", err)
+		}
+		if !contains {
+			t.Error("Expected to find 'banana'")
+		}
+
+		contains, err = arr.ArrayContains(StringValue("grape"))
+		if err != nil {
+			t.Fatalf("ArrayContains failed: %v", err)
+		}
+		if contains {
+			t.Error("Should not find 'grape'")
+		}
+	})
+
+	t.Run("int array", func(t *testing.T) {
+		arr := IntArrayValue([]int64{10, 20, 30})
+
+		contains, err := arr.ArrayContains(IntValue(20))
+		if err != nil {
+			t.Fatalf("ArrayContains failed: %v", err)
+		}
+		if !contains {
+			t.Error("Expected to find 20")
+		}
+
+		contains, err = arr.ArrayContains(IntValue(25))
+		if err != nil {
+			t.Fatalf("ArrayContains failed: %v", err)
+		}
+		if contains {
+			t.Error("Should not find 25")
+		}
+	})
+
+	t.Run("float array", func(t *testing.T) {
+		arr := FloatArrayValue([]float64{1.1, 2.2, 3.3})
+
+		contains, err := arr.ArrayContains(FloatValue(2.2))
+		if err != nil {
+			t.Fatalf("ArrayContains failed: %v", err)
+		}
+		if !contains {
+			t.Error("Expected to find 2.2")
+		}
+	})
+
+	t.Run("bool array", func(t *testing.T) {
+		arr := BoolArrayValue([]bool{false, false})
+
+		contains, err := arr.ArrayContains(BoolValue(true))
+		if err != nil {
+			t.Fatalf("ArrayContains failed: %v", err)
+		}
+		if contains {
+			t.Error("Should not find true")
+		}
+
+		contains, err = arr.ArrayContains(BoolValue(false))
+		if err != nil {
+			t.Fatalf("ArrayContains failed: %v", err)
+		}
+		if !contains {
+			t.Error("Expected to find false")
+		}
+	})
+
+	t.Run("type mismatch", func(t *testing.T) {
+		arr := StringArrayValue([]string{"a", "b"})
+
+		// Try to check with wrong element type
+		_, err := arr.ArrayContains(IntValue(1))
+		if err == nil {
+			t.Error("Expected error for type mismatch")
+		}
+	})
+
+	t.Run("non-array type", func(t *testing.T) {
+		val := StringValue("not an array")
+
+		_, err := val.ArrayContains(StringValue("a"))
+		if err == nil {
+			t.Error("Expected error for non-array type")
+		}
+	})
+}
+
+// TestArrayLen tests the ArrayLen method
+func TestArrayLen(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    Value
+		expected int
+	}{
+		{"empty string array", StringArrayValue([]string{}), 0},
+		{"string array with 3", StringArrayValue([]string{"a", "b", "c"}), 3},
+		{"int array with 5", IntArrayValue([]int64{1, 2, 3, 4, 5}), 5},
+		{"float array with 2", FloatArrayValue([]float64{1.1, 2.2}), 2},
+		{"bool array with 4", BoolArrayValue([]bool{true, false, true, false}), 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			length, err := tt.value.ArrayLen()
+			if err != nil {
+				t.Fatalf("ArrayLen failed: %v", err)
+			}
+			if length != tt.expected {
+				t.Errorf("Expected length %d, got %d", tt.expected, length)
+			}
+		})
+	}
+
+	// Test non-array type
+	t.Run("non-array type", func(t *testing.T) {
+		val := StringValue("not an array")
+		_, err := val.ArrayLen()
+		if err == nil {
+			t.Error("Expected error for non-array type")
+		}
+	})
+}
+
+// TestArrayTypeMismatch tests decoding arrays with wrong type
+func TestArrayTypeMismatch(t *testing.T) {
+	stringArr := StringArrayValue([]string{"a", "b"})
+
+	_, err := stringArr.AsIntArray()
+	if err == nil {
+		t.Error("Expected error when decoding string array as int array")
+	}
+
+	_, err = stringArr.AsFloatArray()
+	if err == nil {
+		t.Error("Expected error when decoding string array as float array")
+	}
+
+	_, err = stringArr.AsBoolArray()
+	if err == nil {
+		t.Error("Expected error when decoding string array as bool array")
+	}
+}
+
+// TestArrayInNodeProperties tests using arrays in node properties
+func TestArrayInNodeProperties(t *testing.T) {
+	node := &Node{
+		ID:     1,
+		Labels: []string{"User"},
+		Properties: map[string]Value{
+			"tags":       StringArrayValue([]string{"admin", "active", "verified"}),
+			"scores":     IntArrayValue([]int64{95, 87, 92}),
+			"weights":    FloatArrayValue([]float64{0.5, 0.3, 0.2}),
+			"permissions": BoolArrayValue([]bool{true, true, false, true}),
+		},
+	}
+
+	// Verify we can retrieve and decode arrays
+	tagsVal, ok := node.GetProperty("tags")
+	if !ok {
+		t.Fatal("Expected to find 'tags' property")
+	}
+	tags, err := tagsVal.AsStringArray()
+	if err != nil {
+		t.Fatalf("AsStringArray failed: %v", err)
+	}
+	if len(tags) != 3 || tags[0] != "admin" {
+		t.Errorf("Unexpected tags: %v", tags)
+	}
+
+	// Test ArrayContains on property
+	contains, err := tagsVal.ArrayContains(StringValue("active"))
+	if err != nil {
+		t.Fatalf("ArrayContains failed: %v", err)
+	}
+	if !contains {
+		t.Error("Expected tags to contain 'active'")
+	}
+}
+
+// TestArrayInEdgeProperties tests using arrays in edge properties
+func TestArrayInEdgeProperties(t *testing.T) {
+	edge := &Edge{
+		ID:         1,
+		FromNodeID: 10,
+		ToNodeID:   20,
+		Type:       "TAUGHT",
+		Properties: map[string]Value{
+			"concepts": StringArrayValue([]string{"calc-101", "calc-102", "linear-algebra"}),
+			"ratings":  IntArrayValue([]int64{5, 4, 5}),
+		},
+		Weight: 1.0,
+	}
+
+	conceptsVal, ok := edge.GetProperty("concepts")
+	if !ok {
+		t.Fatal("Expected to find 'concepts' property")
+	}
+
+	concepts, err := conceptsVal.AsStringArray()
+	if err != nil {
+		t.Fatalf("AsStringArray failed: %v", err)
+	}
+
+	if len(concepts) != 3 {
+		t.Errorf("Expected 3 concepts, got %d", len(concepts))
+	}
+
+	// Check array length
+	length, _ := conceptsVal.ArrayLen()
+	if length != 3 {
+		t.Errorf("Expected ArrayLen 3, got %d", length)
+	}
+}

@@ -17,8 +17,8 @@ func GenerateSchemaWithSearch(gs *storage.GraphStorage, searchIndex *search.Full
 		Fields: graphql.Fields{
 			"score": &graphql.Field{
 				Type: graphql.Float,
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					if result, ok := p.Source.(map[string]interface{}); ok {
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if result, ok := p.Source.(map[string]any); ok {
 						return result["score"], nil
 					}
 					return 0.0, nil
@@ -39,11 +39,14 @@ func GenerateSchemaWithSearch(gs *storage.GraphStorage, searchIndex *search.Full
 						},
 					},
 				}),
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					if result, ok := p.Source.(map[string]interface{}); ok {
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if result, ok := p.Source.(map[string]any); ok {
 						if node, ok := result["node"].(*storage.Node); ok {
-							propsJSON, _ := json.Marshal(node.Properties)
-							return map[string]interface{}{
+							propsJSON, err := json.Marshal(node.Properties)
+							if err != nil {
+								return nil, fmt.Errorf("failed to marshal node properties: %w", err)
+							}
+							return map[string]any{
 								"id":         fmt.Sprintf("%d", node.ID),
 								"labels":     node.Labels,
 								"properties": string(propsJSON),
@@ -67,16 +70,16 @@ func GenerateSchemaWithSearch(gs *storage.GraphStorage, searchIndex *search.Full
 						Type: graphql.NewNonNull(graphql.String),
 					},
 				},
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				Resolve: func(p graphql.ResolveParams) (any, error) {
 					query, _ := p.Args["query"].(string)
 					results, err := searchIndex.Search(query)
 					if err != nil {
 						return nil, err
 					}
 
-					gqlResults := make([]map[string]interface{}, len(results))
+					gqlResults := make([]map[string]any, len(results))
 					for i, result := range results {
-						gqlResults[i] = map[string]interface{}{
+						gqlResults[i] = map[string]any{
 							"score": result.Score,
 							"node":  result.Node,
 						}
@@ -91,16 +94,16 @@ func GenerateSchemaWithSearch(gs *storage.GraphStorage, searchIndex *search.Full
 						Type: graphql.NewNonNull(graphql.String),
 					},
 				},
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				Resolve: func(p graphql.ResolveParams) (any, error) {
 					phrase, _ := p.Args["phrase"].(string)
 					results, err := searchIndex.SearchPhrase(phrase)
 					if err != nil {
 						return nil, err
 					}
 
-					gqlResults := make([]map[string]interface{}, len(results))
+					gqlResults := make([]map[string]any, len(results))
 					for i, result := range results {
-						gqlResults[i] = map[string]interface{}{
+						gqlResults[i] = map[string]any{
 							"score": result.Score,
 							"node":  result.Node,
 						}
@@ -115,16 +118,16 @@ func GenerateSchemaWithSearch(gs *storage.GraphStorage, searchIndex *search.Full
 						Type: graphql.NewNonNull(graphql.String),
 					},
 				},
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				Resolve: func(p graphql.ResolveParams) (any, error) {
 					query, _ := p.Args["query"].(string)
 					results, err := searchIndex.SearchBoolean(query)
 					if err != nil {
 						return nil, err
 					}
 
-					gqlResults := make([]map[string]interface{}, len(results))
+					gqlResults := make([]map[string]any, len(results))
 					for i, result := range results {
-						gqlResults[i] = map[string]interface{}{
+						gqlResults[i] = map[string]any{
 							"score": result.Score,
 							"node":  result.Node,
 						}

@@ -1,6 +1,7 @@
 package licensing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,7 +9,7 @@ import (
 	"sync"
 )
 
-// Store handles license persistence
+// Store handles license persistence using a local file
 type Store struct {
 	dataDir  string
 	licenses map[string]*License // key: license ID
@@ -37,7 +38,7 @@ func NewStore(dataDir string) (*Store, error) {
 }
 
 // CreateLicense stores a new license
-func (s *Store) CreateLicense(license *License) error {
+func (s *Store) CreateLicense(_ context.Context, license *License) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -48,7 +49,7 @@ func (s *Store) CreateLicense(license *License) error {
 }
 
 // GetLicense retrieves a license by ID
-func (s *Store) GetLicense(id string) (*License, error) {
+func (s *Store) GetLicense(_ context.Context, id string) (*License, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -61,7 +62,7 @@ func (s *Store) GetLicense(id string) (*License, error) {
 }
 
 // GetLicenseByKey retrieves a license by its key
-func (s *Store) GetLicenseByKey(key string) (*License, error) {
+func (s *Store) GetLicenseByKey(_ context.Context, key string) (*License, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -74,7 +75,7 @@ func (s *Store) GetLicenseByKey(key string) (*License, error) {
 }
 
 // GetLicenseByCustomer retrieves a license by Stripe customer ID
-func (s *Store) GetLicenseByCustomer(customerID string) (*License, error) {
+func (s *Store) GetLicenseByCustomer(_ context.Context, customerID string) (*License, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -88,7 +89,7 @@ func (s *Store) GetLicenseByCustomer(customerID string) (*License, error) {
 }
 
 // UpdateLicense updates an existing license
-func (s *Store) UpdateLicense(license *License) error {
+func (s *Store) UpdateLicense(_ context.Context, license *License) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -101,7 +102,7 @@ func (s *Store) UpdateLicense(license *License) error {
 }
 
 // ListLicenses returns all licenses
-func (s *Store) ListLicenses() []*License {
+func (s *Store) ListLicenses(_ context.Context) ([]*License, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -110,7 +111,7 @@ func (s *Store) ListLicenses() []*License {
 		licenses = append(licenses, license)
 	}
 
-	return licenses
+	return licenses, nil
 }
 
 // save persists licenses to disk
@@ -149,7 +150,7 @@ func (s *Store) load() error {
 }
 
 // Ping checks if store is accessible (always succeeds for file-based store)
-func (s *Store) Ping() error {
+func (s *Store) Ping(_ context.Context) error {
 	return nil
 }
 

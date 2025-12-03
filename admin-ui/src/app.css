@@ -1,0 +1,266 @@
+@import 'tailwindcss';
+
+/* GraphDB Admin Dashboard - Custom Theme */
+@theme {
+	--color-bg: #0f172a;
+	--color-bg-secondary: #1e293b;
+	--color-bg-tertiary: #334155;
+	--color-text: #f1f5f9;
+	--color-text-secondary: #94a3b8;
+	--color-text-muted: #64748b;
+	--color-border: #334155;
+	--color-primary: #3b82f6;
+	--color-primary-hover: #2563eb;
+	--color-success: #22c55e;
+	--color-warning: #f59e0b;
+	--color-error: #ef4444;
+	--radius: 0.5rem;
+	--radius-lg: 0.75rem;
+}
+
+/* Light theme overrides */
+.light-theme {
+	--color-bg: #f8fafc;
+	--color-bg-secondary: #ffffff;
+	--color-bg-tertiary: #e2e8f0;
+	--color-text: #0f172a;
+	--color-text-secondary: #475569;
+	--color-text-muted: #94a3b8;
+	--color-border: #cbd5e1;
+}
+
+/* Base styles */
+html,
+body {
+	@apply h-full bg-[--color-bg] text-[--color-text] antialiased;
+	font-family:
+		'Inter',
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		Roboto,
+		sans-serif;
+	transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Links */
+a {
+	@apply text-[--color-primary] no-underline hover:underline;
+}
+
+/* Card component */
+.card {
+	@apply bg-[--color-bg-secondary] border border-[--color-border] rounded-[--radius-lg] p-6;
+	transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Button styles */
+.btn {
+	@apply inline-flex items-center justify-center gap-2 px-4 py-2 border-none rounded-[--radius] font-medium transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-primary {
+	@apply bg-[--color-primary] text-white hover:bg-[--color-primary-hover];
+}
+
+.btn-secondary {
+	@apply bg-[--color-bg-tertiary] text-[--color-text] border border-[--color-border] hover:bg-[--color-border];
+}
+
+.btn-danger {
+	@apply bg-[--color-error] text-white hover:bg-red-600;
+}
+
+.btn-ghost {
+	@apply bg-transparent text-[--color-text-secondary] hover:bg-[--color-bg-tertiary] hover:text-[--color-text];
+}
+
+.btn-sm {
+	@apply px-3 py-1 text-sm;
+}
+
+.btn-icon {
+	@apply p-2 aspect-square;
+}
+
+/* Input styles */
+.input {
+	@apply w-full px-3 py-2 bg-[--color-bg] border border-[--color-border] rounded-[--radius] text-[--color-text] transition-colors duration-150;
+	@apply focus:outline-none focus:border-[--color-primary] focus:ring-2 focus:ring-[--color-primary]/20;
+	@apply placeholder:text-[--color-text-muted];
+}
+
+.label {
+	@apply block mb-2 text-sm font-medium text-[--color-text-secondary];
+}
+
+/* Badge styles */
+.badge {
+	@apply inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full;
+}
+
+.badge-success {
+	@apply bg-green-500/20 text-[--color-success];
+}
+
+.badge-warning {
+	@apply bg-amber-500/20 text-[--color-warning];
+}
+
+.badge-error {
+	@apply bg-red-500/20 text-[--color-error];
+}
+
+.badge-info {
+	@apply bg-blue-500/20 text-[--color-primary];
+}
+
+/* Table styles */
+.table-container {
+	@apply overflow-x-auto;
+}
+
+.table {
+	@apply w-full border-collapse;
+}
+
+.table th,
+.table td {
+	@apply px-4 py-3 text-left border-b border-[--color-border];
+}
+
+.table th {
+	@apply font-semibold text-[--color-text-secondary] text-xs uppercase tracking-wider;
+}
+
+.table tr:hover {
+	@apply bg-[--color-bg-tertiary]/30;
+}
+
+/* Status indicators */
+.status-dot {
+	@apply inline-block w-2 h-2 rounded-full mr-2;
+}
+
+.status-dot.healthy,
+.status-dot.success {
+	@apply bg-[--color-success];
+}
+
+.status-dot.degraded,
+.status-dot.warning {
+	@apply bg-[--color-warning];
+}
+
+.status-dot.unhealthy,
+.status-dot.error {
+	@apply bg-[--color-error];
+}
+
+/* Loading spinner */
+.spinner {
+	@apply w-6 h-6 border-2 border-[--color-border] border-t-[--color-primary] rounded-full animate-spin;
+}
+
+/* Code/monospace */
+code,
+.mono {
+	font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+}
+
+pre {
+	@apply bg-[--color-bg] p-4 rounded-[--radius] overflow-x-auto;
+}
+
+/* Empty state */
+.empty-state {
+	@apply text-center py-12 px-4 text-[--color-text-muted];
+}
+
+.empty-state h3 {
+	@apply text-[--color-text-secondary] mb-2;
+}
+
+/* Alert messages */
+.alert {
+	@apply px-4 py-3 rounded-[--radius] mb-4;
+}
+
+.alert-error {
+	@apply bg-red-500/10 border border-red-500/30 text-[--color-error];
+}
+
+.alert-success {
+	@apply bg-green-500/10 border border-green-500/30 text-[--color-success];
+}
+
+.alert-warning {
+	@apply bg-amber-500/10 border border-amber-500/30 text-[--color-warning];
+}
+
+/* Page header */
+.page-header {
+	@apply mb-8;
+}
+
+.page-header h1 {
+	@apply text-2xl font-bold mb-1;
+}
+
+.subtitle {
+	@apply text-[--color-text-secondary];
+}
+
+/* Toggle switch */
+.toggle {
+	@apply relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer;
+	@apply bg-[--color-bg-tertiary];
+}
+
+.toggle.active {
+	@apply bg-[--color-primary];
+}
+
+.toggle-knob {
+	@apply inline-block h-4 w-4 transform rounded-full bg-white transition-transform;
+	@apply translate-x-1;
+}
+
+.toggle.active .toggle-knob {
+	@apply translate-x-6;
+}
+
+/* Kbd styling */
+kbd {
+	@apply px-1.5 py-0.5 bg-[--color-bg-tertiary] border border-[--color-border] rounded text-xs font-mono;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	@apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	@apply bg-[--color-border] rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	@apply bg-[--color-text-muted];
+}
+
+/* Mobile sidebar toggle */
+@media (max-width: 768px) {
+	.sidebar-open .sidebar {
+		transform: translateX(0);
+	}
+
+	.sidebar {
+		transform: translateX(-100%);
+		transition: transform 0.2s ease;
+	}
+}

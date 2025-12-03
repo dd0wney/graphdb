@@ -1,0 +1,20 @@
+# Cloudflare Tunnel Configuration Template
+# Edit this file after running: cloudflared tunnel create graphdb-staging
+
+tunnel: graphdb-staging
+credentials-file: /root/.cloudflared/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX.json
+
+ingress:
+  # GraphDB API
+  - hostname: graphdb-staging.yourdomain.com
+    service: http://127.0.0.1:8080
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: false
+
+  # Prometheus metrics (optional, for monitoring)
+  - hostname: graphdb-metrics-staging.yourdomain.com
+    service: http://127.0.0.1:9090
+
+  # Catch-all
+  - service: http_status:404

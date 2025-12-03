@@ -117,7 +117,7 @@ func TestGraphQLHTTPHandlerWithVariables(t *testing.T) {
 				labels
 			}
 		}`,
-		Variables: map[string]interface{}{
+		Variables: map[string]any{
 			"id": "1",
 		},
 	}

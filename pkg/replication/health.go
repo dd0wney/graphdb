@@ -29,7 +29,7 @@ type CheckResult struct {
 	Status    HealthStatus           `json:"status"`
 	Message   string                 `json:"message"`
 	CheckedAt time.Time              `json:"checked_at"`
-	Details   map[string]interface{} `json:"details,omitempty"`
+	Details   map[string]any `json:"details,omitempty"`
 }
 
 // HealthThresholds defines thresholds for health checks
@@ -99,7 +99,7 @@ func (hc *HealthCheck) CheckPrimaryHealth(state ReplicationState) HealthStatus {
 				Status:    HealthStatusDegraded,
 				Message:   fmt.Sprintf("LSN lag: %d entries", lagLSN),
 				CheckedAt: time.Now(),
-				Details: map[string]interface{}{
+				Details: map[string]any{
 					"lag_lsn": lagLSN,
 				},
 			}
@@ -151,7 +151,7 @@ func (hc *HealthCheck) CheckReplicaHealth(state ReplicationState, currentLSN uin
 			Status:    HealthStatusDegraded,
 			Message:   fmt.Sprintf("Behind primary by %d LSN entries", lagLSN),
 			CheckedAt: time.Now(),
-			Details: map[string]interface{}{
+			Details: map[string]any{
 				"lag_lsn": lagLSN,
 			},
 		}

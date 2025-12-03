@@ -2,81 +2,10 @@ package lsm
 
 import (
 	"fmt"
-	"os"
+	"log"
 	"path/filepath"
 	"sort"
 )
-
-// CompactionStrategy defines how SSTables are compacted
-type CompactionStrategy interface {
-	SelectCompaction(levels [][]*SSTable) *CompactionPlan
-}
-
-// CompactionPlan describes which SSTables to compact
-type CompactionPlan struct {
-	Level       int
-	SSTables    []*SSTable
-	OutputLevel int
-}
-
-// LeveledCompactionStrategy implements leveled compaction (like LevelDB/RocksDB)
-// - Level 0: Multiple overlapping SSTables (from MemTable flushes)
-// - Level 1+: Non-overlapping SSTables, size increases by 10x per level
-type LeveledCompactionStrategy struct {
-	Level0FileLimit int     // Max files in L0 before compaction
-	LevelSizeRatio  float64 // Size ratio between levels (default 10.0)
-	MaxLevels       int     // Maximum number of levels
-}
-
-// DefaultLeveledCompaction returns default leveled compaction config
-func DefaultLeveledCompaction() *LeveledCompactionStrategy {
-	return &LeveledCompactionStrategy{
-		Level0FileLimit: 4,
-		LevelSizeRatio:  10.0,
-		MaxLevels:       7,
-	}
-}
-
-// SelectCompaction determines which SSTables to compact
-func (lcs *LeveledCompactionStrategy) SelectCompaction(levels [][]*SSTable) *CompactionPlan {
-	// Check if L0 needs compaction
-	if len(levels) > 0 && len(levels[0]) >= lcs.Level0FileLimit {
-		return &CompactionPlan{
-			Level:       0,
-			SSTables:    levels[0],
-			OutputLevel: 1,
-		}
-	}
-
-	// Check higher levels based on size ratio
-	for level := 1; level < len(levels)-1; level++ {
-		levelSize := calculateLevelSize(levels[level])
-		nextLevelSize := calculateLevelSize(levels[level+1])
-
-		// If this level is too large relative to next level, compact it
-		if float64(levelSize) > lcs.LevelSizeRatio*float64(nextLevelSize) {
-			return &CompactionPlan{
-				Level:       level,
-				SSTables:    levels[level],
-				OutputLevel: level + 1,
-			}
-		}
-	}
-
-	return nil // No compaction needed
-}
-
-// calculateLevelSize returns total size of all SSTables in a level
-func calculateLevelSize(sstables []*SSTable) int64 {
-	var size int64
-	for _, sst := range sstables {
-		info, err := os.Stat(sst.path)
-		if err == nil {
-			size += info.Size()
-		}
-	}
-	return size
-}
 
 // Compactor performs SSTable compaction
 type Compactor struct {
@@ -92,8 +21,32 @@ func NewCompactor(dataDir string, strategy CompactionStrategy) *Compactor {
 	}
 }
 
-// Compact merges SSTables according to the plan
-func (c *Compactor) Compact(plan *CompactionPlan) ([]*SSTable, error) {
+// Compact merges SSTables according to the plan.
+// This is a critical background operation - panic recovery prevents corruption.
+// On error, any partially created output SSTables are cleaned up.
+func (c *Compactor) Compact(plan *CompactionPlan) (result []*SSTable, err error) {
+	// Track output SSTables for cleanup on error
+	var outputSSTables []*SSTable
+
+	// Panic recovery for critical compaction path
+	// A panic here could leave the LSM tree in an inconsistent state
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("PANIC in Compact (level=%d, tables=%d): %v",
+				plan.Level, len(plan.SSTables), r)
+			err = fmt.Errorf("panic during compaction: %v", r)
+			result = nil
+			// Clean up any partially created output SSTables
+			c.cleanupOutputSSTables(outputSSTables)
+		}
+	}()
+
+	// Cleanup function to remove partially created output SSTables on error
+	cleanup := func() {
+		c.cleanupOutputSSTables(outputSSTables)
+		outputSSTables = nil
+	}
+
 	if plan == nil || len(plan.SSTables) == 0 {
 		return nil, nil
 	}
@@ -102,9 +55,10 @@ func (c *Compactor) Compact(plan *CompactionPlan) ([]*SSTable, error) {
 	allEntries := make([]*Entry, 0)
 
 	for _, sst := range plan.SSTables {
-		entries, err := sst.Iterator()
-		if err != nil {
-			return nil, err
+		entries, iterErr := sst.Iterator()
+		if iterErr != nil {
+			cleanup()
+			return nil, fmt.Errorf("iterate SSTable %s: %w", sst.path, iterErr)
 		}
 		allEntries = append(allEntries, entries...)
 	}
@@ -141,7 +95,6 @@ func (c *Compactor) Compact(plan *CompactionPlan) ([]*SSTable, error) {
 
 	// Split into multiple SSTables if needed (max 64MB per SSTable)
 	const maxSSTableSize = 64 * 1024 * 1024
-	outputSSTables := make([]*SSTable, 0)
 
 	currentBatch := make([]*Entry, 0)
 	currentSize := 0
@@ -153,9 +106,10 @@ func (c *Compactor) Compact(plan *CompactionPlan) ([]*SSTable, error) {
 		if currentSize+entrySize > maxSSTableSize && len(currentBatch) > 0 {
 			// Flush current batch
 			path := SSTablePath(c.dataDir, plan.OutputLevel, sstableID)
-			sst, err := NewSSTable(path, currentBatch)
-			if err != nil {
-				return nil, err
+			sst, createErr := NewSSTable(path, currentBatch)
+			if createErr != nil {
+				cleanup()
+				return nil, fmt.Errorf("create SSTable %s: %w", path, createErr)
 			}
 			outputSSTables = append(outputSSTables, sst)
 
@@ -171,9 +125,10 @@ func (c *Compactor) Compact(plan *CompactionPlan) ([]*SSTable, error) {
 	// Flush remaining entries
 	if len(currentBatch) > 0 {
 		path := SSTablePath(c.dataDir, plan.OutputLevel, sstableID)
-		sst, err := NewSSTable(path, currentBatch)
-		if err != nil {
-			return nil, err
+		sst, createErr := NewSSTable(path, currentBatch)
+		if createErr != nil {
+			cleanup()
+			return nil, fmt.Errorf("create SSTable %s: %w", path, createErr)
 		}
 		outputSSTables = append(outputSSTables, sst)
 	}
@@ -181,135 +136,64 @@ func (c *Compactor) Compact(plan *CompactionPlan) ([]*SSTable, error) {
 	return outputSSTables, nil
 }
 
-// CleanupOldSSTables removes old SSTables after compaction
+// cleanupOutputSSTables removes output SSTables created during a failed compaction.
+// Logs errors but does not return them since we're already in an error path.
+func (c *Compactor) cleanupOutputSSTables(sstables []*SSTable) {
+	for _, sst := range sstables {
+		if sst == nil {
+			continue
+		}
+		if err := sst.Delete(); err != nil {
+			log.Printf("Warning: failed to cleanup output SSTable %s: %v", sst.path, err)
+		}
+	}
+}
+
+// CleanupOldSSTables removes old SSTables after compaction.
+// Continues on errors to avoid leaving the LSM tree in an inconsistent state.
+// Returns an error aggregating all deletion failures.
 func (c *Compactor) CleanupOldSSTables(sstables []*SSTable) error {
+	var errs []error
 	for _, sst := range sstables {
 		if err := sst.Delete(); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("delete %s: %w", sst.path, err))
 		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to cleanup %d of %d SSTables: %v", len(errs), len(sstables), errs[0])
 	}
 	return nil
 }
 
-// CompactionStats tracks compaction metrics
-type CompactionStats struct {
-	TotalCompactions int64
-	BytesRead        int64
-	BytesWritten     int64
-	KeysRemoved      int64 // Deleted or duplicate keys
-}
-
-// MergeIterator merges multiple sorted iterators
-type MergeIterator struct {
-	iterators []*SSTableIterator
-}
-
-// SSTableIterator iterates over an SSTable
-type SSTableIterator struct {
-	sst     *SSTable
-	entries []*Entry
-	index   int
-}
-
-// NewSSTableIterator creates an iterator for an SSTable
-func NewSSTableIterator(sst *SSTable) (*SSTableIterator, error) {
-	entries, err := sst.Iterator()
-	if err != nil {
-		return nil, err
-	}
-
-	return &SSTableIterator{
-		sst:     sst,
-		entries: entries,
-		index:   0,
-	}, nil
-}
-
-// Next advances the iterator
-func (it *SSTableIterator) Next() (*Entry, bool) {
-	if it.index >= len(it.entries) {
-		return nil, false
-	}
-
-	entry := it.entries[it.index]
-	it.index++
-	return entry, true
-}
-
-// Peek returns current entry without advancing
-func (it *SSTableIterator) Peek() (*Entry, bool) {
-	if it.index >= len(it.entries) {
-		return nil, false
-	}
-	return it.entries[it.index], true
-}
-
-// NewMergeIterator creates an iterator that merges multiple SSTables
-func NewMergeIterator(sstables []*SSTable) (*MergeIterator, error) {
-	iterators := make([]*SSTableIterator, 0, len(sstables))
-
-	for _, sst := range sstables {
-		it, err := NewSSTableIterator(sst)
-		if err != nil {
-			return nil, err
-		}
-		iterators = append(iterators, it)
-	}
-
-	return &MergeIterator{
-		iterators: iterators,
-	}, nil
-}
-
-// Next returns the next entry in sorted order across all iterators
-func (mi *MergeIterator) Next() (*Entry, bool) {
-	var minEntry *Entry
-	var minIdx int = -1
-
-	// Find minimum key across all iterators
-	for i, it := range mi.iterators {
-		entry, ok := it.Peek()
-		if !ok {
-			continue
-		}
-
-		if minEntry == nil || EntryCompare(entry, minEntry) < 0 {
-			minEntry = entry
-			minIdx = i
-		}
-	}
-
-	if minIdx == -1 {
-		return nil, false
-	}
-
-	// Advance the iterator with minimum key
-	mi.iterators[minIdx].Next()
-	return minEntry, true
-}
-
-// ListSSTables returns all SSTable files in a directory
+// ListSSTables returns all SSTable files in a directory.
+// Returns partial results even if some SSTables fail to open, along with an error
+// describing the failures. Callers should check both the result and error.
 func ListSSTables(dir string) ([][]*SSTable, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "*.sst"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("glob SSTable files: %w", err)
 	}
 
 	// Group by level
 	levelMap := make(map[int][]*SSTable)
+	var openedSSTables []*SSTable // Track for cleanup on error
+	var errs []error
 
 	for _, path := range files {
 		var level, id int
 		_, err := fmt.Sscanf(filepath.Base(path), "L%d-%d.sst", &level, &id)
 		if err != nil {
+			log.Printf("Warning: SSTable file has invalid name format: %s", path)
 			continue
 		}
 
 		sst, err := OpenSSTable(path)
 		if err != nil {
+			errs = append(errs, fmt.Errorf("open %s: %w", path, err))
 			continue
 		}
 
+		openedSSTables = append(openedSSTables, sst)
 		levelMap[level] = append(levelMap[level], sst)
 	}
 
@@ -324,6 +208,11 @@ func ListSSTables(dir string) ([][]*SSTable, error) {
 	levels := make([][]*SSTable, maxLevel+1)
 	for level := 0; level <= maxLevel; level++ {
 		levels[level] = levelMap[level]
+	}
+
+	// Return partial results with error if any files failed to open
+	if len(errs) > 0 {
+		return levels, fmt.Errorf("failed to open %d SSTable(s): %v", len(errs), errs[0])
 	}
 
 	return levels, nil

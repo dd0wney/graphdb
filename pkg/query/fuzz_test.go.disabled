@@ -1,0 +1,211 @@
+package query
+
+import (
+	"strings"
+	"testing"
+)
+
+// FuzzQueryParser tests the query parser with random inputs
+// This helps find crashes, panics, and edge cases
+//
+// Run with: go test -fuzz=FuzzQueryParser -fuzztime=30s
+func FuzzQueryParser(f *testing.F) {
+	// Seed corpus with valid queries
+	f.Add("MATCH (n) RETURN n")
+	f.Add("MATCH (n:Person) RETURN n.name")
+	f.Add("MATCH (a)-[r:KNOWS]->(b) RETURN a, r, b")
+	f.Add("MATCH (n) WHERE n.age > 25 RETURN n")
+	f.Add("CREATE (n:Person {name: 'Alice', age: 30})")
+	f.Add("DELETE n")
+	f.Add("SET n.name = 'Bob'")
+	f.Add("")
+	f.Add("   ")
+	f.Add("MATCH")
+	f.Add("()")
+	f.Add("[]")
+	f.Add("{}")
+
+	f.Fuzz(func(t *testing.T, query string) {
+		// Parser should NEVER panic, even on invalid input
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Parser panicked on input %q: %v", query, r)
+			}
+		}()
+
+		// Try to parse the query
+		tokens, err := Lex(query)
+		if err != nil {
+			// Errors are fine, panics are not
+			return
+		}
+
+		// Try to parse tokens
+		_, err = Parse(tokens)
+		// Errors are fine, panics are not
+		_ = err
+	})
+}
+
+// FuzzQueryLexer tests the lexer with random inputs
+func FuzzQueryLexer(f *testing.F) {
+	// Seed corpus with various inputs
+	f.Add("MATCH")
+	f.Add("(n:Person)")
+	f.Add("{name: 'test'}")
+	f.Add("[r:KNOWS]")
+	f.Add("n.name")
+	f.Add("'string literal'")
+	f.Add("\"string literal\"")
+	f.Add("123")
+	f.Add("123.456")
+	f.Add("true")
+	f.Add("false")
+	f.Add("null")
+	f.Add(">=")
+	f.Add("<=")
+	f.Add("!=")
+	f.Add("//comment")
+
+	f.Fuzz(func(t *testing.T, input string) {
+		// Lexer should never panic
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Lexer panicked on input %q: %v", input, r)
+			}
+		}()
+
+		tokens, err := Lex(input)
+		_ = tokens
+		_ = err
+	})
+}
+
+// FuzzQueryExecutor tests query execution with random valid-looking queries
+func FuzzQueryExecutor(f *testing.F) {
+	// Seed with queries that might execute
+	f.Add("MATCH (n) RETURN n LIMIT 1")
+	f.Add("MATCH (n) WHERE n.id = 1 RETURN n")
+	f.Add("MATCH (n) RETURN count(n)")
+
+	f.Fuzz(func(t *testing.T, query string) {
+		// Skip very long queries to avoid timeouts
+		if len(query) > 10000 {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Executor panicked on query %q: %v", query, r)
+			}
+		}()
+
+		// Create temporary storage for execution
+		storage := NewTestStorage(t)
+		defer storage.Close()
+
+		// Add some test data
+		storage.CreateNode([]string{"Person"}, map[string]interface{}{
+			"name": "Test",
+			"age":  30,
+		})
+
+		// Try to execute the query
+		_, err := Execute(storage, query)
+		// Errors are fine, panics are not
+		_ = err
+	})
+}
+
+// FuzzPropertyValues tests graph with random property values
+func FuzzPropertyValues(f *testing.F) {
+	// Seed with various value types
+	f.Add("string", "test value")
+	f.Add("int", "12345")
+	f.Add("float", "123.456")
+	f.Add("bool", "true")
+	f.Add("null", "null")
+
+	f.Fuzz(func(t *testing.T, key string, value string) {
+		// Skip empty keys
+		if key == "" {
+			return
+		}
+
+		// Skip very long keys or values
+		if len(key) > 1000 || len(value) > 10000 {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Property handling panicked on %q=%q: %v", key, value, r)
+			}
+		}()
+
+		storage := NewTestStorage(t)
+		defer storage.Close()
+
+		// Try to create node with this property
+		props := map[string]interface{}{
+			key: value,
+		}
+
+		_, err := storage.CreateNode([]string{"Test"}, props)
+		_ = err
+
+		// Try to query by this property
+		query := "MATCH (n) WHERE n." + key + " = '" +
+			strings.ReplaceAll(value, "'", "\\'") + "' RETURN n"
+		_, err = Execute(storage, query)
+		_ = err
+	})
+}
+
+// FuzzLabelNames tests graph with random label names
+func FuzzLabelNames(f *testing.F) {
+	// Seed with various label patterns
+	f.Add("Person")
+	f.Add("User123")
+	f.Add("test_label")
+	f.Add("UPPERCASE")
+	f.Add("MixedCase")
+	f.Add("label-with-dash")
+	f.Add("label.with.dots")
+
+	f.Fuzz(func(t *testing.T, label string) {
+		// Skip empty or very long labels
+		if label == "" || len(label) > 1000 {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Label handling panicked on %q: %v", label, r)
+			}
+		}()
+
+		storage := NewTestStorage(t)
+		defer storage.Close()
+
+		// Try to create node with this label
+		_, err := storage.CreateNode([]string{label}, nil)
+		_ = err
+
+		// Try to query by this label
+		query := "MATCH (n:" + label + ") RETURN n"
+		_, err = Execute(storage, query)
+		_ = err
+	})
+}
+
+// NewTestStorage creates a temporary in-memory storage for testing
+func NewTestStorage(t *testing.T) *GraphStorage {
+	// This is a helper function - implementation depends on your storage API
+	// Adjust to match your actual GraphStorage initialization
+	storage, err := NewGraphStorage()
+	if err != nil {
+		t.Skipf("Failed to create test storage: %v", err)
+	}
+	return storage
+}

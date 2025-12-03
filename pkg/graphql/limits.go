@@ -62,7 +62,7 @@ func GenerateSchemaWithLimits(gs *storage.GraphStorage, config *LimitConfig) (gr
 	whereInputType := graphql.NewScalar(graphql.ScalarConfig{
 		Name:        "WhereInput",
 		Description: "Filter conditions for queries",
-		Serialize: func(value interface{}) interface{} {
+		Serialize: func(value any) any {
 			return value
 		},
 	})
@@ -82,7 +82,7 @@ func GenerateSchemaWithLimits(gs *storage.GraphStorage, config *LimitConfig) (gr
 	queryFields := graphql.Fields{
 		"health": &graphql.Field{
 			Type: graphql.String,
-			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+			Resolve: func(p graphql.ResolveParams) (any, error) {
 				return "ok", nil
 			},
 		},
@@ -174,7 +174,7 @@ func GenerateSchemaWithLimits(gs *storage.GraphStorage, config *LimitConfig) (gr
 
 // createNodesResolverWithLimits creates a resolver with filtering and limit enforcement
 func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, config *LimitConfig) graphql.FieldResolveFn {
-	return func(p graphql.ResolveParams) (interface{}, error) {
+	return func(p graphql.ResolveParams) (any, error) {
 		// Get all nodes with this label
 		nodes, err := gs.FindNodesByLabel(label)
 		if err != nil {
@@ -225,7 +225,7 @@ func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, confi
 
 // createEdgesResolverWithLimits creates an edge resolver with filtering and limit enforcement
 func createEdgesResolverWithLimits(gs *storage.GraphStorage, config *LimitConfig) graphql.FieldResolveFn {
-	return func(p graphql.ResolveParams) (interface{}, error) {
+	return func(p graphql.ResolveParams) (any, error) {
 		// Get all edges
 		stats := gs.GetStatistics()
 		edges := make([]*storage.Edge, 0)

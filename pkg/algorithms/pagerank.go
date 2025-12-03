@@ -1,6 +1,7 @@
 package algorithms
 
 import (
+	"container/heap"
 	"math"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -142,37 +143,73 @@ func PageRank(graph *storage.GraphStorage, opts PageRankOptions) (*PageRankResul
 	}, nil
 }
 
-// findTopNodes finds the top N nodes by score
+// rankedNodeHeap implements a min-heap for RankedNode by score.
+// We use a min-heap to efficiently find top N elements:
+// - Keep at most N elements in the heap
+// - The minimum element is at the root
+// - When adding a new element, if heap is full and new > min, pop min and push new
+// Time complexity: O(n log k) where n is total nodes and k is desired top count
+type rankedNodeHeap []RankedNode
+
+func (h rankedNodeHeap) Len() int           { return len(h) }
+func (h rankedNodeHeap) Less(i, j int) bool { return h[i].Score < h[j].Score } // Min-heap
+func (h rankedNodeHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *rankedNodeHeap) Push(x any) {
+	*h = append(*h, x.(RankedNode))
+}
+
+func (h *rankedNodeHeap) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
+}
+
+// findTopNodes finds the top N nodes by score using a min-heap.
+// Time complexity: O(n log k) where n = len(scores) and k = n
+// Space complexity: O(k)
 func findTopNodes(graph *storage.GraphStorage, scores map[uint64]float64, n int) []RankedNode {
-	// Convert to slice for sorting
-	ranked := make([]RankedNode, 0, len(scores))
+	if n <= 0 {
+		return nil
+	}
+
+	// Use a min-heap to track top N elements
+	// By using a min-heap, we can efficiently discard elements smaller than the minimum
+	h := make(rankedNodeHeap, 0, n)
+	heap.Init(&h)
+
 	for nodeID, score := range scores {
 		node, err := graph.GetNode(nodeID)
-		if err == nil {
-			ranked = append(ranked, RankedNode{
-				NodeID: nodeID,
-				Score:  score,
-				Node:   node,
-			})
+		if err != nil {
+			continue
 		}
-	}
 
-	// Simple selection sort for top N
-	if n > len(ranked) {
-		n = len(ranked)
-	}
-
-	for i := 0; i < n; i++ {
-		maxIdx := i
-		for j := i + 1; j < len(ranked); j++ {
-			if ranked[j].Score > ranked[maxIdx].Score {
-				maxIdx = j
-			}
+		rn := RankedNode{
+			NodeID: nodeID,
+			Score:  score,
+			Node:   node,
 		}
-		ranked[i], ranked[maxIdx] = ranked[maxIdx], ranked[i]
+
+		if h.Len() < n {
+			// Heap not full yet, just add
+			heap.Push(&h, rn)
+		} else if score > h[0].Score {
+			// New element is larger than current minimum, replace
+			heap.Pop(&h)
+			heap.Push(&h, rn)
+		}
+		// Otherwise, this element is smaller than all top N, skip it
 	}
 
-	return ranked[:n]
+	// Extract elements from heap (will be in ascending order)
+	result := make([]RankedNode, h.Len())
+	for i := h.Len() - 1; i >= 0; i-- {
+		result[i] = heap.Pop(&h).(RankedNode)
+	}
+
+	return result
 }
 
 // GetTopNodesByPageRank returns top N nodes by PageRank score

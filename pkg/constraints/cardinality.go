@@ -2,8 +2,6 @@ package constraints
 
 import (
 	"fmt"
-
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // Direction specifies edge direction for cardinality constraints
@@ -48,7 +46,7 @@ func (cc *CardinalityConstraint) Name() string {
 }
 
 // Validate checks the cardinality constraint against all nodes with the target label
-func (cc *CardinalityConstraint) Validate(graph *storage.GraphStorage) ([]Violation, error) {
+func (cc *CardinalityConstraint) Validate(graph GraphReader) ([]Violation, error) {
 	violations := make([]Violation, 0)
 
 	// Get all nodes with the target label
@@ -73,7 +71,7 @@ func (cc *CardinalityConstraint) Validate(graph *storage.GraphStorage) ([]Violat
 				Constraint: cc.Name(),
 				Message: fmt.Sprintf("Node %d has %d %s edge(s) of type '%s', minimum is %d",
 					node.ID, edgeCount, cc.Direction, cc.EdgeType, cc.Min),
-				Details: map[string]interface{}{
+				Details: map[string]any{
 					"label":      cc.NodeLabel,
 					"edge_type":  cc.EdgeType,
 					"direction":  cc.Direction.String(),
@@ -93,7 +91,7 @@ func (cc *CardinalityConstraint) Validate(graph *storage.GraphStorage) ([]Violat
 				Constraint: cc.Name(),
 				Message: fmt.Sprintf("Node %d has %d %s edge(s) of type '%s', maximum is %d",
 					node.ID, edgeCount, cc.Direction, cc.EdgeType, cc.Max),
-				Details: map[string]interface{}{
+				Details: map[string]any{
 					"label":      cc.NodeLabel,
 					"edge_type":  cc.EdgeType,
 					"direction":  cc.Direction.String(),
@@ -108,7 +106,7 @@ func (cc *CardinalityConstraint) Validate(graph *storage.GraphStorage) ([]Violat
 }
 
 // countEdges counts edges for a node based on direction and type
-func (cc *CardinalityConstraint) countEdges(graph *storage.GraphStorage, nodeID uint64) (int, error) {
+func (cc *CardinalityConstraint) countEdges(graph GraphReader, nodeID uint64) (int, error) {
 	count := 0
 
 	// Count outgoing edges

@@ -32,7 +32,7 @@ func init() {
 // NodeRequest represents a request to create or update a node
 type NodeRequest struct {
 	Labels     []string               `json:"labels" validate:"required,min=1,max=10,dive,max=50"`
-	Properties map[string]interface{} `json:"properties" validate:"omitempty,max=100"`
+	Properties map[string]any `json:"properties" validate:"omitempty,max=100"`
 }
 
 // EdgeRequest represents a request to create or update an edge
@@ -41,7 +41,7 @@ type EdgeRequest struct {
 	ToNodeID   uint64                  `json:"toNodeId" validate:"required,min=1"`
 	Type       string                  `json:"type" validate:"required,min=1,max=50"`
 	Weight     *float64                `json:"weight" validate:"omitempty"`
-	Properties map[string]interface{}  `json:"properties" validate:"omitempty,max=100"`
+	Properties map[string]any  `json:"properties" validate:"omitempty,max=100"`
 }
 
 // ValidateNodeRequest validates a node creation/update request

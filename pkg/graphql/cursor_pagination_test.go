@@ -64,10 +64,10 @@ func TestCursorPaginationForward(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	connection := data["personsConnection"].(map[string]interface{})
-	edges := connection["edges"].([]interface{})
-	pageInfo := connection["pageInfo"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	connection := data["personsConnection"].(map[string]any)
+	edges := connection["edges"].([]any)
+	pageInfo := connection["pageInfo"].(map[string]any)
 
 	if len(edges) != 5 {
 		t.Errorf("Expected 5 edges with first: 5, got %d", len(edges))
@@ -82,7 +82,7 @@ func TestCursorPaginationForward(t *testing.T) {
 	}
 
 	// Verify cursor exists
-	firstEdge := edges[0].(map[string]interface{})
+	firstEdge := edges[0].(map[string]any)
 	if firstEdge["cursor"] == nil || firstEdge["cursor"] == "" {
 		t.Error("Expected cursor to be present")
 	}
@@ -135,9 +135,9 @@ func TestCursorPaginationAfter(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result1.Errors)
 	}
 
-	data1 := result1.Data.(map[string]interface{})
-	connection1 := data1["personsConnection"].(map[string]interface{})
-	pageInfo1 := connection1["pageInfo"].(map[string]interface{})
+	data1 := result1.Data.(map[string]any)
+	connection1 := data1["personsConnection"].(map[string]any)
+	pageInfo1 := connection1["pageInfo"].(map[string]any)
 	endCursor := pageInfo1["endCursor"].(string)
 
 	// Now use after with the endCursor to get next items
@@ -166,10 +166,10 @@ func TestCursorPaginationAfter(t *testing.T) {
 		t.Fatalf("GraphQL query with after failed: %v", result2.Errors)
 	}
 
-	data2 := result2.Data.(map[string]interface{})
-	connection2 := data2["personsConnection"].(map[string]interface{})
-	edges2 := connection2["edges"].([]interface{})
-	pageInfo2 := connection2["pageInfo"].(map[string]interface{})
+	data2 := result2.Data.(map[string]any)
+	connection2 := data2["personsConnection"].(map[string]any)
+	edges2 := connection2["edges"].([]any)
+	pageInfo2 := connection2["pageInfo"].(map[string]any)
 
 	if len(edges2) != 3 {
 		t.Errorf("Expected 3 edges after cursor, got %d", len(edges2))
@@ -238,10 +238,10 @@ func TestCursorPaginationBackward(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	connection := data["personsConnection"].(map[string]interface{})
-	edges := connection["edges"].([]interface{})
-	pageInfo := connection["pageInfo"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	connection := data["personsConnection"].(map[string]any)
+	edges := connection["edges"].([]any)
+	pageInfo := connection["pageInfo"].(map[string]any)
 
 	if len(edges) != 5 {
 		t.Errorf("Expected 5 edges with last: 5, got %d", len(edges))
@@ -344,10 +344,10 @@ func TestCursorPaginationEdgeCases(t *testing.T) {
 				t.Fatalf("GraphQL query failed: %v", result.Errors)
 			}
 
-			data := result.Data.(map[string]interface{})
-			connection := data["personsConnection"].(map[string]interface{})
-			edges := connection["edges"].([]interface{})
-			pageInfo := connection["pageInfo"].(map[string]interface{})
+			data := result.Data.(map[string]any)
+			connection := data["personsConnection"].(map[string]any)
+			edges := connection["edges"].([]any)
+			pageInfo := connection["pageInfo"].(map[string]any)
 
 			if len(edges) != tt.expectedEdgeCount {
 				t.Errorf("Expected %d edges, got %d", tt.expectedEdgeCount, len(edges))
@@ -427,10 +427,10 @@ func TestEdgeCursorPagination(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	connection := data["edgesConnection"].(map[string]interface{})
-	edges := connection["edges"].([]interface{})
-	pageInfo := connection["pageInfo"].(map[string]interface{})
+	data := result.Data.(map[string]any)
+	connection := data["edgesConnection"].(map[string]any)
+	edges := connection["edges"].([]any)
+	pageInfo := connection["pageInfo"].(map[string]any)
 
 	if len(edges) != 5 {
 		t.Errorf("Expected 5 edges with first: 5, got %d", len(edges))

@@ -1,0 +1,15 @@
+[Unit]
+Description=GraphDB First Boot Configuration
+After=network-online.target docker.service
+Wants=network-online.target
+Before=graphdb.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/graphdb-first-boot.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

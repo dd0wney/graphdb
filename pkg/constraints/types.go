@@ -4,6 +4,23 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
+// GraphReader defines the read-only operations needed for constraint validation.
+// This interface enables dependency injection and makes constraints testable
+// without requiring a full GraphStorage implementation.
+type GraphReader interface {
+	// Node operations
+	GetNode(nodeID uint64) (*storage.Node, error)
+	GetAllNodes() []*storage.Node
+	FindNodesByLabel(label string) ([]*storage.Node, error)
+	GetAllLabels() []string
+
+	// Edge operations
+	GetEdge(edgeID uint64) (*storage.Edge, error)
+	FindEdgesByType(edgeType string) ([]*storage.Edge, error)
+	GetOutgoingEdges(nodeID uint64) ([]*storage.Edge, error)
+	GetIncomingEdges(nodeID uint64) ([]*storage.Edge, error)
+}
+
 // Severity indicates the importance of a violation
 type Severity int
 
@@ -36,6 +53,7 @@ const (
 	CardinalityViolation
 	ForbiddenEdge
 	InvalidStructure
+	UniquenessViolation
 )
 
 func (vt ViolationType) String() string {
@@ -52,6 +70,8 @@ func (vt ViolationType) String() string {
 		return "ForbiddenEdge"
 	case InvalidStructure:
 		return "InvalidStructure"
+	case UniquenessViolation:
+		return "UniquenessViolation"
 	default:
 		return "Unknown"
 	}
@@ -65,14 +85,16 @@ type Violation struct {
 	EdgeID     *uint64
 	Constraint string
 	Message    string
-	Details    map[string]interface{}
+	Details    map[string]any
 }
 
-// Constraint is the interface that all constraint types must implement
+// Constraint is the interface that all constraint types must implement.
+// It uses the GraphReader interface for dependency injection, enabling
+// easier testing and looser coupling to the storage implementation.
 type Constraint interface {
 	// Validate checks the constraint against the graph
 	// Returns a list of violations (empty if valid)
-	Validate(graph *storage.GraphStorage) ([]Violation, error)
+	Validate(graph GraphReader) ([]Violation, error)
 
 	// Name returns a human-readable name for the constraint
 	Name() string

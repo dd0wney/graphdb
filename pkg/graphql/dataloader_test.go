@@ -16,12 +16,12 @@ func TestDataLoaderBasicBatching(t *testing.T) {
 	var mu sync.Mutex
 
 	// Batch function that tracks how many times it's called
-	batchFn := func(ctx context.Context, keys []string) ([]interface{}, []error) {
+	batchFn := func(ctx context.Context, keys []string) ([]any, []error) {
 		mu.Lock()
 		callCount++
 		mu.Unlock()
 
-		results := make([]interface{}, len(keys))
+		results := make([]any, len(keys))
 		errors := make([]error, len(keys))
 		for i, key := range keys {
 			results[i] = fmt.Sprintf("value-%s", key)
@@ -68,11 +68,11 @@ func TestDataLoaderCaching(t *testing.T) {
 	loadCount := make(map[string]int)
 	var mu sync.Mutex
 
-	batchFn := func(ctx context.Context, keys []string) ([]interface{}, []error) {
+	batchFn := func(ctx context.Context, keys []string) ([]any, []error) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		results := make([]interface{}, len(keys))
+		results := make([]any, len(keys))
 		errors := make([]error, len(keys))
 		for i, key := range keys {
 			loadCount[key]++
@@ -109,8 +109,8 @@ func TestDataLoaderCaching(t *testing.T) {
 
 // TestDataLoaderErrorHandling tests that errors are properly propagated
 func TestDataLoaderErrorHandling(t *testing.T) {
-	batchFn := func(ctx context.Context, keys []string) ([]interface{}, []error) {
-		results := make([]interface{}, len(keys))
+	batchFn := func(ctx context.Context, keys []string) ([]any, []error) {
+		results := make([]any, len(keys))
 		errors := make([]error, len(keys))
 		for i, key := range keys {
 			if key == "error-key" {
@@ -153,12 +153,12 @@ func TestDataLoaderCacheClear(t *testing.T) {
 	loadCount := 0
 	var mu sync.Mutex
 
-	batchFn := func(ctx context.Context, keys []string) ([]interface{}, []error) {
+	batchFn := func(ctx context.Context, keys []string) ([]any, []error) {
 		mu.Lock()
 		loadCount++
 		mu.Unlock()
 
-		results := make([]interface{}, len(keys))
+		results := make([]any, len(keys))
 		errors := make([]error, len(keys))
 		for i, key := range keys {
 			results[i] = fmt.Sprintf("value-%d-%s", loadCount, key)
@@ -319,12 +319,12 @@ func TestDataLoaderBatchSizeLimit(t *testing.T) {
 	batchSizes := []int{}
 	var mu sync.Mutex
 
-	batchFn := func(ctx context.Context, keys []string) ([]interface{}, []error) {
+	batchFn := func(ctx context.Context, keys []string) ([]any, []error) {
 		mu.Lock()
 		batchSizes = append(batchSizes, len(keys))
 		mu.Unlock()
 
-		results := make([]interface{}, len(keys))
+		results := make([]any, len(keys))
 		errors := make([]error, len(keys))
 		for i, key := range keys {
 			results[i] = fmt.Sprintf("value-%s", key)
@@ -364,12 +364,12 @@ func TestDataLoaderPrime(t *testing.T) {
 	callCount := 0
 	var mu sync.Mutex
 
-	batchFn := func(ctx context.Context, keys []string) ([]interface{}, []error) {
+	batchFn := func(ctx context.Context, keys []string) ([]any, []error) {
 		mu.Lock()
 		callCount++
 		mu.Unlock()
 
-		results := make([]interface{}, len(keys))
+		results := make([]any, len(keys))
 		errors := make([]error, len(keys))
 		for i, key := range keys {
 			results[i] = fmt.Sprintf("loaded-%s", key)

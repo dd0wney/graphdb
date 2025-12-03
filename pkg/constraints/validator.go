@@ -2,8 +2,6 @@ package constraints
 
 import (
 	"time"
-
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // ValidationResult contains the results of validating a graph against constraints
@@ -58,7 +56,7 @@ func (v *Validator) AddConstraints(constraints []Constraint) {
 }
 
 // Validate runs all constraints against the graph and returns the results
-func (v *Validator) Validate(graph *storage.GraphStorage) (*ValidationResult, error) {
+func (v *Validator) Validate(graph GraphReader) (*ValidationResult, error) {
 	result := &ValidationResult{
 		Valid:      true,
 		Violations: make([]Violation, 0),

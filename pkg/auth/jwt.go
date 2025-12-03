@@ -55,17 +55,18 @@ type JWTManager struct {
 	refreshTokenDuration  time.Duration
 }
 
-// NewJWTManager creates a new JWT manager
-func NewJWTManager(secret string, tokenDuration, refreshTokenDuration time.Duration) *JWTManager {
+// NewJWTManager creates a new JWT manager.
+// Returns an error if the secret is shorter than 32 characters (security requirement).
+func NewJWTManager(secret string, tokenDuration, refreshTokenDuration time.Duration) (*JWTManager, error) {
 	if len(secret) < 32 {
-		panic("JWT secret must be at least 32 characters long for security")
+		return nil, ErrShortSecret
 	}
 
 	return &JWTManager{
 		secretKey:            []byte(secret),
 		tokenDuration:        tokenDuration,
 		refreshTokenDuration: refreshTokenDuration,
-	}
+	}, nil
 }
 
 // GenerateToken generates a new JWT token
@@ -117,7 +118,7 @@ func (m *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
 	}
 
 	// Parse token
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		// Verify signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -217,7 +218,7 @@ func (m *JWTManager) ValidateRefreshToken(tokenString string) (string, error) {
 	}
 
 	// Parse token
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}

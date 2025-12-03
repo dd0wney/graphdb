@@ -2,31 +2,10 @@ package wal
 
 import (
 	"bufio"
-	"encoding/binary"
 	"fmt"
-	"hash/crc32"
-	"io"
 	"os"
 	"path/filepath"
-	"sync"
-	"time"
-
-	"github.com/golang/snappy"
 )
-
-// CompressedWAL is a Write-Ahead Log with snappy compression
-type CompressedWAL struct {
-	file       *os.File
-	writer     *bufio.Writer
-	currentLSN uint64
-	dataDir    string
-	mu         sync.Mutex
-
-	// Statistics
-	totalWrites       uint64
-	bytesUncompressed uint64
-	bytesCompressed   uint64
-}
 
 // NewCompressedWAL creates a new compressed Write-Ahead Log
 func NewCompressedWAL(dataDir string) (*CompressedWAL, error) {
@@ -50,151 +29,11 @@ func NewCompressedWAL(dataDir string) (*CompressedWAL, error) {
 
 	// Read existing entries to set currentLSN
 	if err := wal.recoverLSN(); err != nil {
+		file.Close()
 		return nil, fmt.Errorf("failed to recover LSN: %w", err)
 	}
 
 	return wal, nil
-}
-
-// Append appends a new entry to the compressed WAL
-func (w *CompressedWAL) Append(opType OpType, data []byte) (uint64, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	w.currentLSN++
-	lsn := w.currentLSN
-
-	// Compress data
-	compressedData := snappy.Encode(nil, data)
-
-	entry := Entry{
-		LSN:       lsn,
-		OpType:    opType,
-		Data:      compressedData,
-		Checksum:  crc32.ChecksumIEEE(compressedData),
-		Timestamp: time.Now().Unix(),
-	}
-
-	// Track statistics
-	w.totalWrites++
-	w.bytesUncompressed += uint64(len(data))
-	w.bytesCompressed += uint64(len(compressedData))
-
-	return lsn, w.writeEntry(&entry)
-}
-
-// writeEntry writes an entry to disk (same format as regular WAL)
-func (w *CompressedWAL) writeEntry(entry *Entry) error {
-	// Format: [LSN:8][OpType:1][DataLen:4][Data:N][Checksum:4][Timestamp:8]
-
-	// LSN
-	if err := binary.Write(w.writer, binary.BigEndian, entry.LSN); err != nil {
-		return err
-	}
-
-	// OpType
-	if err := w.writer.WriteByte(byte(entry.OpType)); err != nil {
-		return err
-	}
-
-	// Data length
-	dataLen := uint32(len(entry.Data))
-	if err := binary.Write(w.writer, binary.BigEndian, dataLen); err != nil {
-		return err
-	}
-
-	// Data
-	if _, err := w.writer.Write(entry.Data); err != nil {
-		return err
-	}
-
-	// Checksum
-	if err := binary.Write(w.writer, binary.BigEndian, entry.Checksum); err != nil {
-		return err
-	}
-
-	// Timestamp
-	if err := binary.Write(w.writer, binary.BigEndian, entry.Timestamp); err != nil {
-		return err
-	}
-
-	return w.writer.Flush()
-}
-
-// ReadAll reads all entries from the WAL (decompressing data)
-func (w *CompressedWAL) ReadAll() ([]*Entry, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	// Open file for reading
-	file, err := os.Open(filepath.Join(w.dataDir, "wal_compressed.log"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	defer file.Close()
-
-	reader := bufio.NewReader(file)
-	entries := make([]*Entry, 0)
-
-	for {
-		entry := &Entry{}
-
-		// LSN
-		if err := binary.Read(reader, binary.BigEndian, &entry.LSN); err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-
-		// OpType
-		opTypeByte, err := reader.ReadByte()
-		if err != nil {
-			return nil, err
-		}
-		entry.OpType = OpType(opTypeByte)
-
-		// Data length
-		var dataLen uint32
-		if err := binary.Read(reader, binary.BigEndian, &dataLen); err != nil {
-			return nil, err
-		}
-
-		// Data (compressed)
-		compressedData := make([]byte, dataLen)
-		if _, err := io.ReadFull(reader, compressedData); err != nil {
-			return nil, err
-		}
-
-		// Decompress data
-		decompressedData, err := snappy.Decode(nil, compressedData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decompress WAL entry: %w", err)
-		}
-		entry.Data = decompressedData
-
-		// Checksum
-		if err := binary.Read(reader, binary.BigEndian, &entry.Checksum); err != nil {
-			return nil, err
-		}
-
-		// Verify checksum (on compressed data)
-		if crc32.ChecksumIEEE(compressedData) != entry.Checksum {
-			return nil, fmt.Errorf("checksum mismatch for entry %d", entry.LSN)
-		}
-
-		// Timestamp
-		if err := binary.Read(reader, binary.BigEndian, &entry.Timestamp); err != nil {
-			return nil, err
-		}
-
-		entries = append(entries, entry)
-	}
-
-	return entries, nil
 }
 
 // Flush flushes the WAL to disk
@@ -229,25 +68,44 @@ func (w *CompressedWAL) Truncate() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	w.writer.Flush()
-	w.file.Close()
-
 	walPath := filepath.Join(w.dataDir, "wal_compressed.log")
 
-	// Remove old file
-	if err := os.Remove(walPath); err != nil && !os.IsNotExist(err) {
-		return err
+	// Flush any buffered data before truncating
+	if err := w.writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush WAL before truncate: %w", err)
 	}
 
-	// Create new file
-	file, err := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	// Create the new file BEFORE closing the old one to ensure we have a valid handle
+	newFile, err := os.OpenFile(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create new WAL file: %w", err)
 	}
 
-	w.file = file
-	w.writer = bufio.NewWriter(file)
+	// Close current file
+	closeErr := w.file.Close()
+
+	// Rename new file to replace old file (atomic on POSIX)
+	if err := os.Rename(walPath+".new", walPath); err != nil {
+		// Failed to rename - close new file and return error
+		newFile.Close()
+		// Try to reopen old file to maintain consistent state
+		if oldFile, reopenErr := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644); reopenErr == nil {
+			w.file = oldFile
+			w.writer = bufio.NewWriter(oldFile)
+		}
+		return fmt.Errorf("failed to rename WAL file: %w (close error: %v)", err, closeErr)
+	}
+
+	// Update state with new file
+	w.file = newFile
+	w.writer = bufio.NewWriter(newFile)
 	w.currentLSN = 0
+
+	// Return close error if rename succeeded but close failed (non-fatal but worth logging)
+	if closeErr != nil {
+		// Log but don't fail - we successfully truncated
+		fmt.Printf("WARNING: failed to close old compressed WAL file during truncate: %v\n", closeErr)
+	}
 
 	return nil
 }
@@ -290,13 +148,4 @@ func (w *CompressedWAL) GetCurrentLSN() uint64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.currentLSN
-}
-
-// CompressedWALStats holds compression statistics
-type CompressedWALStats struct {
-	TotalWrites       uint64
-	BytesUncompressed uint64
-	BytesCompressed   uint64
-	CompressionRatio  float64 // e.g., 0.75 = 75% compression
-	SpaceSavings      float64 // MB saved
 }

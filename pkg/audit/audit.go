@@ -53,7 +53,7 @@ type Event struct {
 	ErrorMessage string                 `json:"error_message,omitempty"`
 	IPAddress    string                 `json:"ip_address,omitempty"`
 	UserAgent    string                 `json:"user_agent,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
 }
 
 // Filter represents filtering criteria for audit events
@@ -66,6 +66,16 @@ type Filter struct {
 	Status       Status
 	StartTime    *time.Time
 	EndTime      *time.Time
+}
+
+// Logger is the interface for audit logging implementations.
+// Both in-memory AuditLogger and PersistentAuditLogger implement this interface.
+type Logger interface {
+	// Log records an audit event
+	Log(event *Event) error
+
+	// GetEventCount returns the number of events logged
+	GetEventCount() int64
 }
 
 // AuditLogger manages audit log events with a circular buffer
@@ -186,10 +196,10 @@ func (l *AuditLogger) GetRecentEvents(n int) []*Event {
 }
 
 // GetEventCount returns the total number of events currently stored
-func (l *AuditLogger) GetEventCount() int {
+func (l *AuditLogger) GetEventCount() int64 {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	return l.count
+	return int64(l.count)
 }
 
 // Clear removes all events from the logger

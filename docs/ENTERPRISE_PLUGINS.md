@@ -277,30 +277,42 @@ PLUGIN_CDC_FORMAT=debezium
 
 ### For Developers (Building Plugins)
 
-Enterprise plugins are **closed source** and kept in a **private repository**:
+Enterprise plugins are **closed source** and kept in a **separate private repository**:
+
+```
+Repository Structure:
+├── graphdb/                    # Public (this repo) - MIT License
+│   ├── pkg/plugins/           # Plugin interface (public)
+│   └── pkg/licensing/         # License validation (public)
+│
+└── graphdb-enterprise/         # Private repo - Commercial License
+    ├── prometheus-metrics/    # Advanced metrics plugin
+    │   ├── plugin.go
+    │   ├── metrics.go
+    │   └── go.mod
+    ├── r2-backup/             # R2 backup plugin
+    │   ├── plugin.go
+    │   ├── r2_client.go
+    │   └── go.mod
+    ├── Makefile
+    └── README.md
+```
 
 ```bash
-# Private repo structure
-enterprise-plugins/
-├── r2-backup/
-│   ├── plugin.go           (implementation)
-│   ├── r2_client.go        (R2 integration)
-│   └── Makefile            (build script)
-├── cloudflare-vectorize/
-│   ├── plugin.go
-│   └── vectorize_client.go
-└── cdc-queues/
-    ├── plugin.go
-    └── queue_client.go
+# Clone enterprise repo (requires access)
+git clone git@github.com:dd0wney/graphdb-enterprise.git
 
 # Build all plugins
-make all
+cd graphdb-enterprise
+make build-all
 
 # Output:
-# build/r2-backup.so
-# build/cloudflare-vectorize.so
-# build/cdc-queues.so
+# plugins/prometheus-metrics.so
+# plugins/r2-backup.so
 ```
+
+Each plugin is a separate Go module that references the community `graphdb` repo
+via `replace` directive for local development.
 
 ### For Customers
 

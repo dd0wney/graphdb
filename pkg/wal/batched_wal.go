@@ -15,6 +15,7 @@ type BatchedWAL struct {
 	mu            sync.Mutex
 	stopCh        chan struct{}
 	flushCh       chan struct{}
+	wg            sync.WaitGroup
 	closeOnce     sync.Once
 }
 
@@ -42,6 +43,7 @@ func NewBatchedWAL(dataDir string, batchSize int, flushInterval time.Duration) (
 	}
 
 	// Start background flusher
+	bw.wg.Add(1)
 	go bw.backgroundFlusher()
 
 	return bw, nil
@@ -82,6 +84,8 @@ func (bw *BatchedWAL) Append(opType OpType, data []byte) (uint64, error) {
 
 // backgroundFlusher periodically flushes buffered entries
 func (bw *BatchedWAL) backgroundFlusher() {
+	defer bw.wg.Done()
+
 	ticker := time.NewTicker(bw.flushInterval)
 	defer ticker.Stop()
 
@@ -192,8 +196,8 @@ func (bw *BatchedWAL) Close() error {
 		// Signal background flusher to stop
 		close(bw.stopCh)
 
-		// Wait a bit for final flush
-		time.Sleep(100 * time.Millisecond)
+		// Wait for background flusher to complete (including final flush)
+		bw.wg.Wait()
 
 		// Close underlying WAL
 		closeErr = bw.wal.Close()

@@ -66,8 +66,8 @@ func TestDataLoaderIntegrationN1Problem(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	if len(persons) != 20 {
 		t.Errorf("Expected 20 persons, got %d", len(persons))
@@ -122,7 +122,7 @@ func TestDataLoaderWithNestedRelationships(t *testing.T) {
 
 	// Instrument the edge loader to count batch calls
 	originalLoader := loaders.OutgoingEdges
-	instrumentedBatchFn := func(ctx context.Context, keys []string) ([]interface{}, []error) {
+	instrumentedBatchFn := func(ctx context.Context, keys []string) ([]any, []error) {
 		atomic.AddInt32(&edgeCallCount, 1)
 		// Use reflection or direct call to original batch function
 		// For now, we'll just verify the loader exists

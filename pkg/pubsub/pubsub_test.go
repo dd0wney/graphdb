@@ -12,7 +12,7 @@ func TestBasicPubSub(t *testing.T) {
 	ps := NewPubSub()
 	defer ps.Shutdown()
 
-	received := make(chan interface{}, 1)
+	received := make(chan any, 1)
 	ctx := context.Background()
 
 	// Subscribe to a topic
@@ -50,11 +50,11 @@ func TestMultipleSubscribers(t *testing.T) {
 
 	ctx := context.Background()
 	numSubscribers := 5
-	received := make([]chan interface{}, numSubscribers)
+	received := make([]chan any, numSubscribers)
 
 	// Create multiple subscribers
 	for i := 0; i < numSubscribers; i++ {
-		received[i] = make(chan interface{}, 1)
+		received[i] = make(chan any, 1)
 		sub, err := ps.Subscribe(ctx, "broadcast-topic")
 		if err != nil {
 			t.Fatalf("Failed to subscribe %d: %v", i, err)
@@ -62,7 +62,7 @@ func TestMultipleSubscribers(t *testing.T) {
 		defer sub.Unsubscribe()
 
 		// Listen for messages
-		go func(ch chan interface{}, subscription *Subscription) {
+		go func(ch chan any, subscription *Subscription) {
 			msg := <-subscription.Channel()
 			ch <- msg
 		}(received[i], sub)
@@ -97,8 +97,8 @@ func TestTopicIsolation(t *testing.T) {
 	defer sub1.Unsubscribe()
 	defer sub2.Unsubscribe()
 
-	received1 := make(chan interface{}, 1)
-	received2 := make(chan interface{}, 1)
+	received1 := make(chan any, 1)
+	received2 := make(chan any, 1)
 
 	go func() {
 		select {
@@ -141,7 +141,7 @@ func TestUnsubscribe(t *testing.T) {
 	ctx := context.Background()
 	sub, _ := ps.Subscribe(ctx, "test-topic")
 
-	received := make(chan interface{}, 2)
+	received := make(chan any, 2)
 	go func() {
 		for msg := range sub.Channel() {
 			received <- msg
@@ -177,7 +177,7 @@ func TestContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	sub, _ := ps.Subscribe(ctx, "test-topic")
 
-	received := make(chan interface{}, 1)
+	received := make(chan any, 1)
 	done := make(chan bool, 1)
 
 	go func() {

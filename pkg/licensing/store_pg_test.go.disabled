@@ -1,0 +1,624 @@
+package licensing
+
+import (
+	"database/sql"
+	"testing"
+	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+)
+
+// TestPGStore_NewPGStore tests connection and migration
+func TestPGStore_NewPGStore(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	// Expect migration query (entire schema executed as one statement)
+	mock.ExpectExec("CREATE TABLE IF NOT EXISTS licenses").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	store := &PGStore{db: db}
+	err = store.migrate()
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_CreateLicense tests insert operations
+func TestPGStore_CreateLicense(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	expiresAt := time.Now().Add(365 * 24 * time.Hour)
+	license := &License{
+		ID:             "lic-123",
+		Key:            "CGDB-XXXX-YYYY-ZZZZ-AAAA",
+		Type:           LicenseTypeEnterprise,
+		Email:          "test@example.com",
+		CustomerID:     "cust-456",
+		SubscriptionID: "sub-789",
+		Status:         "active",
+		CreatedAt:      time.Now(),
+		ExpiresAt:      &expiresAt,
+		Metadata: map[string]string{
+			"plan": "enterprise",
+		},
+	}
+
+	mock.ExpectExec("INSERT INTO licenses").
+		WithArgs(
+			license.ID,
+			license.Key,
+			license.Type,
+			license.Email,
+			license.CustomerID,
+			license.SubscriptionID,
+			license.Status,
+			license.CreatedAt,
+			license.ExpiresAt,
+			sqlmock.AnyArg(), // JSONB metadata
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err = store.CreateLicense(license)
+	if err != nil {
+		t.Fatalf("CreateLicense failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_GetLicense tests retrieval by ID
+func TestPGStore_GetLicense(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	createdAt := time.Now()
+	expiresAt := time.Now().Add(365 * 24 * time.Hour)
+
+	rows := sqlmock.NewRows([]string{
+		"id", "key", "type", "email", "customer_id", "subscription_id",
+		"status", "created_at", "expires_at", "metadata",
+	}).AddRow(
+		"lic-123",
+		"CGDB-XXXX-YYYY-ZZZZ-AAAA",
+		LicenseTypeEnterprise,
+		"test@example.com",
+		"cust-456",
+		"sub-789",
+		"active",
+		createdAt,
+		expiresAt,
+		[]byte(`{"plan":"enterprise"}`),
+	)
+
+	mock.ExpectQuery("SELECT (.+) FROM licenses WHERE id = \\$1").
+		WithArgs("lic-123").
+		WillReturnRows(rows)
+
+	license, err := store.GetLicense("lic-123")
+	if err != nil {
+		t.Fatalf("GetLicense failed: %v", err)
+	}
+
+	if license == nil {
+		t.Fatal("Expected license, got nil")
+	}
+
+	if license.ID != "lic-123" {
+		t.Errorf("Expected ID lic-123, got %s", license.ID)
+	}
+
+	if license.Key != "CGDB-XXXX-YYYY-ZZZZ-AAAA" {
+		t.Errorf("Expected specific key, got %s", license.Key)
+	}
+
+	if license.Type != LicenseTypeEnterprise {
+		t.Errorf("Expected type enterprise, got %s", license.Type)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_GetLicenseByKey tests key lookup
+func TestPGStore_GetLicenseByKey(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	createdAt := time.Now()
+	expiresAt := time.Now().Add(365 * 24 * time.Hour)
+
+	rows := sqlmock.NewRows([]string{
+		"id", "key", "type", "email", "customer_id", "subscription_id",
+		"status", "created_at", "expires_at", "metadata",
+	}).AddRow(
+		"lic-123",
+		"CGDB-XXXX-YYYY-ZZZZ-AAAA",
+		LicenseTypeEnterprise,
+		"test@example.com",
+		"cust-456",
+		"sub-789",
+		"active",
+		createdAt,
+		expiresAt,
+		[]byte(`{"plan":"enterprise"}`),
+	)
+
+	mock.ExpectQuery("SELECT (.+) FROM licenses WHERE key = \\$1").
+		WithArgs("CGDB-XXXX-YYYY-ZZZZ-AAAA").
+		WillReturnRows(rows)
+
+	license, err := store.GetLicenseByKey("CGDB-XXXX-YYYY-ZZZZ-AAAA")
+	if err != nil {
+		t.Fatalf("GetLicenseByKey failed: %v", err)
+	}
+
+	if license == nil {
+		t.Fatal("Expected license, got nil")
+	}
+
+	if license.Key != "CGDB-XXXX-YYYY-ZZZZ-AAAA" {
+		t.Errorf("Expected specific key, got %s", license.Key)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_GetLicenseByCustomer tests customer lookup
+func TestPGStore_GetLicenseByCustomer(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	createdAt := time.Now()
+	expiresAt := time.Now().Add(365 * 24 * time.Hour)
+
+	rows := sqlmock.NewRows([]string{
+		"id", "key", "type", "email", "customer_id", "subscription_id",
+		"status", "created_at", "expires_at", "metadata",
+	}).AddRow(
+		"lic-123",
+		"CGDB-XXXX-YYYY-ZZZZ-AAAA",
+		LicenseTypeEnterprise,
+		"test@example.com",
+		"cust-456",
+		"sub-789",
+		"active",
+		createdAt,
+		expiresAt,
+		[]byte(`{"plan":"enterprise"}`),
+	)
+
+	mock.ExpectQuery("SELECT (.+) FROM licenses WHERE customer_id = \\$1").
+		WithArgs("cust-456").
+		WillReturnRows(rows)
+
+	license, err := store.GetLicenseByCustomer("cust-456")
+	if err != nil {
+		t.Fatalf("GetLicenseByCustomer failed: %v", err)
+	}
+
+	if license == nil {
+		t.Fatal("Expected license, got nil")
+	}
+
+	if license.CustomerID != "cust-456" {
+		t.Errorf("Expected customer ID cust-456, got %s", license.CustomerID)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_UpdateLicense tests update operations
+func TestPGStore_UpdateLicense(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	expiresAt := time.Now().Add(365 * 24 * time.Hour)
+	license := &License{
+		ID:             "lic-123",
+		Key:            "CGDB-XXXX-YYYY-ZZZZ-AAAA",
+		Type:           LicenseTypeEnterprise,
+		Email:          "test@example.com",
+		CustomerID:     "cust-456",
+		SubscriptionID: "sub-789",
+		Status:         "suspended", // Changed status
+		CreatedAt:      time.Now(),
+		ExpiresAt:      &expiresAt,
+		Metadata: map[string]string{
+			"plan": "enterprise",
+		},
+	}
+
+	mock.ExpectExec("UPDATE licenses SET").
+		WithArgs(
+			license.ID,
+			license.Key,
+			license.Type,
+			license.Email,
+			license.CustomerID,
+			license.SubscriptionID,
+			license.Status,
+			license.ExpiresAt,
+			sqlmock.AnyArg(), // JSONB metadata
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = store.UpdateLicense(license)
+	if err != nil {
+		t.Fatalf("UpdateLicense failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_UpdateLicense_NotFound tests update with no matching rows
+func TestPGStore_UpdateLicense_NotFound(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	expiresAt := time.Now().Add(365 * 24 * time.Hour)
+	license := &License{
+		ID:             "lic-nonexistent",
+		Key:            "CGDB-XXXX-YYYY-ZZZZ-AAAA",
+		Type:           LicenseTypeEnterprise,
+		Email:          "test@example.com",
+		CustomerID:     "cust-456",
+		SubscriptionID: "sub-789",
+		Status:         "active",
+		CreatedAt:      time.Now(),
+		ExpiresAt:      &expiresAt,
+	}
+
+	mock.ExpectExec("UPDATE licenses SET").
+		WithArgs(
+			license.ID,
+			license.Key,
+			license.Type,
+			license.Email,
+			license.CustomerID,
+			license.SubscriptionID,
+			license.Status,
+			license.ExpiresAt,
+			sqlmock.AnyArg(),
+		).
+		WillReturnResult(sqlmock.NewResult(0, 0)) // 0 rows affected
+
+	err = store.UpdateLicense(license)
+	if err == nil {
+		t.Error("Expected error for non-existent license, got nil")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_ListLicenses tests list operations
+func TestPGStore_ListLicenses(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	createdAt := time.Now()
+	expiresAt := time.Now().Add(365 * 24 * time.Hour)
+
+	rows := sqlmock.NewRows([]string{
+		"id", "key", "type", "email", "customer_id", "subscription_id",
+		"status", "created_at", "expires_at", "metadata",
+	}).
+		AddRow(
+			"lic-123",
+			"CGDB-XXXX-YYYY-ZZZZ-AAAA",
+			LicenseTypeEnterprise,
+			"test1@example.com",
+			"cust-456",
+			"sub-789",
+			"active",
+			createdAt,
+			expiresAt,
+			[]byte(`{"plan":"enterprise"}`),
+		).
+		AddRow(
+			"lic-124",
+			"CGDB-AAAA-BBBB-CCCC-DDDD",
+			LicenseTypeProfessional,
+			"test2@example.com",
+			"cust-457",
+			"sub-790",
+			"active",
+			createdAt.Add(-24*time.Hour),
+			expiresAt,
+			[]byte(`{"plan":"community"}`),
+		)
+
+	mock.ExpectQuery("SELECT (.+) FROM licenses ORDER BY created_at DESC").
+		WillReturnRows(rows)
+
+	licenses := store.ListLicenses()
+
+	if len(licenses) != 2 {
+		t.Errorf("Expected 2 licenses, got %d", len(licenses))
+	}
+
+	// Verify first license
+	if licenses[0].ID != "lic-123" {
+		t.Errorf("Expected first license ID lic-123, got %s", licenses[0].ID)
+	}
+
+	// Verify second license
+	if licenses[1].ID != "lic-124" {
+		t.Errorf("Expected second license ID lic-124, got %s", licenses[1].ID)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_ListLicenses_Empty tests list with no results
+func TestPGStore_ListLicenses_Empty(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	rows := sqlmock.NewRows([]string{
+		"id", "key", "type", "email", "customer_id", "subscription_id",
+		"status", "created_at", "expires_at", "metadata",
+	})
+
+	mock.ExpectQuery("SELECT (.+) FROM licenses ORDER BY created_at DESC").
+		WillReturnRows(rows)
+
+	licenses := store.ListLicenses()
+
+	if len(licenses) != 0 {
+		t.Errorf("Expected 0 licenses, got %d", len(licenses))
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_ErrorHandling tests database error scenarios
+func TestPGStore_ErrorHandling(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	t.Run("GetLicense_NotFound", func(t *testing.T) {
+		mock.ExpectQuery("SELECT (.+) FROM licenses WHERE id = \\$1").
+			WithArgs("lic-nonexistent").
+			WillReturnError(sql.ErrNoRows)
+
+		license, err := store.GetLicense("lic-nonexistent")
+		if err == nil {
+			t.Error("Expected error for non-existent license, got nil")
+		}
+		if license != nil {
+			t.Error("Expected nil license for non-existent ID")
+		}
+	})
+
+	t.Run("GetLicenseByKey_NotFound", func(t *testing.T) {
+		mock.ExpectQuery("SELECT (.+) FROM licenses WHERE key = \\$1").
+			WithArgs("CGDB-INVALID").
+			WillReturnError(sql.ErrNoRows)
+
+		license, err := store.GetLicenseByKey("CGDB-INVALID")
+		if err == nil {
+			t.Error("Expected error for non-existent key, got nil")
+		}
+		if license != nil {
+			t.Error("Expected nil license for non-existent key")
+		}
+	})
+
+	t.Run("GetLicenseByCustomer_NotFound", func(t *testing.T) {
+		mock.ExpectQuery("SELECT (.+) FROM licenses WHERE customer_id = \\$1").
+			WithArgs("cust-nonexistent").
+			WillReturnError(sql.ErrNoRows)
+
+		license, err := store.GetLicenseByCustomer("cust-nonexistent")
+		if err == nil {
+			t.Error("Expected error for non-existent customer, got nil")
+		}
+		if license != nil {
+			t.Error("Expected nil license for non-existent customer")
+		}
+	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_Ping tests health check
+func TestPGStore_Ping(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	mock.ExpectPing()
+
+	err = store.Ping()
+	if err != nil {
+		t.Fatalf("Ping failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_Close tests cleanup
+func TestPGStore_Close(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+
+	store := &PGStore{db: db}
+
+	mock.ExpectClose()
+
+	err = store.Close()
+	if err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_MigrationIdempotence tests re-run migration safety
+func TestPGStore_MigrationIdempotence(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	// First migration (entire schema executed as one statement)
+	mock.ExpectExec("CREATE TABLE IF NOT EXISTS licenses").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err = store.migrate()
+	if err != nil {
+		t.Fatalf("First migration failed: %v", err)
+	}
+
+	// Second migration (idempotent - should run without error)
+	mock.ExpectExec("CREATE TABLE IF NOT EXISTS licenses").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err = store.migrate()
+	if err != nil {
+		t.Fatalf("Second migration failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+// TestPGStore_ConcurrentAccess tests thread safety
+func TestPGStore_ConcurrentAccess(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	store := &PGStore{db: db}
+
+	// Set up expectations for 50 concurrent queries
+	for i := 0; i < 50; i++ {
+		rows := sqlmock.NewRows([]string{
+			"id", "key", "type", "email", "customer_id", "subscription_id",
+			"status", "created_at", "expires_at", "metadata",
+		}).AddRow(
+			"lic-123",
+			"CGDB-XXXX-YYYY-ZZZZ-AAAA",
+			LicenseTypeEnterprise,
+			"test@example.com",
+			"cust-456",
+			"sub-789",
+			"active",
+			time.Now(),
+			time.Now().Add(365*24*time.Hour),
+			[]byte(`{"plan":"enterprise"}`),
+		)
+
+		mock.ExpectQuery("SELECT (.+) FROM licenses WHERE id = \\$1").
+			WithArgs("lic-123").
+			WillReturnRows(rows)
+	}
+
+	// Launch 50 concurrent goroutines
+	done := make(chan bool, 50)
+	for i := 0; i < 50; i++ {
+		go func() {
+			_, err := store.GetLicense("lic-123")
+			if err != nil {
+				t.Errorf("Concurrent GetLicense failed: %v", err)
+			}
+			done <- true
+		}()
+	}
+
+	// Wait for all goroutines to complete
+	for i := 0; i < 50; i++ {
+		<-done
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}

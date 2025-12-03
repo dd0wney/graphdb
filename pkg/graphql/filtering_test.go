@@ -51,9 +51,9 @@ func TestFilterByEquality(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"age": map[string]any{
 					"eq": 30,
 				},
 			},
@@ -64,8 +64,8 @@ func TestFilterByEquality(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	if len(persons) != 2 {
 		t.Errorf("Expected 2 persons with age 30, got %d", len(persons))
@@ -116,9 +116,9 @@ func TestFilterByGreaterThan(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"age": map[string]any{
 					"gt": 28,
 				},
 			},
@@ -129,8 +129,8 @@ func TestFilterByGreaterThan(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return Alice (30) and Charlie (35)
 	if len(persons) != 2 {
@@ -182,9 +182,9 @@ func TestFilterByLessThan(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"age": map[string]any{
 					"lt": 30,
 				},
 			},
@@ -195,8 +195,8 @@ func TestFilterByLessThan(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return only Bob (25)
 	if len(persons) != 1 {
@@ -242,9 +242,9 @@ func TestFilterByRange(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"age": map[string]any{
 					"gte": 25,
 					"lte": 35,
 				},
@@ -256,8 +256,8 @@ func TestFilterByRange(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return ages 25, 30, 35 (3 persons)
 	if len(persons) != 3 {
@@ -306,9 +306,9 @@ func TestFilterByStringContains(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"name": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"name": map[string]any{
 					"contains": "Smith",
 				},
 			},
@@ -319,8 +319,8 @@ func TestFilterByStringContains(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return Alice and Charlie (both have "Smith")
 	if len(persons) != 2 {
@@ -372,10 +372,10 @@ func TestFilterByIn(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"age": map[string]interface{}{
-					"in": []interface{}{25, 35},
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"age": map[string]any{
+					"in": []any{25, 35},
 				},
 			},
 		},
@@ -385,8 +385,8 @@ func TestFilterByIn(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return Bob (25) and Charlie (35)
 	if len(persons) != 2 {
@@ -441,12 +441,12 @@ func TestFilterMultipleConditions(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"age": map[string]any{
 					"gte": 30,
 				},
-				"active": map[string]interface{}{
+				"active": map[string]any{
 					"eq": true,
 				},
 			},
@@ -457,8 +457,8 @@ func TestFilterMultipleConditions(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return Alice (30, active) and Charlie (35, active)
 	if len(persons) != 2 {
@@ -508,14 +508,14 @@ func TestFilterWithSortingAndPagination(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"age": map[string]any{
 					"gte": 20,
 					"lte": 40,
 				},
 			},
-			"orderBy": map[string]interface{}{
+			"orderBy": map[string]any{
 				"field":     "age",
 				"direction": "ASC",
 			},
@@ -527,8 +527,8 @@ func TestFilterWithSortingAndPagination(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return first 2 persons in age range 20-40, sorted by age
 	if len(persons) != 2 {
@@ -585,9 +585,9 @@ func TestFilterEdges(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"since": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"since": map[string]any{
 					"gte": 2021,
 				},
 			},
@@ -598,8 +598,8 @@ func TestFilterEdges(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	edges := data["edges"].([]interface{})
+	data := result.Data.(map[string]any)
+	edges := data["edges"].([]any)
 
 	// Should return 2 edges (since >= 2021)
 	if len(edges) != 2 {
@@ -647,9 +647,9 @@ func TestFilterNoResults(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"age": map[string]any{
 					"gt": 100,
 				},
 			},
@@ -660,8 +660,8 @@ func TestFilterNoResults(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	if len(persons) != 0 {
 		t.Errorf("Expected 0 persons, got %d", len(persons))

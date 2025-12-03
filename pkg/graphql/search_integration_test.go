@@ -72,8 +72,8 @@ func TestGraphQLSearchIntegration(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	searchResults := data["search"].([]interface{})
+	data := result.Data.(map[string]any)
+	searchResults := data["search"].([]any)
 
 	// Should find all 3 articles containing "graphql"
 	if len(searchResults) != 3 {
@@ -82,7 +82,7 @@ func TestGraphQLSearchIntegration(t *testing.T) {
 
 	// Verify results have scores
 	for i, r := range searchResults {
-		result := r.(map[string]interface{})
+		result := r.(map[string]any)
 		if score, ok := result["score"].(float64); !ok || score <= 0 {
 			t.Errorf("Result %d has invalid score: %v", i, result["score"])
 		}
@@ -138,8 +138,8 @@ func TestGraphQLPhraseSearch(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	searchResults := data["searchPhrase"].([]interface{})
+	data := result.Data.(map[string]any)
+	searchResults := data["searchPhrase"].([]any)
 
 	// Should only find the first document with "New York" as a phrase
 	if len(searchResults) != 1 {
@@ -200,8 +200,8 @@ func TestGraphQLBooleanSearch(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	searchResults := data["searchBoolean"].([]interface{})
+	data := result.Data.(map[string]any)
+	searchResults := data["searchBoolean"].([]any)
 
 	// Should find only the Python programming tutorial
 	if len(searchResults) != 1 {

@@ -1,0 +1,38 @@
+name = "graphdb-license-server"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers Paid plan recommended for production
+# Free tier: 100K requests/day, good for MVP
+
+[env.production]
+name = "graphdb-license-server"
+route = "license.graphdb.com/*"
+
+[env.staging]
+name = "graphdb-license-server-staging"
+
+[[kv_namespaces]]
+binding = "LICENSES"
+id = "your-kv-namespace-id-here"  # Run: wrangler kv:namespace create LICENSES
+
+[[kv_namespaces]]
+binding = "LICENSES_PREVIEW"
+id = "your-preview-kv-namespace-id-here"
+preview = true
+
+# D1 Database for analytics (optional - can add later)
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "graphdb-licenses"
+# database_id = "your-d1-database-id"
+
+[vars]
+ENVIRONMENT = "development"
+
+# Secrets (set with: wrangler secret put SECRET_NAME)
+# - JWT_SECRET: For signing license keys
+# - STRIPE_SECRET_KEY: For Stripe API
+# - STRIPE_WEBHOOK_SECRET: For verifying Stripe webhooks
+# - ADMIN_API_KEY: For admin endpoints

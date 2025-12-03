@@ -198,9 +198,9 @@ func TestComplexityWithFiltering(t *testing.T) {
 	// Expected complexity: 10 * 1 = 10
 	query := `query($where: WhereInput, $limit: Int) { persons(where: $where, limit: $limit) { id } }`
 
-	result := ExecuteWithComplexity(schema, query, 200, map[string]interface{}{
-		"where": map[string]interface{}{
-			"age": map[string]interface{}{
+	result := ExecuteWithComplexity(schema, query, 200, map[string]any{
+		"where": map[string]any{
+			"age": map[string]any{
 				"gt": 40,
 			},
 		},

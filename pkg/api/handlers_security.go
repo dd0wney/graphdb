@@ -34,11 +34,11 @@ func (s *Server) handleSecurityKeyRotate(w http.ResponseWriter, r *http.Request)
 	// Rotate the key
 	newVersion, err := km.RotateKey()
 	if err != nil {
-		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to rotate key: %v", err))
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "key rotation"))
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message":     "Key rotated successfully",
 		"new_version": newVersion,
 		"timestamp":   time.Now().Format(time.RFC3339),
@@ -92,8 +92,9 @@ func (s *Server) handleSecurityAuditLogs(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// Get events
-	events := s.auditLogger.GetEvents(filter)
+	// Get events from in-memory logger (for API queries)
+	// Note: inMemoryAuditLogger always keeps recent events for API access
+	events := s.inMemoryAuditLogger.GetEvents(filter)
 
 	// Parse limit
 	limit := 100 // default
@@ -108,10 +109,22 @@ func (s *Server) handleSecurityAuditLogs(w http.ResponseWriter, r *http.Request)
 		events = events[:limit]
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"events": events,
 		"count":  len(events),
-		"total":  s.auditLogger.GetEventCount(),
+		"total":  s.inMemoryAuditLogger.GetEventCount(),
+	}
+
+	// Add persistent audit info if enabled
+	if s.persistentAudit != nil {
+		stats := s.persistentAudit.GetStatistics()
+		response["persistent_audit"] = map[string]any{
+			"enabled":          true,
+			"total_persisted":  stats.TotalEvents,
+			"total_files":      stats.TotalFiles,
+			"total_size_bytes": stats.TotalSize,
+			"current_file":     stats.CurrentFile,
+		}
 	}
 
 	s.respondJSON(w, http.StatusOK, response)
@@ -124,18 +137,19 @@ func (s *Server) handleSecurityAuditExport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Get all events
-	events := s.auditLogger.GetEvents(nil)
+	// Get all events from in-memory logger
+	events := s.inMemoryAuditLogger.GetEvents(nil)
 
 	// Set headers for file download
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=audit-logs-%s.json", time.Now().Format("2006-01-02")))
 
 	// Encode as JSON
+	// Note: json.NewEncoder does not return an error - it always succeeds
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(events); err != nil {
-		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to export logs: %v", err))
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "export logs"))
 		return
 	}
 }
@@ -166,7 +180,7 @@ func (s *Server) handleSecurityKeyInfo(w http.ResponseWriter, r *http.Request) {
 	// Get key metadata
 	keys := km.ListKeys()
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"statistics": stats,
 		"keys":       keys,
 	}
@@ -181,21 +195,21 @@ func (s *Server) handleSecurityHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	health := map[string]interface{}{
+	health := map[string]any{
 		"timestamp": time.Now().Format(time.RFC3339),
 		"status":    "healthy",
-		"components": map[string]interface{}{
-			"encryption": map[string]interface{}{
+		"components": map[string]any{
+			"encryption": map[string]any{
 				"enabled": s.encryptionEngine != nil,
 			},
-			"tls": map[string]interface{}{
+			"tls": map[string]any{
 				"enabled": s.tlsConfig != nil && s.tlsConfig.Enabled,
 			},
-			"audit": map[string]interface{}{
+			"audit": map[string]any{
 				"enabled":      true,
 				"event_count":  s.auditLogger.GetEventCount(),
 			},
-			"authentication": map[string]interface{}{
+			"authentication": map[string]any{
 				"jwt_enabled":    true,
 				"apikey_enabled": true,
 			},
@@ -206,7 +220,7 @@ func (s *Server) handleSecurityHealth(w http.ResponseWriter, r *http.Request) {
 	if s.keyManager != nil {
 		if km, ok := s.keyManager.(*encryption.KeyManager); ok {
 			stats := km.GetStatistics()
-			health["components"].(map[string]interface{})["encryption"].(map[string]interface{})["key_stats"] = stats
+			health["components"].(map[string]any)["encryption"].(map[string]any)["key_stats"] = stats
 		}
 	}
 

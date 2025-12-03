@@ -637,3 +637,325 @@ func BenchmarkPropertyIndex_GetStatistics(b *testing.B) {
 		idx.GetStatistics()
 	}
 }
+
+// === Composite Index Tests ===
+
+// TestNewCompositeIndex tests composite index creation
+func TestNewCompositeIndex(t *testing.T) {
+	idx := NewCompositeIndex(
+		[]string{"domain", "status"},
+		[]ValueType{TypeString, TypeString},
+	)
+
+	keys := idx.PropertyKeys()
+	if len(keys) != 2 {
+		t.Errorf("Expected 2 property keys, got %d", len(keys))
+	}
+	if keys[0] != "domain" || keys[1] != "status" {
+		t.Errorf("Unexpected keys: %v", keys)
+	}
+}
+
+// TestCompositeIndex_InsertAndLookup tests basic insert and lookup
+func TestCompositeIndex_InsertAndLookup(t *testing.T) {
+	idx := NewCompositeIndex(
+		[]string{"domain", "status"},
+		[]ValueType{TypeString, TypeString},
+	)
+
+	// Insert nodes
+	err := idx.Insert(1, []Value{StringValue("math"), StringValue("active")})
+	if err != nil {
+		t.Fatalf("Insert failed: %v", err)
+	}
+	err = idx.Insert(2, []Value{StringValue("math"), StringValue("active")})
+	if err != nil {
+		t.Fatalf("Insert failed: %v", err)
+	}
+	err = idx.Insert(3, []Value{StringValue("math"), StringValue("archived")})
+	if err != nil {
+		t.Fatalf("Insert failed: %v", err)
+	}
+	err = idx.Insert(4, []Value{StringValue("science"), StringValue("active")})
+	if err != nil {
+		t.Fatalf("Insert failed: %v", err)
+	}
+
+	// Lookup (math, active)
+	nodes, err := idx.Lookup([]Value{StringValue("math"), StringValue("active")})
+	if err != nil {
+		t.Fatalf("Lookup failed: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Errorf("Expected 2 nodes, got %d", len(nodes))
+	}
+
+	// Lookup (math, archived)
+	nodes, err = idx.Lookup([]Value{StringValue("math"), StringValue("archived")})
+	if err != nil {
+		t.Fatalf("Lookup failed: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0] != 3 {
+		t.Errorf("Expected [3], got %v", nodes)
+	}
+
+	// Lookup non-existent
+	nodes, err = idx.Lookup([]Value{StringValue("physics"), StringValue("active")})
+	if err != nil {
+		t.Fatalf("Lookup failed: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Errorf("Expected 0 nodes, got %d", len(nodes))
+	}
+}
+
+// TestCompositeIndex_PrefixLookup tests prefix-based lookups
+func TestCompositeIndex_PrefixLookup(t *testing.T) {
+	idx := NewCompositeIndex(
+		[]string{"domain", "status"},
+		[]ValueType{TypeString, TypeString},
+	)
+
+	// Insert nodes
+	idx.Insert(1, []Value{StringValue("math"), StringValue("active")})
+	idx.Insert(2, []Value{StringValue("math"), StringValue("archived")})
+	idx.Insert(3, []Value{StringValue("math"), StringValue("draft")})
+	idx.Insert(4, []Value{StringValue("science"), StringValue("active")})
+
+	// Prefix lookup for just "math" domain
+	nodes, err := idx.PrefixLookup([]Value{StringValue("math")})
+	if err != nil {
+		t.Fatalf("PrefixLookup failed: %v", err)
+	}
+	if len(nodes) != 3 {
+		t.Errorf("Expected 3 nodes for domain=math, got %d", len(nodes))
+	}
+
+	// Prefix lookup for "science" domain
+	nodes, err = idx.PrefixLookup([]Value{StringValue("science")})
+	if err != nil {
+		t.Fatalf("PrefixLookup failed: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Errorf("Expected 1 node for domain=science, got %d", len(nodes))
+	}
+}
+
+// TestCompositeIndex_Remove tests removing nodes from index
+func TestCompositeIndex_Remove(t *testing.T) {
+	idx := NewCompositeIndex(
+		[]string{"domain", "status"},
+		[]ValueType{TypeString, TypeString},
+	)
+
+	idx.Insert(1, []Value{StringValue("math"), StringValue("active")})
+	idx.Insert(2, []Value{StringValue("math"), StringValue("active")})
+
+	// Remove node 1
+	err := idx.Remove(1, []Value{StringValue("math"), StringValue("active")})
+	if err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+
+	// Lookup should only find node 2
+	nodes, _ := idx.Lookup([]Value{StringValue("math"), StringValue("active")})
+	if len(nodes) != 1 || nodes[0] != 2 {
+		t.Errorf("Expected [2], got %v", nodes)
+	}
+
+	// Remove node 2
+	err = idx.Remove(2, []Value{StringValue("math"), StringValue("active")})
+	if err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+
+	// Lookup should find nothing
+	nodes, _ = idx.Lookup([]Value{StringValue("math"), StringValue("active")})
+	if len(nodes) != 0 {
+		t.Errorf("Expected empty, got %v", nodes)
+	}
+}
+
+// TestCompositeIndex_MixedTypes tests composite index with different value types
+func TestCompositeIndex_MixedTypes(t *testing.T) {
+	idx := NewCompositeIndex(
+		[]string{"category", "priority"},
+		[]ValueType{TypeString, TypeInt},
+	)
+
+	idx.Insert(1, []Value{StringValue("bug"), IntValue(1)})
+	idx.Insert(2, []Value{StringValue("bug"), IntValue(2)})
+	idx.Insert(3, []Value{StringValue("feature"), IntValue(1)})
+
+	// Lookup exact match
+	nodes, err := idx.Lookup([]Value{StringValue("bug"), IntValue(1)})
+	if err != nil {
+		t.Fatalf("Lookup failed: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0] != 1 {
+		t.Errorf("Expected [1], got %v", nodes)
+	}
+
+	// Prefix lookup for all bugs
+	nodes, err = idx.PrefixLookup([]Value{StringValue("bug")})
+	if err != nil {
+		t.Fatalf("PrefixLookup failed: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Errorf("Expected 2 bugs, got %d", len(nodes))
+	}
+}
+
+// TestCompositeIndex_ThreeProperties tests index with 3+ properties
+func TestCompositeIndex_ThreeProperties(t *testing.T) {
+	idx := NewCompositeIndex(
+		[]string{"region", "type", "status"},
+		[]ValueType{TypeString, TypeString, TypeString},
+	)
+
+	idx.Insert(1, []Value{StringValue("us"), StringValue("user"), StringValue("active")})
+	idx.Insert(2, []Value{StringValue("us"), StringValue("user"), StringValue("inactive")})
+	idx.Insert(3, []Value{StringValue("us"), StringValue("admin"), StringValue("active")})
+	idx.Insert(4, []Value{StringValue("eu"), StringValue("user"), StringValue("active")})
+
+	// Full key lookup
+	nodes, _ := idx.Lookup([]Value{StringValue("us"), StringValue("user"), StringValue("active")})
+	if len(nodes) != 1 || nodes[0] != 1 {
+		t.Errorf("Full key: expected [1], got %v", nodes)
+	}
+
+	// One-key prefix (all US)
+	nodes, _ = idx.PrefixLookup([]Value{StringValue("us")})
+	if len(nodes) != 3 {
+		t.Errorf("One-key prefix: expected 3, got %d", len(nodes))
+	}
+
+	// Two-key prefix (US users)
+	nodes, _ = idx.PrefixLookup([]Value{StringValue("us"), StringValue("user")})
+	if len(nodes) != 2 {
+		t.Errorf("Two-key prefix: expected 2, got %d", len(nodes))
+	}
+}
+
+// TestCompositeIndex_Statistics tests statistics gathering
+func TestCompositeIndex_Statistics(t *testing.T) {
+	idx := NewCompositeIndex(
+		[]string{"a", "b"},
+		[]ValueType{TypeString, TypeString},
+	)
+
+	idx.Insert(1, []Value{StringValue("x"), StringValue("1")})
+	idx.Insert(2, []Value{StringValue("x"), StringValue("1")})
+	idx.Insert(3, []Value{StringValue("x"), StringValue("2")})
+	idx.Insert(4, []Value{StringValue("y"), StringValue("1")})
+
+	stats := idx.GetStatistics()
+	if len(stats.PropertyKeys) != 2 {
+		t.Errorf("Expected 2 keys, got %d", len(stats.PropertyKeys))
+	}
+	if stats.UniqueKeys != 3 {
+		t.Errorf("Expected 3 unique keys, got %d", stats.UniqueKeys)
+	}
+	if stats.TotalNodes != 4 {
+		t.Errorf("Expected 4 total nodes, got %d", stats.TotalNodes)
+	}
+}
+
+// TestCompositeIndex_TypeMismatch tests error handling for type mismatches
+func TestCompositeIndex_TypeMismatch(t *testing.T) {
+	idx := NewCompositeIndex(
+		[]string{"name", "age"},
+		[]ValueType{TypeString, TypeInt},
+	)
+
+	// Wrong type on insert
+	err := idx.Insert(1, []Value{StringValue("Alice"), StringValue("30")}) // Should be IntValue
+	if err == nil {
+		t.Error("Expected error for type mismatch on insert")
+	}
+
+	// Wrong type on lookup
+	idx.Insert(1, []Value{StringValue("Alice"), IntValue(30)})
+	_, err = idx.Lookup([]Value{StringValue("Alice"), StringValue("30")})
+	if err == nil {
+		t.Error("Expected error for type mismatch on lookup")
+	}
+}
+
+// TestCompositeIndex_WrongNumberOfValues tests error handling for wrong value count
+func TestCompositeIndex_WrongNumberOfValues(t *testing.T) {
+	idx := NewCompositeIndex(
+		[]string{"a", "b"},
+		[]ValueType{TypeString, TypeString},
+	)
+
+	// Too few values on insert
+	err := idx.Insert(1, []Value{StringValue("x")})
+	if err == nil {
+		t.Error("Expected error for too few values on insert")
+	}
+
+	// Too many values on insert
+	err = idx.Insert(1, []Value{StringValue("x"), StringValue("y"), StringValue("z")})
+	if err == nil {
+		t.Error("Expected error for too many values on insert")
+	}
+
+	// Too many values on prefix lookup
+	idx.Insert(1, []Value{StringValue("x"), StringValue("y")})
+	_, err = idx.PrefixLookup([]Value{StringValue("x"), StringValue("y"), StringValue("z")})
+	if err == nil {
+		t.Error("Expected error for too many values on prefix lookup")
+	}
+
+	// Zero values on prefix lookup
+	_, err = idx.PrefixLookup([]Value{})
+	if err == nil {
+		t.Error("Expected error for empty prefix lookup")
+	}
+}
+
+// BenchmarkCompositeIndex_Lookup benchmarks composite index lookups
+func BenchmarkCompositeIndex_Lookup(b *testing.B) {
+	idx := NewCompositeIndex(
+		[]string{"domain", "status"},
+		[]ValueType{TypeString, TypeString},
+	)
+
+	domains := []string{"math", "science", "history", "art", "music"}
+	statuses := []string{"active", "archived", "draft"}
+
+	// Populate with 10k nodes
+	for i := 0; i < 10000; i++ {
+		domain := domains[i%len(domains)]
+		status := statuses[i%len(statuses)]
+		idx.Insert(uint64(i), []Value{StringValue(domain), StringValue(status)})
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		idx.Lookup([]Value{StringValue("math"), StringValue("active")})
+	}
+}
+
+// BenchmarkCompositeIndex_PrefixLookup benchmarks prefix lookups
+func BenchmarkCompositeIndex_PrefixLookup(b *testing.B) {
+	idx := NewCompositeIndex(
+		[]string{"domain", "status"},
+		[]ValueType{TypeString, TypeString},
+	)
+
+	domains := []string{"math", "science", "history", "art", "music"}
+	statuses := []string{"active", "archived", "draft"}
+
+	for i := 0; i < 10000; i++ {
+		domain := domains[i%len(domains)]
+		status := statuses[i%len(statuses)]
+		idx.Insert(uint64(i), []Value{StringValue(domain), StringValue(status)})
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		idx.PrefixLookup([]Value{StringValue("math")})
+	}
+}

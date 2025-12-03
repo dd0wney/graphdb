@@ -178,7 +178,10 @@ func benchmarkSequentialBFS(graph *storage.GraphStorage, startNodes []uint64, ma
 }
 
 func benchmarkParallelBFS(graph *storage.GraphStorage, startNodes []uint64, maxDepth, numWorkers int) BenchmarkStats {
-	traverser := parallel.NewParallelTraverser(graph, numWorkers)
+	traverser, err := parallel.NewParallelTraverser(graph, numWorkers)
+	if err != nil {
+		log.Fatalf("Failed to create parallel traverser: %v", err)
+	}
 	defer traverser.Close()
 
 	start := time.Now()

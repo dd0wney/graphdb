@@ -9,7 +9,7 @@ import (
 
 // TestWorkerPoolBasicOperations tests basic worker pool functionality
 func TestWorkerPoolBasicOperations(t *testing.T) {
-	pool := NewWorkerPool(4)
+	pool, _ := NewWorkerPool(4)
 	defer pool.Close()
 
 	// Submit a simple task
@@ -32,7 +32,7 @@ func TestWorkerPoolBasicOperations(t *testing.T) {
 
 // TestWorkerPoolConcurrentSubmissions tests concurrent task submissions
 func TestWorkerPoolConcurrentSubmissions(t *testing.T) {
-	pool := NewWorkerPool(10)
+	pool, _ := NewWorkerPool(10)
 	defer pool.Close()
 
 	numTasks := 100
@@ -63,7 +63,7 @@ func TestWorkerPoolCloseRace(t *testing.T) {
 	numIterations := 100
 
 	for iteration := 0; iteration < numIterations; iteration++ {
-		pool := NewWorkerPool(4)
+		pool, _ := NewWorkerPool(4)
 
 		// Start submitting tasks concurrently
 		var wg sync.WaitGroup
@@ -93,7 +93,7 @@ func TestWorkerPoolCloseRace(t *testing.T) {
 
 // TestWorkerPoolSubmitAfterClose tests that submissions after close return false
 func TestWorkerPoolSubmitAfterClose(t *testing.T) {
-	pool := NewWorkerPool(4)
+	pool, _ := NewWorkerPool(4)
 
 	// Submit a task before close
 	success := pool.Submit(func() {
@@ -118,7 +118,7 @@ func TestWorkerPoolSubmitAfterClose(t *testing.T) {
 
 // TestWorkerPoolMultipleClose tests that closing multiple times is safe
 func TestWorkerPoolMultipleClose(t *testing.T) {
-	pool := NewWorkerPool(4)
+	pool, _ := NewWorkerPool(4)
 
 	// Submit some tasks
 	for i := 0; i < 10; i++ {
@@ -135,7 +135,7 @@ func TestWorkerPoolMultipleClose(t *testing.T) {
 
 // TestWorkerPoolConcurrentClose tests concurrent close calls
 func TestWorkerPoolConcurrentClose(t *testing.T) {
-	pool := NewWorkerPool(4)
+	pool, _ := NewWorkerPool(4)
 
 	// Submit some tasks
 	for i := 0; i < 20; i++ {
@@ -159,7 +159,7 @@ func TestWorkerPoolConcurrentClose(t *testing.T) {
 
 // TestWorkerPoolTaskExecution tests that all submitted tasks execute
 func TestWorkerPoolTaskExecution(t *testing.T) {
-	pool := NewWorkerPool(5)
+	pool, _ := NewWorkerPool(5)
 	defer pool.Close()
 
 	numTasks := 50
@@ -187,7 +187,7 @@ func TestWorkerPoolTaskExecution(t *testing.T) {
 
 // TestWorkerPoolWithPanic tests that panics in tasks don't crash the pool
 func TestWorkerPoolWithPanic(t *testing.T) {
-	pool := NewWorkerPool(4)
+	pool, _ := NewWorkerPool(4)
 	defer pool.Close()
 
 	var counter int64
@@ -218,7 +218,7 @@ func TestWorkerPoolWithPanic(t *testing.T) {
 
 // BenchmarkWorkerPoolThroughput benchmarks worker pool throughput
 func BenchmarkWorkerPoolThroughput(b *testing.B) {
-	pool := NewWorkerPool(10)
+	pool, _ := NewWorkerPool(10)
 	defer pool.Close()
 
 	b.ResetTimer()
@@ -233,7 +233,7 @@ func BenchmarkWorkerPoolThroughput(b *testing.B) {
 
 // BenchmarkWorkerPoolWithWork benchmarks with actual work
 func BenchmarkWorkerPoolWithWork(b *testing.B) {
-	pool := NewWorkerPool(10)
+	pool, _ := NewWorkerPool(10)
 	defer pool.Close()
 
 	b.ResetTimer()

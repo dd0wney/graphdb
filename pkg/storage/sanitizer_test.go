@@ -143,8 +143,8 @@ func TestSanitizeStringValue_Length(t *testing.T) {
 func TestSanitizePropertyValue(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    interface{}
-		expected interface{}
+		input    any
+		expected any
 		modified bool
 	}{
 		{
@@ -179,24 +179,24 @@ func TestSanitizePropertyValue(t *testing.T) {
 		},
 		{
 			name:     "String array - all sanitized",
-			input:    []interface{}{"<script>", "normal", "<img src=x>"},
-			expected: []interface{}{"&lt;script&gt;", "normal", "&lt;img src=x&gt;"},
+			input:    []any{"<script>", "normal", "<img src=x>"},
+			expected: []any{"&lt;script&gt;", "normal", "&lt;img src=x&gt;"},
 			modified: true,
 		},
 		{
 			name:     "Mixed array - strings sanitized",
-			input:    []interface{}{"<b>text</b>", 123, true},
-			expected: []interface{}{"&lt;b&gt;text&lt;/b&gt;", 123, true},
+			input:    []any{"<b>text</b>", 123, true},
+			expected: []any{"&lt;b&gt;text&lt;/b&gt;", 123, true},
 			modified: true,
 		},
 		{
 			name: "Nested map - strings sanitized",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"name":   "<script>XSS</script>",
 				"age":    30,
 				"active": true,
 			},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"name":   "&lt;script&gt;XSS&lt;/script&gt;",
 				"age":    30,
 				"active": true,
@@ -227,8 +227,8 @@ func TestSanitizePropertyValue(t *testing.T) {
 				if result != nil {
 					t.Errorf("Expected nil, got %v", result)
 				}
-			case []interface{}:
-				resultSlice, ok := result.([]interface{})
+			case []any:
+				resultSlice, ok := result.([]any)
 				if !ok {
 					t.Errorf("Result is not a slice")
 					return
@@ -242,8 +242,8 @@ func TestSanitizePropertyValue(t *testing.T) {
 						t.Errorf("At index %d: expected %v, got %v", i, expected[i], resultSlice[i])
 					}
 				}
-			case map[string]interface{}:
-				resultMap, ok := result.(map[string]interface{})
+			case map[string]any:
+				resultMap, ok := result.(map[string]any)
 				if !ok {
 					t.Errorf("Result is not a map")
 					return
@@ -266,19 +266,19 @@ func TestSanitizePropertyValue(t *testing.T) {
 func TestSanitizePropertyMap(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    map[string]interface{}
-		expected map[string]interface{}
+		input    map[string]any
+		expected map[string]any
 	}{
 		{
 			name: "Mixed types with XSS",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"name":        "<script>alert(1)</script>",
 				"description": "Normal text",
 				"age":         30,
 				"score":       95.5,
 				"active":      true,
 			},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"name":        "&lt;script&gt;alert(1)&lt;/script&gt;",
 				"description": "Normal text",
 				"age":         30,
@@ -288,17 +288,17 @@ func TestSanitizePropertyMap(t *testing.T) {
 		},
 		{
 			name:     "Empty map",
-			input:    map[string]interface{}{},
-			expected: map[string]interface{}{},
+			input:    map[string]any{},
+			expected: map[string]any{},
 		},
 		{
 			name: "All safe values",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"count": 100,
 				"ratio": 0.75,
 				"flag":  false,
 			},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"count": 100,
 				"ratio": 0.75,
 				"flag":  false,
@@ -306,19 +306,19 @@ func TestSanitizePropertyMap(t *testing.T) {
 		},
 		{
 			name: "Complex nested structure",
-			input: map[string]interface{}{
-				"user": map[string]interface{}{
+			input: map[string]any{
+				"user": map[string]any{
 					"name":  "<b>Admin</b>",
 					"email": "test@example.com",
 				},
-				"tags": []interface{}{"<script>", "normal", "safe"},
+				"tags": []any{"<script>", "normal", "safe"},
 			},
-			expected: map[string]interface{}{
-				"user": map[string]interface{}{
+			expected: map[string]any{
+				"user": map[string]any{
 					"name":  "&lt;b&gt;Admin&lt;/b&gt;",
 					"email": "test@example.com",
 				},
-				"tags": []interface{}{"&lt;script&gt;", "normal", "safe"},
+				"tags": []any{"&lt;script&gt;", "normal", "safe"},
 			},
 		},
 	}
@@ -349,10 +349,10 @@ func TestSanitizePropertyMap(t *testing.T) {
 }
 
 // Helper function for deep equality comparison
-func deepEqual(a, b interface{}) bool {
+func deepEqual(a, b any) bool {
 	switch aVal := a.(type) {
-	case map[string]interface{}:
-		bMap, ok := b.(map[string]interface{})
+	case map[string]any:
+		bMap, ok := b.(map[string]any)
 		if !ok || len(aVal) != len(bMap) {
 			return false
 		}
@@ -362,8 +362,8 @@ func deepEqual(a, b interface{}) bool {
 			}
 		}
 		return true
-	case []interface{}:
-		bSlice, ok := b.([]interface{})
+	case []any:
+		bSlice, ok := b.([]any)
 		if !ok || len(aVal) != len(bSlice) {
 			return false
 		}

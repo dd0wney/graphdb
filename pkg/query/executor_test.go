@@ -145,7 +145,7 @@ func TestExecutor_MatchWithProperties(t *testing.T) {
 						{
 							Variable: "n",
 							Labels:   []string{"Person"},
-							Properties: map[string]interface{}{
+							Properties: map[string]any{
 								"name": "Alice",
 							},
 						},
@@ -258,7 +258,7 @@ func TestExecutor_CreateNode(t *testing.T) {
 						{
 							Variable: "n",
 							Labels:   []string{"Person"},
-							Properties: map[string]interface{}{
+							Properties: map[string]any{
 								"name": "Charlie",
 								"age":  int64(28),
 							},
@@ -308,7 +308,7 @@ func TestExecutor_SetProperty(t *testing.T) {
 						{
 							Variable: "n",
 							Labels:   []string{"Person"},
-							Properties: map[string]interface{}{
+							Properties: map[string]any{
 								"name": "Alice",
 							},
 						},
@@ -362,7 +362,7 @@ func TestExecutor_DeleteNode(t *testing.T) {
 						{
 							Variable: "n",
 							Labels:   []string{"Person"},
-							Properties: map[string]interface{}{
+							Properties: map[string]any{
 								"name": "Alice",
 							},
 						},
@@ -654,7 +654,7 @@ func TestMatchStep_CopyBinding(t *testing.T) {
 	ms := &MatchStep{}
 
 	original := &BindingSet{
-		bindings: map[string]interface{}{
+		bindings: map[string]any{
 			"key1": "value1",
 			"key2": "value2",
 		},
@@ -710,22 +710,22 @@ func TestMatchStep_MatchProperties(t *testing.T) {
 	}
 
 	// Should match empty pattern
-	if !ms.matchProperties(nodeProps, map[string]interface{}{}) {
+	if !ms.matchProperties(nodeProps, map[string]any{}) {
 		t.Error("Expected to match empty pattern")
 	}
 
 	// Should match exact property
-	if !ms.matchProperties(nodeProps, map[string]interface{}{"name": "Alice"}) {
+	if !ms.matchProperties(nodeProps, map[string]any{"name": "Alice"}) {
 		t.Error("Expected to match exact string property")
 	}
 
 	// Should not match different value
-	if ms.matchProperties(nodeProps, map[string]interface{}{"name": "Bob"}) {
+	if ms.matchProperties(nodeProps, map[string]any{"name": "Bob"}) {
 		t.Error("Expected not to match different value")
 	}
 
 	// Should not match missing property
-	if ms.matchProperties(nodeProps, map[string]interface{}{"city": "NYC"}) {
+	if ms.matchProperties(nodeProps, map[string]any{"city": "NYC"}) {
 		t.Error("Expected not to match missing property")
 	}
 }
@@ -942,14 +942,14 @@ func TestExecutor_CreateRelationship(t *testing.T) {
 						{
 							Variable: "a",
 							Labels:   []string{"Person"},
-							Properties: map[string]interface{}{
+							Properties: map[string]any{
 								"name": "Alice",
 							},
 						},
 						{
 							Variable: "b",
 							Labels:   []string{"Person"},
-							Properties: map[string]interface{}{
+							Properties: map[string]any{
 								"name": "Bob",
 							},
 						},
@@ -994,7 +994,7 @@ func TestExecutor_CreateRelationship(t *testing.T) {
 							From: &NodePattern{Variable: "a"},
 							To:   &NodePattern{Variable: "b"},
 							Type: "KNOWS",
-							Properties: map[string]interface{}{
+							Properties: map[string]any{
 								"since": int64(2023),
 							},
 						},
@@ -1041,7 +1041,7 @@ func TestExecutor_CreateRelationship(t *testing.T) {
 func TestExecutor_SortRows_Ascending(t *testing.T) {
 	executor := NewExecutor(nil) // Don't need graph for sorting test
 
-	rows := []map[string]interface{}{
+	rows := []map[string]any{
 		{"n.age": int64(30)},
 		{"n.age": int64(25)},
 		{"n.age": int64(35)},
@@ -1072,7 +1072,7 @@ func TestExecutor_SortRows_Ascending(t *testing.T) {
 func TestExecutor_SortRows_Descending(t *testing.T) {
 	executor := NewExecutor(nil)
 
-	rows := []map[string]interface{}{
+	rows := []map[string]any{
 		{"n.age": int64(30)},
 		{"n.age": int64(25)},
 		{"n.age": int64(35)},
@@ -1103,7 +1103,7 @@ func TestExecutor_SortRows_Descending(t *testing.T) {
 func TestExecutor_SortRows_EmptyOrderBy(t *testing.T) {
 	executor := NewExecutor(nil)
 
-	rows := []map[string]interface{}{
+	rows := []map[string]any{
 		{"n.age": int64(30)},
 		{"n.age": int64(25)},
 	}
@@ -1122,7 +1122,7 @@ func TestExecutor_SortRows_EmptyOrderBy(t *testing.T) {
 func TestExecutor_SortRows_Strings(t *testing.T) {
 	executor := NewExecutor(nil)
 
-	rows := []map[string]interface{}{
+	rows := []map[string]any{
 		{"n.name": "Charlie"},
 		{"n.name": "Alice"},
 		{"n.name": "Bob"},
@@ -1441,7 +1441,7 @@ func TestExecutor_GroupBy_Single(t *testing.T) {
 	}
 
 	// Verify each group
-	groups := make(map[string]map[string]interface{})
+	groups := make(map[string]map[string]any)
 	for _, row := range result.Rows {
 		dept := row["n.department"].(string)
 		groups[dept] = row
@@ -2584,7 +2584,7 @@ func TestExecutor_Integration_DISTINCT_WHERE_OrderBy(t *testing.T) {
 }
 
 // Helper function to find a row by column value
-func findRowByColumn(rows []map[string]interface{}, column string, value interface{}) map[string]interface{} {
+func findRowByColumn(rows []map[string]any, column string, value any) map[string]any {
 	for _, row := range rows {
 		if row[column] == value {
 			return row

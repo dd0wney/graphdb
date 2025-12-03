@@ -1,0 +1,46 @@
+# GraphDB Staging Configuration Template
+# This file is populated by first-boot script
+
+server:
+  port: 8080
+  host: "127.0.0.1"  # Only accessible via Cloudflare Tunnel
+  read_timeout: 30s
+  write_timeout: 30s
+
+storage:
+  # All data on attached 100GB volume
+  data_dir: "/mnt/graphdb-data/data"
+  wal_dir: "/mnt/graphdb-data/wal"
+
+  # Memory settings for 2GB droplet
+  cache_size_mb: 256      # LSM cache
+  max_open_files: 1000
+
+  # LSM tree tuning
+  memtable_size_mb: 64
+  compaction_workers: 2
+
+  # Performance
+  bloom_filter_bits: 10
+  compression: "snappy"
+
+audit:
+  enabled: true
+  log_dir: "/mnt/graphdb-data/audit"
+  rotation_size_mb: 100
+  max_age_days: 30
+
+# Monitoring
+metrics:
+  enabled: true
+  prometheus_port: 9090  # Internal only
+
+# Authentication (Syntopica uses JWT at Workers level)
+auth:
+  enabled: false  # Workers handles auth
+
+# Logging
+logging:
+  level: "info"
+  format: "json"
+  output: "/var/log/graphdb/server.log"

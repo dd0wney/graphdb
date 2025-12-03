@@ -6,15 +6,22 @@ import (
 )
 
 // parseProperties parses property map: {key: value, ...}
-func (p *Parser) parseProperties() (map[string]interface{}, error) {
-	p.expect(TokenLeftBrace)
+func (p *Parser) parseProperties() (map[string]any, error) {
+	if _, err := p.expect(TokenLeftBrace); err != nil {
+		return nil, err
+	}
 
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	for p.peek().Type != TokenRightBrace {
 		// Property key
-		keyToken := p.expect(TokenIdentifier)
-		p.expect(TokenColon)
+		keyToken, err := p.expect(TokenIdentifier)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(TokenColon); err != nil {
+			return nil, err
+		}
 
 		// Property value
 		value, err := p.parseValue()
@@ -29,13 +36,15 @@ func (p *Parser) parseProperties() (map[string]interface{}, error) {
 		}
 	}
 
-	p.expect(TokenRightBrace)
+	if _, err := p.expect(TokenRightBrace); err != nil {
+		return nil, err
+	}
 
 	return props, nil
 }
 
 // parseValue parses a literal value
-func (p *Parser) parseValue() (interface{}, error) {
+func (p *Parser) parseValue() (any, error) {
 	token := p.peek()
 
 	switch token.Type {

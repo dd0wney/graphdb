@@ -10,13 +10,13 @@ import (
 // GraphQLRequest represents a GraphQL HTTP request
 type GraphQLRequest struct {
 	Query         string                 `json:"query"`
-	Variables     map[string]interface{} `json:"variables,omitempty"`
+	Variables     map[string]any `json:"variables,omitempty"`
 	OperationName string                 `json:"operationName,omitempty"`
 }
 
 // GraphQLResponse represents a GraphQL HTTP response
 type GraphQLResponse struct {
-	Data   interface{}            `json:"data,omitempty"`
+	Data   any            `json:"data,omitempty"`
 	Errors []GraphQLError         `json:"errors,omitempty"`
 }
 

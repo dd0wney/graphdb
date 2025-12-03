@@ -1,0 +1,277 @@
+package api
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+// FuzzNodeCreation tests node creation API with random inputs
+func FuzzNodeCreation(f *testing.F) {
+	// Seed with valid JSON payloads
+	f.Add(`{"labels":["Person"],"properties":{"name":"Alice"}}`)
+	f.Add(`{"labels":[],"properties":{}}`)
+	f.Add(`{"labels":["A","B","C"],"properties":{"x":1}}`)
+	f.Add(`{}`)
+	f.Add(`{"labels":null}`)
+	f.Add(`{"properties":null}`)
+
+	f.Fuzz(func(t *testing.T, jsonPayload string) {
+		// Skip very large payloads
+		if len(jsonPayload) > 100000 {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Node creation handler panicked on input %q: %v", jsonPayload, r)
+			}
+		}()
+
+		// Create test server
+		handler := setupTestAPI(t)
+		recorder := httptest.NewRecorder()
+
+		// Create request
+		req := httptest.NewRequest("POST", "/nodes", bytes.NewBufferString(jsonPayload))
+		req.Header.Set("Content-Type", "application/json")
+
+		// Handle request - should never panic
+		handler.ServeHTTP(recorder, req)
+
+		// We don't care about the response code or body
+		// We just care that it didn't panic
+	})
+}
+
+// FuzzEdgeCreation tests edge creation API with random inputs
+func FuzzEdgeCreation(f *testing.F) {
+	// Seed with valid edge creation payloads
+	f.Add(`{"from":1,"to":2,"label":"KNOWS","properties":{}}`)
+	f.Add(`{"from":0,"to":0,"label":"","properties":null}`)
+	f.Add(`{"from":-1,"to":-1,"label":"test"}`)
+
+	f.Fuzz(func(t *testing.T, jsonPayload string) {
+		if len(jsonPayload) > 100000 {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Edge creation handler panicked on input %q: %v", jsonPayload, r)
+			}
+		}()
+
+		handler := setupTestAPI(t)
+		recorder := httptest.NewRecorder()
+
+		req := httptest.NewRequest("POST", "/edges", bytes.NewBufferString(jsonPayload))
+		req.Header.Set("Content-Type", "application/json")
+
+		handler.ServeHTTP(recorder, req)
+	})
+}
+
+// FuzzQueryExecution tests query API with random inputs
+func FuzzQueryExecution(f *testing.F) {
+	// Seed with various query formats
+	f.Add(`{"query":"MATCH (n) RETURN n"}`)
+	f.Add(`{"query":""}`)
+	f.Add(`{"query":"MATCH"}`)
+	f.Add(`{}`)
+	f.Add(`{"query":null}`)
+	f.Add(`{"params":{"x":1}}`)
+
+	f.Fuzz(func(t *testing.T, jsonPayload string) {
+		if len(jsonPayload) > 100000 {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Query handler panicked on input %q: %v", jsonPayload, r)
+			}
+		}()
+
+		handler := setupTestAPI(t)
+		recorder := httptest.NewRecorder()
+
+		req := httptest.NewRequest("POST", "/query", bytes.NewBufferString(jsonPayload))
+		req.Header.Set("Content-Type", "application/json")
+
+		handler.ServeHTTP(recorder, req)
+	})
+}
+
+// FuzzHTTPHeaders tests API with random HTTP headers
+func FuzzHTTPHeaders(f *testing.F) {
+	// Seed with common headers
+	f.Add("Content-Type", "application/json")
+	f.Add("Authorization", "Bearer token123")
+	f.Add("X-Custom-Header", "value")
+	f.Add("User-Agent", "Mozilla/5.0")
+
+	f.Fuzz(func(t *testing.T, headerName string, headerValue string) {
+		// Skip very long headers
+		if len(headerName) > 1000 || len(headerValue) > 10000 {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Handler panicked on header %q: %q: %v", headerName, headerValue, r)
+			}
+		}()
+
+		handler := setupTestAPI(t)
+		recorder := httptest.NewRecorder()
+
+		req := httptest.NewRequest("GET", "/nodes", nil)
+		if headerName != "" {
+			req.Header.Set(headerName, headerValue)
+		}
+
+		handler.ServeHTTP(recorder, req)
+	})
+}
+
+// FuzzURLPaths tests API with random URL paths
+func FuzzURLPaths(f *testing.F) {
+	// Seed with various path patterns
+	f.Add("/nodes")
+	f.Add("/nodes/123")
+	f.Add("/edges")
+	f.Add("/query")
+	f.Add("/")
+	f.Add("//")
+	f.Add("/nodes/../../etc/passwd")
+	f.Add("/nodes/%2e%2e")
+
+	f.Fuzz(func(t *testing.T, path string) {
+		// Skip very long paths
+		if len(path) > 10000 {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Handler panicked on path %q: %v", path, r)
+			}
+		}()
+
+		handler := setupTestAPI(t)
+		recorder := httptest.NewRecorder()
+
+		req := httptest.NewRequest("GET", path, nil)
+		handler.ServeHTTP(recorder, req)
+	})
+}
+
+// FuzzJSONPayloads tests API with various malformed JSON
+func FuzzJSONPayloads(f *testing.F) {
+	// Seed with various JSON patterns (valid and invalid)
+	f.Add(`{"valid": "json"}`)
+	f.Add(`{`)
+	f.Add(`}`)
+	f.Add(`{"unclosed": "string}`)
+	f.Add(`{"key": }`)
+	f.Add(`{"key": undefined}`)
+	f.Add(`[1, 2, 3]`)
+	f.Add(`null`)
+	f.Add(`true`)
+	f.Add(`123`)
+	f.Add(`"string"`)
+	f.Add(`{"nested": {"deep": {"object": {"value": 1}}}}`)
+
+	f.Fuzz(func(t *testing.T, jsonData string) {
+		if len(jsonData) > 100000 {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("JSON handler panicked on input %q: %v", jsonData, r)
+			}
+		}()
+
+		// Test all major endpoints
+		endpoints := []string{"/nodes", "/edges", "/query"}
+
+		handler := setupTestAPI(t)
+
+		for _, endpoint := range endpoints {
+			recorder := httptest.NewRecorder()
+			req := httptest.NewRequest("POST", endpoint, bytes.NewBufferString(jsonData))
+			req.Header.Set("Content-Type", "application/json")
+
+			handler.ServeHTTP(recorder, req)
+		}
+	})
+}
+
+// FuzzPropertyInjection tests for injection attacks via properties
+func FuzzPropertyInjection(f *testing.F) {
+	// Seed with potential injection payloads
+	f.Add("name", "'; DROP TABLE nodes; --")
+	f.Add("query", "MATCH (n) DELETE n")
+	f.Add("script", "<script>alert('xss')</script>")
+	f.Add("path", "../../etc/passwd")
+	f.Add("command", "; rm -rf /")
+
+	f.Fuzz(func(t *testing.T, key string, maliciousValue string) {
+		if key == "" || len(key) > 1000 || len(maliciousValue) > 10000 {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Handler panicked on property injection %q=%q: %v", key, maliciousValue, r)
+			}
+		}()
+
+		handler := setupTestAPI(t)
+		recorder := httptest.NewRecorder()
+
+		// Try to inject via node properties
+		payload := map[string]interface{}{
+			"labels": []string{"Test"},
+			"properties": map[string]interface{}{
+				key: maliciousValue,
+			},
+		}
+
+		jsonBytes, _ := json.Marshal(payload)
+		req := httptest.NewRequest("POST", "/nodes", bytes.NewBuffer(jsonBytes))
+		req.Header.Set("Content-Type", "application/json")
+
+		handler.ServeHTTP(recorder, req)
+
+		// Verify no code execution occurred
+		// (handler should sanitize or escape properly)
+	})
+}
+
+// setupTestAPI creates a test API handler
+// Adjust this to match your actual API setup
+func setupTestAPI(t *testing.T) http.Handler {
+	// Create test storage
+	storage, err := NewTestGraphStorage()
+	if err != nil {
+		t.Skipf("Failed to create test storage: %v", err)
+	}
+
+	// Create API server
+	server := NewServer(storage, &Config{
+		EnableAuth: false, // Disable auth for fuzzing
+	})
+
+	return server.Handler()
+}
+
+// NewTestGraphStorage creates temporary storage for testing
+func NewTestGraphStorage() (*GraphStorage, error) {
+	// Implement based on your actual storage initialization
+	return NewGraphStorage()
+}

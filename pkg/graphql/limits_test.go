@@ -56,8 +56,8 @@ func TestDefaultLimitApplied(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return only 100 results (default limit)
 	if len(persons) != 100 {
@@ -106,7 +106,7 @@ func TestMaxLimitEnforced(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
+		VariableValues: map[string]any{
 			"limit": 100, // Request 100, should be capped at 50
 		},
 	})
@@ -115,8 +115,8 @@ func TestMaxLimitEnforced(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should cap at max limit of 50
 	if len(persons) != 50 {
@@ -165,7 +165,7 @@ func TestExplicitLimitWithinMax(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
+		VariableValues: map[string]any{
 			"limit": 25,
 		},
 	})
@@ -174,8 +174,8 @@ func TestExplicitLimitWithinMax(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should respect explicit limit of 25
 	if len(persons) != 25 {
@@ -235,8 +235,8 @@ func TestLimitsOnEdgeQueries(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	edges := data["edges"].([]interface{})
+	data := result.Data.(map[string]any)
+	edges := data["edges"].([]any)
 
 	// Should apply default limit of 50
 	if len(edges) != 50 {
@@ -290,9 +290,9 @@ func TestLimitsWithFiltering(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
-			"where": map[string]interface{}{
-				"age": map[string]interface{}{
+		VariableValues: map[string]any{
+			"where": map[string]any{
+				"age": map[string]any{
 					"gt": 30,
 				},
 			},
@@ -303,8 +303,8 @@ func TestLimitsWithFiltering(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should apply default limit of 50 even with filtering
 	if len(persons) != 50 {
@@ -353,7 +353,7 @@ func TestZeroLimitReturnsEmpty(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
+		VariableValues: map[string]any{
 			"limit": 0,
 		},
 	})
@@ -362,8 +362,8 @@ func TestZeroLimitReturnsEmpty(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should return empty array
 	if len(persons) != 0 {
@@ -412,7 +412,7 @@ func TestNegativeLimitTreatedAsDefault(t *testing.T) {
 	result := graphql.Do(graphql.Params{
 		Schema:        schema,
 		RequestString: query,
-		VariableValues: map[string]interface{}{
+		VariableValues: map[string]any{
 			"limit": -1,
 		},
 	})
@@ -421,8 +421,8 @@ func TestNegativeLimitTreatedAsDefault(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	// Should apply default limit
 	if len(persons) != 100 {

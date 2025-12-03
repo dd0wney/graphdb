@@ -24,7 +24,7 @@ func GenerateSchema(gs *storage.GraphStorage) (graphql.Schema, error) {
 		// Always include a health check query
 		"health": &graphql.Field{
 			Type: graphql.String,
-			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+			Resolve: func(p graphql.ResolveParams) (any, error) {
 				return "ok", nil
 			},
 		},
@@ -79,7 +79,7 @@ func createNodeType(label string) *graphql.Object {
 		Fields: graphql.Fields{
 			"id": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.ID),
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if node, ok := p.Source.(*storage.Node); ok {
 						return node.ID, nil
 					}
@@ -88,7 +88,7 @@ func createNodeType(label string) *graphql.Object {
 			},
 			"labels": &graphql.Field{
 				Type: graphql.NewList(graphql.String),
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if node, ok := p.Source.(*storage.Node); ok {
 						return node.Labels, nil
 					}
@@ -98,7 +98,7 @@ func createNodeType(label string) *graphql.Object {
 			// Properties will be dynamically resolved
 			"properties": &graphql.Field{
 				Type: graphql.String, // JSON string for now
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if node, ok := p.Source.(*storage.Node); ok {
 						// Convert properties to JSON-like string
 						props := "{"
@@ -142,7 +142,7 @@ func createNodeType(label string) *graphql.Object {
 
 // createNodeResolver creates a resolver for fetching a single node by ID
 func createNodeResolver(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
-	return func(p graphql.ResolveParams) (interface{}, error) {
+	return func(p graphql.ResolveParams) (any, error) {
 		// Get ID argument
 		idStr, ok := p.Args["id"].(string)
 		if !ok {
@@ -170,7 +170,7 @@ func createNodeResolver(gs *storage.GraphStorage, label string) graphql.FieldRes
 
 // createNodesResolver creates a resolver for fetching all nodes with a label
 func createNodesResolver(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
-	return func(p graphql.ResolveParams) (interface{}, error) {
+	return func(p graphql.ResolveParams) (any, error) {
 		// Query nodes by label
 		nodes, err := gs.FindNodesByLabel(label)
 		if err != nil {

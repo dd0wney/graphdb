@@ -1,0 +1,33 @@
+{
+  "name": "@graphdb/license-server",
+  "version": "1.0.0",
+  "description": "GraphDB license server on Cloudflare Workers",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "cf-typegen": "wrangler types"
+  },
+  "keywords": [
+    "graphdb",
+    "license",
+    "cloudflare-workers"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.1.0",
+    "@cloudflare/workers-types": "^4.20231218.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4",
+    "wrangler": "^3.22.1"
+  },
+  "dependencies": {
+    "hono": "^3.12.0",
+    "stripe": "^14.10.0"
+  }
+}

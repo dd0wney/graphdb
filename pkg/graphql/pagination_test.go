@@ -53,8 +53,8 @@ func TestNodeQueryPagination(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	if len(persons) != 5 {
 		t.Errorf("Expected 5 persons with limit, got %d", len(persons))
@@ -107,8 +107,8 @@ func TestNodeQueryPaginationWithOffset(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	if len(persons) != 3 {
 		t.Errorf("Expected 3 persons with offset and limit, got %d", len(persons))
@@ -160,8 +160,8 @@ func TestNodeQueryPaginationDefaultBehavior(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	persons := data["persons"].([]interface{})
+	data := result.Data.(map[string]any)
+	persons := data["persons"].([]any)
 
 	if len(persons) != 5 {
 		t.Errorf("Expected all 5 persons without pagination args, got %d", len(persons))
@@ -222,8 +222,8 @@ func TestEdgeQueryPagination(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	edges := data["edges"].([]interface{})
+	data := result.Data.(map[string]any)
+	edges := data["edges"].([]any)
 
 	if len(edges) != 5 {
 		t.Errorf("Expected 5 edges with limit, got %d", len(edges))
@@ -284,8 +284,8 @@ func TestEdgeQueryPaginationWithOffset(t *testing.T) {
 		t.Fatalf("GraphQL query failed: %v", result.Errors)
 	}
 
-	data := result.Data.(map[string]interface{})
-	edges := data["edges"].([]interface{})
+	data := result.Data.(map[string]any)
+	edges := data["edges"].([]any)
 
 	// With 10 edges total, offset 7 and limit 3 should return 3 edges (edges 8, 9, 10)
 	if len(edges) != 3 {
@@ -381,8 +381,8 @@ func TestPaginationEdgeCases(t *testing.T) {
 				t.Fatalf("GraphQL query failed: %v", result.Errors)
 			}
 
-			data := result.Data.(map[string]interface{})
-			persons := data["persons"].([]interface{})
+			data := result.Data.(map[string]any)
+			persons := data["persons"].([]any)
 
 			if len(persons) != tt.expectedCount {
 				t.Errorf("Expected %d persons, got %d", tt.expectedCount, len(persons))

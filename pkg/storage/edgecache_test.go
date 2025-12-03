@@ -6,14 +6,26 @@ import (
 	"testing"
 )
 
+// mustNewCompressedEdgeListForEdgeCache is a test helper that creates a compressed edge list or fails the test
+func mustNewCompressedEdgeListForEdgeCache(t testing.TB, nodeIDs []uint64) *CompressedEdgeList {
+	if tt, ok := t.(*testing.T); ok {
+		tt.Helper()
+	}
+	cel, err := NewCompressedEdgeList(nodeIDs)
+	if err != nil {
+		t.Fatalf("failed to create compressed edge list: %v", err)
+	}
+	return cel
+}
+
 // TestEdgeCache_BasicLRU tests basic LRU eviction behavior
 func TestEdgeCache_BasicLRU(t *testing.T) {
 	cache := NewEdgeCache(3) // Max 3 entries
 
-	edges1 := NewCompressedEdgeList([]uint64{1, 2, 3})
-	edges2 := NewCompressedEdgeList([]uint64{4, 5, 6})
-	edges3 := NewCompressedEdgeList([]uint64{7, 8, 9})
-	edges4 := NewCompressedEdgeList([]uint64{10, 11, 12})
+	edges1 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{1, 2, 3})
+	edges2 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{4, 5, 6})
+	edges3 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{7, 8, 9})
+	edges4 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{10, 11, 12})
 
 	// Add 3 entries (cache full)
 	cache.Put("key1", edges1)
@@ -52,10 +64,10 @@ func TestEdgeCache_BasicLRU(t *testing.T) {
 func TestEdgeCache_LRUOrdering(t *testing.T) {
 	cache := NewEdgeCache(3)
 
-	edges1 := NewCompressedEdgeList([]uint64{1})
-	edges2 := NewCompressedEdgeList([]uint64{2})
-	edges3 := NewCompressedEdgeList([]uint64{3})
-	edges4 := NewCompressedEdgeList([]uint64{4})
+	edges1 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{1})
+	edges2 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{2})
+	edges3 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{3})
+	edges4 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{4})
 
 	// Add 3 entries
 	cache.Put("key1", edges1)
@@ -90,8 +102,8 @@ func TestEdgeCache_LRUOrdering(t *testing.T) {
 func TestEdgeCache_Update(t *testing.T) {
 	cache := NewEdgeCache(3)
 
-	edges1 := NewCompressedEdgeList([]uint64{1, 2, 3})
-	edges2 := NewCompressedEdgeList([]uint64{4, 5, 6})
+	edges1 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{1, 2, 3})
+	edges2 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{4, 5, 6})
 
 	cache.Put("key1", edges1)
 
@@ -119,7 +131,7 @@ func TestEdgeCache_Update(t *testing.T) {
 func TestEdgeCache_HitRate(t *testing.T) {
 	cache := NewEdgeCache(10)
 
-	edges := NewCompressedEdgeList([]uint64{1, 2, 3})
+	edges := mustNewCompressedEdgeListForEdgeCache(t, []uint64{1, 2, 3})
 	cache.Put("key1", edges)
 
 	// Reset stats
@@ -158,7 +170,7 @@ func TestEdgeCache_Clear(t *testing.T) {
 	// Add some entries
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("key%d", i)
-		edges := NewCompressedEdgeList([]uint64{uint64(i)})
+		edges := mustNewCompressedEdgeListForEdgeCache(t, []uint64{uint64(i)})
 		cache.Put(key, edges)
 	}
 
@@ -198,7 +210,7 @@ func TestEdgeCache_Concurrent(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < opsPerGoroutine; j++ {
 				key := fmt.Sprintf("key-%d-%d", id, j)
-				edges := NewCompressedEdgeList([]uint64{uint64(j)})
+				edges := mustNewCompressedEdgeListForEdgeCache(t, []uint64{uint64(j)})
 				cache.Put(key, edges)
 			}
 		}(i)
@@ -228,7 +240,7 @@ func TestEdgeCache_MaxSize(t *testing.T) {
 	// Add more than max size
 	for i := 0; i < maxSize*2; i++ {
 		key := fmt.Sprintf("key%d", i)
-		edges := NewCompressedEdgeList([]uint64{uint64(i)})
+		edges := mustNewCompressedEdgeListForEdgeCache(t, []uint64{uint64(i)})
 		cache.Put(key, edges)
 	}
 
@@ -269,8 +281,8 @@ func TestEdgeCache_EmptyCache(t *testing.T) {
 func TestEdgeCache_SingleEntry(t *testing.T) {
 	cache := NewEdgeCache(1)
 
-	edges1 := NewCompressedEdgeList([]uint64{1})
-	edges2 := NewCompressedEdgeList([]uint64{2})
+	edges1 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{1})
+	edges2 := mustNewCompressedEdgeListForEdgeCache(t, []uint64{2})
 
 	cache.Put("key1", edges1)
 	if cache.Size() != 1 {
@@ -298,7 +310,7 @@ func TestEdgeCache_SingleEntry(t *testing.T) {
 func TestEdgeCache_ZeroSize(t *testing.T) {
 	cache := NewEdgeCache(0)
 
-	edges := NewCompressedEdgeList([]uint64{1, 2, 3})
+	edges := mustNewCompressedEdgeListForEdgeCache(t, []uint64{1, 2, 3})
 	cache.Put("key1", edges)
 
 	// Should not store anything

@@ -70,7 +70,7 @@ func (h *APIKeyHandler) HandleCreateAPIKey(w http.ResponseWriter, r *http.Reques
 // HandleListAPIKeys lists API keys for the authenticated user
 func (h *APIKeyHandler) HandleListAPIKeys(w http.ResponseWriter, r *http.Request, userID, role string) {
 	keys := h.store.ListKeys(userID)
-	respondJSON(w, http.StatusOK, map[string]interface{}{
+	respondJSON(w, http.StatusOK, map[string]any{
 		"keys": keys,
 	})
 }
@@ -97,21 +97,21 @@ func (h *APIKeyHandler) HandleRevokeAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
+	respondJSON(w, http.StatusOK, map[string]any{
 		"message": "API key revoked successfully",
 	})
 }
 
 // Helper functions
 
-func respondJSON(w http.ResponseWriter, status int, data interface{}) {
+func respondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
 }
 
 func respondError(w http.ResponseWriter, status int, message string) {
-	respondJSON(w, status, map[string]interface{}{
+	respondJSON(w, status, map[string]any{
 		"error":   http.StatusText(status),
 		"message": message,
 	})

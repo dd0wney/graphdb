@@ -76,10 +76,10 @@ func benchmarkRegularWAL(numWrites int) BenchmarkStats {
 	start := time.Now()
 	for i := 0; i < numWrites; i++ {
 		// Create realistic node data
-		nodeData := map[string]interface{}{
+		nodeData := map[string]any{
 			"id":   uint64(i),
 			"name": fmt.Sprintf("Node_%d", i),
-			"properties": map[string]interface{}{
+			"properties": map[string]any{
 				"age":      i % 100,
 				"city":     "San Francisco",
 				"country":  "USA",
@@ -123,10 +123,10 @@ func benchmarkCompressedWAL(numWrites int) BenchmarkStats {
 	start := time.Now()
 	for i := 0; i < numWrites; i++ {
 		// Create realistic node data (same as regular)
-		nodeData := map[string]interface{}{
+		nodeData := map[string]any{
 			"id":   uint64(i),
 			"name": fmt.Sprintf("Node_%d", i),
-			"properties": map[string]interface{}{
+			"properties": map[string]any{
 				"age":      i % 100,
 				"city":     "San Francisco",
 				"country":  "USA",

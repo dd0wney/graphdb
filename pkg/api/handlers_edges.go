@@ -1,60 +1,33 @@
 package api
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/validation"
 )
 
 func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodPost:
-		s.createEdge(w, r)
-	default:
-		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
-	}
+	s.NewMethodRouter(w, r).
+		Post(func() { s.createEdge(w, r) }).
+		NotAllowed()
 }
 
 func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
 	var req EdgeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, http.StatusBadRequest, "Invalid request body")
+	decoder := s.NewRequestDecoder(w, r)
+	decoder.DecodeJSON(&req).ValidateEdge(&req)
+	if decoder.RespondError() {
 		return
 	}
 
-	// Validate request
-	var weightPtr *float64
-	if req.Weight != 0 {
-		weightPtr = &req.Weight
-	}
-	validationReq := validation.EdgeRequest{
-		FromNodeID: req.FromNodeID,
-		ToNodeID:   req.ToNodeID,
-		Type:       req.Type,
-		Weight:     weightPtr,
-		Properties: req.Properties,
-	}
-	if err := validation.ValidateEdgeRequest(&validationReq); err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Sanitize properties
-	sanitizedProps := storage.SanitizePropertyMap(req.Properties)
-
-	props := make(map[string]storage.Value)
-	for k, v := range sanitizedProps {
-		props[k] = s.convertToValue(v)
-	}
+	// Convert and sanitize properties
+	converter := newPropertyConverter()
+	props := converter.ConvertAndSanitize(req.Properties, s.convertToValue)
 
 	edge, err := s.graph.CreateEdge(req.FromNodeID, req.ToNodeID, req.Type, props, req.Weight)
 	if err != nil {
-		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create edge: %v", err))
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create edge"))
 		return
 	}
 
@@ -63,18 +36,15 @@ func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEdge(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Path[len("/edges/"):]
-	edgeID, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		s.respondError(w, http.StatusBadRequest, "Invalid edge ID")
+	extractor := s.NewPathExtractor(w, r)
+	edgeID, ok := extractor.ExtractUint64("/edges/")
+	if !ok {
 		return
 	}
 
-	if r.Method == http.MethodGet {
-		s.getEdge(w, r, edgeID)
-	} else {
-		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
-	}
+	s.NewMethodRouter(w, r).
+		Get(func() { s.getEdge(w, r, edgeID) }).
+		NotAllowed()
 }
 
 func (s *Server) getEdge(w http.ResponseWriter, r *http.Request, edgeID uint64) {
@@ -95,8 +65,9 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req BatchEdgeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, http.StatusBadRequest, "Invalid request body")
+	decoder := s.NewRequestDecoder(w, r)
+	decoder.DecodeJSON(&req)
+	if decoder.RespondError() {
 		return
 	}
 
@@ -108,6 +79,7 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 	edges := make([]*EdgeResponse, 0, len(req.Edges))
+	converter := newPropertyConverter()
 
 	for _, edgeReq := range req.Edges {
 		// Validate each edge request
@@ -126,13 +98,8 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 			continue // Skip invalid edges
 		}
 
-		// Sanitize properties
-		sanitizedProps := storage.SanitizePropertyMap(edgeReq.Properties)
-
-		props := make(map[string]storage.Value)
-		for k, v := range sanitizedProps {
-			props[k] = s.convertToValue(v)
-		}
+		// Convert and sanitize properties
+		props := converter.ConvertAndSanitize(edgeReq.Properties, s.convertToValue)
 
 		edge, err := s.graph.CreateEdge(edgeReq.FromNodeID, edgeReq.ToNodeID, edgeReq.Type, props, edgeReq.Weight)
 		if err != nil {

@@ -144,21 +144,21 @@ func testCreateNodes() (uint64, uint64, uint64) {
 	nodes := []api.NodeRequest{
 		{
 			Labels: []string{"Person"},
-			Properties: map[string]interface{}{
+			Properties: map[string]any{
 				"name": "Alice",
 				"age":  float64(30),
 			},
 		},
 		{
 			Labels: []string{"Person"},
-			Properties: map[string]interface{}{
+			Properties: map[string]any{
 				"name": "Bob",
 				"age":  float64(25),
 			},
 		},
 		{
 			Labels: []string{"Person"},
-			Properties: map[string]interface{}{
+			Properties: map[string]any{
 				"name": "Charlie",
 				"age":  float64(35),
 			},
@@ -198,21 +198,21 @@ func testCreateEdges(node1, node2, node3 uint64) {
 			FromNodeID: node1,
 			ToNodeID:   node2,
 			Type:       "KNOWS",
-			Properties: map[string]interface{}{"since": float64(2020)},
+			Properties: map[string]any{"since": float64(2020)},
 			Weight:     1.0,
 		},
 		{
 			FromNodeID: node2,
 			ToNodeID:   node3,
 			Type:       "KNOWS",
-			Properties: map[string]interface{}{"since": float64(2021)},
+			Properties: map[string]any{"since": float64(2021)},
 			Weight:     1.0,
 		},
 		{
 			FromNodeID: node1,
 			ToNodeID:   node3,
 			Type:       "KNOWS",
-			Properties: map[string]interface{}{"since": float64(2019)},
+			Properties: map[string]any{"since": float64(2019)},
 			Weight:     0.8,
 		},
 	}
@@ -361,15 +361,15 @@ func testBatchOperations() {
 		Nodes: []api.NodeRequest{
 			{
 				Labels:     []string{"Product"},
-				Properties: map[string]interface{}{"name": "Laptop", "price": float64(999)},
+				Properties: map[string]any{"name": "Laptop", "price": float64(999)},
 			},
 			{
 				Labels:     []string{"Product"},
-				Properties: map[string]interface{}{"name": "Mouse", "price": float64(29)},
+				Properties: map[string]any{"name": "Mouse", "price": float64(29)},
 			},
 			{
 				Labels:     []string{"Product"},
-				Properties: map[string]interface{}{"name": "Keyboard", "price": float64(79)},
+				Properties: map[string]any{"name": "Keyboard", "price": float64(79)},
 			},
 		},
 	}
@@ -393,7 +393,7 @@ func testBatchOperations() {
 func testPageRank() {
 	req := api.AlgorithmRequest{
 		Algorithm: "pagerank",
-		Parameters: map[string]interface{}{
+		Parameters: map[string]any{
 			"iterations":     float64(10),
 			"damping_factor": 0.85,
 		},
@@ -412,7 +412,7 @@ func testPageRank() {
 
 	fmt.Printf("Algorithm: %s\n", result.Algorithm)
 	fmt.Printf("Time: %s\n", result.Time)
-	if scores, ok := result.Results["scores"].(map[string]interface{}); ok {
+	if scores, ok := result.Results["scores"].(map[string]any); ok {
 		fmt.Printf("Computed scores for %d nodes\n", len(scores))
 	}
 	fmt.Printf("✅ PageRank completed\n")

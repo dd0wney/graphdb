@@ -33,7 +33,7 @@ func SanitizeStringValue(s string) string {
 
 // SanitizePropertyValue sanitizes a property value based on its type
 // Returns the sanitized value and a boolean indicating if it was modified
-func SanitizePropertyValue(value interface{}) (interface{}, bool) {
+func SanitizePropertyValue(value any) (any, bool) {
 	if value == nil {
 		return nil, false
 	}
@@ -45,9 +45,9 @@ func SanitizePropertyValue(value interface{}) (interface{}, bool) {
 		sanitized := SanitizeStringValue(v)
 		return sanitized, sanitized != v
 
-	case []interface{}:
+	case []any:
 		// Sanitize each element in the array
-		sanitizedSlice := make([]interface{}, len(v))
+		sanitizedSlice := make([]any, len(v))
 		for i, elem := range v {
 			sanitizedElem, elemModified := SanitizePropertyValue(elem)
 			sanitizedSlice[i] = sanitizedElem
@@ -57,9 +57,9 @@ func SanitizePropertyValue(value interface{}) (interface{}, bool) {
 		}
 		return sanitizedSlice, modified
 
-	case map[string]interface{}:
+	case map[string]any:
 		// Sanitize each value in the map
-		sanitizedMap := make(map[string]interface{}, len(v))
+		sanitizedMap := make(map[string]any, len(v))
 		for key, val := range v {
 			sanitizedVal, valModified := SanitizePropertyValue(val)
 			sanitizedMap[key] = sanitizedVal
@@ -77,12 +77,12 @@ func SanitizePropertyValue(value interface{}) (interface{}, bool) {
 
 // SanitizePropertyMap sanitizes all string values in a property map
 // This should be called before storing properties to prevent XSS attacks
-func SanitizePropertyMap(properties map[string]interface{}) map[string]interface{} {
+func SanitizePropertyMap(properties map[string]any) map[string]any {
 	if properties == nil {
 		return nil
 	}
 
-	sanitized := make(map[string]interface{}, len(properties))
+	sanitized := make(map[string]any, len(properties))
 	for key, value := range properties {
 		sanitizedValue, _ := SanitizePropertyValue(value)
 		sanitized[key] = sanitizedValue

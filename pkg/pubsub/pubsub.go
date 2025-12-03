@@ -16,11 +16,12 @@ type PubSub struct {
 
 // Subscription represents a subscription to a topic
 type Subscription struct {
-	topic   string
-	channel chan interface{}
-	ps      *PubSub
-	ctx     context.Context
-	cancel  context.CancelFunc
+	topic     string
+	channel   chan any
+	ps        *PubSub
+	ctx       context.Context
+	cancel    context.CancelFunc
+	closeOnce sync.Once // Ensures channel is only closed once
 }
 
 // NewPubSub creates a new PubSub instance
@@ -44,7 +45,7 @@ func (ps *PubSub) Subscribe(ctx context.Context, topic string) (*Subscription, e
 	subCtx, cancel := context.WithCancel(ctx)
 	sub := &Subscription{
 		topic:   topic,
-		channel: make(chan interface{}, 100), // Buffer for messages
+		channel: make(chan any, 100), // Buffer for messages
 		ps:      ps,
 		ctx:     subCtx,
 		cancel:  cancel,
@@ -71,8 +72,9 @@ func (ps *PubSub) Subscribe(ctx context.Context, topic string) (*Subscription, e
 	return sub, nil
 }
 
-// Publish sends a message to all subscribers of a topic
-func (ps *PubSub) Publish(topic string, message interface{}) {
+// Publish sends a message to all subscribers of a topic.
+// Uses a snapshot copy to avoid holding lock during potentially slow channel sends.
+func (ps *PubSub) Publish(topic string, message any) {
 	ps.shutdownMu.Lock()
 	if ps.isShutdown {
 		ps.shutdownMu.Unlock()
@@ -80,16 +82,23 @@ func (ps *PubSub) Publish(topic string, message interface{}) {
 	}
 	ps.shutdownMu.Unlock()
 
+	// Take a snapshot of subscribers under lock to avoid race condition
+	// during iteration (concurrent Unsubscribe could modify the map)
 	ps.mu.RLock()
-	subscribers := ps.subscribers[topic]
-	ps.mu.RUnlock()
-
-	if subscribers == nil {
+	topicSubs := ps.subscribers[topic]
+	if len(topicSubs) == 0 {
+		ps.mu.RUnlock()
 		return
 	}
+	// Copy subscriber pointers to slice for safe iteration
+	subs := make([]*Subscription, 0, len(topicSubs))
+	for sub := range topicSubs {
+		subs = append(subs, sub)
+	}
+	ps.mu.RUnlock()
 
-	// Send message to all subscribers
-	for sub := range subscribers {
+	// Send message to all subscribers (outside lock to avoid blocking)
+	for _, sub := range subs {
 		select {
 		case sub.channel <- message:
 			// Message sent
@@ -135,7 +144,7 @@ func (ps *PubSub) Shutdown() {
 }
 
 // Channel returns the subscription's message channel
-func (s *Subscription) Channel() <-chan interface{} {
+func (s *Subscription) Channel() <-chan any {
 	return s.channel
 }
 
@@ -156,13 +165,9 @@ func (s *Subscription) Unsubscribe() {
 	s.close()
 }
 
-// close closes the subscription channel
+// close closes the subscription channel safely (idempotent)
 func (s *Subscription) close() {
-	// Close channel if not already closed
-	select {
-	case <-s.channel:
-		// Already closed
-	default:
+	s.closeOnce.Do(func() {
 		close(s.channel)
-	}
+	})
 }

@@ -2,37 +2,10 @@ package auth
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
-	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 )
-
-var (
-	ErrAPIKeyNotFound     = errors.New("API key not found")
-	ErrAPIKeyExpired      = errors.New("API key has expired")
-	ErrAPIKeyRevoked      = errors.New("API key has been revoked")
-	ErrInvalidPermission  = errors.New("invalid permission")
-	ErrEmptyKeyName       = errors.New("key name cannot be empty")
-	ErrEmptyPermissions   = errors.New("permissions cannot be empty")
-)
-
-const (
-	KeyPrefixProduction = "gdb_live_"
-	KeyPrefixTest       = "gdb_test_"
-	KeyRandomLength     = 32 // bytes of random data
-)
-
-// Valid API key permissions
-var validPermissions = map[string]bool{
-	"read":  true,
-	"write": true,
-	"admin": true,
-}
 
 // APIKey represents an API key with metadata
 type APIKey struct {
@@ -40,7 +13,8 @@ type APIKey struct {
 	UserID      string    `json:"user_id"`
 	Name        string    `json:"name"`
 	Permissions []string  `json:"permissions"`
-	KeyHash     string    `json:"-"` // Never serialize key hash
+	Environment string    `json:"environment"` // "live" or "test"
+	KeyHash     string    `json:"-"`           // Never serialize key hash
 	Prefix      string    `json:"prefix"`
 	CreatedAt   time.Time `json:"created_at"`
 	ExpiresAt   time.Time `json:"expires_at,omitempty"` // Zero value means no expiration
@@ -50,56 +24,67 @@ type APIKey struct {
 
 // APIKeyStore manages API keys
 type APIKeyStore struct {
-	keys       map[string]*APIKey // keyID -> APIKey
-	hashToKey  map[string]string  // keyHash -> keyID
+	keys       map[string]*APIKey  // keyID -> APIKey
+	hashToKey  map[string]string   // keyHash -> keyID
 	userKeys   map[string][]string // userID -> []keyID
+	hmacSecret []byte              // Server-side secret for HMAC hashing
 	mu         sync.RWMutex
 }
 
-// NewAPIKeyStore creates a new API key store
+// NewAPIKeyStore creates a new API key store with a random HMAC secret
 func NewAPIKeyStore() *APIKeyStore {
-	return &APIKeyStore{
-		keys:      make(map[string]*APIKey),
-		hashToKey: make(map[string]string),
-		userKeys:  make(map[string][]string),
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		// Fall back to a zero secret if random fails (should not happen)
+		secret = make([]byte, 32)
 	}
+	return &APIKeyStore{
+		keys:       make(map[string]*APIKey),
+		hashToKey:  make(map[string]string),
+		userKeys:   make(map[string][]string),
+		hmacSecret: secret,
+	}
+}
+
+// NewAPIKeyStoreWithSecret creates a new API key store with a provided HMAC secret.
+// Use this for persistence across restarts - the same secret must be used to validate existing keys.
+func NewAPIKeyStoreWithSecret(secret []byte) (*APIKeyStore, error) {
+	if len(secret) < 32 {
+		return nil, fmt.Errorf("HMAC secret must be at least 32 bytes")
+	}
+	return &APIKeyStore{
+		keys:       make(map[string]*APIKey),
+		hashToKey:  make(map[string]string),
+		userKeys:   make(map[string][]string),
+		hmacSecret: secret,
+	}, nil
 }
 
 // CreateKey creates a new API key and returns the APIKey metadata and the actual key string
 // The key string is only returned once and cannot be retrieved later
 func (s *APIKeyStore) CreateKey(userID, name string, permissions []string, expiresIn time.Duration) (*APIKey, string, error) {
+	return s.CreateKeyWithEnv(userID, name, permissions, expiresIn, "")
+}
+
+// CreateKeyWithEnv creates a new API key with explicit environment prefix.
+// env can be "live", "test", or "" (auto-detect from GRAPHDB_ENV).
+func (s *APIKeyStore) CreateKeyWithEnv(userID, name string, permissions []string, expiresIn time.Duration, env string) (*APIKey, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Validate inputs
-	if userID == "" {
-		return nil, "", ErrEmptyUserID
-	}
-	if name == "" {
-		return nil, "", ErrEmptyKeyName
-	}
-	if len(permissions) == 0 {
-		return nil, "", ErrEmptyPermissions
+	if err := validateCreateKeyInput(userID, name, permissions); err != nil {
+		return nil, "", err
 	}
 
-	// Validate permissions
-	for _, perm := range permissions {
-		if !validPermissions[perm] {
-			return nil, "", fmt.Errorf("%w: %s", ErrInvalidPermission, perm)
-		}
-	}
-
-	// Generate key
-	keyString, prefix, err := generateAPIKey()
+	// Generate key with specified environment
+	keyString, prefix, err := generateAPIKeyWithEnv(env)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate API key: %w", err)
 	}
 
-	// Hash key for storage
-	keyHash, err := hashAPIKey(keyString)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to hash API key: %w", err)
-	}
+	// Hash key for storage using HMAC
+	keyHash := s.hashAPIKey(keyString)
 
 	// Create API key metadata
 	now := time.Now()
@@ -108,11 +93,18 @@ func (s *APIKeyStore) CreateKey(userID, name string, permissions []string, expir
 		expiresAt = now.Add(expiresIn)
 	}
 
+	// Determine environment from prefix
+	keyEnv := "test"
+	if prefix == KeyPrefixProduction {
+		keyEnv = "live"
+	}
+
 	apiKey := &APIKey{
 		ID:          generateID(),
 		UserID:      userID,
 		Name:        name,
 		Permissions: permissions,
+		Environment: keyEnv,
 		KeyHash:     keyHash,
 		Prefix:      prefix,
 		CreatedAt:   now,
@@ -128,50 +120,6 @@ func (s *APIKeyStore) CreateKey(userID, name string, permissions []string, expir
 	s.userKeys[userID] = append(s.userKeys[userID], apiKey.ID)
 
 	return apiKey, keyString, nil
-}
-
-// ValidateKey validates an API key and returns the associated APIKey metadata
-func (s *APIKeyStore) ValidateKey(keyString string) (*APIKey, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if keyString == "" {
-		return nil, ErrInvalidToken
-	}
-
-	// Extract prefix to narrow search
-	if !strings.HasPrefix(keyString, "gdb_") {
-		return nil, ErrInvalidToken
-	}
-
-	// Hash the provided key
-	keyHash, err := hashAPIKey(keyString)
-	if err != nil {
-		return nil, ErrInvalidToken
-	}
-
-	// Look up key by hash
-	keyID, exists := s.hashToKey[keyHash]
-	if !exists {
-		return nil, ErrAPIKeyNotFound
-	}
-
-	apiKey, exists := s.keys[keyID]
-	if !exists {
-		return nil, ErrAPIKeyNotFound
-	}
-
-	// Check if revoked
-	if apiKey.Revoked {
-		return nil, ErrAPIKeyRevoked
-	}
-
-	// Check expiration
-	if !apiKey.ExpiresAt.IsZero() && time.Now().After(apiKey.ExpiresAt) {
-		return nil, ErrAPIKeyExpired
-	}
-
-	return apiKey, nil
 }
 
 // ListKeys returns all API keys for a user
@@ -248,54 +196,4 @@ func (s *APIKeyStore) UpdateLastUsed(keyID string) error {
 
 	key.LastUsed = time.Now()
 	return nil
-}
-
-// HasPermission checks if an API key has a specific permission
-func (s *APIKeyStore) HasPermission(apiKey *APIKey, permission string) bool {
-	if apiKey == nil {
-		return false
-	}
-
-	for _, perm := range apiKey.Permissions {
-		if perm == permission || perm == "admin" {
-			return true
-		}
-	}
-
-	return false
-}
-
-// Helper functions
-
-func generateAPIKey() (string, string, error) {
-	// Generate random bytes
-	randomBytes := make([]byte, KeyRandomLength)
-	_, err := rand.Read(randomBytes)
-	if err != nil {
-		return "", "", err
-	}
-
-	// Encode to base64 (URL-safe)
-	randomPart := base64.RawURLEncoding.EncodeToString(randomBytes)
-
-	// Use production prefix by default
-	// In production, you might want to make this configurable
-	prefix := KeyPrefixProduction
-	keyString := prefix + randomPart
-
-	return keyString, prefix, nil
-}
-
-func hashAPIKey(keyString string) (string, error) {
-	// Use SHA-256 for deterministic hashing (unlike bcrypt which uses salt)
-	// This allows us to look up keys by their hash
-	hash := sha256.Sum256([]byte(keyString))
-	return hex.EncodeToString(hash[:]), nil
-}
-
-func generateID() string {
-	// Generate a unique ID for the key metadata
-	randomBytes := make([]byte, 16)
-	rand.Read(randomBytes)
-	return base64.RawURLEncoding.EncodeToString(randomBytes)
 }

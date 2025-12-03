@@ -4,59 +4,13 @@
 package replication
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
-	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 	zmq "github.com/pebbe/zmq4"
 )
-
-// ZMQReplicationManager manages replication using ZeroMQ
-type ZMQReplicationManager struct {
-	config    ReplicationConfig
-	primaryID string
-	storage   *storage.GraphStorage
-
-	// ZeroMQ sockets
-	walPublisher  *zmq.Socket // PUB socket for WAL streaming
-	healthRouter  *zmq.Socket // ROUTER socket for health checks
-	writeReceiver *zmq.Socket // PULL socket for write buffering
-
-	// Replica tracking
-	replicas   map[string]*ZMQReplicaInfo
-	replicasMu sync.RWMutex
-
-	// Channels
-	walStream chan *wal.Entry
-	stopCh    chan struct{}
-	running   bool
-	runningMu sync.Mutex
-
-	// Datacenter support
-	datacenters   map[string]*DatacenterLink
-	datacentersMu sync.RWMutex
-}
-
-// ZMQReplicaInfo tracks ZeroMQ replica information
-type ZMQReplicaInfo struct {
-	ReplicaID      string
-	Datacenter     string
-	LastSeen       time.Time
-	LastAppliedLSN uint64
-	Healthy        bool
-}
-
-// DatacenterLink represents a link to another datacenter
-type DatacenterLink struct {
-	DatacenterID string
-	PubEndpoint  string
-	Publisher    *zmq.Socket
-	Connected    bool
-}
 
 // NewZMQReplicationManager creates a new ZeroMQ-based replication manager
 func NewZMQReplicationManager(config ReplicationConfig, storage *storage.GraphStorage) (*ZMQReplicationManager, error) {
@@ -80,16 +34,20 @@ func (zm *ZMQReplicationManager) Start() error {
 		return fmt.Errorf("replication manager already running")
 	}
 
+	// Use cleanup helper to ensure all resources are closed on error
+	cleanup := NewResourceCleanup()
+	defer cleanup.Cleanup()
+
 	// Create PUB socket for WAL streaming
 	pub, err := zmq.NewSocket(zmq.PUB)
 	if err != nil {
 		return fmt.Errorf("failed to create PUB socket: %w", err)
 	}
+	cleanup.Add(pub, "WAL publisher")
 
 	// Bind to all interfaces for WAL streaming
 	walAddr := fmt.Sprintf("tcp://*:9090")
 	if err := pub.Bind(walAddr); err != nil {
-		pub.Close()
 		return fmt.Errorf("failed to bind PUB socket: %w", err)
 	}
 	zm.walPublisher = pub
@@ -98,14 +56,12 @@ func (zm *ZMQReplicationManager) Start() error {
 	// Create ROUTER socket for health checks
 	router, err := zmq.NewSocket(zmq.ROUTER)
 	if err != nil {
-		zm.walPublisher.Close()
 		return fmt.Errorf("failed to create ROUTER socket: %w", err)
 	}
+	cleanup.Add(router, "health router")
 
 	healthAddr := fmt.Sprintf("tcp://*:9091")
 	if err := router.Bind(healthAddr); err != nil {
-		zm.walPublisher.Close()
-		router.Close()
 		return fmt.Errorf("failed to bind ROUTER socket: %w", err)
 	}
 	zm.healthRouter = router
@@ -114,16 +70,12 @@ func (zm *ZMQReplicationManager) Start() error {
 	// Create PULL socket for write buffering
 	pull, err := zmq.NewSocket(zmq.PULL)
 	if err != nil {
-		zm.walPublisher.Close()
-		zm.healthRouter.Close()
 		return fmt.Errorf("failed to create PULL socket: %w", err)
 	}
+	cleanup.Add(pull, "write receiver")
 
 	writeAddr := fmt.Sprintf("tcp://*:9092")
 	if err := pull.Bind(writeAddr); err != nil {
-		zm.walPublisher.Close()
-		zm.healthRouter.Close()
-		pull.Close()
 		return fmt.Errorf("failed to bind PULL socket: %w", err)
 	}
 	zm.writeReceiver = pull
@@ -132,11 +84,17 @@ func (zm *ZMQReplicationManager) Start() error {
 	zm.running = true
 
 	// Start goroutines
+	zm.wg.Add(1)
 	go zm.publishWALEntries()
+	zm.wg.Add(1)
 	go zm.handleHealthChecks()
+	zm.wg.Add(1)
 	go zm.handleBufferedWrites()
 
 	log.Printf("ZeroMQ replication manager started (primary_id=%s)", zm.primaryID)
+
+	// Success - prevent cleanup from closing resources
+	cleanup.Clear()
 
 	return nil
 }
@@ -155,167 +113,53 @@ func (zm *ZMQReplicationManager) Stop() error {
 
 	// Close all sockets
 	if zm.walPublisher != nil {
-		zm.walPublisher.Close()
+		if err := zm.walPublisher.Close(); err != nil {
+			log.Printf("Warning: Failed to close WAL publisher: %v", err)
+		}
 	}
 	if zm.healthRouter != nil {
-		zm.healthRouter.Close()
+		if err := zm.healthRouter.Close(); err != nil {
+			log.Printf("Warning: Failed to close health router: %v", err)
+		}
 	}
 	if zm.writeReceiver != nil {
-		zm.writeReceiver.Close()
+		if err := zm.writeReceiver.Close(); err != nil {
+			log.Printf("Warning: Failed to close write receiver: %v", err)
+		}
 	}
 
 	// Close datacenter links
 	zm.datacentersMu.Lock()
 	for _, dc := range zm.datacenters {
 		if dc.Publisher != nil {
-			dc.Publisher.Close()
+			if err := dc.Publisher.Close(); err != nil {
+				log.Printf("Warning: Failed to close datacenter publisher: %v", err)
+			}
 		}
 	}
 	zm.datacentersMu.Unlock()
+
+	// Wait for all goroutines to complete
+	zm.wg.Wait()
 
 	log.Printf("ZeroMQ replication manager stopped")
 
 	return nil
 }
 
-// StreamWALEntry sends a WAL entry to all replicas via PUB/SUB
-func (zm *ZMQReplicationManager) StreamWALEntry(entry *wal.Entry) {
+// StreamWALEntry sends a WAL entry to all replicas via PUB/SUB.
+// This method blocks if the buffer is full to ensure durability.
+// Returns an error if the manager is not running.
+func (zm *ZMQReplicationManager) StreamWALEntry(entry *wal.Entry) error {
 	if !zm.running {
-		return
+		return fmt.Errorf("replication manager not running")
 	}
 
 	select {
 	case zm.walStream <- entry:
-	default:
-		log.Printf("Warning: WAL stream buffer full")
-	}
-}
-
-// publishWALEntries publishes WAL entries to all subscribers
-func (zm *ZMQReplicationManager) publishWALEntries() {
-	for {
-		select {
-		case <-zm.stopCh:
-			return
-		case entry := <-zm.walStream:
-			// Serialize WAL entry
-			data, err := json.Marshal(entry)
-			if err != nil {
-				log.Printf("Failed to marshal WAL entry: %v", err)
-				continue
-			}
-
-			// Publish to local replicas (PUB/SUB)
-			// Topic: "WAL" for filtering
-			if _, err := zm.walPublisher.SendMessage("WAL", data); err != nil {
-				log.Printf("Failed to publish WAL entry: %v", err)
-			}
-
-			// Also publish to remote datacenters
-			zm.publishToDatacenters(entry, data)
-		}
-	}
-}
-
-// publishToDatacenters publishes to remote datacenters
-func (zm *ZMQReplicationManager) publishToDatacenters(entry *wal.Entry, data []byte) {
-	zm.datacentersMu.RLock()
-	defer zm.datacentersMu.RUnlock()
-
-	for _, dc := range zm.datacenters {
-		if dc.Connected && dc.Publisher != nil {
-			if _, err := dc.Publisher.SendMessage("WAL", data); err != nil {
-				log.Printf("Failed to publish to datacenter %s: %v", dc.DatacenterID, err)
-			}
-		}
-	}
-}
-
-// handleHealthChecks handles health check requests from replicas
-func (zm *ZMQReplicationManager) handleHealthChecks() {
-	for {
-		select {
-		case <-zm.stopCh:
-			return
-		default:
-		}
-
-		// Receive health check with timeout
-		zm.healthRouter.SetRcvtimeo(1 * time.Second)
-		msg, err := zm.healthRouter.RecvMessage(0)
-		if err != nil {
-			// Timeout or error, continue
-			continue
-		}
-
-		if len(msg) < 2 {
-			continue
-		}
-
-		// ROUTER gives us: [identity, empty, payload]
-		identity := msg[0]
-		payload := msg[len(msg)-1]
-
-		// Parse health check message
-		var hc HeartbeatMessage
-		if err := json.Unmarshal([]byte(payload), &hc); err != nil {
-			log.Printf("Failed to parse health check: %v", err)
-			continue
-		}
-
-		// Update replica info
-		zm.replicasMu.Lock()
-		zm.replicas[hc.From] = &ZMQReplicaInfo{
-			ReplicaID:      hc.From,
-			LastSeen:       time.Now(),
-			LastAppliedLSN: hc.CurrentLSN,
-			Healthy:        true,
-		}
-		zm.replicasMu.Unlock()
-
-		// Send health check response
-		stats := zm.storage.GetStatistics()
-		response := HeartbeatMessage{
-			From:       zm.primaryID,
-			CurrentLSN: zm.storage.GetCurrentLSN(),
-			NodeCount:  stats.NodeCount,
-			EdgeCount:  stats.EdgeCount,
-		}
-
-		responseData, _ := json.Marshal(response)
-		zm.healthRouter.SendMessage(identity, "", responseData)
-	}
-}
-
-// handleBufferedWrites handles writes from PUSH sockets
-func (zm *ZMQReplicationManager) handleBufferedWrites() {
-	for {
-		select {
-		case <-zm.stopCh:
-			return
-		default:
-		}
-
-		// Receive write operation with timeout
-		zm.writeReceiver.SetRcvtimeo(1 * time.Second)
-		msg, err := zm.writeReceiver.RecvMessage(0)
-		if err != nil {
-			continue
-		}
-
-		if len(msg) == 0 {
-			continue
-		}
-
-		// Parse write operation
-		var writeOp WriteOperation
-		if err := json.Unmarshal([]byte(msg[0]), &writeOp); err != nil {
-			log.Printf("Failed to parse write operation: %v", err)
-			continue
-		}
-
-		// Execute write operation
-		zm.executeWriteOperation(&writeOp)
+		return nil
+	case <-zm.stopCh:
+		return fmt.Errorf("replication manager stopped")
 	}
 }
 
@@ -331,7 +175,9 @@ func (zm *ZMQReplicationManager) AddDatacenterLink(datacenterID, pubEndpoint str
 	}
 
 	if err := pub.Connect(pubEndpoint); err != nil {
-		pub.Close()
+		if closeErr := pub.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close datacenter PUB socket after connect error: %v", closeErr)
+		}
 		return fmt.Errorf("failed to connect to datacenter: %w", err)
 	}
 
@@ -345,31 +191,6 @@ func (zm *ZMQReplicationManager) AddDatacenterLink(datacenterID, pubEndpoint str
 	log.Printf("Added datacenter link: %s -> %s", datacenterID, pubEndpoint)
 
 	return nil
-}
-
-// WriteOperation represents a buffered write operation
-type WriteOperation struct {
-	Type       string                   `json:"type"` // "create_node", "create_edge"
-	Labels     []string                 `json:"labels,omitempty"`
-	Properties map[string]storage.Value `json:"properties,omitempty"`
-	FromNodeID uint64                   `json:"from_node_id,omitempty"`
-	ToNodeID   uint64                   `json:"to_node_id,omitempty"`
-	EdgeType   string                   `json:"edge_type,omitempty"`
-	Weight     float64                  `json:"weight,omitempty"`
-}
-
-// executeWriteOperation executes a buffered write operation
-func (zm *ZMQReplicationManager) executeWriteOperation(op *WriteOperation) {
-	switch op.Type {
-	case "create_node":
-		if _, err := zm.storage.CreateNode(op.Labels, op.Properties); err != nil {
-			log.Printf("Failed to create node: %v", err)
-		}
-	case "create_edge":
-		if _, err := zm.storage.CreateEdge(op.FromNodeID, op.ToNodeID, op.EdgeType, op.Properties, op.Weight); err != nil {
-			log.Printf("Failed to create edge: %v", err)
-		}
-	}
 }
 
 // GetReplicationState returns current replication state

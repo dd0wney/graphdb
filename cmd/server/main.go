@@ -449,7 +449,11 @@ func main() {
 	}
 
 	// Create and start API server
-	server := api.NewServer(graph, *port)
+	server, err := api.NewServer(graph, *port)
+	if err != nil {
+		logger.Error("Failed to create API server", "error", err)
+		os.Exit(1)
+	}
 
 	// Apply TLS configuration if enabled
 	if tlsConfig != nil {

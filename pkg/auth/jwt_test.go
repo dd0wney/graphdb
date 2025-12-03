@@ -8,7 +8,10 @@ import (
 // TestJWTManager_GenerateToken tests JWT token generation
 func TestJWTManager_GenerateToken(t *testing.T) {
 	secret := "test-secret-key-must-be-at-least-32-characters-long"
-	jwtManager := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	jwtManager, err := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
 
 	tests := []struct {
 		name      string
@@ -84,7 +87,10 @@ func TestJWTManager_GenerateToken(t *testing.T) {
 // TestJWTManager_ValidateToken tests JWT token validation
 func TestJWTManager_ValidateToken(t *testing.T) {
 	secret := "test-secret-key-must-be-at-least-32-characters-long"
-	jwtManager := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	jwtManager, err := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
 
 	// Generate a valid token
 	validToken, err := jwtManager.GenerateToken("user123", "alice", "admin")
@@ -145,7 +151,10 @@ func TestJWTManager_ValidateToken(t *testing.T) {
 // TestJWTManager_ExtractClaims tests claims extraction from valid tokens
 func TestJWTManager_ExtractClaims(t *testing.T) {
 	secret := "test-secret-key-must-be-at-least-32-characters-long"
-	jwtManager := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	jwtManager, err := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
 
 	tests := []struct {
 		name         string
@@ -208,7 +217,10 @@ func TestJWTManager_ExtractClaims(t *testing.T) {
 func TestJWTManager_TokenExpiration(t *testing.T) {
 	secret := "test-secret-key-must-be-at-least-32-characters-long"
 	// Create manager with very short expiration
-	jwtManager := NewJWTManager(secret, 1*time.Millisecond, 7*24*time.Hour)
+	jwtManager, err := NewJWTManager(secret, 1*time.Millisecond, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
 
 	token, err := jwtManager.GenerateToken("user123", "alice", "admin")
 	if err != nil {
@@ -227,7 +239,10 @@ func TestJWTManager_TokenExpiration(t *testing.T) {
 // TestJWTManager_GenerateRefreshToken tests refresh token generation
 func TestJWTManager_GenerateRefreshToken(t *testing.T) {
 	secret := "test-secret-key-must-be-at-least-32-characters-long"
-	jwtManager := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	jwtManager, err := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
 
 	tests := []struct {
 		name      string
@@ -275,7 +290,10 @@ func TestJWTManager_GenerateRefreshToken(t *testing.T) {
 // TestJWTManager_ValidateRefreshToken tests refresh token validation
 func TestJWTManager_ValidateRefreshToken(t *testing.T) {
 	secret := "test-secret-key-must-be-at-least-32-characters-long"
-	jwtManager := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	jwtManager, err := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
 
 	// Generate a valid refresh token
 	validRefreshToken, err := jwtManager.GenerateRefreshToken("user123")
@@ -334,7 +352,10 @@ func TestJWTManager_ValidateRefreshToken(t *testing.T) {
 func TestJWTManager_RefreshTokenExpiration(t *testing.T) {
 	secret := "test-secret-key-must-be-at-least-32-characters-long"
 	// Create manager with very short refresh token expiration
-	jwtManager := NewJWTManager(secret, 15*time.Minute, 1*time.Millisecond)
+	jwtManager, err := NewJWTManager(secret, 15*time.Minute, 1*time.Millisecond)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
 
 	refreshToken, err := jwtManager.GenerateRefreshToken("user123")
 	if err != nil {
@@ -355,8 +376,14 @@ func TestJWTManager_DifferentSecrets(t *testing.T) {
 	secret1 := "test-secret-key-must-be-at-least-32-characters-long-1"
 	secret2 := "test-secret-key-must-be-at-least-32-characters-long-2"
 
-	jwtManager1 := NewJWTManager(secret1, 15*time.Minute, 7*24*time.Hour)
-	jwtManager2 := NewJWTManager(secret2, 15*time.Minute, 7*24*time.Hour)
+	jwtManager1, err := NewJWTManager(secret1, 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager 1: %v", err)
+	}
+	jwtManager2, err := NewJWTManager(secret2, 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager 2: %v", err)
+	}
 
 	// Generate token with first manager
 	token, err := jwtManager1.GenerateToken("user123", "alice", "admin")
@@ -373,20 +400,23 @@ func TestJWTManager_DifferentSecrets(t *testing.T) {
 
 // TestJWTManager_ShortSecret tests that short secrets are rejected
 func TestJWTManager_ShortSecret(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Expected panic for short secret, got none")
-		}
-	}()
-
-	// This should panic
-	NewJWTManager("short", 15*time.Minute, 7*24*time.Hour)
+	// This should return an error, not panic
+	_, err := NewJWTManager("short", 15*time.Minute, 7*24*time.Hour)
+	if err == nil {
+		t.Error("Expected error for short secret, got none")
+	}
+	if err != ErrShortSecret {
+		t.Errorf("Expected ErrShortSecret, got: %v", err)
+	}
 }
 
 // TestJWTManager_RoleValidation tests that only valid roles are accepted
 func TestJWTManager_RoleValidation(t *testing.T) {
 	secret := "test-secret-key-must-be-at-least-32-characters-long"
-	jwtManager := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	jwtManager, err := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
 
 	validRoles := []string{"admin", "editor", "viewer"}
 	for _, role := range validRoles {

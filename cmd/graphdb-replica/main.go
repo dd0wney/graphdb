@@ -70,7 +70,7 @@ func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication
 		if state.CurrentLSN > 0 {
 			connected = "connected"
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"status":    "healthy",
 			"role":      "replica",
 			"connected": connected,
@@ -95,7 +95,7 @@ func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication
 		}
 
 		// TODO: Implement node listing
-		json.NewEncoder(w).Encode([]interface{}{})
+		json.NewEncoder(w).Encode([]any{})
 	})
 
 	addr := fmt.Sprintf(":%d", port)

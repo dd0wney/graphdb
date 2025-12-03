@@ -21,7 +21,7 @@ type EnterprisePlugin interface {
 
 	// Initialize is called when the plugin is loaded
 	// The license parameter contains the validated Enterprise license
-	Initialize(ctx context.Context, license *licensing.License, config map[string]interface{}) error
+	Initialize(ctx context.Context, license *licensing.License, config map[string]any) error
 
 	// Start begins plugin operation (called after all plugins are initialized)
 	Start(ctx context.Context) error
@@ -47,7 +47,7 @@ type APIPlugin interface {
 
 	// RegisterRoutes adds plugin-specific API endpoints
 	// Returns a map of route path -> handler
-	RegisterRoutes() map[string]interface{}
+	RegisterRoutes() map[string]any
 }
 
 // BackupPlugin extends EnterprisePlugin for backup features
@@ -78,7 +78,7 @@ type MonitoringPlugin interface {
 	EnterprisePlugin
 
 	// GetMetrics returns plugin-specific metrics
-	GetMetrics(ctx context.Context) (map[string]interface{}, error)
+	GetMetrics(ctx context.Context) (map[string]any, error)
 }
 
 // PluginMetadata contains plugin information

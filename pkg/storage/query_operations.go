@@ -28,9 +28,9 @@ func (gs *GraphStorage) buildEdgeListFromIDs(edgeIDs []uint64) []*Edge {
 func (gs *GraphStorage) GetOutgoingEdges(nodeID uint64) ([]*Edge, error) {
 	defer gs.startQueryTiming()()
 
-	// Use shard-level read lock for better concurrency
-	gs.rlockShard(nodeID)
-	defer gs.runlockShard(nodeID)
+	// Use global read lock since we access global edge maps
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
 
 	// Get edge IDs using helper (checks disk/compressed/uncompressed storage)
 	edgeIDs := gs.getEdgeIDsForNode(nodeID, true)
@@ -38,10 +38,8 @@ func (gs *GraphStorage) GetOutgoingEdges(nodeID uint64) ([]*Edge, error) {
 		return []*Edge{}, nil
 	}
 
-	// Access gs.edges with global read lock (edges map is shared across all shards)
-	gs.mu.RLock()
+	// Build edge list from IDs
 	edges := gs.buildEdgeListFromIDs(edgeIDs)
-	gs.mu.RUnlock()
 
 	return edges, nil
 }
@@ -50,9 +48,9 @@ func (gs *GraphStorage) GetOutgoingEdges(nodeID uint64) ([]*Edge, error) {
 func (gs *GraphStorage) GetIncomingEdges(nodeID uint64) ([]*Edge, error) {
 	defer gs.startQueryTiming()()
 
-	// Use shard-level read lock for better concurrency
-	gs.rlockShard(nodeID)
-	defer gs.runlockShard(nodeID)
+	// Use global read lock since we access global edge maps
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
 
 	// Get edge IDs using helper (checks disk/compressed/uncompressed storage)
 	edgeIDs := gs.getEdgeIDsForNode(nodeID, false)
@@ -60,10 +58,8 @@ func (gs *GraphStorage) GetIncomingEdges(nodeID uint64) ([]*Edge, error) {
 		return []*Edge{}, nil
 	}
 
-	// Access gs.edges with global read lock (edges map is shared across all shards)
-	gs.mu.RLock()
+	// Build edge list from IDs
 	edges := gs.buildEdgeListFromIDs(edgeIDs)
-	gs.mu.RUnlock()
 
 	return edges, nil
 }

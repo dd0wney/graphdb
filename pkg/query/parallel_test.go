@@ -13,12 +13,12 @@ import (
 // mockTask implements the Task interface for testing
 type mockTask struct {
 	id     string
-	result interface{}
+	result any
 	err    error
 	delay  time.Duration
 }
 
-func (t *mockTask) Execute(graph *storage.GraphStorage) (interface{}, error) {
+func (t *mockTask) Execute(graph *storage.GraphStorage) (any, error) {
 	if t.delay > 0 {
 		time.Sleep(t.delay)
 	}

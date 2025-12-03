@@ -63,7 +63,7 @@ func parseSecurityFlags(args []string) *SecurityConfig {
 }
 
 // makeAPIRequest makes an HTTP request to the GraphDB API
-func makeAPIRequest(method, url string, config *SecurityConfig, body interface{}) ([]byte, error) {
+func makeAPIRequest(method, url string, config *SecurityConfig, body any) ([]byte, error) {
 	var reqBody io.Reader
 	if body != nil {
 		jsonData, err := json.Marshal(body)
@@ -198,7 +198,7 @@ func handleSecurityRotateKeys(args []string) {
 		os.Exit(1)
 	}
 
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.Unmarshal(respBody, &response); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to parse response: %v\n", err)
 		os.Exit(1)
@@ -239,7 +239,7 @@ func handleSecurityAuditExport(args []string) {
 	fmt.Println()
 
 	// Build export request
-	exportReq := map[string]interface{}{
+	exportReq := map[string]any{
 		"format": "json",
 	}
 
@@ -272,9 +272,9 @@ func handleSecurityAuditExport(args []string) {
 	fmt.Printf("✓ Audit logs exported to: %s\n", *output)
 
 	// Parse and show summary
-	var exportData map[string]interface{}
+	var exportData map[string]any
 	if err := json.Unmarshal(respBody, &exportData); err == nil {
-		if events, ok := exportData["events"].([]interface{}); ok {
+		if events, ok := exportData["events"].([]any); ok {
 			fmt.Printf("  Total events: %d\n", len(events))
 		}
 	}
@@ -299,7 +299,7 @@ func handleSecurityHealth(args []string) {
 		os.Exit(1)
 	}
 
-	var health map[string]interface{}
+	var health map[string]any
 	if err := json.Unmarshal(respBody, &health); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to parse response: %v\n", err)
 		os.Exit(1)
@@ -309,15 +309,15 @@ func handleSecurityHealth(args []string) {
 	fmt.Printf("Timestamp: %v\n", health["timestamp"])
 	fmt.Println()
 
-	if components, ok := health["components"].(map[string]interface{}); ok {
+	if components, ok := health["components"].(map[string]any); ok {
 		fmt.Println("Security Components:")
 
 		// Encryption
-		if enc, ok := components["encryption"].(map[string]interface{}); ok {
+		if enc, ok := components["encryption"].(map[string]any); ok {
 			enabled := enc["enabled"].(bool)
 			if enabled {
 				fmt.Println("  ✓ Encryption: Enabled")
-				if keyStats, ok := enc["key_stats"].(map[string]interface{}); ok {
+				if keyStats, ok := enc["key_stats"].(map[string]any); ok {
 					fmt.Printf("    - Total keys: %v\n", keyStats["total_keys"])
 					fmt.Printf("    - Active version: %v\n", keyStats["active_version"])
 				}
@@ -327,7 +327,7 @@ func handleSecurityHealth(args []string) {
 		}
 
 		// TLS
-		if tls, ok := components["tls"].(map[string]interface{}); ok {
+		if tls, ok := components["tls"].(map[string]any); ok {
 			enabled := tls["enabled"].(bool)
 			if enabled {
 				fmt.Println("  ✓ TLS: Enabled")
@@ -337,7 +337,7 @@ func handleSecurityHealth(args []string) {
 		}
 
 		// Audit
-		if audit, ok := components["audit"].(map[string]interface{}); ok {
+		if audit, ok := components["audit"].(map[string]any); ok {
 			enabled := audit["enabled"].(bool)
 			if enabled {
 				fmt.Println("  ✓ Audit Logging: Enabled")
@@ -348,7 +348,7 @@ func handleSecurityHealth(args []string) {
 		}
 
 		// Authentication
-		if auth, ok := components["authentication"].(map[string]interface{}); ok {
+		if auth, ok := components["authentication"].(map[string]any); ok {
 			jwtEnabled := auth["jwt_enabled"].(bool)
 			apikeyEnabled := auth["apikey_enabled"].(bool)
 			if jwtEnabled {
@@ -380,7 +380,7 @@ func handleSecurityKeyInfo(args []string) {
 		os.Exit(1)
 	}
 
-	var keyInfo map[string]interface{}
+	var keyInfo map[string]any
 	if err := json.Unmarshal(respBody, &keyInfo); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to parse response: %v\n", err)
 		os.Exit(1)
@@ -390,10 +390,10 @@ func handleSecurityKeyInfo(args []string) {
 	fmt.Printf("Total Keys: %v\n", keyInfo["total_keys"])
 	fmt.Println()
 
-	if keys, ok := keyInfo["keys"].([]interface{}); ok {
+	if keys, ok := keyInfo["keys"].([]any); ok {
 		fmt.Println("Key History:")
 		for _, k := range keys {
-			if key, ok := k.(map[string]interface{}); ok {
+			if key, ok := k.(map[string]any); ok {
 				version := key["version"]
 				createdAt := key["created_at"]
 				isActive := key["is_active"]

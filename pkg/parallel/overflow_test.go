@@ -6,15 +6,11 @@ import (
 )
 
 func TestWorkerPoolOverflow(t *testing.T) {
-	// Test that extremely large worker counts are rejected
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Expected panic for too many workers")
-		}
-	}()
-
-	// This should panic - workers * 2 would overflow
-	_ = NewWorkerPool(math.MaxInt)
+	// Test that extremely large worker counts are rejected with an error
+	_, err := NewWorkerPool(math.MaxInt)
+	if err == nil {
+		t.Error("Expected error for too many workers")
+	}
 }
 
 func TestWorkerPoolReasonableSize(t *testing.T) {
@@ -22,7 +18,7 @@ func TestWorkerPoolReasonableSize(t *testing.T) {
 	testCases := []int{1, 10, 100, 1000, 10000}
 
 	for _, workers := range testCases {
-		pool := NewWorkerPool(workers)
+		pool, _ := NewWorkerPool(workers)
 		if pool.workers != workers {
 			t.Errorf("Expected %d workers, got %d", workers, pool.workers)
 		}
@@ -32,7 +28,7 @@ func TestWorkerPoolReasonableSize(t *testing.T) {
 
 func TestWorkerPoolZeroWorkers(t *testing.T) {
 	// Zero workers should default to 1
-	pool := NewWorkerPool(0)
+	pool, _ := NewWorkerPool(0)
 	if pool.workers != 1 {
 		t.Errorf("Expected 1 worker for zero input, got %d", pool.workers)
 	}
@@ -41,7 +37,7 @@ func TestWorkerPoolZeroWorkers(t *testing.T) {
 
 func TestWorkerPoolNegativeWorkers(t *testing.T) {
 	// Negative workers should default to 1
-	pool := NewWorkerPool(-5)
+	pool, _ := NewWorkerPool(-5)
 	if pool.workers != 1 {
 		t.Errorf("Expected 1 worker for negative input, got %d", pool.workers)
 	}
@@ -54,7 +50,7 @@ func TestWorkerPoolMaxSafe(t *testing.T) {
 	// a channel buffer that large, so test with a large but realistic value
 	largeWorkers := 1000000
 
-	pool := NewWorkerPool(largeWorkers)
+	pool, _ := NewWorkerPool(largeWorkers)
 	if pool.workers != largeWorkers {
 		t.Errorf("Expected %d workers, got %d", largeWorkers, pool.workers)
 	}
@@ -70,7 +66,7 @@ func TestWorkerPoolMaxSafe(t *testing.T) {
 }
 
 func TestWorkerPoolSubmitAndExecute(t *testing.T) {
-	pool := NewWorkerPool(4)
+	pool, _ := NewWorkerPool(4)
 	defer pool.Close()
 
 	// Test that tasks are executed
@@ -93,7 +89,7 @@ func TestWorkerPoolSubmitAndExecute(t *testing.T) {
 }
 
 func BenchmarkWorkerPoolSmall(b *testing.B) {
-	pool := NewWorkerPool(4)
+	pool, _ := NewWorkerPool(4)
 	defer pool.Close()
 
 	b.ResetTimer()
@@ -105,7 +101,7 @@ func BenchmarkWorkerPoolSmall(b *testing.B) {
 }
 
 func BenchmarkWorkerPoolLarge(b *testing.B) {
-	pool := NewWorkerPool(100)
+	pool, _ := NewWorkerPool(100)
 	defer pool.Close()
 
 	b.ResetTimer()
