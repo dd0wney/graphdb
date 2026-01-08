@@ -24,6 +24,11 @@ func (s *Server) Start() error {
 	// Auth rate limiter is always enabled to protect against brute-force attacks
 	mux.Handle("/auth/", s.authRateLimitMiddleware(s.authHandler))
 
+	// OIDC authentication endpoints (public, if enabled)
+	if s.oidcHandler != nil {
+		mux.Handle("/auth/oidc/", s.authRateLimitMiddleware(s.oidcHandler))
+	}
+
 	// Metrics endpoint (JSON format for dashboard, protected)
 	mux.HandleFunc("/api/metrics", s.requireAuth(s.handleMetrics))
 
@@ -99,6 +104,12 @@ func (s *Server) Start() error {
 	log.Printf("   Register:      POST %s://%s/auth/register (requires admin)", protocol, addr)
 	log.Printf("   Refresh:       POST %s://%s/auth/refresh (public)", protocol, addr)
 	log.Printf("   Current User:  GET  %s://%s/auth/me (requires auth)", protocol, addr)
+	if s.oidcHandler != nil {
+		log.Printf("🔐 OIDC Authentication (public):")
+		log.Printf("   OIDC Login:    GET  %s://%s/auth/oidc/login (redirects to IdP)", protocol, addr)
+		log.Printf("   OIDC Callback: GET  %s://%s/auth/oidc/callback (handles IdP response)", protocol, addr)
+		log.Printf("   OIDC Token:    POST %s://%s/auth/oidc/token (validates OIDC token)", protocol, addr)
+	}
 	log.Printf("   Query:         POST %s://%s/query (requires auth)", protocol, addr)
 	log.Printf("   GraphQL:       POST %s://%s/graphql (requires auth)", protocol, addr)
 	log.Printf("   Nodes:         GET/POST %s://%s/nodes (requires auth)", protocol, addr)

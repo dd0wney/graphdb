@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -127,7 +128,7 @@ func TestJWTManager_ValidateToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			claims, err := jwtManager.ValidateToken(tt.token)
+			claims, err := jwtManager.ValidateToken(context.Background(), tt.token)
 
 			if tt.wantError {
 				if err == nil {
@@ -189,7 +190,7 @@ func TestJWTManager_ExtractClaims(t *testing.T) {
 				t.Fatalf("Failed to generate token: %v", err)
 			}
 
-			claims, err := jwtManager.ValidateToken(token)
+			claims, err := jwtManager.ValidateToken(context.Background(), token)
 			if err != nil {
 				t.Fatalf("Failed to validate token: %v", err)
 			}
@@ -230,7 +231,7 @@ func TestJWTManager_TokenExpiration(t *testing.T) {
 	// Wait for token to expire
 	time.Sleep(100 * time.Millisecond)
 
-	_, err = jwtManager.ValidateToken(token)
+	_, err = jwtManager.ValidateToken(context.Background(), token)
 	if err == nil {
 		t.Error("Expected error for expired token, got none")
 	}
@@ -392,7 +393,7 @@ func TestJWTManager_DifferentSecrets(t *testing.T) {
 	}
 
 	// Try to validate with second manager (different secret)
-	_, err = jwtManager2.ValidateToken(token)
+	_, err = jwtManager2.ValidateToken(context.Background(), token)
 	if err == nil {
 		t.Error("Expected error when validating token with different secret, got none")
 	}

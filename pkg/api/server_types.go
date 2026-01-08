@@ -6,6 +6,7 @@ import (
 
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/cluso-graphdb/pkg/auth/oidc"
 	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
 	gqlpkg "github.com/dd0wney/cluso-graphdb/pkg/graphql"
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
@@ -41,6 +42,9 @@ type Server struct {
 	authRateLimiter     *RateLimiter                // Stricter rate limiter for auth endpoints (brute-force prevention)
 	encryptionEngine    encryption.EncryptDecrypter // Handles data encryption/decryption
 	keyManager          encryption.KeyProvider      // Manages encryption keys
+	oidcHandler         *oidc.OIDCHandler           // OIDC authentication handler (nil if disabled)
+	oidcConfig          *oidc.Config                // OIDC configuration
+	tokenValidator      auth.TokenValidator         // Composite validator for JWT + OIDC
 	startTime           time.Time
 	version             string
 	port                int

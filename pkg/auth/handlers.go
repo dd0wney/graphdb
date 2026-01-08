@@ -78,7 +78,7 @@ func (h *AuthHandler) extractAndValidateToken(r *http.Request) (*Claims, error) 
 	token := parts[1]
 
 	// Validate token
-	claims, err := h.jwtManager.ValidateToken(token)
+	claims, err := h.jwtManager.ValidateToken(r.Context(), token)
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: %w", err)
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/cluso-graphdb/pkg/auth/oidc"
 	"github.com/dd0wney/cluso-graphdb/pkg/graphql"
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
@@ -104,6 +105,24 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 	}
 	authHandler := auth.NewAuthHandler(userStore, jwtManager)
 	userHandler := auth.NewUserManagementHandler(userStore, jwtManager)
+
+	// Initialize OIDC authentication (optional)
+	var oidcHandler *oidc.OIDCHandler
+	var oidcConfig *oidc.Config
+	var tokenValidator auth.TokenValidator = jwtManager // Default to JWT-only
+
+	oidcConfig, err = oidc.LoadConfigFromEnv()
+	if err != nil {
+		log.Printf("⚠️  Warning: Failed to load OIDC config: %v", err)
+	} else if oidcConfig.Enabled {
+		oidcHandler = oidc.NewOIDCHandler(oidcConfig, userStore, jwtManager)
+
+		// Create composite validator that tries JWT first, then OIDC
+		oidcValidator := oidc.NewOIDCTokenValidator(oidcConfig)
+		tokenValidator = auth.NewCompositeTokenValidator(jwtManager, oidcValidator)
+
+		log.Printf("✅ OIDC authentication enabled (issuer: %s)", oidcConfig.Issuer)
+	}
 
 	// Initialize audit logging - always have in-memory for GetEvents/GetRecentEvents API
 	inMemoryAuditLogger := audit.NewAuditLogger(10000) // Store last 10,000 events
@@ -222,6 +241,9 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		metricsRegistry:     metricsRegistry,
 		healthChecker:       healthChecker,
 		tlsConfig:           nil, // TLS disabled by default
+		oidcHandler:         oidcHandler,
+		oidcConfig:          oidcConfig,
+		tokenValidator:      tokenValidator,
 		startTime:           time.Now(),
 		version:             "1.0.0",
 		port:                port,

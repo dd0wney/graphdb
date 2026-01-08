@@ -247,7 +247,7 @@ func (h *UserManagementHandler) extractAndValidateToken(r *http.Request) (*Claim
 	}
 
 	token := parts[1]
-	claims, err := h.jwtManager.ValidateToken(token)
+	claims, err := h.jwtManager.ValidateToken(r.Context(), token)
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: %w", err)
 	}

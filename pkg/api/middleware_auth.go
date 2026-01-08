@@ -55,8 +55,8 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 			token := authHeader[7:]
 
-			// Validate token
-			claims, err := s.jwtManager.ValidateToken(token)
+			// Validate token using composite validator (supports JWT and OIDC tokens)
+			claims, err := s.tokenValidator.ValidateToken(r.Context(), token)
 			if err != nil {
 				log.Printf("Token validation failed: %v", err)
 				s.respondError(w, http.StatusUnauthorized, "Invalid or expired token")

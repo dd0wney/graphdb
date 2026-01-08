@@ -2,6 +2,7 @@ package integration
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -541,7 +542,7 @@ func TestE2E_JWTTokenFlow(t *testing.T) {
 	t.Logf("✓ Step 2: JWT token generated for user %s", username)
 
 	// Validate token
-	claims, err := jwtManager.ValidateToken(token)
+	claims, err := jwtManager.ValidateToken(context.Background(), token)
 	if err != nil {
 		t.Fatalf("Failed to validate token: %v", err)
 	}
@@ -564,7 +565,7 @@ func TestE2E_JWTTokenFlow(t *testing.T) {
 	t.Logf("   - Role: %s", claims.Role)
 
 	// Test invalid token
-	_, err = jwtManager.ValidateToken("invalid.token.here")
+	_, err = jwtManager.ValidateToken(context.Background(), "invalid.token.here")
 	if err == nil {
 		t.Error("Invalid token was accepted")
 	}
@@ -576,7 +577,7 @@ func TestE2E_JWTTokenFlow(t *testing.T) {
 	differentManager, _ := auth.NewJWTManager(differentSecret, 24*time.Hour, 7*24*time.Hour)
 	differentToken, _ := differentManager.GenerateToken(userID, username, role)
 
-	_, err = jwtManager.ValidateToken(differentToken)
+	_, err = jwtManager.ValidateToken(context.Background(), differentToken)
 	if err == nil {
 		t.Error("Token with different secret was accepted")
 	}
@@ -587,7 +588,7 @@ func TestE2E_JWTTokenFlow(t *testing.T) {
 	expiredManager, _ := auth.NewJWTManager(secret, -1*time.Hour, 7*24*time.Hour)
 	expiredToken, _ := expiredManager.GenerateToken(userID, username, role)
 
-	_, err = jwtManager.ValidateToken(expiredToken)
+	_, err = jwtManager.ValidateToken(context.Background(), expiredToken)
 	if err == nil {
 		t.Error("Expired token was accepted")
 	}

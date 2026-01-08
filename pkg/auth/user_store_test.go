@@ -2,6 +2,7 @@ package auth
 
 import (
 	"testing"
+	"time"
 )
 
 // TestUserStore_CreateUser tests user creation
@@ -457,5 +458,321 @@ func TestUserStore_ChangePassword(t *testing.T) {
 	err = store.ChangePassword(user.ID, "short")
 	if err == nil {
 		t.Error("Expected error for invalid new password")
+	}
+}
+
+// OIDC User Provisioning Tests
+
+// TestUserStore_CreateOrUpdateOIDCUser tests OIDC user provisioning
+func TestUserStore_CreateOrUpdateOIDCUser(t *testing.T) {
+	store := NewUserStore()
+	now := time.Now().Unix()
+
+	tests := []struct {
+		name              string
+		info              *OIDCUserInfo
+		expectNew         bool
+		expectErr         bool
+		expectedUsername  string
+		expectedRole      string
+	}{
+		{
+			name: "Create new OIDC user with preferred_username",
+			info: &OIDCUserInfo{
+				Subject:           "user123",
+				Issuer:            "https://idp.example.com",
+				Email:             "user@example.com",
+				PreferredUsername: "testuser",
+				Role:              "viewer",
+			},
+			expectNew:        true,
+			expectErr:        false,
+			expectedUsername: "testuser",
+			expectedRole:     "viewer",
+		},
+		{
+			name: "Create new OIDC user with email only",
+			info: &OIDCUserInfo{
+				Subject: "user456",
+				Issuer:  "https://idp.example.com",
+				Email:   "alice@example.com",
+				Role:    "editor",
+			},
+			expectNew:        true,
+			expectErr:        false,
+			expectedUsername: "alice",
+			expectedRole:     "editor",
+		},
+		{
+			name: "Update existing OIDC user",
+			info: &OIDCUserInfo{
+				Subject:           "user123",
+				Issuer:            "https://idp.example.com",
+				Email:             "newemail@example.com",
+				PreferredUsername: "testuser",
+				Role:              "viewer",
+			},
+			expectNew:        false,
+			expectErr:        false,
+			expectedUsername: "testuser",
+			expectedRole:     "viewer",
+		},
+		{
+			name: "Update existing user with higher role",
+			info: &OIDCUserInfo{
+				Subject: "user123",
+				Issuer:  "https://idp.example.com",
+				Role:    "admin",
+			},
+			expectNew:    false,
+			expectErr:    false,
+			expectedRole: "admin",
+		},
+		{
+			name: "Missing subject should fail",
+			info: &OIDCUserInfo{
+				Issuer: "https://idp.example.com",
+			},
+			expectErr: true,
+		},
+		{
+			name: "Missing issuer should fail",
+			info: &OIDCUserInfo{
+				Subject: "user789",
+			},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user, isNew, err := store.CreateOrUpdateOIDCUser(tt.info, now)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+
+			if isNew != tt.expectNew {
+				t.Errorf("Expected isNew=%v, got %v", tt.expectNew, isNew)
+			}
+
+			if tt.expectedUsername != "" && user.Username != tt.expectedUsername {
+				t.Errorf("Expected username %q, got %q", tt.expectedUsername, user.Username)
+			}
+
+			if user.Role != tt.expectedRole {
+				t.Errorf("Expected role %q, got %q", tt.expectedRole, user.Role)
+			}
+
+			if user.AuthProvider != AuthProviderOIDC {
+				t.Errorf("Expected AuthProvider %q, got %q", AuthProviderOIDC, user.AuthProvider)
+			}
+		})
+	}
+}
+
+// TestUserStore_GetUserByOIDCSubject tests OIDC user lookup
+func TestUserStore_GetUserByOIDCSubject(t *testing.T) {
+	store := NewUserStore()
+	now := time.Now().Unix()
+
+	// Create OIDC user
+	info := &OIDCUserInfo{
+		Subject: "oidc-user-123",
+		Issuer:  "https://idp.example.com",
+		Email:   "oidc@example.com",
+		Role:    "viewer",
+	}
+	_, _, err := store.CreateOrUpdateOIDCUser(info, now)
+	if err != nil {
+		t.Fatalf("Failed to create OIDC user: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		issuer    string
+		subject   string
+		expectErr bool
+	}{
+		{
+			name:      "Find existing OIDC user",
+			issuer:    "https://idp.example.com",
+			subject:   "oidc-user-123",
+			expectErr: false,
+		},
+		{
+			name:      "User not found - wrong subject",
+			issuer:    "https://idp.example.com",
+			subject:   "wrong-subject",
+			expectErr: true,
+		},
+		{
+			name:      "User not found - wrong issuer",
+			issuer:    "https://different.idp.com",
+			subject:   "oidc-user-123",
+			expectErr: true,
+		},
+		{
+			name:      "Empty issuer",
+			issuer:    "",
+			subject:   "oidc-user-123",
+			expectErr: true,
+		},
+		{
+			name:      "Empty subject",
+			issuer:    "https://idp.example.com",
+			subject:   "",
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user, err := store.GetUserByOIDCSubject(tt.issuer, tt.subject)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+
+			if user.OIDCSubject != tt.subject {
+				t.Errorf("Expected subject %q, got %q", tt.subject, user.OIDCSubject)
+			}
+
+			if user.OIDCIssuer != tt.issuer {
+				t.Errorf("Expected issuer %q, got %q", tt.issuer, user.OIDCIssuer)
+			}
+		})
+	}
+}
+
+// TestUserStore_DeleteOIDCUser tests deletion of OIDC users
+func TestUserStore_DeleteOIDCUser(t *testing.T) {
+	store := NewUserStore()
+	now := time.Now().Unix()
+
+	// Create OIDC user
+	info := &OIDCUserInfo{
+		Subject: "delete-test-user",
+		Issuer:  "https://idp.example.com",
+		Email:   "delete@example.com",
+		Role:    "viewer",
+	}
+	user, _, err := store.CreateOrUpdateOIDCUser(info, now)
+	if err != nil {
+		t.Fatalf("Failed to create OIDC user: %v", err)
+	}
+
+	// Verify user exists
+	_, err = store.GetUserByOIDCSubject(info.Issuer, info.Subject)
+	if err != nil {
+		t.Error("OIDC user should exist before deletion")
+	}
+
+	// Delete user
+	err = store.DeleteUser(user.ID)
+	if err != nil {
+		t.Errorf("Failed to delete OIDC user: %v", err)
+	}
+
+	// Verify user no longer exists in any index
+	_, err = store.GetUserByID(user.ID)
+	if err == nil {
+		t.Error("User should not exist by ID after deletion")
+	}
+
+	_, err = store.GetUserByUsername(user.Username)
+	if err == nil {
+		t.Error("User should not exist by username after deletion")
+	}
+
+	_, err = store.GetUserByOIDCSubject(info.Issuer, info.Subject)
+	if err == nil {
+		t.Error("User should not exist by OIDC subject after deletion")
+	}
+}
+
+// TestUserStore_OIDCUsernameGeneration tests username generation for OIDC users
+func TestUserStore_OIDCUsernameGeneration(t *testing.T) {
+	store := NewUserStore()
+	now := time.Now().Unix()
+
+	// Create user with preferred_username
+	user1, _, _ := store.CreateOrUpdateOIDCUser(&OIDCUserInfo{
+		Subject:           "user1",
+		Issuer:            "https://idp.example.com",
+		PreferredUsername: "alice",
+	}, now)
+	if user1.Username != "alice" {
+		t.Errorf("Expected username 'alice', got %q", user1.Username)
+	}
+
+	// Create another user with same preferred_username (should get unique suffix)
+	user2, _, _ := store.CreateOrUpdateOIDCUser(&OIDCUserInfo{
+		Subject:           "user2",
+		Issuer:            "https://idp.example.com",
+		PreferredUsername: "alice",
+	}, now)
+	if user2.Username == "alice" {
+		t.Error("Second user should have unique username")
+	}
+	if user2.Username != "alice_1" {
+		t.Errorf("Expected username 'alice_1', got %q", user2.Username)
+	}
+
+	// Create user with email only
+	user3, _, _ := store.CreateOrUpdateOIDCUser(&OIDCUserInfo{
+		Subject: "user3",
+		Issuer:  "https://idp.example.com",
+		Email:   "bob@example.com",
+	}, now)
+	if user3.Username != "bob" {
+		t.Errorf("Expected username 'bob', got %q", user3.Username)
+	}
+
+	// Create user with special characters in email (should be sanitized)
+	user4, _, _ := store.CreateOrUpdateOIDCUser(&OIDCUserInfo{
+		Subject: "user4",
+		Issuer:  "https://idp.example.com",
+		Email:   "charlie+test@example.com",
+	}, now)
+	if user4.Username != "charlietest" {
+		t.Errorf("Expected username 'charlietest' (sanitized), got %q", user4.Username)
+	}
+}
+
+// TestUserStore_IsOIDCUser tests the IsOIDCUser helper
+func TestUserStore_IsOIDCUser(t *testing.T) {
+	store := NewUserStore()
+	now := time.Now().Unix()
+
+	// Create local user
+	localUser, _ := store.CreateUser("localuser", "Password123!", RoleViewer)
+	if localUser.IsOIDCUser() {
+		t.Error("Local user should not be OIDC user")
+	}
+
+	// Create OIDC user
+	oidcUser, _, _ := store.CreateOrUpdateOIDCUser(&OIDCUserInfo{
+		Subject: "oidc-sub",
+		Issuer:  "https://idp.example.com",
+	}, now)
+	if !oidcUser.IsOIDCUser() {
+		t.Error("OIDC user should be OIDC user")
 	}
 }

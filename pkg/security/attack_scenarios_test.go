@@ -2,6 +2,7 @@ package security
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -389,7 +390,7 @@ func TestJWTTokenAttacks(t *testing.T) {
 	}
 
 	for i, token := range malformedTokens {
-		_, err := jwtManager.ValidateToken(token)
+		_, err := jwtManager.ValidateToken(context.Background(), token)
 		if err == nil {
 			t.Errorf("Malformed token %d should be rejected: %q", i+1, token)
 		} else {
@@ -402,7 +403,7 @@ func TestJWTTokenAttacks(t *testing.T) {
 	if len(parts) == 3 {
 		// Tamper with payload
 		tamperedToken := parts[0] + ".tampered_payload." + parts[2]
-		_, err := jwtManager.ValidateToken(tamperedToken)
+		_, err := jwtManager.ValidateToken(context.Background(), tamperedToken)
 		if err == nil {
 			t.Error("Tampered token should be rejected")
 		} else {
@@ -411,7 +412,7 @@ func TestJWTTokenAttacks(t *testing.T) {
 
 		// Tamper with signature
 		tamperedToken = parts[0] + "." + parts[1] + ".tampered_signature"
-		_, err = jwtManager.ValidateToken(tamperedToken)
+		_, err = jwtManager.ValidateToken(context.Background(), tamperedToken)
 		if err == nil {
 			t.Error("Token with tampered signature should be rejected")
 		} else {
@@ -429,7 +430,7 @@ func TestJWTTokenAttacks(t *testing.T) {
 	// Wait for token to expire
 	time.Sleep(10 * time.Millisecond)
 
-	_, err = shortExpiryManager.ValidateToken(expiredToken)
+	_, err = shortExpiryManager.ValidateToken(context.Background(), expiredToken)
 	if err == nil {
 		t.Error("Expired token should be rejected")
 	} else {
@@ -443,7 +444,7 @@ func TestJWTTokenAttacks(t *testing.T) {
 		t.Fatalf("Failed to generate token with different secret: %v", err)
 	}
 
-	_, err = jwtManager.ValidateToken(differentSecretToken)
+	_, err = jwtManager.ValidateToken(context.Background(), differentSecretToken)
 	if err == nil {
 		t.Error("Token signed with different secret should be rejected")
 	} else {

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -111,8 +112,9 @@ func (m *JWTManager) GenerateToken(userID, username, role string) (string, error
 	return tokenString, nil
 }
 
-// ValidateToken validates a JWT token and returns claims
-func (m *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
+// ValidateToken validates a JWT token and returns claims.
+// Implements TokenValidator interface.
+func (m *JWTManager) ValidateToken(_ context.Context, tokenString string) (*Claims, error) {
 	if tokenString == "" {
 		return nil, ErrInvalidToken
 	}
@@ -263,4 +265,15 @@ func (m *JWTManager) ValidateRefreshToken(tokenString string) (string, error) {
 	}
 
 	return userID, nil
+}
+
+// Name returns the validator name for logging/debugging.
+// Implements TokenValidator interface.
+func (m *JWTManager) Name() string {
+	return "jwt-hs256"
+}
+
+// GetTokenDuration returns the configured token duration
+func (m *JWTManager) GetTokenDuration() time.Duration {
+	return m.tokenDuration
 }
