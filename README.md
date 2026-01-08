@@ -8,7 +8,11 @@
 
 A high-performance, feature-rich graph database built from scratch in Go. GraphDB combines modern storage techniques with powerful graph algorithms and multiple query interfaces.
 
-## v0.1.0 Released!
+## v0.2.0 Released! 🎉
+
+**New in v0.2.0:** Vector Search with HNSW indexes for semantic similarity queries.
+
+## What's New
 
 **Try it in 30 seconds:**
 
@@ -45,6 +49,14 @@ tar -xzf graphdb_0.1.0_Linux_x86_64.tar.gz
 - **Block Cache** - LRU caching for read performance
 - **Property Indexes** - Fast property-based lookups
 - **Batched Operations** - Efficient bulk data loading
+
+### Vector Search (New in v0.2.0!)
+
+- **HNSW Indexes** - Hierarchical Navigable Small World graphs for fast k-NN search
+- **Multiple Distance Metrics** - Cosine, Euclidean, and Dot Product similarity
+- **Automatic Index Sync** - Vector indexes stay in sync with node CRUD operations
+- **Label Filtering** - Filter vector search results by node labels
+- **Tunable Parameters** - Configure M, efConstruction, and ef for recall/speed tradeoffs
 
 ### Graph Algorithms
 
@@ -469,6 +481,72 @@ curl -X POST http://localhost:8080/nodes/batch \
     ]
   }'
 ```
+
+### Vector Search Examples (New in v0.2.0!)
+
+Vector search enables semantic similarity queries using HNSW indexes - perfect for AI/ML applications, recommendation systems, and semantic search.
+
+```bash
+# 1. Create a vector index for embeddings
+curl -X POST http://localhost:8080/vector-indexes \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "property_name": "embedding",
+    "dimensions": 384,
+    "metric": "cosine"
+  }'
+
+# 2. Create nodes with vector embeddings
+curl -X POST http://localhost:8080/nodes \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "labels": ["Document"],
+    "properties": {
+      "title": "Introduction to Graph Databases",
+      "embedding": [0.1, 0.2, 0.3, ...]
+    }
+  }'
+
+# 3. Perform semantic similarity search
+curl -X POST http://localhost:8080/vector-search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "property_name": "embedding",
+    "query_vector": [0.15, 0.22, 0.31, ...],
+    "k": 10,
+    "include_nodes": true,
+    "filter_labels": ["Document"]
+  }'
+
+# Response:
+# {
+#   "results": [
+#     {"node_id": 123, "distance": 0.15, "score": 0.85, "node": {...}},
+#     {"node_id": 456, "distance": 0.23, "score": 0.77, "node": {...}}
+#   ],
+#   "count": 10,
+#   "time": "1.234ms"
+# }
+
+# List all vector indexes
+curl -X GET http://localhost:8080/vector-indexes \
+  -H "Authorization: Bearer $TOKEN"
+
+# Delete a vector index
+curl -X DELETE http://localhost:8080/vector-indexes/embedding \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Supported Distance Metrics:**
+
+| Metric | Best For | Score Range |
+|--------|----------|-------------|
+| `cosine` | Text embeddings, normalized vectors | -1 to 1 |
+| `euclidean` | Spatial data, image features | 0 to 1 |
+| `dot_product` | Maximum inner product search | unbounded |
 
 ## Benchmarks
 
