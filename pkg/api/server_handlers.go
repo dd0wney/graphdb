@@ -1,16 +1,23 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/editions"
+	"github.com/dd0wney/cluso-graphdb/pkg/graphql"
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
+	"gopkg.in/yaml.v3"
 )
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +180,133 @@ func (s *Server) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle preflight OPTIONS request
+	if r.Method == http.MethodOptions {
+		s.graphqlHandler.ServeHTTP(w, r)
+		return
+	}
+
+	// Only POST is allowed for queries
+	if r.Method != http.MethodPost {
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Read and buffer the request body (needed for complexity check + execution)
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "Failed to read request body")
+		return
+	}
+	r.Body.Close()
+
+	// Parse the GraphQL request to extract query for complexity validation
+	var gqlReq graphql.GraphQLRequest
+	if err := json.Unmarshal(bodyBytes, &gqlReq); err != nil {
+		s.respondError(w, http.StatusBadRequest, "Invalid GraphQL request")
+		return
+	}
+
+	// Validate query complexity before execution (DoS protection)
+	if s.complexityConfig != nil && s.complexityConfig.MaxComplexity > 0 {
+		complexity, err := graphql.ValidateQueryComplexity(gqlReq.Query, s.complexityConfig, gqlReq.Variables)
+		if err != nil {
+			s.respondJSON(w, http.StatusOK, map[string]any{
+				"data": nil,
+				"errors": []map[string]string{
+					{"message": fmt.Sprintf("Query rejected: %v (complexity: %d, max: %d)",
+						err, complexity, s.complexityConfig.MaxComplexity)},
+				},
+			})
+			return
+		}
+	}
+
+	// Acquire read lock for schema access (allows concurrent reads, blocks during regeneration)
+	s.schemaLock.RLock()
+	defer s.schemaLock.RUnlock()
+
+	// Restore the request body for the handler
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
 	// Delegate to GraphQL handler
 	s.graphqlHandler.ServeHTTP(w, r)
+}
+
+// handleSchemaRegenerate regenerates the GraphQL schema to reflect new labels/types
+func (s *Server) handleSchemaRegenerate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Acquire write lock to prevent concurrent schema access during regeneration
+	s.schemaLock.Lock()
+	defer s.schemaLock.Unlock()
+
+	// Generate new schema with current limit config
+	newSchema, err := graphql.GenerateSchemaWithLimits(s.graph, s.limitConfig)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to regenerate schema: %v", err))
+		return
+	}
+
+	// Update schema and handler atomically (while holding write lock)
+	s.graphqlSchema = newSchema
+	s.graphqlHandler = graphql.NewGraphQLHandler(newSchema)
+
+	s.respondJSON(w, http.StatusOK, map[string]any{
+		"status":  "success",
+		"message": "GraphQL schema regenerated successfully",
+	})
+}
+
+// handleOpenAPISpec serves the OpenAPI specification in YAML or JSON format
+func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Find the OpenAPI spec file - check common locations
+	specPaths := []string{
+		"docs/openapi.yaml",
+		"./docs/openapi.yaml",
+		filepath.Join(s.dataDir, "../docs/openapi.yaml"),
+	}
+
+	var specContent []byte
+	var err error
+	for _, path := range specPaths {
+		specContent, err = os.ReadFile(path)
+		if err == nil {
+			break
+		}
+	}
+
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "OpenAPI specification not found")
+		return
+	}
+
+	// Check if JSON format is requested
+	wantsJSON := strings.HasSuffix(r.URL.Path, ".json") ||
+		strings.Contains(r.Header.Get("Accept"), "application/json")
+
+	if wantsJSON {
+		// Convert YAML to JSON
+		var spec any
+		if err := yaml.Unmarshal(specContent, &spec); err != nil {
+			s.respondError(w, http.StatusInternalServerError, "Failed to parse OpenAPI spec")
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(spec)
+		return
+	}
+
+	// Serve as YAML
+	w.Header().Set("Content-Type", "application/x-yaml")
+	w.Write(specContent)
 }

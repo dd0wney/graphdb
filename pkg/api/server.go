@@ -70,6 +70,13 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/apikeys", s.requireAdmin(s.handleAPIKeys))
 	mux.HandleFunc("/api/v1/apikeys/", s.requireAdmin(s.handleAPIKey))
 
+	// Schema management endpoints (admin only)
+	mux.HandleFunc("/api/v1/schema/regenerate", s.requireAdmin(s.handleSchemaRegenerate))
+
+	// OpenAPI documentation (public)
+	mux.HandleFunc("/api/docs/openapi.yaml", s.handleOpenAPISpec)
+	mux.HandleFunc("/api/docs/openapi.json", s.handleOpenAPISpec)
+
 	addr := fmt.Sprintf(":%d", s.port)
 
 	// Check if TLS is enabled
@@ -120,6 +127,11 @@ func (s *Server) Start() error {
 	log.Printf("   List Keys:     GET  %s://%s/api/v1/apikeys (admin)", protocol, addr)
 	log.Printf("   Create Key:    POST %s://%s/api/v1/apikeys (admin)", protocol, addr)
 	log.Printf("   Revoke Key:    DELETE %s://%s/api/v1/apikeys/{id} (admin)", protocol, addr)
+	log.Printf("📊 Schema Management (admin only):")
+	log.Printf("   Regenerate:    POST %s://%s/api/v1/schema/regenerate (admin)", protocol, addr)
+	log.Printf("📄 API Documentation (public):")
+	log.Printf("   OpenAPI YAML:  GET  %s://%s/api/docs/openapi.yaml", protocol, addr)
+	log.Printf("   OpenAPI JSON:  GET  %s://%s/api/docs/openapi.json", protocol, addr)
 
 	// Start background metrics updater
 	go s.updateMetricsPeriodically()

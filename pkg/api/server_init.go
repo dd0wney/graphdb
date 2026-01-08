@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
@@ -30,8 +31,21 @@ func NewServer(graph *storage.GraphStorage, port int) (*Server, error) {
 
 // NewServerWithDataDir creates a new API server with explicit data directory
 func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string) (*Server, error) {
-	// Generate GraphQL schema with mutations and edges from storage
-	schema, err := graphql.GenerateSchemaWithEdges(graph)
+	// Initialize GraphQL limit config from environment
+	limitConfig := &graphql.LimitConfig{
+		DefaultLimit: getEnvInt("GRAPHQL_DEFAULT_LIMIT", 100),
+		MaxLimit:     getEnvInt("GRAPHQL_MAX_LIMIT", 1000),
+	}
+
+	// Initialize GraphQL complexity config from environment
+	complexityConfig := &graphql.ComplexityConfig{
+		MaxComplexity:    getEnvInt("GRAPHQL_MAX_COMPLEXITY", 5000),
+		ListMultiplier:   getEnvInt("GRAPHQL_LIST_MULTIPLIER", 10),
+		DefaultListLimit: getEnvInt("GRAPHQL_DEFAULT_LIST_LIMIT", 100),
+	}
+
+	// Generate GraphQL schema with limits (includes filtering, sorting, edges)
+	schema, err := graphql.GenerateSchemaWithLimits(graph, limitConfig)
 	if err != nil {
 		log.Printf("Warning: Failed to generate GraphQL schema: %v", err)
 	}
@@ -39,6 +53,8 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 	var graphqlHandler *graphql.GraphQLHandler
 	if err == nil {
 		graphqlHandler = graphql.NewGraphQLHandler(schema)
+		log.Printf("✅ GraphQL schema generated with limits (max: %d, default: %d) and complexity validation (max: %d)",
+			limitConfig.MaxLimit, limitConfig.DefaultLimit, complexityConfig.MaxComplexity)
 	}
 
 	// Initialize authentication components
@@ -192,6 +208,9 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		graph:               graph,
 		executor:            query.NewExecutor(graph),
 		graphqlHandler:      graphqlHandler,
+		graphqlSchema:       schema,
+		complexityConfig:    complexityConfig,
+		limitConfig:         limitConfig,
 		authHandler:         authHandler,
 		userHandler:         userHandler,
 		jwtManager:          jwtManager,
@@ -214,4 +233,14 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 	server.InitCORSFromEnv()
 
 	return server, nil
+}
+
+// getEnvInt reads an integer environment variable with a default value
+func getEnvInt(key string, defaultVal int) int {
+	if val := os.Getenv(key); val != "" {
+		if intVal, err := strconv.Atoi(val); err == nil {
+			return intVal
+		}
+	}
+	return defaultVal
 }

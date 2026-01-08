@@ -1,24 +1,30 @@
 package api
 
 import (
+	"sync"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
 	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
-	"github.com/dd0wney/cluso-graphdb/pkg/graphql"
+	gqlpkg "github.com/dd0wney/cluso-graphdb/pkg/graphql"
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
+	"github.com/graphql-go/graphql"
 )
 
 // Server represents the HTTP API server
 type Server struct {
 	graph               *storage.GraphStorage
 	executor            *query.Executor
-	graphqlHandler      *graphql.GraphQLHandler
+	graphqlHandler      *gqlpkg.GraphQLHandler
+	graphqlSchema       graphql.Schema              // Current GraphQL schema (protected by schemaLock)
+	schemaLock          sync.RWMutex                // Protects graphqlSchema during regeneration
+	complexityConfig    *gqlpkg.ComplexityConfig    // GraphQL query complexity limits
+	limitConfig         *gqlpkg.LimitConfig         // GraphQL result limits
 	authHandler         *auth.AuthHandler
 	userHandler         *auth.UserManagementHandler
 	jwtManager          *auth.JWTManager
