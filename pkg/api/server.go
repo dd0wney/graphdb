@@ -50,6 +50,11 @@ func (s *Server) Start() error {
 	// Algorithm endpoints (protected)
 	mux.HandleFunc("/algorithms", s.requireAuth(s.handleAlgorithm))
 
+	// Vector search endpoints (protected)
+	mux.HandleFunc("/vector-indexes", s.requireAuth(s.handleVectorIndexes))
+	mux.HandleFunc("/vector-indexes/", s.requireAuth(s.handleVectorIndex))
+	mux.HandleFunc("/vector-search", s.requireAuth(s.handleVectorSearch))
+
 	// User management endpoints (admin only) - handler does its own auth check
 	mux.Handle("/api/users", s.userHandler)
 	mux.Handle("/api/users/", s.userHandler)
@@ -94,6 +99,10 @@ func (s *Server) Start() error {
 	log.Printf("   Traverse:      POST %s://%s/traverse (requires auth)", protocol, addr)
 	log.Printf("   Shortest Path: POST %s://%s/shortest-path (requires auth)", protocol, addr)
 	log.Printf("   Algorithms:    POST %s://%s/algorithms (requires auth)", protocol, addr)
+	log.Printf("🔍 Vector Search (requires auth):")
+	log.Printf("   Indexes:       GET/POST %s://%s/vector-indexes", protocol, addr)
+	log.Printf("   Index:         GET/DELETE %s://%s/vector-indexes/{name}", protocol, addr)
+	log.Printf("   Search:        POST %s://%s/vector-search", protocol, addr)
 	log.Printf("👤 User Management (admin only):")
 	log.Printf("   List Users:    GET  %s://%s/api/users (admin)", protocol, addr)
 	log.Printf("   Create User:   POST %s://%s/api/users (admin)", protocol, addr)

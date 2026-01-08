@@ -42,6 +42,11 @@ func (gs *GraphStorage) ListVectorIndexes() []string {
 	return gs.vectorIndex.ListIndexes()
 }
 
+// GetVectorIndexMetric returns the distance metric for a specific vector index
+func (gs *GraphStorage) GetVectorIndexMetric(propertyName string) (vector.DistanceMetric, error) {
+	return gs.vectorIndex.GetIndexMetric(propertyName)
+}
+
 // UpdateNodeVectorIndexes updates vector indexes when a node is added/updated
 // This should be called after a node with vector properties is created/updated
 func (gs *GraphStorage) UpdateNodeVectorIndexes(node *Node) error {

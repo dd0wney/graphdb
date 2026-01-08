@@ -57,6 +57,12 @@ func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value)
 		return nil, err
 	}
 
+	// Update vector indexes for any vector properties
+	if err := gs.UpdateNodeVectorIndexes(node); err != nil {
+		gs.recordOperation("create_node", "error", start)
+		return nil, err
+	}
+
 	// Write to WAL for durability
 	gs.writeToWAL(wal.OpCreateNode, node)
 
@@ -109,6 +115,11 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 		node.Properties[k] = v
 	}
 	node.UpdatedAt = time.Now().Unix()
+
+	// Update vector indexes for any vector properties
+	if err := gs.UpdateNodeVectorIndexes(node); err != nil {
+		return err
+	}
 
 	// Write to WAL for durability
 	gs.writeToWAL(wal.OpUpdateNode, struct {
@@ -170,6 +181,11 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 
 	// Remove from property indexes
 	if err := gs.removeNodeFromPropertyIndexes(nodeID, node.Properties); err != nil {
+		return err
+	}
+
+	// Remove from vector indexes
+	if err := gs.RemoveNodeFromVectorIndexes(nodeID); err != nil {
 		return err
 	}
 

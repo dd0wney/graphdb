@@ -54,6 +54,11 @@ func (h *HNSWIndex) Dimensions() int {
 	return h.dimensions
 }
 
+// Metric returns the distance metric used by this index
+func (h *HNSWIndex) Metric() DistanceMetric {
+	return h.metric
+}
+
 // Len returns the number of vectors in the index
 func (h *HNSWIndex) Len() int {
 	h.mu.RLock()

@@ -120,3 +120,15 @@ func (vi *VectorIndex) ListIndexes() []string {
 	}
 	return names
 }
+
+// GetIndexMetric returns the distance metric for a specific index
+func (vi *VectorIndex) GetIndexMetric(propertyName string) (vector.DistanceMetric, error) {
+	vi.mu.RLock()
+	defer vi.mu.RUnlock()
+
+	index, exists := vi.indexes[propertyName]
+	if !exists {
+		return "", fmt.Errorf("no vector index exists for property %s", propertyName)
+	}
+	return index.Metric(), nil
+}
