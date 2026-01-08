@@ -13,6 +13,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
 	"github.com/graphql-go/graphql"
 )
@@ -45,6 +46,7 @@ type Server struct {
 	oidcHandler         *oidc.OIDCHandler           // OIDC authentication handler (nil if disabled)
 	oidcConfig          *oidc.Config                // OIDC configuration
 	tokenValidator      auth.TokenValidator         // Composite validator for JWT + OIDC
+	tenantStore         *tenant.TenantStore         // Multi-tenant store (nil if single-tenant mode)
 	startTime           time.Time
 	version             string
 	port                int

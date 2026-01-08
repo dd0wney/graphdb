@@ -392,6 +392,7 @@ func (v Value) ArrayLen() (int, error) {
 // Node represents a vertex in the graph
 type Node struct {
 	ID         uint64
+	TenantID   string // Multi-tenancy: empty string defaults to "default" tenant
 	Labels     []string
 	Properties map[string]Value
 	CreatedAt  int64
@@ -401,6 +402,7 @@ type Node struct {
 // Edge represents a relationship between nodes
 type Edge struct {
 	ID         uint64
+	TenantID   string // Multi-tenancy: empty string defaults to "default" tenant
 	FromNodeID uint64
 	ToNodeID   uint64
 	Type       string
@@ -413,6 +415,7 @@ type Edge struct {
 func (n *Node) Clone() *Node {
 	clone := &Node{
 		ID:         n.ID,
+		TenantID:   n.TenantID,
 		Labels:     make([]string, len(n.Labels)),
 		Properties: make(map[string]Value),
 		CreatedAt:  n.CreatedAt,
@@ -445,6 +448,7 @@ func (n *Node) GetProperty(key string) (Value, bool) {
 func (e *Edge) Clone() *Edge {
 	clone := &Edge{
 		ID:         e.ID,
+		TenantID:   e.TenantID,
 		FromNodeID: e.FromNodeID,
 		ToNodeID:   e.ToNodeID,
 		Type:       e.Type,

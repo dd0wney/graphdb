@@ -38,6 +38,7 @@ type Claims struct {
 	UserID    string    `json:"user_id"`
 	Username  string    `json:"username"`
 	Role      string    `json:"role"`
+	TenantID  string    `json:"tenant_id,omitempty"` // Multi-tenancy: empty defaults to "default" tenant
 	ExpiresAt time.Time `json:"expires_at"`
 	IssuedAt  time.Time `json:"issued_at"`
 }
@@ -70,8 +71,15 @@ func NewJWTManager(secret string, tokenDuration, refreshTokenDuration time.Durat
 	}, nil
 }
 
-// GenerateToken generates a new JWT token
+// GenerateToken generates a new JWT token for the default tenant.
+// For multi-tenant operations, use GenerateTokenWithTenant instead.
 func (m *JWTManager) GenerateToken(userID, username, role string) (string, error) {
+	return m.GenerateTokenWithTenant(userID, username, role, "")
+}
+
+// GenerateTokenWithTenant generates a new JWT token with tenant context.
+// Empty tenantID defaults to "default" tenant for backward compatibility.
+func (m *JWTManager) GenerateTokenWithTenant(userID, username, role, tenantID string) (string, error) {
 	// Validate inputs
 	if userID == "" {
 		return "", ErrEmptyUserID
@@ -97,7 +105,12 @@ func (m *JWTManager) GenerateToken(userID, username, role string) (string, error
 		"expires_at": expiresAt.Unix(),
 		"issued_at":  now.Unix(),
 		"exp":        expiresAt.Unix(), // Standard JWT expiration claim
-		"iat":        now.Unix(),        // Standard JWT issued at claim
+		"iat":        now.Unix(),       // Standard JWT issued at claim
+	}
+
+	// Only include tenant_id if explicitly set
+	if tenantID != "" {
+		claims["tenant_id"] = tenantID
 	}
 
 	// Create token with claims
@@ -176,10 +189,14 @@ func (m *JWTManager) ValidateToken(_ context.Context, tokenString string) (*Clai
 		return nil, ErrExpiredToken
 	}
 
+	// Extract optional tenant_id (empty string if not present for backward compatibility)
+	tenantID, _ := claimsMap["tenant_id"].(string)
+
 	return &Claims{
 		UserID:    userID,
 		Username:  username,
 		Role:      role,
+		TenantID:  tenantID,
 		ExpiresAt: expiresAt,
 		IssuedAt:  issuedAt,
 	}, nil

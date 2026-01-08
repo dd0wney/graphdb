@@ -8,8 +8,14 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
-// CreateNode creates a new node
+// CreateNode creates a new node in the default tenant.
+// For multi-tenant operations, use CreateNodeWithTenant instead.
 func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value) (*Node, error) {
+	return gs.CreateNodeWithTenant(DefaultTenantID, labels, properties)
+}
+
+// CreateNodeWithTenant creates a new node for a specific tenant.
+func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, properties map[string]Value) (*Node, error) {
 	start := time.Now()
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -32,6 +38,7 @@ func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value)
 	now := time.Now().Unix()
 	node := &Node{
 		ID:         nodeID,
+		TenantID:   effectiveTenantID(tenantID),
 		Labels:     labels,
 		Properties: properties,
 		CreatedAt:  now,
@@ -40,10 +47,13 @@ func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value)
 
 	gs.nodes[nodeID] = node
 
-	// Update label indexes
+	// Update global label indexes (for backward compatibility)
 	for _, label := range labels {
 		gs.nodesByLabel[label] = append(gs.nodesByLabel[label], nodeID)
 	}
+
+	// Update tenant-scoped indexes
+	gs.addNodeToTenantIndex(node)
 
 	// Initialize edge lists
 	gs.outgoingEdges[nodeID] = make([]uint64, 0)
@@ -174,10 +184,13 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 		}
 	}
 
-	// Remove from label indexes
+	// Remove from global label indexes
 	for _, label := range node.Labels {
 		gs.removeFromLabelIndex(label, nodeID)
 	}
+
+	// Remove from tenant-scoped indexes
+	gs.removeNodeFromTenantIndex(node)
 
 	// Remove from property indexes
 	if err := gs.removeNodeFromPropertyIndexes(nodeID, node.Properties); err != nil {

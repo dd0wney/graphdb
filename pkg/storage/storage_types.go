@@ -29,6 +29,11 @@ type GraphStorage struct {
 	propertyIndexes map[string]*PropertyIndex // property key -> index
 	vectorIndex     *VectorIndex              // vector search indexes
 
+	// Tenant-scoped indexes for multi-tenancy
+	tenantNodesByLabel map[string]map[string][]uint64 // tenant -> label -> node IDs
+	tenantEdgesByType  map[string]map[string][]uint64 // tenant -> edge type -> edge IDs
+	tenantStats        map[string]*TenantStats        // tenant -> usage statistics
+
 	// Compressed edge storage (optional)
 	compressedOutgoing map[uint64]*CompressedEdgeList // node ID -> compressed outgoing edges
 	compressedIncoming map[uint64]*CompressedEdgeList // node ID -> compressed incoming edges
@@ -92,4 +97,12 @@ type Statistics struct {
 	LastSnapshot time.Time
 	TotalQueries uint64
 	AvgQueryTime float64
+}
+
+// TenantStats tracks per-tenant usage statistics for multi-tenancy
+type TenantStats struct {
+	NodeCount    uint64 // Number of nodes belonging to this tenant
+	EdgeCount    uint64 // Number of edges belonging to this tenant
+	StorageBytes uint64 // Estimated storage used by this tenant
+	LastUpdated  int64  // Unix timestamp of last update
 }

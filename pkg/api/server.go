@@ -75,6 +75,13 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/apikeys", s.requireAdmin(s.handleAPIKeys))
 	mux.HandleFunc("/api/v1/apikeys/", s.requireAdmin(s.handleAPIKey))
 
+	// Multi-tenant management endpoints
+	if s.tenantStore != nil {
+		// Admin-only tenant management
+		mux.HandleFunc("/api/v1/tenants", s.requireAdmin(s.handleTenantsEndpoint))
+		mux.HandleFunc("/api/v1/tenants/", s.requireAuth(s.handleTenantEndpoint))
+	}
+
 	// Schema management endpoints (admin only)
 	mux.HandleFunc("/api/v1/schema/regenerate", s.requireAdmin(s.handleSchemaRegenerate))
 
@@ -140,6 +147,17 @@ func (s *Server) Start() error {
 	log.Printf("   Revoke Key:    DELETE %s://%s/api/v1/apikeys/{id} (admin)", protocol, addr)
 	log.Printf("📊 Schema Management (admin only):")
 	log.Printf("   Regenerate:    POST %s://%s/api/v1/schema/regenerate (admin)", protocol, addr)
+	if s.tenantStore != nil {
+		log.Printf("🏢 Tenant Management (multi-tenancy enabled):")
+		log.Printf("   List Tenants:  GET  %s://%s/api/v1/tenants (admin)", protocol, addr)
+		log.Printf("   Create Tenant: POST %s://%s/api/v1/tenants (admin)", protocol, addr)
+		log.Printf("   Get Tenant:    GET  %s://%s/api/v1/tenants/{id} (admin/self)", protocol, addr)
+		log.Printf("   Update Tenant: PUT  %s://%s/api/v1/tenants/{id} (admin)", protocol, addr)
+		log.Printf("   Delete Tenant: DELETE %s://%s/api/v1/tenants/{id} (admin)", protocol, addr)
+		log.Printf("   Tenant Usage:  GET  %s://%s/api/v1/tenants/{id}/usage (admin/self)", protocol, addr)
+		log.Printf("   Suspend:       POST %s://%s/api/v1/tenants/{id}/suspend (admin)", protocol, addr)
+		log.Printf("   Activate:      POST %s://%s/api/v1/tenants/{id}/activate (admin)", protocol, addr)
+	}
 	log.Printf("📄 API Documentation (public):")
 	log.Printf("   OpenAPI YAML:  GET  %s://%s/api/docs/openapi.yaml", protocol, addr)
 	log.Printf("   OpenAPI JSON:  GET  %s://%s/api/docs/openapi.json", protocol, addr)

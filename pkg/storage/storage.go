@@ -36,6 +36,10 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		incomingEdges:      make(map[uint64][]uint64),
 		propertyIndexes:    make(map[string]*PropertyIndex),
 		vectorIndex:        NewVectorIndex(),
+		// Tenant-scoped indexes for multi-tenancy
+		tenantNodesByLabel: make(map[string]map[string][]uint64),
+		tenantEdgesByType:  make(map[string]map[string][]uint64),
+		tenantStats:        make(map[string]*TenantStats),
 		compressedOutgoing: make(map[uint64]*CompressedEdgeList),
 		compressedIncoming: make(map[uint64]*CompressedEdgeList),
 		useEdgeCompression: config.EnableEdgeCompression,

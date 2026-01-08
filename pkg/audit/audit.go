@@ -44,6 +44,7 @@ const (
 type Event struct {
 	ID           string                 `json:"id"`
 	Timestamp    time.Time              `json:"timestamp"`
+	TenantID     string                 `json:"tenant_id,omitempty"` // Multi-tenancy: empty defaults to "default"
 	UserID       string                 `json:"user_id,omitempty"`
 	Username     string                 `json:"username,omitempty"`
 	Action       Action                 `json:"action"`
@@ -58,6 +59,7 @@ type Event struct {
 
 // Filter represents filtering criteria for audit events
 type Filter struct {
+	TenantID     string // Filter by tenant (empty = all tenants)
 	UserID       string
 	Username     string
 	Action       Action
@@ -141,6 +143,9 @@ func (l *AuditLogger) GetEvents(filter *Filter) []*Event {
 
 		// Apply filters
 		if filter != nil {
+			if filter.TenantID != "" && event.TenantID != filter.TenantID {
+				continue
+			}
 			if filter.UserID != "" && event.UserID != filter.UserID {
 				continue
 			}
@@ -242,8 +247,13 @@ func NewFailedEvent(userID, username string, action Action, resourceType Resourc
 
 // String returns a human-readable representation of an event
 func (e *Event) String() string {
-	return fmt.Sprintf("[%s] %s %s %s %s (user: %s, status: %s)",
+	tenantStr := e.TenantID
+	if tenantStr == "" {
+		tenantStr = "default"
+	}
+	return fmt.Sprintf("[%s] tenant=%s %s %s %s %s (user: %s, status: %s)",
 		e.Timestamp.Format(time.RFC3339),
+		tenantStr,
 		e.Username,
 		e.Action,
 		e.ResourceType,
@@ -251,4 +261,19 @@ func (e *Event) String() string {
 		e.UserID,
 		e.Status,
 	)
+}
+
+// NewEventWithTenant creates an event with tenant context
+func NewEventWithTenant(tenantID, userID, username string, action Action, resourceType ResourceType, resourceID string, status Status) *Event {
+	return &Event{
+		ID:           uuid.New().String(),
+		Timestamp:    time.Now(),
+		TenantID:     tenantID,
+		UserID:       userID,
+		Username:     username,
+		Action:       action,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Status:       status,
+	}
 }

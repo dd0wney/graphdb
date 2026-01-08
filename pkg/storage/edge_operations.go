@@ -8,8 +8,14 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
-// CreateEdge creates a new edge between two nodes
+// CreateEdge creates a new edge between two nodes in the default tenant.
+// For multi-tenant operations, use CreateEdgeWithTenant instead.
 func (gs *GraphStorage) CreateEdge(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
+	return gs.CreateEdgeWithTenant(DefaultTenantID, fromID, toID, edgeType, properties, weight)
+}
+
+// CreateEdgeWithTenant creates a new edge between two nodes for a specific tenant.
+func (gs *GraphStorage) CreateEdgeWithTenant(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
@@ -21,7 +27,7 @@ func (gs *GraphStorage) CreateEdge(fromID, toID uint64, edgeType string, propert
 		return nil, err
 	}
 
-	edge, err := gs.createEdgeLocked(fromID, toID, edgeType, properties, weight)
+	edge, err := gs.createEdgeLocked(tenantID, fromID, toID, edgeType, properties, weight)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +52,11 @@ func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
 	// Delete from edges map
 	delete(gs.edges, edgeID)
 
-	// Remove from type index
+	// Remove from global type index
 	gs.removeEdgeFromTypeIndex(edge.Type, edgeID)
+
+	// Remove from tenant-scoped indexes
+	gs.removeEdgeFromTenantIndex(edge)
 
 	// Remove from adjacency (disk-backed or in-memory)
 	if err := gs.removeOutgoingEdge(fromID, edgeID); err != nil {
@@ -110,7 +119,7 @@ func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, w
 
 // createEdgeLocked is the internal edge creation logic that assumes the lock is already held.
 // This follows the DRY principle by extracting common logic used by both CreateEdge and UpsertEdge.
-func (gs *GraphStorage) createEdgeLocked(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
+func (gs *GraphStorage) createEdgeLocked(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
 	// Check for ID space exhaustion
 	if gs.nextEdgeID == ^uint64(0) {
 		return nil, fmt.Errorf("edge ID space exhausted")
@@ -121,6 +130,7 @@ func (gs *GraphStorage) createEdgeLocked(fromID, toID uint64, edgeType string, p
 
 	edge := &Edge{
 		ID:         edgeID,
+		TenantID:   effectiveTenantID(tenantID),
 		FromNodeID: fromID,
 		ToNodeID:   toID,
 		Type:       edgeType,
@@ -130,7 +140,12 @@ func (gs *GraphStorage) createEdgeLocked(fromID, toID uint64, edgeType string, p
 	}
 
 	gs.edges[edgeID] = edge
+
+	// Update global type index (for backward compatibility)
 	gs.edgesByType[edgeType] = append(gs.edgesByType[edgeType], edgeID)
+
+	// Update tenant-scoped indexes
+	gs.addEdgeToTenantIndex(edge)
 
 	if err := gs.storeOutgoingEdge(fromID, edgeID); err != nil {
 		return nil, fmt.Errorf("failed to store outgoing edge: %w", err)
@@ -235,11 +250,17 @@ func (gs *GraphStorage) FindAllEdgesBetween(fromID, toID uint64) ([]*Edge, error
 	return result, nil
 }
 
-// UpsertEdge creates a new edge or updates an existing one between two nodes.
+// UpsertEdge creates a new edge or updates an existing one between two nodes in the default tenant.
+// For multi-tenant operations, use UpsertEdgeWithTenant instead.
+func (gs *GraphStorage) UpsertEdge(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, bool, error) {
+	return gs.UpsertEdgeWithTenant(DefaultTenantID, fromID, toID, edgeType, properties, weight)
+}
+
+// UpsertEdgeWithTenant creates a new edge or updates an existing one between two nodes for a specific tenant.
 // If an edge of the same type already exists between fromID and toID, it updates
 // the properties and weight. Otherwise, it creates a new edge.
 // Returns the edge (created or updated) and a boolean indicating if it was created (true) or updated (false).
-func (gs *GraphStorage) UpsertEdge(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, bool, error) {
+func (gs *GraphStorage) UpsertEdgeWithTenant(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, bool, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
@@ -274,7 +295,7 @@ func (gs *GraphStorage) UpsertEdge(fromID, toID uint64, edgeType string, propert
 	}
 
 	// Create new edge using shared helper
-	edge, err := gs.createEdgeLocked(fromID, toID, edgeType, properties, weight)
+	edge, err := gs.createEdgeLocked(tenantID, fromID, toID, edgeType, properties, weight)
 	if err != nil {
 		return nil, false, err
 	}
@@ -313,8 +334,11 @@ func (gs *GraphStorage) DeleteEdgeBetween(fromID, toID uint64, edgeType string) 
 	// Delete from edges map
 	delete(gs.edges, edgeToDelete.ID)
 
-	// Remove from type index
+	// Remove from global type index
 	gs.removeEdgeFromTypeIndex(edgeType, edgeToDelete.ID)
+
+	// Remove from tenant-scoped indexes
+	gs.removeEdgeFromTenantIndex(edgeToDelete)
 
 	// Remove from adjacency
 	if err := gs.removeOutgoingEdge(fromID, edgeToDelete.ID); err != nil {

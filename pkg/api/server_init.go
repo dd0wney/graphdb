@@ -17,6 +17,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
 // NewServer creates a new API server
@@ -223,6 +224,13 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		serverEnv = "live"
 	}
 
+	// Initialize multi-tenant store (enabled by default)
+	var tenantStore *tenant.TenantStore
+	if os.Getenv("TENANT_ENABLED") != "false" {
+		tenantStore = tenant.NewTenantStore()
+		log.Printf("✅ Multi-tenancy enabled (default tenant: %s)", tenant.DefaultTenantID)
+	}
+
 	server := &Server{
 		graph:               graph,
 		executor:            query.NewExecutor(graph),
@@ -244,6 +252,7 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		oidcHandler:         oidcHandler,
 		oidcConfig:          oidcConfig,
 		tokenValidator:      tokenValidator,
+		tenantStore:         tenantStore,
 		startTime:           time.Now(),
 		version:             "1.0.0",
 		port:                port,
