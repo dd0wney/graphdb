@@ -8,6 +8,12 @@ Comprehensive REST API for the Cluso GraphDB enterprise graph database.
 - [Authentication](#authentication)
 - [API Reference](#api-reference)
 - [Examples](#examples)
+  - [Node Operations](#node-operations)
+  - [Edge Operations](#edge-operations)
+  - [Graph Traversal](#graph-traversal)
+  - [Graph Algorithms](#graph-algorithms)
+  - [Query Operations](#query-operations)
+  - [Vector Search Operations](#vector-search-operations)
 - [Rate Limits](#rate-limits)
 - [Error Handling](#error-handling)
 
@@ -173,6 +179,11 @@ docker run -p 8081:8080 \
 | **Algorithms** | `/algorithms` | POST | Run graph algorithms |
 | **Query** | `/query` | POST | Custom query language |
 | | `/graphql` | POST | GraphQL endpoint |
+| **Vector Search** | `/vector-indexes` | GET | List vector indexes |
+| | `/vector-indexes` | POST | Create vector index |
+| | `/vector-indexes/{name}` | GET | Get vector index info |
+| | `/vector-indexes/{name}` | DELETE | Delete vector index |
+| | `/vector-search` | POST | k-NN similarity search |
 
 ## Examples
 
@@ -431,6 +442,252 @@ curl -X POST http://localhost:8080/graphql \
   }'
 ```
 
+### Vector Search Operations
+
+Vector search enables semantic similarity queries using HNSW (Hierarchical Navigable Small World) indexes. This is ideal for AI/ML applications, recommendation systems, and semantic search.
+
+#### Supported Distance Metrics
+
+| Metric | Description | Score Range | Use Case |
+|--------|-------------|-------------|----------|
+| `cosine` | Cosine similarity (default) | [-1, 1] | Text embeddings, normalized vectors |
+| `euclidean` | L2 distance | (0, 1] | Spatial data, image features |
+| `dot_product` | Inner product | unbounded | Maximum inner product search |
+
+#### Create a Vector Index
+
+Create an HNSW index for a node property that will contain vector embeddings.
+
+```bash
+curl -X POST http://localhost:8080/vector-indexes \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "property_name": "embedding",
+    "dimensions": 384,
+    "m": 16,
+    "ef_construction": 200,
+    "metric": "cosine"
+  }'
+```
+
+**Request Parameters:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `property_name` | string | Yes | - | Node property to index |
+| `dimensions` | integer | Yes | - | Vector dimensions (1-4096) |
+| `m` | integer | No | 16 | HNSW connections per node |
+| `ef_construction` | integer | No | 200 | Construction quality factor |
+| `metric` | string | No | "cosine" | Distance metric |
+
+**Response:**
+```json
+{
+  "property_name": "embedding",
+  "dimensions": 384,
+  "metric": "cosine"
+}
+```
+
+#### List Vector Indexes
+
+```bash
+curl -X GET http://localhost:8080/vector-indexes \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "indexes": [
+    {"property_name": "embedding"},
+    {"property_name": "image_features"}
+  ],
+  "count": 2
+}
+```
+
+#### Get Vector Index Info
+
+```bash
+curl -X GET http://localhost:8080/vector-indexes/embedding \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "property_name": "embedding"
+}
+```
+
+#### Delete a Vector Index
+
+```bash
+curl -X DELETE http://localhost:8080/vector-indexes/embedding \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:** `204 No Content`
+
+#### Create Nodes with Vector Properties
+
+Nodes with vector properties are automatically indexed when a corresponding vector index exists.
+
+```bash
+curl -X POST http://localhost:8080/nodes \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "labels": ["Document"],
+    "properties": {
+      "title": "Introduction to Graph Databases",
+      "embedding": [0.1, 0.2, 0.3, ..., 0.384]
+    }
+  }'
+```
+
+> **Note:** Vector properties must match the dimensions of the corresponding index. Vectors are automatically synced when nodes are created, updated, or deleted.
+
+#### Perform Vector Search
+
+Find the k most similar nodes based on vector distance.
+
+```bash
+curl -X POST http://localhost:8080/vector-search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "property_name": "embedding",
+    "query_vector": [0.15, 0.22, 0.31, ...],
+    "k": 10,
+    "ef": 100,
+    "include_nodes": true,
+    "filter_labels": ["Document"]
+  }'
+```
+
+**Request Parameters:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `property_name` | string | Yes | - | Vector index to search |
+| `query_vector` | float[] | Yes | - | Query vector |
+| `k` | integer | Yes | - | Number of results (1-1000) |
+| `ef` | integer | No | k*2 | Search quality factor (min 50) |
+| `include_nodes` | boolean | No | false | Include full node data |
+| `filter_labels` | string[] | No | [] | Filter results by labels |
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "node_id": 12345,
+      "distance": 0.15,
+      "score": 0.85,
+      "node": {
+        "id": 12345,
+        "labels": ["Document"],
+        "properties": {
+          "title": "Introduction to Graph Databases"
+        }
+      }
+    },
+    {
+      "node_id": 67890,
+      "distance": 0.23,
+      "score": 0.77,
+      "node": {
+        "id": 67890,
+        "labels": ["Document"],
+        "properties": {
+          "title": "Graph Theory Fundamentals"
+        }
+      }
+    }
+  ],
+  "count": 2,
+  "time": "1.234ms"
+}
+```
+
+**Score Calculation by Metric:**
+
+| Metric | Formula | Interpretation |
+|--------|---------|----------------|
+| `cosine` | `1 - distance` | 1 = identical, 0 = orthogonal, -1 = opposite |
+| `euclidean` | `1 / (1 + distance)` | 1 = identical, approaches 0 as distance increases |
+| `dot_product` | `-distance` | Higher = more similar |
+
+#### Vector Search Best Practices
+
+1. **Dimension Selection**: Match your embedding model's output dimensions (e.g., 384 for MiniLM, 1536 for OpenAI)
+
+2. **HNSW Parameters**:
+   - `m`: Higher values (32-64) improve recall but use more memory
+   - `ef_construction`: Higher values (400+) improve index quality but slow construction
+   - `ef` (search): Set to k*2 minimum; higher for better recall
+
+3. **Performance Tips**:
+   - Create indexes before bulk loading vectors
+   - Use `include_nodes: false` when you only need node IDs
+   - Filter by labels to reduce search space
+
+4. **Input Validation**:
+   - Vectors must not contain NaN or Infinity values
+   - All vectors for an index must have identical dimensions
+   - Query vector dimensions must match index dimensions
+
+#### Example: Semantic Document Search
+
+```bash
+# 1. Create the vector index
+curl -X POST http://localhost:8080/vector-indexes \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "property_name": "embedding",
+    "dimensions": 384,
+    "metric": "cosine"
+  }'
+
+# 2. Add documents with embeddings (from your embedding model)
+curl -X POST http://localhost:8080/nodes/batch \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nodes": [
+      {
+        "labels": ["Document"],
+        "properties": {
+          "title": "Machine Learning Basics",
+          "embedding": [0.1, 0.2, ...]
+        }
+      },
+      {
+        "labels": ["Document"],
+        "properties": {
+          "title": "Deep Learning Guide",
+          "embedding": [0.15, 0.25, ...]
+        }
+      }
+    ]
+  }'
+
+# 3. Search for similar documents
+curl -X POST http://localhost:8080/vector-search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "property_name": "embedding",
+    "query_vector": [0.12, 0.22, ...],
+    "k": 5,
+    "include_nodes": true
+  }'
+```
+
 ## Rate Limits
 
 Rate limits vary by edition:
@@ -556,5 +813,6 @@ HTTP/1.1 403 Forbidden
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.0.0 | 2026-01 | Vector search API (HNSW indexes, k-NN search) |
 | 1.0.0 | 2024-11 | Initial API release |
 
