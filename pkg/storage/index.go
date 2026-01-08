@@ -236,14 +236,22 @@ type CompositeIndex struct {
 	mu sync.RWMutex
 }
 
+// ErrCompositeIndexKeyTypeMismatch is returned when propertyKeys and indexTypes have different lengths
+var ErrCompositeIndexKeyTypeMismatch = fmt.Errorf("propertyKeys and indexTypes must have the same length")
+
+// ErrCompositeIndexMinKeys is returned when fewer than 2 property keys are provided
+var ErrCompositeIndexMinKeys = fmt.Errorf("composite index requires at least 2 property keys")
+
 // NewCompositeIndex creates a new composite index on multiple properties.
 // The order of keys matters - lookups must provide values in the same order.
-func NewCompositeIndex(propertyKeys []string, indexTypes []ValueType) *CompositeIndex {
+// Returns an error if propertyKeys and indexTypes have different lengths,
+// or if fewer than 2 property keys are provided.
+func NewCompositeIndex(propertyKeys []string, indexTypes []ValueType) (*CompositeIndex, error) {
 	if len(propertyKeys) != len(indexTypes) {
-		panic("propertyKeys and indexTypes must have the same length")
+		return nil, ErrCompositeIndexKeyTypeMismatch
 	}
 	if len(propertyKeys) < 2 {
-		panic("composite index requires at least 2 property keys")
+		return nil, ErrCompositeIndexMinKeys
 	}
 
 	return &CompositeIndex{
@@ -251,7 +259,7 @@ func NewCompositeIndex(propertyKeys []string, indexTypes []ValueType) *Composite
 		indexTypes:   indexTypes,
 		index:        make(map[string][]uint64),
 		separator:    "\x00", // NULL byte as separator
-	}
+	}, nil
 }
 
 // PropertyKeys returns the property keys this index covers

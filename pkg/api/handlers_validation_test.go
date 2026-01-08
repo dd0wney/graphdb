@@ -199,9 +199,9 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		{
 			name: "Missing type - should fail",
 			request: map[string]any{
-				"fromNodeId": node1.ID,
-				"toNodeId":   node2.ID,
-				"type":       "",
+				"from_node_id": node1.ID,
+				"to_node_id":   node2.ID,
+				"type":         "",
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "Type",
@@ -209,9 +209,9 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		{
 			name: "Zero fromNodeId - should fail",
 			request: map[string]any{
-				"fromNodeId": 0,
-				"toNodeId":   node2.ID,
-				"type":       "KNOWS",
+				"from_node_id": 0,
+				"to_node_id":   node2.ID,
+				"type":         "KNOWS",
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "FromNodeID",
@@ -219,9 +219,9 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		{
 			name: "Zero toNodeId - should fail",
 			request: map[string]any{
-				"fromNodeId": node1.ID,
-				"toNodeId":   0,
-				"type":       "KNOWS",
+				"from_node_id": node1.ID,
+				"to_node_id":   0,
+				"type":         "KNOWS",
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "ToNodeID",
@@ -229,9 +229,9 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		{
 			name: "Type with special characters - should fail",
 			request: map[string]any{
-				"fromNodeId": node1.ID,
-				"toNodeId":   node2.ID,
-				"type":       "KNOWS<script>",
+				"from_node_id": node1.ID,
+				"to_node_id":   node2.ID,
+				"type":         "KNOWS<script>",
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "invalid characters",
@@ -239,10 +239,10 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		{
 			name: "Too many properties - should fail",
 			request: map[string]any{
-				"fromNodeId": node1.ID,
-				"toNodeId":   node2.ID,
-				"type":       "KNOWS",
-				"properties": createLargePropertyMap(101),
+				"from_node_id": node1.ID,
+				"to_node_id":   node2.ID,
+				"type":         "KNOWS",
+				"properties":   createLargePropertyMap(101),
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "Properties",
@@ -250,9 +250,9 @@ func TestCreateEdge_ValidationErrors(t *testing.T) {
 		{
 			name: "Valid request - should succeed",
 			request: map[string]any{
-				"fromNodeId": node1.ID,
-				"toNodeId":   node2.ID,
-				"type":       "KNOWS",
+				"from_node_id": node1.ID,
+				"to_node_id":   node2.ID,
+				"type":         "KNOWS",
 				"properties": map[string]any{
 					"since": 2020,
 				},

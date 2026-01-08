@@ -5,6 +5,17 @@ import (
 	"testing"
 )
 
+// mustNewCompositeIndex is a test helper that creates a CompositeIndex and panics on error.
+// This is safe to use in tests where we know the inputs are valid.
+func mustNewCompositeIndex(t testing.TB, propertyKeys []string, indexTypes []ValueType) *CompositeIndex {
+	t.Helper()
+	idx, err := NewCompositeIndex(propertyKeys, indexTypes)
+	if err != nil {
+		t.Fatalf("mustNewCompositeIndex failed: %v", err)
+	}
+	return idx
+}
+
 // TestNewPropertyIndex tests index creation
 func TestNewPropertyIndex(t *testing.T) {
 	idx := NewPropertyIndex("name", TypeString)
@@ -642,10 +653,13 @@ func BenchmarkPropertyIndex_GetStatistics(b *testing.B) {
 
 // TestNewCompositeIndex tests composite index creation
 func TestNewCompositeIndex(t *testing.T) {
-	idx := NewCompositeIndex(
+	idx, err := NewCompositeIndex(
 		[]string{"domain", "status"},
 		[]ValueType{TypeString, TypeString},
 	)
+	if err != nil {
+		t.Fatalf("NewCompositeIndex failed: %v", err)
+	}
 
 	keys := idx.PropertyKeys()
 	if len(keys) != 2 {
@@ -656,9 +670,39 @@ func TestNewCompositeIndex(t *testing.T) {
 	}
 }
 
+// TestNewCompositeIndex_Errors tests error handling for invalid inputs
+func TestNewCompositeIndex_Errors(t *testing.T) {
+	// Test mismatched lengths
+	_, err := NewCompositeIndex(
+		[]string{"a", "b", "c"},
+		[]ValueType{TypeString, TypeString},
+	)
+	if err != ErrCompositeIndexKeyTypeMismatch {
+		t.Errorf("Expected ErrCompositeIndexKeyTypeMismatch, got %v", err)
+	}
+
+	// Test too few keys
+	_, err = NewCompositeIndex(
+		[]string{"a"},
+		[]ValueType{TypeString},
+	)
+	if err != ErrCompositeIndexMinKeys {
+		t.Errorf("Expected ErrCompositeIndexMinKeys, got %v", err)
+	}
+
+	// Test empty keys
+	_, err = NewCompositeIndex(
+		[]string{},
+		[]ValueType{},
+	)
+	if err != ErrCompositeIndexMinKeys {
+		t.Errorf("Expected ErrCompositeIndexMinKeys, got %v", err)
+	}
+}
+
 // TestCompositeIndex_InsertAndLookup tests basic insert and lookup
 func TestCompositeIndex_InsertAndLookup(t *testing.T) {
-	idx := NewCompositeIndex(
+	idx := mustNewCompositeIndex(t,
 		[]string{"domain", "status"},
 		[]ValueType{TypeString, TypeString},
 	)
@@ -711,7 +755,7 @@ func TestCompositeIndex_InsertAndLookup(t *testing.T) {
 
 // TestCompositeIndex_PrefixLookup tests prefix-based lookups
 func TestCompositeIndex_PrefixLookup(t *testing.T) {
-	idx := NewCompositeIndex(
+	idx := mustNewCompositeIndex(t,
 		[]string{"domain", "status"},
 		[]ValueType{TypeString, TypeString},
 	)
@@ -743,7 +787,7 @@ func TestCompositeIndex_PrefixLookup(t *testing.T) {
 
 // TestCompositeIndex_Remove tests removing nodes from index
 func TestCompositeIndex_Remove(t *testing.T) {
-	idx := NewCompositeIndex(
+	idx := mustNewCompositeIndex(t,
 		[]string{"domain", "status"},
 		[]ValueType{TypeString, TypeString},
 	)
@@ -778,7 +822,7 @@ func TestCompositeIndex_Remove(t *testing.T) {
 
 // TestCompositeIndex_MixedTypes tests composite index with different value types
 func TestCompositeIndex_MixedTypes(t *testing.T) {
-	idx := NewCompositeIndex(
+	idx := mustNewCompositeIndex(t,
 		[]string{"category", "priority"},
 		[]ValueType{TypeString, TypeInt},
 	)
@@ -808,7 +852,7 @@ func TestCompositeIndex_MixedTypes(t *testing.T) {
 
 // TestCompositeIndex_ThreeProperties tests index with 3+ properties
 func TestCompositeIndex_ThreeProperties(t *testing.T) {
-	idx := NewCompositeIndex(
+	idx := mustNewCompositeIndex(t,
 		[]string{"region", "type", "status"},
 		[]ValueType{TypeString, TypeString, TypeString},
 	)
@@ -839,7 +883,7 @@ func TestCompositeIndex_ThreeProperties(t *testing.T) {
 
 // TestCompositeIndex_Statistics tests statistics gathering
 func TestCompositeIndex_Statistics(t *testing.T) {
-	idx := NewCompositeIndex(
+	idx := mustNewCompositeIndex(t,
 		[]string{"a", "b"},
 		[]ValueType{TypeString, TypeString},
 	)
@@ -863,7 +907,7 @@ func TestCompositeIndex_Statistics(t *testing.T) {
 
 // TestCompositeIndex_TypeMismatch tests error handling for type mismatches
 func TestCompositeIndex_TypeMismatch(t *testing.T) {
-	idx := NewCompositeIndex(
+	idx := mustNewCompositeIndex(t,
 		[]string{"name", "age"},
 		[]ValueType{TypeString, TypeInt},
 	)
@@ -884,7 +928,7 @@ func TestCompositeIndex_TypeMismatch(t *testing.T) {
 
 // TestCompositeIndex_WrongNumberOfValues tests error handling for wrong value count
 func TestCompositeIndex_WrongNumberOfValues(t *testing.T) {
-	idx := NewCompositeIndex(
+	idx := mustNewCompositeIndex(t,
 		[]string{"a", "b"},
 		[]ValueType{TypeString, TypeString},
 	)
@@ -917,7 +961,7 @@ func TestCompositeIndex_WrongNumberOfValues(t *testing.T) {
 
 // BenchmarkCompositeIndex_Lookup benchmarks composite index lookups
 func BenchmarkCompositeIndex_Lookup(b *testing.B) {
-	idx := NewCompositeIndex(
+	idx := mustNewCompositeIndex(b,
 		[]string{"domain", "status"},
 		[]ValueType{TypeString, TypeString},
 	)
@@ -940,7 +984,7 @@ func BenchmarkCompositeIndex_Lookup(b *testing.B) {
 
 // BenchmarkCompositeIndex_PrefixLookup benchmarks prefix lookups
 func BenchmarkCompositeIndex_PrefixLookup(b *testing.B) {
-	idx := NewCompositeIndex(
+	idx := mustNewCompositeIndex(b,
 		[]string{"domain", "status"},
 		[]ValueType{TypeString, TypeString},
 	)

@@ -155,11 +155,17 @@ func (mb *MessageBuilder) Build() (*Message, error) {
 }
 
 // MustBuild creates the message, panicking on error.
-// Use only when you know the data can be marshaled.
+//
+// WARNING: This method panics on error and should ONLY be used in:
+//   - Tests where panics are acceptable
+//   - Package initialization (init functions) where errors are unrecoverable
+//   - Cases where the data is statically known to be marshallable
+//
+// For production code paths, use Build() instead and handle the error.
 func (mb *MessageBuilder) MustBuild() *Message {
-	msg, err := NewMessage(mb.msgType, mb.data)
+	msg, err := mb.Build()
 	if err != nil {
-		panic(fmt.Sprintf("failed to build message: %v", err))
+		panic(fmt.Sprintf("MustBuild: failed to build message: %v", err))
 	}
 	return msg
 }

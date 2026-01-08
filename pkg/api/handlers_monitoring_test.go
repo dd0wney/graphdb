@@ -154,18 +154,19 @@ func TestHandleHealth_AllMethods(t *testing.T) {
 	}
 }
 
-// TestHandleMetrics_AllMethods tests that metrics endpoint accepts all methods
+// TestHandleMetrics_AllMethods tests that metrics endpoint only accepts GET
 func TestHandleMetrics_AllMethods(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	tests := []struct {
-		name   string
-		method string
+		name           string
+		method         string
+		expectedStatus int
 	}{
-		{"GET to /metrics", http.MethodGet},
-		{"POST to /metrics", http.MethodPost},
-		{"PUT to /metrics", http.MethodPut},
+		{"GET to /metrics", http.MethodGet, http.StatusOK},
+		{"POST to /metrics", http.MethodPost, http.StatusMethodNotAllowed},
+		{"PUT to /metrics", http.MethodPut, http.StatusMethodNotAllowed},
 	}
 
 	for _, tt := range tests {
@@ -175,9 +176,9 @@ func TestHandleMetrics_AllMethods(t *testing.T) {
 
 			server.handleMetrics(rr, req)
 
-			if rr.Code != http.StatusOK {
+			if rr.Code != tt.expectedStatus {
 				t.Errorf("Expected status %d for %s, got %d",
-					http.StatusOK, tt.method, rr.Code)
+					tt.expectedStatus, tt.method, rr.Code)
 			}
 		})
 	}
