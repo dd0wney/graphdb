@@ -21,7 +21,7 @@ info:
     
     Most endpoints require authentication. Public endpoints are explicitly marked.
     
-  version: 1.0.0
+  version: 2.0.0
   contact:
     name: GraphDB Support
     email: support@clusographdb.com
@@ -54,6 +54,8 @@ tags:
     description: GraphQL endpoint
   - name: Security
     description: Security management operations (encryption, audit, health)
+  - name: Vector Search
+    description: Vector similarity search using HNSW indexes
 
 security:
   - BearerAuth: []
@@ -1065,6 +1067,147 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  # Vector Search endpoints
+  /vector-indexes:
+    get:
+      tags:
+        - Vector Search
+      summary: List vector indexes
+      description: Retrieve a list of all vector indexes
+      responses:
+        '200':
+          description: List of vector indexes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VectorIndexListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Vector Search
+      summary: Create vector index
+      description: |
+        Create a new HNSW vector index for a node property.
+
+        **HNSW Parameters:**
+        - `m`: Number of bi-directional links per node (higher = better recall, more memory)
+        - `ef_construction`: Size of dynamic candidate list during construction (higher = better quality, slower build)
+
+        **Distance Metrics:**
+        - `cosine`: Cosine similarity (default) - best for normalized embeddings
+        - `euclidean`: L2 distance - best for spatial data
+        - `dot_product`: Inner product - best for maximum inner product search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VectorIndexRequest'
+      responses:
+        '201':
+          description: Vector index created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VectorIndexResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Vector index already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /vector-indexes/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        description: Property name of the vector index
+        schema:
+          type: string
+          example: embedding
+
+    get:
+      tags:
+        - Vector Search
+      summary: Get vector index info
+      description: Retrieve information about a specific vector index
+      responses:
+        '200':
+          description: Vector index information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VectorIndexResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Vector Search
+      summary: Delete vector index
+      description: Delete a vector index. This removes the index but does not delete the vector data from nodes.
+      responses:
+        '204':
+          description: Vector index deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /vector-search:
+    post:
+      tags:
+        - Vector Search
+      summary: Perform k-NN vector search
+      description: |
+        Find the k most similar nodes based on vector distance.
+
+        **Score Calculation:**
+        - `cosine`: score = 1 - distance (range: -1 to 1)
+        - `euclidean`: score = 1 / (1 + distance) (range: 0 to 1)
+        - `dot_product`: score = -distance (higher = more similar)
+
+        **Performance Tips:**
+        - Set `ef` to at least k*2 for good recall
+        - Use `include_nodes: false` when you only need node IDs
+        - Use `filter_labels` to reduce the search space
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VectorSearchRequest'
+      responses:
+        '200':
+          description: Vector search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VectorSearchResponse'
+        '400':
+          description: Bad request (invalid vector, NaN/Inf values, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Vector index not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # Security Management endpoints
   /api/v1/security/keys/rotate:
     post:
@@ -1453,6 +1596,147 @@ components:
         details:
           type: object
           additionalProperties: true
+
+    # Vector Search schemas
+    VectorIndexRequest:
+      type: object
+      required:
+        - property_name
+        - dimensions
+      properties:
+        property_name:
+          type: string
+          description: Node property name to index
+          example: embedding
+        dimensions:
+          type: integer
+          minimum: 1
+          maximum: 4096
+          description: Vector dimensions
+          example: 384
+        m:
+          type: integer
+          minimum: 2
+          maximum: 100
+          default: 16
+          description: HNSW M parameter (connections per node)
+          example: 16
+        ef_construction:
+          type: integer
+          minimum: 10
+          maximum: 500
+          default: 200
+          description: HNSW construction quality factor
+          example: 200
+        metric:
+          type: string
+          enum: [cosine, euclidean, dot_product]
+          default: cosine
+          description: Distance metric for similarity calculation
+          example: cosine
+
+    VectorIndexResponse:
+      type: object
+      properties:
+        property_name:
+          type: string
+          example: embedding
+        dimensions:
+          type: integer
+          example: 384
+        metric:
+          type: string
+          example: cosine
+
+    VectorIndexListResponse:
+      type: object
+      properties:
+        indexes:
+          type: array
+          items:
+            $ref: '#/components/schemas/VectorIndexResponse'
+        count:
+          type: integer
+          example: 2
+
+    VectorSearchRequest:
+      type: object
+      required:
+        - property_name
+        - query_vector
+        - k
+      properties:
+        property_name:
+          type: string
+          description: Vector index to search
+          example: embedding
+        query_vector:
+          type: array
+          items:
+            type: number
+            format: float
+          description: Query vector (must match index dimensions, no NaN/Inf values)
+          example: [0.1, 0.2, 0.3, 0.4]
+        k:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: Number of nearest neighbors to return
+          example: 10
+        ef:
+          type: integer
+          minimum: 1
+          description: Search quality factor (default k*2, minimum 50)
+          example: 100
+        include_nodes:
+          type: boolean
+          default: false
+          description: Include full node data in results
+          example: true
+        filter_labels:
+          type: array
+          items:
+            type: string
+          description: Filter results to nodes with these labels
+          example: ["Document", "Article"]
+
+    VectorSearchResult:
+      type: object
+      properties:
+        node_id:
+          type: integer
+          format: uint64
+          description: ID of the matching node
+          example: 12345
+        distance:
+          type: number
+          format: float
+          description: Distance from query vector
+          example: 0.15
+        score:
+          type: number
+          format: float
+          description: Similarity score (metric-dependent)
+          example: 0.85
+        node:
+          $ref: '#/components/schemas/Node'
+          description: Full node data (if include_nodes=true)
+
+    VectorSearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/VectorSearchResult'
+        count:
+          type: integer
+          description: Number of results returned
+          example: 10
+        time:
+          type: string
+          description: Search execution time
+          example: "1.234ms"
 
   responses:
     BadRequest:
