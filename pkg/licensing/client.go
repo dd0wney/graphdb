@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -25,7 +26,36 @@ const (
 
 	// Default license server URL
 	DefaultLicenseServerURL = "https://license.graphdb.com"
+
+	// DefaultVersion is used when build info is not available
+	DefaultVersion = "dev"
 )
+
+// getVersion returns the module version from build info
+func getVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return DefaultVersion
+	}
+
+	// Main module version
+	if info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+
+	// Try to get version from vcs.revision
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" && setting.Value != "" {
+			// Return short commit hash
+			if len(setting.Value) > 7 {
+				return setting.Value[:7]
+			}
+			return setting.Value
+		}
+	}
+
+	return DefaultVersion
+}
 
 // Client validates licenses against the license server
 type Client struct {
@@ -129,7 +159,7 @@ func (c *Client) validateWithServer(licenseKey string) (*LicenseInfo, error) {
 	req := ValidateRequest{
 		LicenseKey: licenseKey,
 		InstanceID: c.instanceID,
-		Version:    "1.0.0", // TODO: Get from build info
+		Version:    getVersion(),
 	}
 
 	body, err := json.Marshal(req)

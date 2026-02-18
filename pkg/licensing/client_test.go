@@ -374,3 +374,16 @@ func BenchmarkClient_GetCurrent(b *testing.B) {
 		_ = client.GetCurrent()
 	}
 }
+
+// TestGetVersion tests version retrieval from build info
+func TestGetVersion(t *testing.T) {
+	version := getVersion()
+
+	// Should return something (either a real version, commit hash, or "dev")
+	if version == "" {
+		t.Error("getVersion() returned empty string")
+	}
+
+	// In test environment, likely returns "dev" since we're not building with module versioning
+	t.Logf("getVersion() returned: %s", version)
+}

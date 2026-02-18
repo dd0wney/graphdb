@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modularity calculation for community detection algorithms (ConnectedComponents, LabelPropagation)
 - Query optimizer property index usage for WHERE equality conditions (O(n) to O(1))
 - EdgeDeletionRate calculation from temporal edge tombstones (valid_to timestamps)
+- Automatic version detection from Go module build info in licensing client
 
 ### Performance
 - Zero-allocation Contains() for compressed edge lists (sequential scan with early termination)
