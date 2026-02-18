@@ -16,7 +16,7 @@ func main() {
 	}
 	defer graph.Close()
 
-	fmt.Println("=== GraphDB Constraint Validation Demo ===\n")
+	fmt.Println("=== GraphDB Constraint Validation Demo ===")
 
 	// Create a validator
 	validator := constraints.NewValidator()
@@ -71,7 +71,7 @@ func main() {
 	fmt.Println()
 
 	// Create some test data with violations
-	fmt.Println("3. Creating Test Data...\n")
+	fmt.Println("3. Creating Test Data...")
 
 	// Valid user
 	validUser, _ := graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -124,7 +124,7 @@ func main() {
 	fmt.Println("   ✗ Created user with 101 friends (exceeds max of 100)")
 
 	// Run validation
-	fmt.Println("\n4. Running Validation...\n")
+	fmt.Println("\n4. Running Validation...")
 	result, err := validator.Validate(graph)
 	if err != nil {
 		log.Fatalf("Validation failed: %v", err)
@@ -155,14 +155,14 @@ func main() {
 	}
 
 	// Filter violations by severity
-	fmt.Println("5. Violations by Severity:\n")
+	fmt.Println("5. Violations by Severity:")
 	errors := result.GetViolationsBySeverity(constraints.Error)
 	warnings := result.GetViolationsBySeverity(constraints.Warning)
 	fmt.Printf("   Errors:   %d\n", len(errors))
 	fmt.Printf("   Warnings: %d\n\n", len(warnings))
 
 	// Filter violations by type
-	fmt.Println("6. Violations by Type:\n")
+	fmt.Println("6. Violations by Type:")
 	propertyViolations := result.GetViolationsByType(constraints.MissingProperty)
 	fmt.Printf("   Missing Properties:       %d\n", len(propertyViolations))
 

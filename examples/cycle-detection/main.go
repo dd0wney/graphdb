@@ -16,7 +16,7 @@ func main() {
 	}
 	defer graph.Close()
 
-	fmt.Println("=== Cycle Detection Demo ===\n")
+	fmt.Println("=== Cycle Detection Demo ===")
 
 	// Example 1: Network topology with a routing loop
 	fmt.Println("Creating network topology with routing loop...")

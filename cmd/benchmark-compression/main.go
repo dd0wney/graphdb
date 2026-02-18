@@ -125,7 +125,12 @@ func compressEdgeLists(edgeLists [][]uint64) ([]*storage.CompressedEdgeList, tim
 
 	compressed := make([]*storage.CompressedEdgeList, len(edgeLists))
 	for i, edges := range edgeLists {
-		compressed[i] = storage.NewCompressedEdgeList(edges)
+		list, err := storage.NewCompressedEdgeList(edges)
+		if err != nil {
+			// Skip empty or invalid edge lists
+			continue
+		}
+		compressed[i] = list
 	}
 
 	return compressed, time.Since(start)

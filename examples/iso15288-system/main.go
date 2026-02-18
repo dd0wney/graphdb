@@ -14,7 +14,7 @@ import (
 // Shows how GraphDB can model ALL 5 system dimensions
 
 func main() {
-	fmt.Println("=== ISO 15288 System Certification Demo ===\n")
+	fmt.Println("=== ISO 15288 System Certification Demo ===")
 
 	// Create graph database
 	graph, err := storage.NewGraphStorage("./data/iso15288_demo")
@@ -23,7 +23,7 @@ func main() {
 	}
 	defer graph.Close()
 
-	fmt.Println("1. Creating System Elements (5 Dimensions)...\n")
+	fmt.Println("1. Creating System Elements (5 Dimensions)...")
 
 	// ========================================
 	// DIMENSION 1: TECHNICAL SYSTEMS
@@ -173,7 +173,7 @@ func main() {
 	)
 	fmt.Println("   ✓ Created Organizational: Standard Change (priority: 100)")
 
-	fmt.Println("\n2. Creating System Flows (Priority Flow Enforcement)...\n")
+	fmt.Println("\n2. Creating System Flows (Priority Flow Enforcement)...")
 
 	// ========================================
 	// DATA FLOWS (Technical → Technical)
@@ -278,7 +278,7 @@ func main() {
 		}, 1.0)
 	fmt.Println("   ✓ CHANGE_AUTHORITY: Standard Change → Historian")
 
-	fmt.Println("\n3. Running ISO 15288 System Validation...\n")
+	fmt.Println("\n3. Running ISO 15288 System Validation...")
 
 	// ========================================
 	// VALIDATION 1: DAG Check (No Cycles)
@@ -362,7 +362,7 @@ func main() {
 	// ========================================
 	// FINAL CERTIFICATION DECISION
 	// ========================================
-	fmt.Println("\n4. Certification Decision...\n")
+	fmt.Println("\n4. Certification Decision...")
 	allViolations := len(cycles) + len(result.Violations) + len(violations) + len(steveViolations)
 	if allViolations == 0 {
 		fmt.Println("   ✓✓✓ SYSTEM CERTIFIED ✓✓✓")
