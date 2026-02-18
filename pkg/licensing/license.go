@@ -20,16 +20,16 @@ const (
 
 // License represents a GraphDB license
 type License struct {
-	ID           string      `json:"id"`
-	Key          string      `json:"key"`
-	Type         LicenseType `json:"type"`
-	Email        string      `json:"email"`
-	CustomerID   string      `json:"customer_id"`   // Stripe customer ID
-	SubscriptionID string    `json:"subscription_id"` // Stripe subscription ID
-	Status       string      `json:"status"`        // active, cancelled, expired
-	CreatedAt    time.Time   `json:"created_at"`
-	ExpiresAt    *time.Time  `json:"expires_at,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
+	ID             string            `json:"id"`
+	Key            string            `json:"key"`
+	Type           LicenseType       `json:"type"`
+	Email          string            `json:"email"`
+	CustomerID     string            `json:"customer_id"`     // Stripe customer ID
+	SubscriptionID string            `json:"subscription_id"` // Stripe subscription ID
+	Status         string            `json:"status"`          // active, cancelled, expired
+	CreatedAt      time.Time         `json:"created_at"`
+	ExpiresAt      *time.Time        `json:"expires_at,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
 // GenerateLicenseKey creates a unique license key with checksum
