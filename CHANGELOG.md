@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plugin config loading from environment variables (PLUGIN_<NAME>_<KEY>=<VALUE>)
 - Node listing endpoint in replica nodes (/nodes GET)
 - Datacenter link parsing in ZMQ and NNG primary nodes
+- License key checksum validation (SHA256-based, backward compatible with legacy keys)
+- Snapshot transfer handling foundation in replica replication
+- Primary mode transition support with PromotionCallback for HA failover
 
 ### Performance
 - Zero-allocation Contains() for compressed edge lists (sequential scan with early termination)

@@ -58,9 +58,7 @@ func (rn *ReplicaNode) handleMessage(msg *Message) error {
 		if err := msg.Decode(&snapMsg); err != nil {
 			return err
 		}
-		log.Printf("Snapshot message received: %s", snapMsg.SnapshotID)
-		// TODO: Handle snapshot transfer
-		return nil
+		return rn.handleSnapshotMessage(&snapMsg)
 
 	case MsgError:
 		var errMsg ErrorMessage
@@ -146,6 +144,50 @@ func (rn *ReplicaNode) applyCreateEdge(data []byte) error {
 		return fmt.Errorf("failed to create edge: %w", err)
 	}
 	return nil
+}
+
+// handleSnapshotMessage handles snapshot transfer from primary
+// The snapshot contains the full state that the replica should restore to
+func (rn *ReplicaNode) handleSnapshotMessage(snapMsg *SnapshotMessage) error {
+	log.Printf("Snapshot transfer started: id=%s size=%d compressed=%v",
+		snapMsg.SnapshotID, snapMsg.Size, snapMsg.Compressed)
+
+	// Validate snapshot metadata
+	if snapMsg.SnapshotID == "" {
+		return fmt.Errorf("snapshot has empty ID")
+	}
+	if snapMsg.Size < 0 {
+		return fmt.Errorf("snapshot has invalid size: %d", snapMsg.Size)
+	}
+
+	// Note: Full snapshot data streaming is not yet implemented
+	// The SnapshotMessage currently only contains metadata
+	// When streaming is added, the data will follow this message
+	// and will be applied using storage.RestoreFromData()
+
+	log.Printf("Snapshot metadata received: %s (data streaming not yet implemented)",
+		snapMsg.SnapshotID)
+
+	// Send acknowledgment for the snapshot metadata
+	ack := AckMessage{
+		LastAppliedLSN: rn.lastAppliedLSN,
+		ReplicaID:      rn.replicaID,
+	}
+
+	ackMsg, err := NewMessage(MsgAck, ack)
+	if err != nil {
+		return fmt.Errorf("failed to create snapshot ACK: %w", err)
+	}
+
+	rn.connectedMu.RLock()
+	encoder := rn.encoder
+	rn.connectedMu.RUnlock()
+
+	if encoder == nil {
+		return nil
+	}
+
+	return encoder.Encode(ackMsg)
 }
 
 // acknowledgeWALEntry updates LSN and sends acknowledgment to primary

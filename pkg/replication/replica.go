@@ -13,6 +13,10 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
+// PromotionCallback is called when this replica should become a primary
+// It receives the storage instance and returns a ReplicationManager if promotion succeeds
+type PromotionCallback func(storage *storage.GraphStorage, lastLSN uint64) (*ReplicationManager, error)
+
 // ReplicaNode represents a replica instance
 type ReplicaNode struct {
 	config                   ReplicationConfig
@@ -40,6 +44,11 @@ type ReplicaNode struct {
 	discovery         *cluster.NodeDiscovery
 	lastHeartbeatTime time.Time // For election timeout detection
 	heartbeatTimeMu   sync.Mutex
+
+	// Promotion support
+	promotionCallback PromotionCallback
+	promoted          bool
+	promotedMu        sync.RWMutex
 }
 
 // ReplicaStatusInfo contains detailed status information about this replica
@@ -101,11 +110,76 @@ func (rn *ReplicaNode) EnableCluster(clusterConfig cluster.ClusterConfig) error 
 	return nil
 }
 
+// SetPromotionCallback sets the callback to invoke when this replica should become primary
+// The callback is responsible for creating and starting a ReplicationManager
+func (rn *ReplicaNode) SetPromotionCallback(cb PromotionCallback) {
+	rn.promotionCallback = cb
+}
+
+// IsPromoted returns whether this replica has been promoted to primary
+func (rn *ReplicaNode) IsPromoted() bool {
+	rn.promotedMu.RLock()
+	defer rn.promotedMu.RUnlock()
+	return rn.promoted
+}
+
 // onBecomeLeader is called when this replica wins an election
 func (rn *ReplicaNode) onBecomeLeader() {
-	log.Printf("🎯 Replica won election - promoting to primary")
-	// TODO: Transition to primary mode (requires ReplicationManager integration)
-	// For now, this will be coordinated with the admin API
+	rn.logger.Info("replica won election - initiating promotion to primary",
+		logging.Operation("promotion"),
+		logging.String("replica_id", rn.replicaID))
+
+	// Check if already promoted
+	rn.promotedMu.Lock()
+	if rn.promoted {
+		rn.promotedMu.Unlock()
+		rn.logger.Warn("promotion already in progress or completed")
+		return
+	}
+	rn.promotedMu.Unlock()
+
+	// Disconnect from old primary
+	rn.disconnect()
+
+	// Update cluster membership role
+	if rn.membership != nil {
+		rn.membership.SetLocalRole(cluster.RolePrimary)
+	}
+
+	// Invoke promotion callback if set
+	if rn.promotionCallback != nil {
+		rn.connectedMu.RLock()
+		lastLSN := rn.lastAppliedLSN
+		rn.connectedMu.RUnlock()
+
+		rm, err := rn.promotionCallback(rn.storage, lastLSN)
+		if err != nil {
+			rn.logger.Error("promotion callback failed",
+				logging.Error(err),
+				logging.Operation("promotion"))
+			// Revert to replica role on failure
+			if rn.membership != nil {
+				rn.membership.SetLocalRole(cluster.RoleReplica)
+			}
+			return
+		}
+
+		rn.promotedMu.Lock()
+		rn.promoted = true
+		rn.promotedMu.Unlock()
+
+		rn.logger.Info("successfully promoted to primary",
+			logging.Operation("promotion"),
+			logging.String("primary_id", rm.primaryID))
+	} else {
+		// No callback set - just mark as promoted and log
+		// External code must coordinate the actual transition
+		rn.promotedMu.Lock()
+		rn.promoted = true
+		rn.promotedMu.Unlock()
+
+		log.Printf("🎯 Replica %s promoted to primary (external coordination required)", rn.replicaID)
+	}
 }
 
 // onBecomeFollower is called when this replica becomes/remains a follower

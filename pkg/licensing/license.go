@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -31,7 +32,8 @@ type License struct {
 	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
-// GenerateLicenseKey creates a unique license key
+// GenerateLicenseKey creates a unique license key with checksum
+// Format: CGDB-XXXX-XXXX-XXXX-XXXX-CC (where CC is checksum)
 func GenerateLicenseKey(licenseType LicenseType, email string) (string, error) {
 	// Generate random bytes
 	randomBytes := make([]byte, 16)
@@ -49,7 +51,11 @@ func GenerateLicenseKey(licenseType LicenseType, email string) (string, error) {
 	combined := append(randomBytes, emailHash[:8]...)
 
 	// Encode to base64 and format
-	encoded := base64.RawURLEncoding.EncodeToString(combined)
+	// Use standard encoding and replace + and / with alphanumeric characters
+	// to avoid interference with our hyphen-separated format
+	encoded := base64.RawStdEncoding.EncodeToString(combined)
+	encoded = strings.ReplaceAll(encoded, "+", "X")
+	encoded = strings.ReplaceAll(encoded, "/", "Y")
 
 	// Format as: CGDB-XXXX-XXXX-XXXX-XXXX
 	prefix := "CGDB"
@@ -71,20 +77,55 @@ func GenerateLicenseKey(licenseType LicenseType, email string) (string, error) {
 		parts = append(parts, "XXXX")
 	}
 
-	return fmt.Sprintf("%s-%s-%s-%s-%s", parts[0], parts[1], parts[2], parts[3], parts[4]), nil
+	// Generate key without checksum first
+	keyWithoutChecksum := fmt.Sprintf("%s-%s-%s-%s-%s", parts[0], parts[1], parts[2], parts[3], parts[4])
+
+	// Calculate checksum and append
+	checksum := calculateLicenseChecksum(keyWithoutChecksum)
+
+	return fmt.Sprintf("%s-%s", keyWithoutChecksum, checksum), nil
 }
 
-// ValidateLicenseKey checks if a license key has valid format
+// calculateLicenseChecksum computes a 2-character checksum for license key validation
+func calculateLicenseChecksum(keyWithoutChecksum string) string {
+	h := sha256.Sum256([]byte(keyWithoutChecksum))
+	// Use first 2 hex characters of hash as checksum
+	return fmt.Sprintf("%02X", h[0])
+}
+
+// ValidateLicenseKey checks if a license key has valid format and checksum
+// Supports both old format (CGDB-XXXX-XXXX-XXXX-XXXX) and new format with checksum
 func ValidateLicenseKey(key string) bool {
-	// Basic format check: CGDB-XXXX-XXXX-XXXX-XXXX
+	// Basic format check
 	if len(key) < 24 {
 		return false
 	}
-	if key[:4] != "CGDB" {
+	if !strings.HasPrefix(key, "CGDB-") {
 		return false
 	}
-	// TODO: Add checksum validation if needed
-	return true
+
+	// Count parts to determine format
+	parts := strings.Split(key, "-")
+
+	// Old format: 5 parts (CGDB-XXXX-XXXX-XXXX-XXXX)
+	if len(parts) == 5 {
+		return true // Legacy keys without checksum are still valid
+	}
+
+	// New format: 6 parts (CGDB-XXXX-XXXX-XXXX-XXXX-CC)
+	if len(parts) == 6 {
+		// Extract key without checksum and provided checksum
+		keyWithoutChecksum := strings.Join(parts[:5], "-")
+		providedChecksum := parts[5]
+
+		// Calculate expected checksum
+		expectedChecksum := calculateLicenseChecksum(keyWithoutChecksum)
+
+		// Compare (case-insensitive)
+		return strings.EqualFold(providedChecksum, expectedChecksum)
+	}
+
+	return false
 }
 
 // GenerateLicenseID creates a unique license ID.
