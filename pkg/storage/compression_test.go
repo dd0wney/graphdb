@@ -529,3 +529,162 @@ func BenchmarkCalculateCompressionStats(b *testing.B) {
 		CalculateCompressionStats(lists)
 	}
 }
+
+// TestCompressedEdgeList_Contains tests the optimized Contains method
+func TestCompressedEdgeList_Contains(t *testing.T) {
+	tests := []struct {
+		name     string
+		nodeIDs  []uint64
+		search   uint64
+		expected bool
+	}{
+		{
+			name:     "empty list",
+			nodeIDs:  []uint64{},
+			search:   1,
+			expected: false,
+		},
+		{
+			name:     "single element found",
+			nodeIDs:  []uint64{42},
+			search:   42,
+			expected: true,
+		},
+		{
+			name:     "single element not found",
+			nodeIDs:  []uint64{42},
+			search:   1,
+			expected: false,
+		},
+		{
+			name:     "find first element",
+			nodeIDs:  []uint64{10, 20, 30, 40, 50},
+			search:   10,
+			expected: true,
+		},
+		{
+			name:     "find last element",
+			nodeIDs:  []uint64{10, 20, 30, 40, 50},
+			search:   50,
+			expected: true,
+		},
+		{
+			name:     "find middle element",
+			nodeIDs:  []uint64{10, 20, 30, 40, 50},
+			search:   30,
+			expected: true,
+		},
+		{
+			name:     "not found - smaller than all",
+			nodeIDs:  []uint64{10, 20, 30, 40, 50},
+			search:   5,
+			expected: false,
+		},
+		{
+			name:     "not found - larger than all",
+			nodeIDs:  []uint64{10, 20, 30, 40, 50},
+			search:   100,
+			expected: false,
+		},
+		{
+			name:     "not found - between elements",
+			nodeIDs:  []uint64{10, 20, 30, 40, 50},
+			search:   25,
+			expected: false,
+		},
+		{
+			name:     "unsorted input - find element",
+			nodeIDs:  []uint64{50, 10, 30, 20, 40},
+			search:   30,
+			expected: true,
+		},
+		{
+			name:     "large sequential list - find first",
+			nodeIDs:  makeSequence(1, 1000),
+			search:   1,
+			expected: true,
+		},
+		{
+			name:     "large sequential list - find last",
+			nodeIDs:  makeSequence(1, 1000),
+			search:   1000,
+			expected: true,
+		},
+		{
+			name:     "large sequential list - find middle",
+			nodeIDs:  makeSequence(1, 1000),
+			search:   500,
+			expected: true,
+		},
+		{
+			name:     "large sequential list - not found",
+			nodeIDs:  makeSequence(1, 1000),
+			search:   1001,
+			expected: false,
+		},
+		{
+			name:     "sparse list - find element",
+			nodeIDs:  []uint64{100, 200, 300, 400, 500},
+			search:   300,
+			expected: true,
+		},
+		{
+			name:     "sparse list - not found between",
+			nodeIDs:  []uint64{100, 200, 300, 400, 500},
+			search:   250,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cel := mustNewCompressedEdgeList(t, tt.nodeIDs)
+			result := cel.Contains(tt.search)
+			if result != tt.expected {
+				t.Errorf("Contains(%d) = %v, want %v", tt.search, result, tt.expected)
+			}
+		})
+	}
+}
+
+// makeSequence creates a sequence of consecutive uint64 values
+func makeSequence(start, count int) []uint64 {
+	result := make([]uint64, count)
+	for i := 0; i < count; i++ {
+		result[i] = uint64(start + i)
+	}
+	return result
+}
+
+// BenchmarkCompressedEdgeList_Contains benchmarks the Contains method
+func BenchmarkCompressedEdgeList_Contains(b *testing.B) {
+	nodeIDs := make([]uint64, 1000)
+	for i := 0; i < 1000; i++ {
+		nodeIDs[i] = uint64(i + 1)
+	}
+	cel := mustNewCompressedEdgeList(b, nodeIDs)
+
+	b.Run("find_first", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			cel.Contains(1)
+		}
+	})
+
+	b.Run("find_middle", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			cel.Contains(500)
+		}
+	})
+
+	b.Run("find_last", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			cel.Contains(1000)
+		}
+	})
+
+	b.Run("not_found", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			cel.Contains(1001)
+		}
+	})
+}

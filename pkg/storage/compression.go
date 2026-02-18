@@ -166,37 +166,55 @@ func (c *CompressedEdgeList) Remove(nodeID uint64) (*CompressedEdgeList, error) 
 }
 
 // Contains checks if a node ID exists in the compressed list
-// Uses binary search since the list is sorted
+// Walks through deltas sequentially with early termination (avoids full decompression)
 func (c *CompressedEdgeList) Contains(nodeID uint64) bool {
 	if c.EdgeCount == 0 {
 		return false
 	}
 
-	// Quick checks
+	// Check base node first
+	if nodeID == c.BaseNodeID {
+		return true
+	}
+
+	// Target is smaller than smallest element
 	if nodeID < c.BaseNodeID {
 		return false
 	}
 
+	// Only base node in list and we already checked it
 	if c.EdgeCount == 1 {
-		return nodeID == c.BaseNodeID
+		return false
 	}
 
-	// Decompress and search
-	// TODO: Optimize this to search without full decompression
-	nodeIDs := c.Decompress()
+	// Walk through deltas sequentially with early termination
+	// Since list is sorted, we can stop when current > target
+	current := c.BaseNodeID
+	buf := c.Deltas
 
-	// Binary search (overflow-safe)
-	left, right := 0, len(nodeIDs)-1
-	for left <= right {
-		mid := left + (right-left)/2 // Overflow-safe
-		switch {
-		case nodeIDs[mid] == nodeID:
-			return true
-		case nodeIDs[mid] < nodeID:
-			left = mid + 1
-		default:
-			right = mid - 1
+	for len(buf) > 0 {
+		delta, n := binary.Uvarint(buf)
+		if n <= 0 {
+			// Corrupted data - stop searching
+			return false
 		}
+
+		// Check for overflow before adding
+		if current > ^uint64(0)-delta {
+			return false
+		}
+
+		current += delta
+
+		if current == nodeID {
+			return true
+		}
+		if current > nodeID {
+			// Passed the target - not in list (sorted order)
+			return false
+		}
+
+		buf = buf[n:]
 	}
 
 	return false

@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modularity calculation for community detection algorithms (ConnectedComponents, LabelPropagation)
 - Query optimizer property index usage for WHERE equality conditions (O(n) to O(1))
 
+### Performance
+- Zero-allocation Contains() for compressed edge lists (sequential scan with early termination)
+
 ### Fixed
 - Goroutine leaks in OIDC StateStore and server metrics subsystems
 - Memory leak in JWKS client key cache (unbounded growth on key rotation)
