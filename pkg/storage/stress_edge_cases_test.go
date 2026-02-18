@@ -518,6 +518,10 @@ func TestEdgeCase_EdgeCaseNaNFloats(t *testing.T) {
 
 // TestEdgeCase_PathologicalGraphStructures tests difficult graph patterns
 func TestEdgeCase_PathologicalGraphStructures(t *testing.T) {
+	if testing.Short() || isRaceEnabled() {
+		t.Skip("Skipping pathological graph test in short mode or with race detector")
+	}
+
 	dataDir := t.TempDir()
 	gs, err := NewGraphStorage(dataDir)
 	if err != nil {

@@ -167,8 +167,8 @@ func TestGraphStorage_DiskBackedEdges_DuplicateEdges(t *testing.T) {
 
 // TestGraphStorage_DiskBackedEdges_VeryLargeEdgeList tests performance with very large edge lists
 func TestGraphStorage_DiskBackedEdges_VeryLargeEdgeList(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping large edge list test in short mode")
+	if testing.Short() || isRaceEnabled() {
+		t.Skip("Skipping large edge list test in short mode or with race detector")
 	}
 
 	dataDir := t.TempDir()

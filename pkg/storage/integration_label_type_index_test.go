@@ -14,14 +14,11 @@ func TestGraphStorage_LabelIndexDurableAfterCrash(t *testing.T) {
 
 	// Phase 1: Create nodes with labels, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create 5 Person nodes
 		for i := 0; i < 5; i++ {
@@ -56,7 +53,7 @@ func TestGraphStorage_LabelIndexDurableAfterCrash(t *testing.T) {
 			t.Fatalf("Before crash: Expected 3 Company nodes, got %d", len(companies))
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Created 5 Person and 3 Company nodes, simulating crash...")
 	}
 
@@ -114,17 +111,17 @@ func TestGraphStorage_TypeIndexDurableAfterCrash(t *testing.T) {
 	defer os.RemoveAll(dataDir)
 
 	var edgeIDs []uint64
+	var crashedStorage *GraphStorage
 
 	// Phase 1: Create edges with types, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
+		crashedStorage = gs
+		_ = crashedStorage // silence unused warning
 
 		// Create nodes
 		node1, _ := gs.CreateNode([]string{"Person"}, nil)
@@ -164,7 +161,7 @@ func TestGraphStorage_TypeIndexDurableAfterCrash(t *testing.T) {
 			t.Fatalf("Before crash: Expected 2 WORKS_AT edges, got %d", len(worksAt))
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Created 3 KNOWS and 2 WORKS_AT edges, simulating crash...")
 	}
 
@@ -225,14 +222,11 @@ func TestGraphStorage_MultiLabelNodeDurability(t *testing.T) {
 
 	// Phase 1: Create node with multiple labels, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create node with 3 labels
 		node, err := gs.CreateNode([]string{"Person", "Employee", "Manager"}, map[string]Value{
@@ -259,7 +253,7 @@ func TestGraphStorage_MultiLabelNodeDurability(t *testing.T) {
 			t.Fatalf("Before crash: Expected 1 Manager node, got %d", len(managers))
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Created node with 3 labels, simulating crash...")
 	}
 
@@ -311,14 +305,11 @@ func TestGraphStorage_LabelIndexAfterNodeDeletion(t *testing.T) {
 
 	// Phase 1: Create nodes, delete some, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create 5 Person nodes
 		var nodeIDs []uint64
@@ -337,7 +328,7 @@ func TestGraphStorage_LabelIndexAfterNodeDeletion(t *testing.T) {
 			t.Fatalf("Before crash: Expected 3 Person nodes after deletion, got %d", len(persons))
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Created 5 nodes, deleted 2, simulating crash...")
 	}
 
@@ -373,14 +364,11 @@ func TestGraphStorage_TypeIndexAfterEdgeDeletion(t *testing.T) {
 
 	// Phase 1: Create edges, delete some, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create nodes
 		node1, _ := gs.CreateNode([]string{"Person"}, nil)
@@ -403,7 +391,7 @@ func TestGraphStorage_TypeIndexAfterEdgeDeletion(t *testing.T) {
 			t.Fatalf("Before crash: Expected 3 KNOWS edges after deletion, got %d", len(knows))
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Created 5 edges, deleted 2, simulating crash...")
 	}
 

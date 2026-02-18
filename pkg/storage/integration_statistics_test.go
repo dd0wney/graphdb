@@ -13,14 +13,11 @@ func TestGraphStorage_StatisticsAfterCrash(t *testing.T) {
 
 	// Phase 1: Create nodes and edges, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create 10 nodes - store actual node IDs
 		var nodeIDs []uint64
@@ -51,7 +48,7 @@ func TestGraphStorage_StatisticsAfterCrash(t *testing.T) {
 			t.Fatalf("Before crash: Expected EdgeCount=15, got %d", stats.EdgeCount)
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Created 10 nodes and 15 edges, simulating crash...")
 	}
 
@@ -155,14 +152,11 @@ func TestGraphStorage_StatisticsAfterDeletion(t *testing.T) {
 
 	// Phase 1: Create data, delete some, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create 10 nodes
 		var nodeIDs []uint64
@@ -200,7 +194,7 @@ func TestGraphStorage_StatisticsAfterDeletion(t *testing.T) {
 			t.Errorf("Before crash: Expected EdgeCount < 15 after deletions, got %d", stats.EdgeCount)
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Logf("After deletions: %d nodes, %d edges, simulating crash...", stats.NodeCount, stats.EdgeCount)
 	}
 
@@ -246,14 +240,11 @@ func TestGraphStorage_StatisticsAccuracyAfterManyOperations(t *testing.T) {
 
 	// Phase 1: Create, update, delete in sequence, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create 20 nodes
 		var nodeIDs []uint64
@@ -296,7 +287,7 @@ func TestGraphStorage_StatisticsAccuracyAfterManyOperations(t *testing.T) {
 			t.Errorf("Before crash: Expected NodeCount=%d, got %d", expectedNodes, stats.NodeCount)
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Logf("After many operations: %d nodes, %d edges, simulating crash...", stats.NodeCount, stats.EdgeCount)
 	}
 
@@ -340,6 +331,14 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 	dataDir := t.TempDir()
 	defer os.RemoveAll(dataDir)
 
+	// Track all crashed storages for cleanup
+	var crashedStorages []*GraphStorage
+	t.Cleanup(func() {
+		for _, gs := range crashedStorages {
+			gs.Close()
+		}
+	})
+
 	// Cycle 1: Create some data, crash
 	{
 		gs, err := NewGraphStorageWithConfig(StorageConfig{
@@ -350,6 +349,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create GraphStorage: %v", err)
 		}
+		crashedStorages = append(crashedStorages, gs)
 
 		var nodeIDs []uint64
 		for i := 0; i < 5; i++ {
@@ -360,7 +360,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 			gs.CreateEdge(nodeIDs[i%5], nodeIDs[(i+1)%5], "KNOWS", nil, 1.0)
 		}
 
-		// DON'T CLOSE
+		// DON'T CLOSE - simulate crash (cleanup registered above)
 		t.Log("Cycle 1: Created 5 nodes, 7 edges")
 	}
 
@@ -374,6 +374,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed cycle 2 recovery: %v", err)
 		}
+		crashedStorages = append(crashedStorages, gs)
 
 		stats := gs.stats
 		if stats.NodeCount != 5 || stats.EdgeCount != 7 {
@@ -399,7 +400,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 			gs.CreateEdge(nodeIDs[i%8], nodeIDs[(i+1)%8], "KNOWS", nil, 1.0)
 		}
 
-		// DON'T CLOSE
+		// DON'T CLOSE - simulate crash (cleanup registered above)
 		t.Logf("Cycle 2: Now have %d nodes, %d edges", gs.stats.NodeCount, gs.stats.EdgeCount)
 	}
 
@@ -443,6 +444,10 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 
 // TestGraphStorage_StatisticsWithConcurrentOperations tests stats accuracy under concurrency
 func TestGraphStorage_StatisticsWithConcurrentOperations(t *testing.T) {
+	if isRaceEnabled() {
+		t.Skip("Skipping heavy concurrency test with race detector")
+	}
+
 	dataDir := t.TempDir()
 	defer os.RemoveAll(dataDir)
 

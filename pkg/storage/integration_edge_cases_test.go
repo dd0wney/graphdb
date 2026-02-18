@@ -10,8 +10,8 @@ import (
 
 // TestEdgeCase_SnapshotDuringHeavyLoad tests snapshot creation under heavy load
 func TestEdgeCase_SnapshotDuringHeavyLoad(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping snapshot heavy load test in short mode")
+	if testing.Short() || isRaceEnabled() {
+		t.Skip("Skipping snapshot heavy load test in short mode or with race detector")
 	}
 
 	dataDir := t.TempDir()

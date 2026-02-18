@@ -12,17 +12,14 @@ func TestPropertyIndexDurability_CreateIndexThenNodes(t *testing.T) {
 
 	// Phase 1: Create index, add nodes, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create property index FIRST
-		err = gs.CreatePropertyIndex("age", TypeInt)
+		err := gs.CreatePropertyIndex("age", TypeInt)
 		if err != nil {
 			t.Fatalf("CreatePropertyIndex failed: %v", err)
 		}
@@ -49,7 +46,7 @@ func TestPropertyIndexDurability_CreateIndexThenNodes(t *testing.T) {
 
 		t.Logf("Before crash: Index has %d nodes", gs.propertyIndexes["age"].GetStatistics().TotalNodes)
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 	}
 
 	// Phase 2: Recover and verify index rebuilt

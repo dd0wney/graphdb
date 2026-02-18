@@ -383,14 +383,11 @@ func TestGraphStorage_ConcurrentCrashRecovery(t *testing.T) {
 
 	// Phase 1: Concurrent writes, then crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create nodes concurrently
 		var wg sync.WaitGroup
@@ -413,7 +410,7 @@ func TestGraphStorage_ConcurrentCrashRecovery(t *testing.T) {
 
 		wg.Wait()
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Created 100 nodes concurrently, simulating crash...")
 	}
 

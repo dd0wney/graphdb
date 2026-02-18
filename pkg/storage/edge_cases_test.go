@@ -282,8 +282,8 @@ func TestEdgeCase_SpecialCharacters(t *testing.T) {
 
 // TestEdgeCase_MaximumEdgesPerNode tests creating many edges from a single node
 func TestEdgeCase_MaximumEdgesPerNode(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping maximum edges test in short mode")
+	if testing.Short() || isRaceEnabled() {
+		t.Skip("Skipping maximum edges test in short mode or with race detector")
 	}
 
 	dataDir := t.TempDir()

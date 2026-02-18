@@ -133,17 +133,14 @@ func TestGraphStorage_DiskBackedEdges_DeleteEdgeCrashRecovery(t *testing.T) {
 
 	// Phase 2: Reopen, delete edge, crash (no Close)
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to reopen: %v", err)
-		}
 
 		// Delete edge1
-		err = gs.DeleteEdge(edge1ID)
+		err := gs.DeleteEdge(edge1ID)
 		if err != nil {
 			t.Fatalf("DeleteEdge failed: %v", err)
 		}
@@ -154,7 +151,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteEdgeCrashRecovery(t *testing.T) {
 			t.Logf("After delete: expected 1 edge, got %d", len(outgoing))
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Simulating crash after edge deletion")
 	}
 
@@ -203,14 +200,11 @@ func TestGraphStorage_DiskBackedEdges_MultipleDeletesWAL(t *testing.T) {
 
 	// Phase 1: Create many edges, delete some, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		node1, _ := gs.CreateNode([]string{"Node"}, nil)
 		node2, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -245,7 +239,7 @@ func TestGraphStorage_DiskBackedEdges_MultipleDeletesWAL(t *testing.T) {
 			t.Fatalf("Expected 5 edges before crash, got %d", len(outgoing))
 		}
 
-		// DON'T CLOSE - crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Simulating crash after multiple deletes")
 	}
 
@@ -308,14 +302,11 @@ func TestGraphStorage_DiskBackedEdges_DeleteAllEdgesWAL(t *testing.T) {
 
 	// Phase 1: Create edges, delete all, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		node1, _ := gs.CreateNode([]string{"Node"}, nil)
 		node2, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -344,7 +335,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteAllEdgesWAL(t *testing.T) {
 			t.Errorf("Expected 0 edges after deleting all, got %d", len(outgoing))
 		}
 
-		// DON'T CLOSE - crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Simulating crash after deleting all edges")
 	}
 

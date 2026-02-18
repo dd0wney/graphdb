@@ -110,14 +110,12 @@ func TestGraphStorage_DiskBackedEdges_CrashRecovery(t *testing.T) {
 
 	// Phase 1: Create graph without clean shutdown (simulated crash)
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		// Use testCrashableStorage to ensure cleanup after test
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create nodes
 		nodeIDs = make([]uint64, numNodes)
@@ -138,8 +136,8 @@ func TestGraphStorage_DiskBackedEdges_CrashRecovery(t *testing.T) {
 		}
 
 		// DON'T CALL Close() - simulate crash!
+		// testCrashableStorage will clean up after the test completes
 		t.Log("Simulating crash (no Close() call)")
-		// gs.Close() // ❌ Not called to simulate crash
 	}
 
 	// Phase 2: Recover from crash
@@ -222,20 +220,19 @@ func TestGraphStorage_DiskBackedEdges_PartialWriteRecovery(t *testing.T) {
 
 	// Phase 2: Reopen, add more data, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		// Use testCrashableStorage to ensure cleanup after test
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to reopen: %v", err)
-		}
 
 		// Add more edges
 		gs.CreateEdge(node1ID, node2ID, "EDGE2", nil, 1.0)
 		gs.CreateEdge(node1ID, node2ID, "EDGE3", nil, 1.0)
 
 		// Simulate crash (no Close)
+		// testCrashableStorage will clean up after the test completes
 		t.Log("Simulating crash during write")
 	}
 
@@ -453,14 +450,12 @@ func TestGraphStorage_DiskBackedEdges_ConcurrentCrashRecovery(t *testing.T) {
 
 	// Phase 1: Concurrent operations without clean shutdown
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		// Use testCrashableStorage to ensure cleanup after test
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Pre-create nodes
 		nodeIDs := make([]uint64, numWorkers*2)
@@ -490,6 +485,7 @@ func TestGraphStorage_DiskBackedEdges_ConcurrentCrashRecovery(t *testing.T) {
 		}
 
 		// Simulate crash (no Close)
+		// testCrashableStorage will clean up after the test completes
 		t.Log("Simulating crash after concurrent operations")
 	}
 

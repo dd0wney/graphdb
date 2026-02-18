@@ -107,17 +107,14 @@ func TestGraphStorage_DiskBackedEdges_DeleteNodeCrashRecovery(t *testing.T) {
 
 	// Phase 2: Reopen, delete node, crash (no Close)
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to reopen: %v", err)
-		}
 
 		// Delete node2
-		err = gs.DeleteNode(node2ID)
+		err := gs.DeleteNode(node2ID)
 		if err != nil {
 			t.Fatalf("DeleteNode failed: %v", err)
 		}
@@ -128,7 +125,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteNodeCrashRecovery(t *testing.T) {
 			t.Error("Expected deleted node to not exist")
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Simulating crash after node deletion")
 	}
 
@@ -201,17 +198,14 @@ func TestGraphStorage_DiskBackedEdges_DeleteNodeWithEdgesCrash(t *testing.T) {
 
 	// Phase 2: Reopen, delete node with edges, crash (no Close)
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to reopen: %v", err)
-		}
 
 		// Delete node2 (should cascade delete edge1 and edge2)
-		err = gs.DeleteNode(node2ID)
+		err := gs.DeleteNode(node2ID)
 		if err != nil {
 			t.Fatalf("DeleteNode failed: %v", err)
 		}
@@ -239,7 +233,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteNodeWithEdgesCrash(t *testing.T) {
 			t.Error("Unrelated edge should still exist")
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Simulating crash after node deletion with cascade")
 	}
 
@@ -303,14 +297,11 @@ func TestGraphStorage_DiskBackedEdges_MultipleNodeDeletesWAL(t *testing.T) {
 
 	// Phase 1: Create many nodes, delete some, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create 10 nodes
 		nodeIDs := make([]uint64, 10)
@@ -342,7 +333,7 @@ func TestGraphStorage_DiskBackedEdges_MultipleNodeDeletesWAL(t *testing.T) {
 			t.Fatalf("Expected 5 nodes before crash, got %d", nodeCount)
 		}
 
-		// DON'T CLOSE - crash
+		// DON'T CLOSE - crash (testCrashableStorage handles cleanup)
 		t.Log("Simulating crash after multiple node deletes")
 	}
 

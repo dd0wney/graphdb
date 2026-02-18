@@ -91,14 +91,11 @@ func TestQueryStatistics_CrashRecovery(t *testing.T) {
 
 	// Phase 1: Create storage, run queries, simulate crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create test data
 		for i := 0; i < 5; i++ {
@@ -121,7 +118,7 @@ func TestQueryStatistics_CrashRecovery(t *testing.T) {
 		t.Logf("Before crash: TotalQueries=%d, AvgQueryTime=%.2fms",
 			stats.TotalQueries, stats.AvgQueryTime)
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 	}
 
 	// Phase 2: Recover from WAL and check query statistics
@@ -191,14 +188,11 @@ func TestQueryStatistics_MixedRecovery(t *testing.T) {
 
 	// Phase 2: Recover, run more queries, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to recover from snapshot: %v", err)
-		}
 
 		// Verify snapshot restored query stats
 		stats := gs.GetStatistics()
@@ -219,7 +213,7 @@ func TestQueryStatistics_MixedRecovery(t *testing.T) {
 
 		t.Logf("Phase 2: After 10 more queries, TotalQueries=%d", stats.TotalQueries)
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 	}
 
 	// Phase 3: Recover after crash - queries after last snapshot are lost

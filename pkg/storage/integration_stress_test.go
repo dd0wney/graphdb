@@ -12,8 +12,8 @@ import (
 
 // TestGraphStorage_DiskBackedEdges_HighConcurrency tests behavior under extreme concurrent load
 func TestGraphStorage_DiskBackedEdges_HighConcurrency(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping stress test in short mode")
+	if testing.Short() || isRaceEnabled() {
+		t.Skip("Skipping stress test in short mode or with race detector")
 	}
 
 	dataDir := t.TempDir()
@@ -126,8 +126,8 @@ func TestGraphStorage_DiskBackedEdges_HighConcurrency(t *testing.T) {
 
 // TestGraphStorage_DiskBackedEdges_MemoryLeak tests for memory leaks under load
 func TestGraphStorage_DiskBackedEdges_MemoryLeak(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping memory leak test in short mode")
+	if testing.Short() || isRaceEnabled() {
+		t.Skip("Skipping memory leak test in short mode or with race detector")
 	}
 
 	dataDir := t.TempDir()

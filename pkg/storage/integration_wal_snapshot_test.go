@@ -106,14 +106,11 @@ func TestGraphStorage_SnapshotThenMoreOps(t *testing.T) {
 
 	// Phase 2: Recover, create 2 more nodes, crash (no close)
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to recover from phase 1: %v", err)
-		}
 
 		stats := gs.stats
 		if stats.NodeCount != 3 {
@@ -125,7 +122,7 @@ func TestGraphStorage_SnapshotThenMoreOps(t *testing.T) {
 			gs.CreateNode([]string{"Person"}, map[string]Value{"phase": IntValue(2)})
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Phase 2: Recovered 3 nodes, created 2 more, crashing...")
 	}
 

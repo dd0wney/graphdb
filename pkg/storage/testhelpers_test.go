@@ -84,6 +84,40 @@ func testGraphStorageWithNodes(t *testing.T, numNodes int, label string) (*Graph
 	return gs, nodeIDs
 }
 
+// testCrashableStorage creates a GraphStorage for crash simulation tests.
+// It registers cleanup to close the storage after the test completes,
+// allowing the test to skip calling Close() to simulate a crash while
+// preventing goroutine leaks.
+func testCrashableStorage(t *testing.T, dataDir string, config ...StorageConfig) *GraphStorage {
+	t.Helper()
+
+	var cfg StorageConfig
+	if len(config) > 0 {
+		cfg = config[0]
+	} else {
+		cfg = StorageConfig{
+			DataDir:            dataDir,
+			UseDiskBackedEdges: true,
+			EdgeCacheSize:      100,
+		}
+	}
+
+	cfg.DataDir = dataDir
+
+	gs, err := NewGraphStorageWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create crashable GraphStorage: %v", err)
+	}
+
+	// Register cleanup to prevent goroutine leaks
+	// This runs after the test completes, even if Close() was never called
+	t.Cleanup(func() {
+		gs.Close()
+	})
+
+	return gs
+}
+
 // testCrashRecovery simulates a crash by NOT calling Close() and returns a new GraphStorage
 // instance that will replay from the same data directory
 func testCrashRecovery(t *testing.T, dataDir string, config ...StorageConfig) *GraphStorage {

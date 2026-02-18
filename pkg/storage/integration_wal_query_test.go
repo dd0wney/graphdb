@@ -14,14 +14,11 @@ func TestGraphStorage_LabelIndexRecovery(t *testing.T) {
 
 	// Phase 1: Create nodes with different labels, crash (no Close)
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create Person nodes
 		for i := 0; i < 5; i++ {
@@ -51,7 +48,7 @@ func TestGraphStorage_LabelIndexRecovery(t *testing.T) {
 			t.Fatalf("Expected 3 Company nodes before crash, got %d", len(companies))
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Simulating crash after creating labeled nodes")
 	}
 
@@ -118,14 +115,11 @@ func TestGraphStorage_TypeIndexRecovery(t *testing.T) {
 
 	// Phase 1: Create edges with different types, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create nodes
 		person1, _ := gs.CreateNode([]string{"Person"}, nil)
@@ -155,7 +149,7 @@ func TestGraphStorage_TypeIndexRecovery(t *testing.T) {
 			t.Fatalf("Expected 3 WORKS_AT edges before crash, got %d", len(worksAt))
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Simulating crash after creating typed edges")
 	}
 
@@ -214,17 +208,14 @@ func TestGraphStorage_PropertyIndexRecovery(t *testing.T) {
 
 	// Phase 1: Create property index and nodes, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create property index
-		err = gs.CreatePropertyIndex("age", TypeInt)
+		err := gs.CreatePropertyIndex("age", TypeInt)
 		if err != nil {
 			t.Fatalf("CreatePropertyIndex failed: %v", err)
 		}
@@ -251,7 +242,7 @@ func TestGraphStorage_PropertyIndexRecovery(t *testing.T) {
 			t.Fatalf("Expected 2 nodes with age=25 before crash, got %d", len(nodes))
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Simulating crash after creating property index and nodes")
 	}
 
@@ -300,14 +291,11 @@ func TestGraphStorage_DeletedNodeLabelIndexRecovery(t *testing.T) {
 
 	// Phase 1: Create nodes, delete one, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create 5 Person nodes
 		for i := 0; i < 5; i++ {
@@ -318,7 +306,7 @@ func TestGraphStorage_DeletedNodeLabelIndexRecovery(t *testing.T) {
 		}
 
 		// Delete one node
-		err = gs.DeleteNode(nodeToDelete)
+		err := gs.DeleteNode(nodeToDelete)
 		if err != nil {
 			t.Fatalf("DeleteNode failed: %v", err)
 		}
@@ -329,7 +317,7 @@ func TestGraphStorage_DeletedNodeLabelIndexRecovery(t *testing.T) {
 			t.Fatalf("Expected 4 Person nodes after deletion, got %d", len(persons))
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Simulating crash after node deletion")
 	}
 

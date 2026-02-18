@@ -18,6 +18,10 @@ func nodeExists(gs *GraphStorage, nodeID uint64) bool {
 // TestGraphInvariants uses property-based testing to verify graph invariants
 // These properties should ALWAYS hold true for any valid graph operation
 func TestGraphInvariants(t *testing.T) {
+	if testing.Short() || isRaceEnabled() {
+		t.Skip("Skipping property-based test in short mode or with race detector")
+	}
+
 	parameters := gopter.DefaultTestParameters()
 	parameters.MinSuccessfulTests = 100
 

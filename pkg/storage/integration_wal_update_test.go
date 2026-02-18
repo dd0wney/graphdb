@@ -14,14 +14,11 @@ func TestGraphStorage_NodePropertyUpdateDurable(t *testing.T) {
 
 	// Phase 1: Create node with initial properties, update them, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create node with initial properties
 		node, err := gs.CreateNode([]string{"Person"}, map[string]Value{
@@ -44,7 +41,7 @@ func TestGraphStorage_NodePropertyUpdateDurable(t *testing.T) {
 			t.Fatalf("UpdateNode failed: %v", err)
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Created node and updated properties, simulating crash...")
 	}
 
@@ -97,17 +94,14 @@ func TestGraphStorage_PropertyIndexUpdateOnNodeUpdate(t *testing.T) {
 
 	// Phase 1: Create property index, create node, update indexed property, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create property index on "score"
-		err = gs.CreatePropertyIndex("score", TypeInt)
+		err := gs.CreatePropertyIndex("score", TypeInt)
 		if err != nil {
 			t.Fatalf("CreatePropertyIndex failed: %v", err)
 		}
@@ -153,7 +147,7 @@ func TestGraphStorage_PropertyIndexUpdateOnNodeUpdate(t *testing.T) {
 			t.Fatalf("Expected node in index with score=200 after update")
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Updated indexed property, simulating crash...")
 	}
 
@@ -209,14 +203,11 @@ func TestGraphStorage_MultipleUpdatesSequential(t *testing.T) {
 
 	// Phase 1: Create node and apply multiple updates, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create node
 		node, err := gs.CreateNode([]string{"Counter"}, map[string]Value{
@@ -237,7 +228,7 @@ func TestGraphStorage_MultipleUpdatesSequential(t *testing.T) {
 			}
 		}
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 		t.Log("Applied 5 sequential updates, simulating crash...")
 	}
 

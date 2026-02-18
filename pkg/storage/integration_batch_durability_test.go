@@ -12,14 +12,11 @@ func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 
 	// Phase 1: Create batch, commit, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs := testCrashableStorage(t, dataDir, StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create GraphStorage: %v", err)
-		}
 
 		// Create batch with multiple operations
 		batch := gs.BeginBatch()
@@ -64,7 +61,7 @@ func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 
 		t.Logf("Before crash: %d nodes, %d edges", len(gs.nodes), len(gs.edges))
 
-		// DON'T CLOSE - simulate crash
+		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 	}
 
 	// Phase 2: Recover and verify batch operations persisted

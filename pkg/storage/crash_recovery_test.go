@@ -8,12 +8,16 @@ import (
 func TestCrashRecovery(t *testing.T) {
 	dataDir := t.TempDir()
 
+	// Track crashed storage for cleanup after test
+	var crashedStorage *GraphStorage
+
 	// Phase 1: Create database and add data
 	{
 		gs, err := NewGraphStorage(dataDir)
 		if err != nil {
 			t.Fatalf("Failed to create storage: %v", err)
 		}
+		crashedStorage = gs // Keep reference for cleanup
 
 		// Create nodes
 		node1, _ := gs.CreateNode(
@@ -45,6 +49,13 @@ func TestCrashRecovery(t *testing.T) {
 		// SIMULATE CRASH: Don't call Close(), just let it go out of scope
 		// This means the last 2 operations are only in WAL, not in snapshot
 	}
+
+	// Cleanup crashed storage after test completes (stops background goroutines)
+	t.Cleanup(func() {
+		if crashedStorage != nil {
+			crashedStorage.Close()
+		}
+	})
 
 	// Phase 2: Reopen database (simulates recovery after crash)
 	{
@@ -98,9 +109,13 @@ func TestCrashRecovery(t *testing.T) {
 func TestWALReplayOrder(t *testing.T) {
 	dataDir := t.TempDir()
 
+	// Track crashed storage for cleanup
+	var crashedStorage *GraphStorage
+
 	// Create and populate
 	{
 		gs, _ := NewGraphStorage(dataDir)
+		crashedStorage = gs
 
 		// Create nodes in specific order
 		for i := 1; i <= 5; i++ {
@@ -112,6 +127,13 @@ func TestWALReplayOrder(t *testing.T) {
 
 		// Don't snapshot - force recovery from WAL only
 	}
+
+	// Cleanup crashed storage after test
+	t.Cleanup(func() {
+		if crashedStorage != nil {
+			crashedStorage.Close()
+		}
+	})
 
 	// Recover
 	{
@@ -141,8 +163,12 @@ func TestWALReplayOrder(t *testing.T) {
 func TestPartialSnapshot(t *testing.T) {
 	dataDir := t.TempDir()
 
+	// Track crashed storage for cleanup
+	var crashedStorage *GraphStorage
+
 	{
 		gs, _ := NewGraphStorage(dataDir)
+		crashedStorage = gs
 
 		// Create 3 nodes
 		gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("Alice")})
@@ -155,6 +181,13 @@ func TestPartialSnapshot(t *testing.T) {
 
 		// Crash without saving
 	}
+
+	// Cleanup crashed storage after test
+	t.Cleanup(func() {
+		if crashedStorage != nil {
+			crashedStorage.Close()
+		}
+	})
 
 	{
 		gs, _ := NewGraphStorage(dataDir)

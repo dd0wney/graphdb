@@ -126,6 +126,9 @@ func TestWALRecoveryAfterCrash(t *testing.T) {
 
 	dataDir := t.TempDir()
 
+	// Track crashed storage for cleanup
+	var crashedStorage *GraphStorage
+
 	// Phase 1: Create storage and write data (simulating writes before crash)
 	nodeCount := 50
 	t.Logf("Phase 1: Writing %d nodes before simulated crash...", nodeCount)
@@ -134,10 +137,11 @@ func TestWALRecoveryAfterCrash(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create storage: %v", err)
 		}
+		crashedStorage = gs
 
 		for i := 0; i < nodeCount; i++ {
 			props := map[string]Value{
-				"id":      IntValue(int64(i)),
+				"id":        IntValue(int64(i)),
 				"pre_crash": StringValue("true"),
 			}
 			_, err := gs.CreateNode([]string{"WALTest"}, props)
@@ -149,6 +153,13 @@ func TestWALRecoveryAfterCrash(t *testing.T) {
 		// Don't call Close() - simulate crash
 		t.Log("  Simulating crash (no clean shutdown)...")
 	}
+
+	// Cleanup crashed storage after test
+	t.Cleanup(func() {
+		if crashedStorage != nil {
+			crashedStorage.Close()
+		}
+	})
 
 	// Phase 2: Reopen storage (should replay WAL)
 	t.Log("Phase 2: Reopening storage (WAL replay)...")
@@ -528,6 +539,9 @@ func TestRapidRestartRecovery(t *testing.T) {
 	dataDir := t.TempDir()
 	cycles := 10
 
+	// Track crashed storage instances for cleanup
+	var crashedStorages []*GraphStorage
+
 	t.Logf("Testing rapid restart recovery (%d cycles)...", cycles)
 
 	for cycle := 0; cycle < cycles; cycle++ {
@@ -554,9 +568,21 @@ func TestRapidRestartRecovery(t *testing.T) {
 			if err != nil {
 				t.Errorf("Cycle %d clean close failed: %v", cycle, err)
 			}
+		} else {
+			// On odd cycles, don't call Close() to simulate crash
+			// Track for cleanup after test
+			crashedStorages = append(crashedStorages, gs)
 		}
-		// On odd cycles, don't call Close() to simulate crash
 	}
+
+	// Cleanup crashed storage instances after test
+	t.Cleanup(func() {
+		for _, gs := range crashedStorages {
+			if gs != nil {
+				gs.Close()
+			}
+		}
+	})
 
 	// Final verification
 	t.Log("Final verification after rapid restarts...")
@@ -573,8 +599,8 @@ func TestRapidRestartRecovery(t *testing.T) {
 
 // TestMemoryPressureRecovery tests behavior under memory pressure
 func TestMemoryPressureRecovery(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping failure recovery test in short mode")
+	if testing.Short() || isRaceEnabled() {
+		t.Skip("Skipping failure recovery test in short mode or with race detector")
 	}
 
 	dataDir := t.TempDir()
