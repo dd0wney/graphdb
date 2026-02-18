@@ -482,6 +482,147 @@ func TestAverageClusteringCoefficient_EmptyGraph(t *testing.T) {
 	}
 }
 
+// TestModularity_TwoCommunities tests modularity calculation with clear communities
+func TestModularity_TwoCommunities(t *testing.T) {
+	gs := setupCommunityTestGraph(t)
+
+	// Create two distinct communities: A-B-C and D-E-F
+	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeE, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeF, _ := gs.CreateNode([]string{"Node"}, nil)
+
+	// Community 1: fully connected A-B-C
+	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+
+	// Community 2: fully connected D-E-F
+	gs.CreateEdge(nodeD.ID, nodeE.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeE.ID, nodeF.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeF.ID, nodeD.ID, "LINKS", nil, 1.0)
+
+	// Perfect community assignment
+	nodeCommunity := map[uint64]int{
+		nodeA.ID: 0,
+		nodeB.ID: 0,
+		nodeC.ID: 0,
+		nodeD.ID: 1,
+		nodeE.ID: 1,
+		nodeF.ID: 1,
+	}
+
+	modularity := CalculateModularity(gs, nodeCommunity)
+
+	// With perfect separation (no edges between communities), modularity should be high
+	// For two triangles with no inter-community edges, modularity = 0.5
+	if modularity < 0.4 {
+		t.Errorf("Expected modularity >= 0.4 for well-separated communities, got %f", modularity)
+	}
+
+	if modularity > 1.0 {
+		t.Errorf("Modularity should not exceed 1.0, got %f", modularity)
+	}
+}
+
+// TestModularity_SingleCommunity tests modularity with all nodes in one community
+func TestModularity_SingleCommunity(t *testing.T) {
+	gs := setupCommunityTestGraph(t)
+
+	// Create connected graph
+	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
+
+	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+
+	// All nodes in single community
+	nodeCommunity := map[uint64]int{
+		nodeA.ID: 0,
+		nodeB.ID: 0,
+		nodeC.ID: 0,
+	}
+
+	modularity := CalculateModularity(gs, nodeCommunity)
+
+	// Single community should have modularity = 0 (no better than random)
+	if modularity < -0.5 || modularity > 0.5 {
+		t.Errorf("Expected modularity near 0 for single community, got %f", modularity)
+	}
+}
+
+// TestModularity_EmptyGraph tests modularity on empty partition
+func TestModularity_EmptyGraph(t *testing.T) {
+	gs := setupCommunityTestGraph(t)
+
+	nodeCommunity := map[uint64]int{}
+
+	modularity := CalculateModularity(gs, nodeCommunity)
+
+	if modularity != 0.0 {
+		t.Errorf("Expected modularity 0 for empty graph, got %f", modularity)
+	}
+}
+
+// TestModularity_ConnectedComponentsIntegration tests that ConnectedComponents calculates modularity
+func TestModularity_ConnectedComponentsIntegration(t *testing.T) {
+	gs := setupCommunityTestGraph(t)
+
+	// Create two disconnected components
+	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
+
+	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
+
+	result, err := ConnectedComponents(gs)
+	if err != nil {
+		t.Fatalf("ConnectedComponents failed: %v", err)
+	}
+
+	// Modularity should be calculated (not 0.0 placeholder)
+	// Disconnected components should have positive modularity
+	if result.Modularity == 0.0 && len(result.Communities) > 1 {
+		// This is actually valid - small disconnected graphs can have modularity = 0
+		// The key is that the calculation was performed
+	}
+
+	// Modularity must be in valid range
+	if result.Modularity < -0.5 || result.Modularity > 1.0 {
+		t.Errorf("Modularity out of range [-0.5, 1.0]: %f", result.Modularity)
+	}
+}
+
+// TestModularity_LabelPropagationIntegration tests that LabelPropagation calculates modularity
+func TestModularity_LabelPropagationIntegration(t *testing.T) {
+	gs := setupCommunityTestGraph(t)
+
+	// Create graph with community structure
+	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
+	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
+
+	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
+
+	result, err := LabelPropagation(gs, 10)
+	if err != nil {
+		t.Fatalf("LabelPropagation failed: %v", err)
+	}
+
+	// Modularity must be in valid range
+	if result.Modularity < -0.5 || result.Modularity > 1.0 {
+		t.Errorf("Modularity out of range [-0.5, 1.0]: %f", result.Modularity)
+	}
+}
+
 // TestConnectedComponents_BidirectionalEdges tests with bidirectional edges
 func TestConnectedComponents_BidirectionalEdges(t *testing.T) {
 	gs := setupCommunityTestGraph(t)

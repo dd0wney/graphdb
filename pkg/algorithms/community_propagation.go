@@ -97,6 +97,6 @@ func LabelPropagation(graph *storage.GraphStorage, maxIterations int) (*Communit
 	return &CommunityDetectionResult{
 		Communities:   communities,
 		NodeCommunity: nodeCommunity,
-		Modularity:    0.0, // TODO: Calculate modularity
+		Modularity:    CalculateModularity(graph, nodeCommunity),
 	}, nil
 }

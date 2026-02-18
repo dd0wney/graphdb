@@ -74,6 +74,6 @@ func ConnectedComponents(graph *storage.GraphStorage) (*CommunityDetectionResult
 	return &CommunityDetectionResult{
 		Communities:   communities,
 		NodeCommunity: nodeCommunity,
-		Modularity:    0.0, // TODO: Calculate modularity
+		Modularity:    CalculateModularity(graph, nodeCommunity),
 	}, nil
 }
