@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Query optimizer property index usage for WHERE equality conditions (O(n) to O(1))
 - EdgeDeletionRate calculation from temporal edge tombstones (valid_to timestamps)
 - Automatic version detection from Go module build info in licensing client
+- Plugin config loading from environment variables (PLUGIN_<NAME>_<KEY>=<VALUE>)
+- Node listing endpoint in replica nodes (/nodes GET)
+- Datacenter link parsing in ZMQ and NNG primary nodes
 
 ### Performance
 - Zero-allocation Contains() for compressed edge lists (sequential scan with early termination)

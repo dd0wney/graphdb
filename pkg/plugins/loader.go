@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"plugin"
+	"strings"
 	"sync"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/licensing"
@@ -113,14 +114,35 @@ func (l *PluginLoader) loadPlugin(ctx context.Context, path string) error {
 }
 
 // getPluginConfig retrieves configuration for a plugin from environment variables
-// Looks for PLUGIN_<NAME>_* environment variables
+// Looks for PLUGIN_<NAME>_<KEY>=<VALUE> environment variables
+// Example: PLUGIN_AUDIT_LOG_LEVEL=debug becomes config["LOG_LEVEL"]="debug" for plugin "audit"
 func (l *PluginLoader) getPluginConfig(name string) map[string]any {
 	config := make(map[string]any)
-	
-	// This would typically load from a config file or environment
-	// For now, return empty config
-	// TODO: Implement config loading
-	
+
+	// Convert plugin name to uppercase for env var prefix
+	// e.g., "audit" -> "PLUGIN_AUDIT_"
+	prefix := "PLUGIN_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_"
+
+	// Scan all environment variables for matching prefix
+	for _, env := range os.Environ() {
+		if !strings.HasPrefix(env, prefix) {
+			continue
+		}
+
+		// Split into key=value
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		// Extract the config key (remove prefix)
+		key := strings.TrimPrefix(parts[0], prefix)
+		value := parts[1]
+
+		config[key] = value
+		l.logger.Debug("loaded plugin config", "plugin", name, "key", key)
+	}
+
 	return config
 }
 
