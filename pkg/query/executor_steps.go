@@ -67,6 +67,59 @@ func convertToStorageValue(val any) storage.Value {
 	}
 }
 
+// IndexLookupStep uses a property index for efficient node lookup
+// This replaces a full scan when the optimizer detects an indexable equality condition
+type IndexLookupStep struct {
+	propertyKey string        // The indexed property key
+	value       storage.Value // The value to lookup
+	variable    string        // Variable name to bind results to
+	labels      []string      // Optional label filters to apply
+}
+
+func (ils *IndexLookupStep) Execute(ctx *ExecutionContext) error {
+	// Use index for O(1) lookup
+	nodes, err := ctx.graph.FindNodesByPropertyIndexed(ils.propertyKey, ils.value)
+	if err != nil {
+		// Index lookup failed, this shouldn't happen if optimizer did its job
+		return fmt.Errorf("index lookup failed: %w", err)
+	}
+
+	newResults := make([]*BindingSet, 0, len(nodes))
+
+	for _, node := range nodes {
+		// Apply label filter if specified
+		if len(ils.labels) > 0 {
+			hasAllLabels := true
+			for _, requiredLabel := range ils.labels {
+				found := false
+				for _, nodeLabel := range node.Labels {
+					if nodeLabel == requiredLabel {
+						found = true
+						break
+					}
+				}
+				if !found {
+					hasAllLabels = false
+					break
+				}
+			}
+			if !hasAllLabels {
+				continue
+			}
+		}
+
+		// Create binding for this node
+		newBinding := &BindingSet{bindings: make(map[string]any)}
+		if ils.variable != "" {
+			newBinding.bindings[ils.variable] = node
+		}
+		newResults = append(newResults, newBinding)
+	}
+
+	ctx.results = newResults
+	return nil
+}
+
 // CreateStep executes a CREATE clause
 type CreateStep struct {
 	create *CreateClause

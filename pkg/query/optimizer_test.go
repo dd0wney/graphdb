@@ -427,6 +427,208 @@ func TestTopQueries(t *testing.T) {
 	}
 }
 
+// TestIndexLookupOptimization tests that queries with equality conditions use property indexes
+func TestIndexLookupOptimization(t *testing.T) {
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to create graph: %v", err)
+	}
+	defer graph.Close()
+
+	// Create an index on "name" property
+	err = graph.CreatePropertyIndex("name", storage.TypeString)
+	if err != nil {
+		t.Fatalf("Failed to create index: %v", err)
+	}
+
+	// Create test data
+	for i := 0; i < 100; i++ {
+		_, err := graph.CreateNode(
+			[]string{"Person"},
+			map[string]storage.Value{
+				"name": storage.StringValue("user" + string(rune('A'+i%26))),
+			},
+		)
+		if err != nil {
+			t.Fatalf("Failed to create node: %v", err)
+		}
+	}
+
+	optimizer := NewOptimizer(graph)
+
+	// Create a query with WHERE clause that can use the index
+	matchClause := &MatchClause{
+		Patterns: []*Pattern{
+			{
+				Nodes: []*NodePattern{
+					{
+						Variable: "n",
+						Labels:   []string{"Person"},
+					},
+				},
+			},
+		},
+	}
+
+	whereClause := &WhereClause{
+		Expression: &BinaryExpression{
+			Operator: "=",
+			Left:     &PropertyExpression{Variable: "n", Property: "name"},
+			Right:    &LiteralExpression{Value: "userA"},
+		},
+	}
+
+	plan := &ExecutionPlan{
+		Steps: []ExecutionStep{
+			&MatchStep{match: matchClause},
+		},
+	}
+
+	query := &Query{
+		Match: matchClause,
+		Where: whereClause,
+	}
+
+	optimized := optimizer.Optimize(plan, query)
+
+	// The MatchStep should be replaced with IndexLookupStep
+	if len(optimized.Steps) == 0 {
+		t.Fatal("Expected at least one step in optimized plan")
+	}
+
+	_, isIndexLookup := optimized.Steps[0].(*IndexLookupStep)
+	if !isIndexLookup {
+		t.Error("Expected first step to be IndexLookupStep when index is available")
+	}
+}
+
+// TestIndexLookupOptimization_NoIndex tests that without index, MatchStep is used
+func TestIndexLookupOptimization_NoIndex(t *testing.T) {
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to create graph: %v", err)
+	}
+	defer graph.Close()
+
+	// NO index created
+
+	optimizer := NewOptimizer(graph)
+
+	matchClause := &MatchClause{
+		Patterns: []*Pattern{
+			{
+				Nodes: []*NodePattern{
+					{
+						Variable: "n",
+						Labels:   []string{"Person"},
+					},
+				},
+			},
+		},
+	}
+
+	whereClause := &WhereClause{
+		Expression: &BinaryExpression{
+			Operator: "=",
+			Left:     &PropertyExpression{Variable: "n", Property: "name"},
+			Right:    &LiteralExpression{Value: "Alice"},
+		},
+	}
+
+	plan := &ExecutionPlan{
+		Steps: []ExecutionStep{
+			&MatchStep{match: matchClause},
+		},
+	}
+
+	query := &Query{
+		Match: matchClause,
+		Where: whereClause,
+	}
+
+	optimized := optimizer.Optimize(plan, query)
+
+	// Without index, should keep MatchStep
+	_, isMatch := optimized.Steps[0].(*MatchStep)
+	if !isMatch {
+		t.Error("Expected MatchStep when no index is available")
+	}
+}
+
+// TestIndexLookupExecution tests that IndexLookupStep actually executes correctly
+func TestIndexLookupExecution(t *testing.T) {
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to create graph: %v", err)
+	}
+	defer graph.Close()
+
+	// Create an index on "email" property
+	err = graph.CreatePropertyIndex("email", storage.TypeString)
+	if err != nil {
+		t.Fatalf("Failed to create index: %v", err)
+	}
+
+	// Create test nodes
+	_, err = graph.CreateNode(
+		[]string{"User"},
+		map[string]storage.Value{
+			"email": storage.StringValue("alice@example.com"),
+			"name":  storage.StringValue("Alice"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+
+	_, err = graph.CreateNode(
+		[]string{"User"},
+		map[string]storage.Value{
+			"email": storage.StringValue("bob@example.com"),
+			"name":  storage.StringValue("Bob"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+
+	// Execute IndexLookupStep directly
+	step := &IndexLookupStep{
+		propertyKey: "email",
+		value:       storage.StringValue("alice@example.com"),
+		variable:    "u",
+		labels:      []string{"User"},
+	}
+
+	ctx := &ExecutionContext{
+		graph:    graph,
+		bindings: make(map[string]any),
+		results:  make([]*BindingSet, 0),
+	}
+
+	err = step.Execute(ctx)
+	if err != nil {
+		t.Fatalf("IndexLookupStep failed: %v", err)
+	}
+
+	// Should find exactly one node
+	if len(ctx.results) != 1 {
+		t.Errorf("Expected 1 result, got %d", len(ctx.results))
+	}
+
+	// Verify the binding
+	if len(ctx.results) > 0 {
+		node, ok := ctx.results[0].bindings["u"].(*storage.Node)
+		if !ok {
+			t.Fatal("Expected binding to be a Node")
+		}
+		name, _ := node.Properties["name"].AsString()
+		if name != "Alice" {
+			t.Errorf("Expected name 'Alice', got '%s'", name)
+		}
+	}
+}
+
 // TestCardinalityEstimation tests that cardinality is estimated correctly
 func TestCardinalityEstimation(t *testing.T) {
 	graph, err := storage.NewGraphStorage(t.TempDir())

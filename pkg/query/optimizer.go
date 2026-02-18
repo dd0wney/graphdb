@@ -48,12 +48,128 @@ func (o *Optimizer) applyIndexSelection(plan *ExecutionPlan, query *Query) *Exec
 
 // optimizeMatchWithIndex optimizes a match step to use indexes when available
 func (o *Optimizer) optimizeMatchWithIndex(match *MatchStep, query *Query) ExecutionStep {
-	// TODO: If WHERE clause has property filters, use index lookup
-	// Check for property equality filters
-	// Example: WHERE n.name = "Alice" -> Use index on "name" if available
-	// This would require analyzing the WHERE AST to find property filters
-	// For now, return the original step unchanged
-	return match
+	// Check if there's a WHERE clause with indexable conditions
+	if query.Where == nil {
+		return match
+	}
+
+	// Try to extract equality conditions from WHERE clause
+	indexInfo := o.extractIndexableCondition(query.Where.Expression)
+	if indexInfo == nil {
+		return match
+	}
+
+	// Check if index exists for this property
+	if !o.graph.HasPropertyIndex(indexInfo.propertyKey) {
+		return match
+	}
+
+	// Get the variable and labels from the match pattern
+	variable := ""
+	var labels []string
+	if match.match != nil && len(match.match.Patterns) > 0 {
+		pattern := match.match.Patterns[0]
+		if len(pattern.Nodes) > 0 {
+			variable = pattern.Nodes[0].Variable
+			labels = pattern.Nodes[0].Labels
+		}
+	}
+
+	// Verify the property access matches the variable in the match pattern
+	if indexInfo.variable != variable {
+		return match // Property is on a different variable
+	}
+
+	// Convert value to storage.Value
+	storageValue, ok := convertToStorageValueForIndex(indexInfo.value)
+	if !ok {
+		return match
+	}
+
+	// Return IndexLookupStep instead of MatchStep
+	return &IndexLookupStep{
+		propertyKey: indexInfo.propertyKey,
+		value:       storageValue,
+		variable:    variable,
+		labels:      labels,
+	}
+}
+
+// indexableCondition holds info about an indexable WHERE condition
+type indexableCondition struct {
+	variable    string // e.g., "n" from n.name
+	propertyKey string // e.g., "name"
+	value       any    // the literal value to match
+}
+
+// extractIndexableCondition tries to extract an equality condition that can use an index
+func (o *Optimizer) extractIndexableCondition(expr Expression) *indexableCondition {
+	if expr == nil {
+		return nil
+	}
+
+	// Handle binary expressions
+	binExpr, ok := expr.(*BinaryExpression)
+	if !ok {
+		return nil
+	}
+
+	// For AND expressions, try to extract from either side
+	if binExpr.Operator == "AND" {
+		if left := o.extractIndexableCondition(binExpr.Left); left != nil {
+			return left
+		}
+		return o.extractIndexableCondition(binExpr.Right)
+	}
+
+	// Only handle equality for index lookups
+	if binExpr.Operator != "=" {
+		return nil
+	}
+
+	// Check if left is PropertyExpression and right is LiteralExpression
+	propExpr, propOk := binExpr.Left.(*PropertyExpression)
+	litExpr, litOk := binExpr.Right.(*LiteralExpression)
+
+	if propOk && litOk {
+		return &indexableCondition{
+			variable:    propExpr.Variable,
+			propertyKey: propExpr.Property,
+			value:       litExpr.Value,
+		}
+	}
+
+	// Also check the reverse: literal = property
+	litExpr, litOk = binExpr.Left.(*LiteralExpression)
+	propExpr, propOk = binExpr.Right.(*PropertyExpression)
+
+	if propOk && litOk {
+		return &indexableCondition{
+			variable:    propExpr.Variable,
+			propertyKey: propExpr.Property,
+			value:       litExpr.Value,
+		}
+	}
+
+	return nil
+}
+
+// convertToStorageValueForIndex converts a Go value to storage.Value for index lookup
+func convertToStorageValueForIndex(val any) (storage.Value, bool) {
+	switch v := val.(type) {
+	case string:
+		return storage.StringValue(v), true
+	case int:
+		return storage.IntValue(int64(v)), true
+	case int64:
+		return storage.IntValue(v), true
+	case float64:
+		return storage.FloatValue(v), true
+	case bool:
+		return storage.BoolValue(v), true
+	default:
+		return storage.Value{}, false
+	}
 }
 
 // applyFilterPushdown moves filters as early as possible in execution

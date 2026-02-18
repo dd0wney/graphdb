@@ -128,6 +128,15 @@ func (gs *GraphStorage) FindNodesByPropertyPrefix(key string, prefix string) ([]
 	return gs.buildNodeListFromIDs(nodeIDs), nil
 }
 
+// HasPropertyIndex checks if an index exists for a given property key
+func (gs *GraphStorage) HasPropertyIndex(key string) bool {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+
+	_, exists := gs.propertyIndexes[key]
+	return exists
+}
+
 // GetIndexStatistics returns statistics for all property indexes
 func (gs *GraphStorage) GetIndexStatistics() map[string]IndexStatistics {
 	gs.mu.RLock()
