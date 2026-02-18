@@ -171,7 +171,13 @@ func ComputeTemporalMetrics(graph *GraphStorage, startTime, endTime int64) (*Tem
 	nodeCount := int(stats.NodeCount)
 
 	totalLifetime := int64(0)
-	edgeCount := 0
+	edgeCount := 0       // edges with temporal data created in range
+	deletedCount := 0    // edges with valid_to in range (tombstoned)
+
+	duration := endTime - startTime
+	if duration <= 0 {
+		duration = 1 // Avoid division by zero
+	}
 
 	// Analyze all edges
 	for nodeID := uint64(1); nodeID <= uint64(nodeCount); nodeID++ {
@@ -186,12 +192,21 @@ func ComputeTemporalMetrics(graph *GraphStorage, startTime, endTime int64) (*Tem
 				continue
 			}
 
-			edgeCount++
 			from, _ := validFrom.AsInt()
-			to := time.Now().Unix()
 
+			// Count edges created within the analysis time range
+			if from >= startTime && from <= endTime {
+				edgeCount++
+			}
+
+			to := time.Now().Unix()
 			if validTo, hasTo := edge.Properties["valid_to"]; hasTo {
 				to, _ = validTo.AsInt()
+
+				// Count edges deleted (tombstoned) within the analysis time range
+				if to >= startTime && to <= endTime {
+					deletedCount++
+				}
 			}
 
 			totalLifetime += (to - from)
@@ -206,8 +221,8 @@ func ComputeTemporalMetrics(graph *GraphStorage, startTime, endTime int64) (*Tem
 	return &TemporalMetrics{
 		AverageEdgeLifetime: avgLifetime,
 		ActiveEdgesAtTime:   make(map[int64]int),
-		EdgeCreationRate:    float64(edgeCount) / float64(endTime-startTime),
-		EdgeDeletionRate:    0, // TODO: Calculate from tombstones
+		EdgeCreationRate:    float64(edgeCount) / float64(duration),
+		EdgeDeletionRate:    float64(deletedCount) / float64(duration),
 	}, nil
 }
 

@@ -503,6 +503,93 @@ func TestComputeTemporalMetrics_ZeroTimeRange(t *testing.T) {
 	}
 }
 
+// TestComputeTemporalMetrics_DeletionRate tests EdgeDeletionRate calculation
+func TestComputeTemporalMetrics_DeletionRate(t *testing.T) {
+	// Use a fresh graph to have precise control over edges
+	tempDir := filepath.Join(os.TempDir(), "temporal_deletion_rate_test")
+	defer os.RemoveAll(tempDir)
+
+	gs, err := NewGraphStorage(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to create graph storage: %v", err)
+	}
+	defer gs.Close()
+
+	tq := NewTemporalQuery(gs)
+
+	// Create nodes
+	alice, _ := gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Alice")})
+	bob, _ := gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Bob")})
+	charlie, _ := gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Charlie")})
+
+	// Create temporal edges with different lifetimes
+	// Edge 1: created at 100, deleted at 200
+	_, err = tq.CreateTemporalEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0, 100, 200)
+	if err != nil {
+		t.Fatalf("CreateTemporalEdge failed: %v", err)
+	}
+
+	// Edge 2: created at 150, deleted at 250
+	_, err = tq.CreateTemporalEdge(alice.ID, charlie.ID, "KNOWS", nil, 1.0, 150, 250)
+	if err != nil {
+		t.Fatalf("CreateTemporalEdge failed: %v", err)
+	}
+
+	// Edge 3: created at 200, still active (no valid_to)
+	_, err = tq.CreateTemporalEdge(bob.ID, charlie.ID, "KNOWS", nil, 1.0, 200, 0)
+	if err != nil {
+		t.Fatalf("CreateTemporalEdge failed: %v", err)
+	}
+
+	tests := []struct {
+		name                 string
+		startTime            int64
+		endTime              int64
+		expectedCreationRate float64
+		expectedDeletionRate float64
+	}{
+		{
+			name:                 "full range - all creations and deletions",
+			startTime:            100,
+			endTime:              300,
+			expectedCreationRate: 3.0 / 200.0, // 3 edges created in 200 time units
+			expectedDeletionRate: 2.0 / 200.0, // 2 edges deleted (200, 250) in 200 time units
+		},
+		{
+			name:                 "range with one deletion",
+			startTime:            180,
+			endTime:              220,
+			expectedCreationRate: 1.0 / 40.0, // 1 edge created at 200
+			expectedDeletionRate: 1.0 / 40.0, // 1 edge deleted at 200
+		},
+		{
+			name:                 "range with no deletions",
+			startTime:            100,
+			endTime:              150,
+			expectedCreationRate: 2.0 / 50.0, // 2 edges created (100, 150)
+			expectedDeletionRate: 0,          // no deletions in this range
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			metrics, err := ComputeTemporalMetrics(gs, tt.startTime, tt.endTime)
+			if err != nil {
+				t.Fatalf("ComputeTemporalMetrics failed: %v", err)
+			}
+
+			// Allow small floating point tolerance
+			tolerance := 0.0001
+			if diff := metrics.EdgeCreationRate - tt.expectedCreationRate; diff > tolerance || diff < -tolerance {
+				t.Errorf("EdgeCreationRate = %f, want %f", metrics.EdgeCreationRate, tt.expectedCreationRate)
+			}
+			if diff := metrics.EdgeDeletionRate - tt.expectedDeletionRate; diff > tolerance || diff < -tolerance {
+				t.Errorf("EdgeDeletionRate = %f, want %f", metrics.EdgeDeletionRate, tt.expectedDeletionRate)
+			}
+		})
+	}
+}
+
 // TestTemporalTraversal tests temporal BFS traversal
 func TestTemporalTraversal(t *testing.T) {
 	gs, cleanup := setupTemporalTestGraph(t)
