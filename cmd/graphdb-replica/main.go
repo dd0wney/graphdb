@@ -94,8 +94,8 @@ func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication
 			return
 		}
 
-		// TODO: Implement node listing
-		json.NewEncoder(w).Encode([]any{})
+		nodes := graph.GetAllNodes()
+		json.NewEncoder(w).Encode(nodes)
 	})
 
 	addr := fmt.Sprintf(":%d", port)
