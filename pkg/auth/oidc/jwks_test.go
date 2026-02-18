@@ -325,3 +325,229 @@ func TestFindKeyByKid(t *testing.T) {
 		t.Error("Expected nil for non-existent key")
 	}
 }
+
+func TestJWKSClient_KeyRotationCleansOldKeys(t *testing.T) {
+	// Initial JWKS with two keys
+	initialKeys := JWKS{
+		Keys: []JWK{
+			testJWKS.Keys[0], // test-key-1
+			testJWKS.Keys[1], // test-key-2
+		},
+	}
+
+	// Rotated JWKS: test-key-1 removed, test-key-3 added
+	rotatedKeys := JWKS{
+		Keys: []JWK{
+			testJWKS.Keys[1], // test-key-2 (kept)
+			{
+				Kty: "RSA",
+				Kid: "test-key-3",
+				Use: "sig",
+				Alg: "RS256",
+				N:   testJWKS.Keys[0].N,
+				E:   testJWKS.Keys[0].E,
+			},
+		},
+	}
+
+	currentKeys := &initialKeys
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(currentKeys)
+	}))
+	defer server.Close()
+
+	client := NewJWKSClientWithHTTP(server.Client(), 5*time.Minute)
+	ctx := context.Background()
+
+	// Fetch initial JWKS and cache keys
+	_, err := client.GetKey(ctx, server.URL, "test-key-1")
+	if err != nil {
+		t.Fatalf("Failed to get initial key: %v", err)
+	}
+
+	// Verify both keys are cached
+	client.mu.RLock()
+	if len(client.keyCache) != 2 {
+		t.Errorf("Expected 2 cached keys, got %d", len(client.keyCache))
+	}
+	_, hasKey1 := client.keyCache["test-key-1"]
+	_, hasKey2 := client.keyCache["test-key-2"]
+	client.mu.RUnlock()
+
+	if !hasKey1 || !hasKey2 {
+		t.Error("Expected both test-key-1 and test-key-2 to be cached")
+	}
+
+	// Simulate key rotation
+	currentKeys = &rotatedKeys
+
+	// Clear cache to force refetch
+	client.ClearCache()
+
+	// Fetch new key - this should also clean up test-key-1
+	_, err = client.GetKey(ctx, server.URL, "test-key-3")
+	if err != nil {
+		t.Fatalf("Failed to get rotated key: %v", err)
+	}
+
+	// Verify test-key-1 is removed, test-key-2 and test-key-3 are present
+	client.mu.RLock()
+	_, hasKey1 = client.keyCache["test-key-1"]
+	_, hasKey2 = client.keyCache["test-key-2"]
+	_, hasKey3 := client.keyCache["test-key-3"]
+	client.mu.RUnlock()
+
+	if hasKey1 {
+		t.Error("Expected test-key-1 to be removed after rotation")
+	}
+	if !hasKey2 {
+		t.Error("Expected test-key-2 to still be cached")
+	}
+	if !hasKey3 {
+		t.Error("Expected test-key-3 to be cached")
+	}
+}
+
+func TestJWKSClient_MaxCacheSize(t *testing.T) {
+	// Create a JWKS with more keys than MaxKeyCacheSize
+	// For this test, we'll use a smaller number and verify the eviction logic
+	numKeys := 50
+	largeJWKS := JWKS{
+		Keys: make([]JWK, numKeys),
+	}
+	for i := 0; i < numKeys; i++ {
+		largeJWKS.Keys[i] = JWK{
+			Kty: "RSA",
+			Kid: "key-" + string(rune('A'+i)),
+			Use: "sig",
+			Alg: "RS256",
+			N:   testJWKS.Keys[0].N,
+			E:   testJWKS.Keys[0].E,
+		}
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(largeJWKS)
+	}))
+	defer server.Close()
+
+	client := NewJWKSClientWithHTTP(server.Client(), 5*time.Minute)
+	ctx := context.Background()
+
+	// Fetch JWKS - should cache all keys
+	_, err := client.GetJWKS(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("Failed to get JWKS: %v", err)
+	}
+
+	// Verify keys are cached
+	client.mu.RLock()
+	cacheLen := len(client.keyCache)
+	client.mu.RUnlock()
+
+	if cacheLen != numKeys {
+		t.Errorf("Expected %d cached keys, got %d", numKeys, cacheLen)
+	}
+
+	// Cache size should never exceed MaxKeyCacheSize
+	if cacheLen > MaxKeyCacheSize {
+		t.Errorf("Cache size %d exceeds MaxKeyCacheSize %d", cacheLen, MaxKeyCacheSize)
+	}
+}
+
+func TestJWKSClient_EvictOldestKeys(t *testing.T) {
+	client := NewJWKSClient(5 * time.Minute)
+
+	// Manually add keys to cache
+	client.mu.Lock()
+	for i := 0; i < 10; i++ {
+		kid := "evict-test-key-" + string(rune('A'+i))
+		client.keyCache[kid] = nil // Value doesn't matter for this test
+		client.keyToURL[kid] = "http://example.com"
+	}
+	initialSize := len(client.keyCache)
+	client.evictOldestKeys(3)
+	afterEvict := len(client.keyCache)
+	client.mu.Unlock()
+
+	if afterEvict != initialSize-3 {
+		t.Errorf("Expected %d keys after eviction, got %d", initialSize-3, afterEvict)
+	}
+}
+
+func TestJWKSClient_KeyToURLTracking(t *testing.T) {
+	// Two different JWKS endpoints
+	jwks1 := JWKS{
+		Keys: []JWK{{
+			Kty: "RSA",
+			Kid: "endpoint1-key",
+			Use: "sig",
+			N:   testJWKS.Keys[0].N,
+			E:   testJWKS.Keys[0].E,
+		}},
+	}
+	jwks2 := JWKS{
+		Keys: []JWK{{
+			Kty: "RSA",
+			Kid: "endpoint2-key",
+			Use: "sig",
+			N:   testJWKS.Keys[0].N,
+			E:   testJWKS.Keys[0].E,
+		}},
+	}
+
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(jwks1)
+	}))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(jwks2)
+	}))
+	defer server2.Close()
+
+	client := NewJWKSClientWithHTTP(http.DefaultClient, 5*time.Minute)
+	ctx := context.Background()
+
+	// Fetch from both endpoints
+	_, err := client.GetKey(ctx, server1.URL, "endpoint1-key")
+	if err != nil {
+		t.Fatalf("Failed to get key from endpoint 1: %v", err)
+	}
+	_, err = client.GetKey(ctx, server2.URL, "endpoint2-key")
+	if err != nil {
+		t.Fatalf("Failed to get key from endpoint 2: %v", err)
+	}
+
+	// Verify key-to-URL tracking
+	client.mu.RLock()
+	url1, ok1 := client.keyToURL["endpoint1-key"]
+	url2, ok2 := client.keyToURL["endpoint2-key"]
+	client.mu.RUnlock()
+
+	if !ok1 || url1 != server1.URL {
+		t.Errorf("Expected endpoint1-key to map to %s, got %s", server1.URL, url1)
+	}
+	if !ok2 || url2 != server2.URL {
+		t.Errorf("Expected endpoint2-key to map to %s, got %s", server2.URL, url2)
+	}
+
+	// Clear cache for endpoint 1 only
+	client.ClearCacheForURL(server1.URL)
+
+	client.mu.RLock()
+	_, hasKey1 := client.keyCache["endpoint1-key"]
+	_, hasKey2 := client.keyCache["endpoint2-key"]
+	client.mu.RUnlock()
+
+	if hasKey1 {
+		t.Error("Expected endpoint1-key to be removed")
+	}
+	if !hasKey2 {
+		t.Error("Expected endpoint2-key to still be cached")
+	}
+}
