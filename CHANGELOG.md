@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Multi-tenancy support with data isolation and quota enforcement
 - Generic OIDC authentication support for enterprise identity providers
+- Modularity calculation for community detection algorithms (ConnectedComponents, LabelPropagation)
 
 ### Fixed
 - Goroutine leaks in OIDC StateStore and server metrics subsystems
