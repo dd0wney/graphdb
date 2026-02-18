@@ -55,24 +55,38 @@ func (w *metricsResponseWriter) Write(b []byte) (int, error) {
 
 // updateMetricsPeriodically updates system metrics every 10 seconds
 func (s *Server) updateMetricsPeriodically() {
+	defer s.metricsWg.Done()
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		// Update uptime
-		s.metricsRegistry.UptimeSeconds.Set(time.Since(s.startTime).Seconds())
+	for {
+		select {
+		case <-s.metricsStopCh:
+			return
+		case <-ticker.C:
+			// Update uptime
+			s.metricsRegistry.UptimeSeconds.Set(time.Since(s.startTime).Seconds())
 
-		// Update Go runtime metrics
-		s.metricsRegistry.GoRoutines.Set(float64(runtime.NumGoroutine()))
+			// Update Go runtime metrics
+			s.metricsRegistry.GoRoutines.Set(float64(runtime.NumGoroutine()))
 
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		s.metricsRegistry.MemoryAllocBytes.Set(float64(m.Alloc))
-		s.metricsRegistry.MemorySysBytes.Set(float64(m.Sys))
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			s.metricsRegistry.MemoryAllocBytes.Set(float64(m.Alloc))
+			s.metricsRegistry.MemorySysBytes.Set(float64(m.Sys))
 
-		// Update storage metrics
-		stats := s.graph.GetStatistics()
-		s.metricsRegistry.StorageNodesTotal.Set(float64(stats.NodeCount))
-		s.metricsRegistry.StorageEdgesTotal.Set(float64(stats.EdgeCount))
+			// Update storage metrics
+			stats := s.graph.GetStatistics()
+			s.metricsRegistry.StorageNodesTotal.Set(float64(stats.NodeCount))
+			s.metricsRegistry.StorageEdgesTotal.Set(float64(stats.EdgeCount))
+		}
+	}
+}
+
+// StopMetrics stops the background metrics updater goroutine
+func (s *Server) StopMetrics() {
+	if s.metricsStopCh != nil {
+		close(s.metricsStopCh)
+		s.metricsWg.Wait()
 	}
 }

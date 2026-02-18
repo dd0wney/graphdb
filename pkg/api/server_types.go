@@ -52,4 +52,6 @@ type Server struct {
 	port                int
 	dataDir             string                      // Data directory for auth persistence
 	environment         string                      // "live" or "test" - for API key environment enforcement
+	metricsStopCh       chan struct{}               // Stop channel for metrics goroutine
+	metricsWg           sync.WaitGroup              // WaitGroup for metrics goroutine
 }

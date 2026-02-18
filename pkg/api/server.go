@@ -163,6 +163,8 @@ func (s *Server) Start() error {
 	log.Printf("   OpenAPI JSON:  GET  %s://%s/api/docs/openapi.json", protocol, addr)
 
 	// Start background metrics updater
+	s.metricsStopCh = make(chan struct{})
+	s.metricsWg.Add(1)
 	go s.updateMetricsPeriodically()
 
 	// Create HTTP server with timeouts for production security

@@ -20,6 +20,9 @@ var (
 	ErrUnsupportedKty = errors.New("unsupported key type")
 )
 
+// MaxKeyCacheSize limits the number of cached RSA keys to prevent unbounded growth
+const MaxKeyCacheSize = 1000
+
 // JWKSClient fetches and caches JSON Web Key Sets
 type JWKSClient struct {
 	httpClient *http.Client
@@ -31,6 +34,8 @@ type JWKSClient struct {
 
 	// Parsed RSA keys cache (kid -> key)
 	keyCache map[string]*rsa.PublicKey
+	// Track which keys belong to which JWKS URL for cleanup
+	keyToURL map[string]string
 }
 
 // NewJWKSClient creates a new JWKS client with default settings
@@ -45,6 +50,7 @@ func NewJWKSClient(cacheTTL time.Duration) *JWKSClient {
 		cache:    make(map[string]*CachedJWKS),
 		cacheTTL: cacheTTL,
 		keyCache: make(map[string]*rsa.PublicKey),
+		keyToURL: make(map[string]string),
 	}
 }
 
@@ -62,6 +68,7 @@ func NewJWKSClientWithHTTP(client *http.Client, cacheTTL time.Duration) *JWKSCli
 		cache:      make(map[string]*CachedJWKS),
 		cacheTTL:   cacheTTL,
 		keyCache:   make(map[string]*rsa.PublicKey),
+		keyToURL:   make(map[string]string),
 	}
 }
 
@@ -94,13 +101,34 @@ func (c *JWKSClient) GetJWKS(ctx context.Context, jwksURL string) (*JWKS, error)
 		FetchedAt: now,
 		ExpiresAt: now.Add(c.cacheTTL),
 	}
+
+	// Clean up old keys from this URL that are no longer present (handles key rotation)
+	newKids := make(map[string]bool)
+	for _, key := range jwks.Keys {
+		if key.Kid != "" {
+			newKids[key.Kid] = true
+		}
+	}
+	for kid, url := range c.keyToURL {
+		if url == jwksURL && !newKids[kid] {
+			delete(c.keyCache, kid)
+			delete(c.keyToURL, kid)
+		}
+	}
+
 	// Parse and cache RSA keys
 	for _, key := range jwks.Keys {
 		if key.Kty == "RSA" && key.Kid != "" {
 			if rsaKey, err := parseRSAPublicKey(&key); err == nil {
 				c.keyCache[key.Kid] = rsaKey
+				c.keyToURL[key.Kid] = jwksURL
 			}
 		}
+	}
+
+	// Enforce max cache size (evict oldest if needed)
+	if len(c.keyCache) > MaxKeyCacheSize {
+		c.evictOldestKeys(len(c.keyCache) - MaxKeyCacheSize)
 	}
 	c.mu.Unlock()
 
@@ -134,13 +162,34 @@ func (c *JWKSClient) GetKey(ctx context.Context, jwksURL, kid string) (*rsa.Publ
 		FetchedAt: now,
 		ExpiresAt: now.Add(c.cacheTTL),
 	}
+
+	// Clean up old keys from this URL that are no longer present (handles key rotation)
+	newKids := make(map[string]bool)
+	for _, jwk := range jwks.Keys {
+		if jwk.Kid != "" {
+			newKids[jwk.Kid] = true
+		}
+	}
+	for cachedKid, url := range c.keyToURL {
+		if url == jwksURL && !newKids[cachedKid] {
+			delete(c.keyCache, cachedKid)
+			delete(c.keyToURL, cachedKid)
+		}
+	}
+
 	// Parse and cache all keys
 	for _, jwk := range jwks.Keys {
 		if jwk.Kty == "RSA" && jwk.Kid != "" {
 			if rsaKey, err := parseRSAPublicKey(&jwk); err == nil {
 				c.keyCache[jwk.Kid] = rsaKey
+				c.keyToURL[jwk.Kid] = jwksURL
 			}
 		}
+	}
+
+	// Enforce max cache size
+	if len(c.keyCache) > MaxKeyCacheSize {
+		c.evictOldestKeys(len(c.keyCache) - MaxKeyCacheSize)
 	}
 	key, exists = c.keyCache[kid]
 	c.mu.Unlock()
@@ -221,11 +270,26 @@ func parseRSAPublicKey(jwk *JWK) (*rsa.PublicKey, error) {
 	}, nil
 }
 
+// evictOldestKeys removes n keys from the cache (must be called with lock held)
+// Since we don't track insertion order, we just remove arbitrary keys
+func (c *JWKSClient) evictOldestKeys(n int) {
+	count := 0
+	for kid := range c.keyCache {
+		if count >= n {
+			break
+		}
+		delete(c.keyCache, kid)
+		delete(c.keyToURL, kid)
+		count++
+	}
+}
+
 // ClearCache removes all cached JWKS and keys
 func (c *JWKSClient) ClearCache() {
 	c.mu.Lock()
 	c.cache = make(map[string]*CachedJWKS)
 	c.keyCache = make(map[string]*rsa.PublicKey)
+	c.keyToURL = make(map[string]string)
 	c.mu.Unlock()
 }
 
@@ -237,6 +301,7 @@ func (c *JWKSClient) ClearCacheForURL(jwksURL string) {
 		// Also remove associated key cache entries
 		for _, key := range cached.JWKS.Keys {
 			delete(c.keyCache, key.Kid)
+			delete(c.keyToURL, key.Kid)
 		}
 		delete(c.cache, jwksURL)
 	}

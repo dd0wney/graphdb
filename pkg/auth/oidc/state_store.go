@@ -22,6 +22,8 @@ type StateStore struct {
 	states  map[string]*StateEntry
 	ttl     time.Duration
 	maxSize int
+	stopCh  chan struct{}
+	wg      sync.WaitGroup
 }
 
 // NewStateStore creates a new state store with default settings
@@ -30,7 +32,9 @@ func NewStateStore() *StateStore {
 		states:  make(map[string]*StateEntry),
 		ttl:     DefaultStateTTL,
 		maxSize: MaxStateEntries,
+		stopCh:  make(chan struct{}),
 	}
+	store.wg.Add(1)
 	go store.cleanupLoop()
 	return store
 }
@@ -44,7 +48,9 @@ func NewStateStoreWithTTL(ttl time.Duration) *StateStore {
 		states:  make(map[string]*StateEntry),
 		ttl:     ttl,
 		maxSize: MaxStateEntries,
+		stopCh:  make(chan struct{}),
 	}
+	store.wg.Add(1)
 	go store.cleanupLoop()
 	return store
 }
@@ -137,11 +143,17 @@ func (s *StateStore) evictOldest(count int) {
 
 // cleanupLoop periodically removes expired entries
 func (s *StateStore) cleanupLoop() {
+	defer s.wg.Done()
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		s.cleanup()
+	for {
+		select {
+		case <-s.stopCh:
+			return
+		case <-ticker.C:
+			s.cleanup()
+		}
 	}
 }
 
@@ -163,4 +175,10 @@ func (s *StateStore) Len() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.states)
+}
+
+// Close stops the cleanup goroutine and releases resources
+func (s *StateStore) Close() {
+	close(s.stopCh)
+	s.wg.Wait()
 }
