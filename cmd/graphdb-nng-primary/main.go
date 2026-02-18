@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -58,7 +59,27 @@ func main() {
 	// Add datacenter link if specified
 	if *addDatacenter != "" {
 		fmt.Printf("Adding datacenter link: %s\n", *addDatacenter)
-		// TODO: Parse and add datacenter link
+		// Parse dc-id:endpoint
+		parts := strings.SplitN(*addDatacenter, ":", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			log.Fatalf("Invalid datacenter link format. Expected dc-id:endpoint, got: %s", *addDatacenter)
+		}
+		dcID, endpoint := parts[0], parts[1]
+
+		// Reconstruct endpoint with port if it was split
+		// Handle case like "dc1:tcp://192.168.1.1:9090"
+		if strings.HasPrefix(endpoint, "//") {
+			// Already has protocol stripped, find next colon for port
+			endpoint = parts[1]
+		} else if !strings.Contains(endpoint, "://") {
+			// No protocol, assume tcp://
+			endpoint = "tcp://" + endpoint
+		}
+
+		if err := nngMgr.AddDatacenterLink(dcID, endpoint); err != nil {
+			log.Fatalf("Failed to add datacenter link: %v", err)
+		}
+		fmt.Printf("  Datacenter %s -> %s\n", dcID, endpoint)
 	}
 
 	// Start HTTP API
