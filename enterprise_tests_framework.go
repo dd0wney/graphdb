@@ -15,9 +15,7 @@ package enterprise
 
 import (
 	"context"
-	"encoding/csv"
 	"fmt"
-	"math"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -89,13 +87,13 @@ func (ts *TestSuite) TestMultiTenantIsolation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup: Create nodes in tenant1
-			node1, _ := ts.storage.CreateNode(tt.node1Labels, map[string]interface{}{
-				"tenant_id": tt.tenant1ID,
+			node1, _ := ts.storage.CreateNode(tt.node1Labels, map[string]storage.Value{
+				"tenant_id": storage.StringValue(tt.tenant1ID),
 			})
 
 			// Setup: Create nodes in tenant2
-			node2, _ := ts.storage.CreateNode(tt.node2Labels, map[string]interface{}{
-				"tenant_id": tt.tenant2ID,
+			node2, _ := ts.storage.CreateNode(tt.node2Labels, map[string]storage.Value{
+				"tenant_id": storage.StringValue(tt.tenant2ID),
 			})
 
 			// Test: Verify isolation
@@ -111,8 +109,7 @@ func (ts *TestSuite) TestMultiTenantIsolation(t *testing.T) {
 func BenchmarkMultiTenantQueries(b *testing.B) {
 	// Pre-populate 50 tenants with 10K nodes each
 	tenantCount := 50
-	nodesPerTenant := 10000
-	totalNodes := tenantCount * nodesPerTenant
+	_ = 10000 // nodesPerTenant - not used yet
 
 	// Measure: Query latency per tenant
 	// Expected: <20ms p95 even with 50 concurrent tenants
