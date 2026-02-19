@@ -1,21 +1,28 @@
 // Package main provides unified types for OT representative models.
 package main
 
-import "github.com/dd0wney/cluso-graphdb/pkg/storage"
-
-// Node type constants used throughout the codebase.
-const (
-	NodeTypeTechnical = "technical"
-	NodeTypeHuman     = "human"
-	NodeTypeProcess   = "process"
-	NodeTypeExternal  = "external"
+import (
+	"github.com/dd0wney/cluso-graphdb/examples/ot-representative-models/models"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
-// Edge type constants used for layer analysis.
+// Re-export node and edge type constants from models package for convenience.
 const (
-	EdgeTypeTechnical   = "TECHNICAL"
-	EdgeTypeHumanAccess = "HUMAN_ACCESS"
-	EdgeTypeProcess     = "PROCESS"
+	NodeTypeTechnical = models.NodeTypeTechnical
+	NodeTypeHuman     = models.NodeTypeHuman
+	NodeTypeProcess   = models.NodeTypeProcess
+	NodeTypeExternal  = models.NodeTypeExternal
+
+	EdgeTypeTechnical   = models.EdgeTypeTechnical
+	EdgeTypeHumanAccess = models.EdgeTypeHumanAccess
+	EdgeTypeProcess     = models.EdgeTypeProcess
+)
+
+// Type aliases for model types.
+type (
+	NodeDef   = models.NodeDef
+	EdgeDef   = models.EdgeDef
+	EdgeGroup = models.EdgeGroup
 )
 
 // Metadata holds node mappings for a graph model.

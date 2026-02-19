@@ -4,24 +4,9 @@ package main
 import (
 	"fmt"
 
+	"github.com/dd0wney/cluso-graphdb/examples/ot-representative-models/models"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
-
-// NodeDef defines a node with its properties
-type NodeDef struct {
-	Name     string
-	Labels   []string
-	Level    string
-	NodeType string // NodeTypeTechnical, NodeTypeHuman, NodeTypeProcess, NodeTypeExternal
-	Function string // optional function description (for telecom model)
-}
-
-// EdgeDef defines an edge between two nodes
-type EdgeDef struct {
-	From     string
-	To       string
-	EdgeType string // EdgeTypeTechnical, EdgeTypeHumanAccess, EdgeTypeProcess
-}
 
 // GraphBuilder provides a fluent interface for building OT network models
 type GraphBuilder struct {
@@ -52,7 +37,7 @@ func NewGraphBuilder(dataPath string) (*GraphBuilder, error) {
 }
 
 // AddNode creates a single node and tracks its metadata
-func (b *GraphBuilder) AddNode(def NodeDef) *GraphBuilder {
+func (b *GraphBuilder) AddNode(def models.NodeDef) *GraphBuilder {
 	if b.err != nil {
 		return b
 	}
@@ -84,7 +69,7 @@ func (b *GraphBuilder) AddNode(def NodeDef) *GraphBuilder {
 }
 
 // AddNodes creates multiple nodes from definitions
-func (b *GraphBuilder) AddNodes(defs []NodeDef) *GraphBuilder {
+func (b *GraphBuilder) AddNodes(defs []models.NodeDef) *GraphBuilder {
 	for _, def := range defs {
 		b.AddNode(def)
 		if b.err != nil {
@@ -128,7 +113,7 @@ func (b *GraphBuilder) AddUndirectedEdge(from, to, edgeType string) *GraphBuilde
 }
 
 // AddEdges creates multiple undirected edges from definitions
-func (b *GraphBuilder) AddEdges(defs []EdgeDef) *GraphBuilder {
+func (b *GraphBuilder) AddEdges(defs []models.EdgeDef) *GraphBuilder {
 	for _, def := range defs {
 		b.AddUndirectedEdge(def.From, def.To, def.EdgeType)
 		if b.err != nil {
@@ -159,10 +144,10 @@ func (b *GraphBuilder) AddEdgePairsWithAutoType(pairs [][2]string, defaultType s
 		fromID := b.nodeIDs[pair[0]]
 		toID := b.nodeIDs[pair[1]]
 
-		if b.nodeTypes[fromID] == NodeTypeProcess || b.nodeTypes[toID] == NodeTypeProcess {
-			edgeType = EdgeTypeProcess
-		} else if b.nodeTypes[fromID] == NodeTypeHuman || b.nodeTypes[toID] == NodeTypeHuman {
-			edgeType = EdgeTypeHumanAccess
+		if b.nodeTypes[fromID] == models.NodeTypeProcess || b.nodeTypes[toID] == models.NodeTypeProcess {
+			edgeType = models.EdgeTypeProcess
+		} else if b.nodeTypes[fromID] == models.NodeTypeHuman || b.nodeTypes[toID] == models.NodeTypeHuman {
+			edgeType = models.EdgeTypeHumanAccess
 		}
 
 		b.AddUndirectedEdge(pair[0], pair[1], edgeType)
@@ -221,7 +206,7 @@ func NewFilteredGraphBuilder(dataPath string, allowedTypes []string) (*FilteredG
 }
 
 // AddEdges creates edges only if their type is in the allowed set
-func (fb *FilteredGraphBuilder) AddEdges(defs []EdgeDef) *FilteredGraphBuilder {
+func (fb *FilteredGraphBuilder) AddEdges(defs []models.EdgeDef) *FilteredGraphBuilder {
 	for _, def := range defs {
 		if fb.allowedTypes[def.EdgeType] {
 			fb.AddUndirectedEdge(def.From, def.To, def.EdgeType)

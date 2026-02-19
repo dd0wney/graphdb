@@ -178,6 +178,7 @@ graphdb-*-primary
 /power-grid-cascade
 /water-treatment-attack
 examples/juniper-zeroize/juniper-zeroize
+examples/ot-representative-models/ot-representative-models
 
 # Generated output
 results.json

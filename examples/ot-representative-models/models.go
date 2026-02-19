@@ -2,138 +2,9 @@
 // These models demonstrate the "invisible node" problem in critical infrastructure security.
 package main
 
-// ============================================================================
-// STEVE'S UTILITY NODE AND EDGE DEFINITIONS
-// ============================================================================
-
-// stevesUtilityNodes defines all 33 nodes for Steve's Utility model
-var stevesUtilityNodes = []NodeDef{
-	// Technical Nodes (22)
-	// Level 0: Process
-	{"PLC_Turbine1", []string{"Technical", "PLC"}, "L0_Process", NodeTypeTechnical, ""},
-	{"PLC_Turbine2", []string{"Technical", "PLC"}, "L0_Process", NodeTypeTechnical, ""},
-	{"PLC_Substation", []string{"Technical", "PLC"}, "L0_Process", NodeTypeTechnical, ""},
-	{"RTU_Remote1", []string{"Technical", "RTU"}, "L0_Process", NodeTypeTechnical, ""},
-	{"RTU_Remote2", []string{"Technical", "RTU"}, "L0_Process", NodeTypeTechnical, ""},
-	// Level 1: Control
-	{"HMI_Control1", []string{"Technical", "HMI"}, "L1_Control", NodeTypeTechnical, ""},
-	{"HMI_Control2", []string{"Technical", "HMI"}, "L1_Control", NodeTypeTechnical, ""},
-	{"Safety_PLC", []string{"Technical", "PLC", "SafetyCritical"}, "L1_Control", NodeTypeTechnical, ""},
-	// Level 2: Supervisory
-	{"SCADA_Server", []string{"Technical", "SCADA"}, "L2_Supervisory", NodeTypeTechnical, ""},
-	{"Historian_OT", []string{"Technical", "Database"}, "L2_Supervisory", NodeTypeTechnical, ""},
-	{"Eng_Workstation", []string{"Technical", "Workstation"}, "L2_Supervisory", NodeTypeTechnical, ""},
-	// Level 3: Site Operations
-	{"OT_Switch_Core", []string{"Technical", "NetworkSwitch"}, "L3_SiteOps", NodeTypeTechnical, ""},
-	{"Patch_Server", []string{"Technical", "Server"}, "L3_SiteOps", NodeTypeTechnical, ""},
-	{"AD_Server_OT", []string{"Technical", "Server"}, "L3_SiteOps", NodeTypeTechnical, ""},
-	// Level 3.5: DMZ
-	{"Firewall_ITOT", []string{"Technical", "Firewall"}, "L3.5_DMZ", NodeTypeTechnical, ""},
-	{"Jump_Server", []string{"Technical", "Server"}, "L3.5_DMZ", NodeTypeTechnical, ""},
-	{"Data_Diode", []string{"Technical", "SecurityDevice"}, "L3.5_DMZ", NodeTypeTechnical, ""},
-	// Level 4: IT
-	{"IT_Switch_Core", []string{"Technical", "NetworkSwitch"}, "L4_IT", NodeTypeTechnical, ""},
-	{"Email_Server", []string{"Technical", "Server"}, "L4_IT", NodeTypeTechnical, ""},
-	{"ERP_System", []string{"Technical", "Server"}, "L4_IT", NodeTypeTechnical, ""},
-	{"AD_Server_IT", []string{"Technical", "Server"}, "L4_IT", NodeTypeTechnical, ""},
-	{"VPN_Gateway", []string{"Technical", "Gateway"}, "L4_IT", NodeTypeTechnical, ""},
-
-	// Human Nodes (7)
-	{"Steve", []string{"Human", "Operator"}, "Human", NodeTypeHuman, ""},
-	{"OT_Manager", []string{"Human", "Manager"}, "Human", NodeTypeHuman, ""},
-	{"IT_Admin", []string{"Human", "Admin"}, "Human", NodeTypeHuman, ""},
-	{"Control_Op1", []string{"Human", "Operator"}, "Human", NodeTypeHuman, ""},
-	{"Control_Op2", []string{"Human", "Operator"}, "Human", NodeTypeHuman, ""},
-	{"Plant_Manager", []string{"Human", "Manager"}, "Human", NodeTypeHuman, ""},
-	{"Vendor_Rep", []string{"Human", "Vendor"}, "Human", NodeTypeHuman, ""},
-
-	// Process Nodes (4)
-	{"Change_Mgmt_Process", []string{"Process", "ChangeManagement"}, "Process", NodeTypeProcess, ""},
-	{"Incident_Response", []string{"Process", "IncidentResponse"}, "Process", NodeTypeProcess, ""},
-	{"Vendor_Access_Process", []string{"Process", "VendorManagement"}, "Process", NodeTypeProcess, ""},
-	{"Patch_Approval", []string{"Process", "PatchManagement"}, "Process", NodeTypeProcess, ""},
-}
-
-// stevesUtilityEdges defines all edges with their types for layer analysis
-var stevesUtilityEdges = []EdgeDef{
-	// TECHNICAL (26)
-	{"PLC_Turbine1", "HMI_Control1", EdgeTypeTechnical},
-	{"PLC_Turbine2", "HMI_Control2", EdgeTypeTechnical},
-	{"PLC_Substation", "HMI_Control1", EdgeTypeTechnical},
-	{"RTU_Remote1", "SCADA_Server", EdgeTypeTechnical},
-	{"RTU_Remote2", "SCADA_Server", EdgeTypeTechnical},
-	{"Safety_PLC", "HMI_Control1", EdgeTypeTechnical},
-	{"Safety_PLC", "HMI_Control2", EdgeTypeTechnical},
-	{"HMI_Control1", "SCADA_Server", EdgeTypeTechnical},
-	{"HMI_Control2", "SCADA_Server", EdgeTypeTechnical},
-	{"SCADA_Server", "Historian_OT", EdgeTypeTechnical},
-	{"SCADA_Server", "Eng_Workstation", EdgeTypeTechnical},
-	{"SCADA_Server", "OT_Switch_Core", EdgeTypeTechnical},
-	{"Historian_OT", "OT_Switch_Core", EdgeTypeTechnical},
-	{"Eng_Workstation", "OT_Switch_Core", EdgeTypeTechnical},
-	{"OT_Switch_Core", "Patch_Server", EdgeTypeTechnical},
-	{"OT_Switch_Core", "AD_Server_OT", EdgeTypeTechnical},
-	{"OT_Switch_Core", "Firewall_ITOT", EdgeTypeTechnical},
-	{"Firewall_ITOT", "Jump_Server", EdgeTypeTechnical},
-	{"Firewall_ITOT", "Data_Diode", EdgeTypeTechnical},
-	{"Data_Diode", "Historian_OT", EdgeTypeTechnical},
-	{"Firewall_ITOT", "IT_Switch_Core", EdgeTypeTechnical},
-	{"Jump_Server", "IT_Switch_Core", EdgeTypeTechnical},
-	{"IT_Switch_Core", "Email_Server", EdgeTypeTechnical},
-	{"IT_Switch_Core", "ERP_System", EdgeTypeTechnical},
-	{"IT_Switch_Core", "AD_Server_IT", EdgeTypeTechnical},
-	{"IT_Switch_Core", "VPN_Gateway", EdgeTypeTechnical},
-
-	// HUMAN_ACCESS — Steve's edges to technical/human nodes (19)
-	{"Steve", "PLC_Turbine1", EdgeTypeHumanAccess},
-	{"Steve", "PLC_Turbine2", EdgeTypeHumanAccess},
-	{"Steve", "PLC_Substation", EdgeTypeHumanAccess},
-	{"Steve", "HMI_Control1", EdgeTypeHumanAccess},
-	{"Steve", "HMI_Control2", EdgeTypeHumanAccess},
-	{"Steve", "SCADA_Server", EdgeTypeHumanAccess},
-	{"Steve", "Eng_Workstation", EdgeTypeHumanAccess},
-	{"Steve", "Historian_OT", EdgeTypeHumanAccess},
-	{"Steve", "OT_Switch_Core", EdgeTypeHumanAccess},
-	{"Steve", "Patch_Server", EdgeTypeHumanAccess},
-	{"Steve", "Jump_Server", EdgeTypeHumanAccess},
-	{"Steve", "Firewall_ITOT", EdgeTypeHumanAccess},
-	{"Steve", "VPN_Gateway", EdgeTypeHumanAccess},
-	{"Steve", "AD_Server_OT", EdgeTypeHumanAccess},
-	{"Steve", "Vendor_Rep", EdgeTypeHumanAccess},
-	{"Steve", "OT_Manager", EdgeTypeHumanAccess},
-	{"Steve", "Control_Op1", EdgeTypeHumanAccess},
-	{"Steve", "Control_Op2", EdgeTypeHumanAccess},
-	{"Steve", "IT_Admin", EdgeTypeHumanAccess},
-
-	// HUMAN_ACCESS — other human edges to technical/human nodes (16)
-	{"Control_Op1", "HMI_Control1", EdgeTypeHumanAccess},
-	{"Control_Op1", "HMI_Control2", EdgeTypeHumanAccess},
-	{"Control_Op2", "HMI_Control1", EdgeTypeHumanAccess},
-	{"Control_Op2", "HMI_Control2", EdgeTypeHumanAccess},
-	{"OT_Manager", "SCADA_Server", EdgeTypeHumanAccess},
-	{"OT_Manager", "Plant_Manager", EdgeTypeHumanAccess},
-	{"IT_Admin", "IT_Switch_Core", EdgeTypeHumanAccess},
-	{"IT_Admin", "Email_Server", EdgeTypeHumanAccess},
-	{"IT_Admin", "ERP_System", EdgeTypeHumanAccess},
-	{"IT_Admin", "AD_Server_IT", EdgeTypeHumanAccess},
-	{"IT_Admin", "VPN_Gateway", EdgeTypeHumanAccess},
-	{"IT_Admin", "Firewall_ITOT", EdgeTypeHumanAccess},
-	{"Plant_Manager", "ERP_System", EdgeTypeHumanAccess},
-	{"Plant_Manager", "Email_Server", EdgeTypeHumanAccess},
-	{"Vendor_Rep", "VPN_Gateway", EdgeTypeHumanAccess},
-	{"Vendor_Rep", "Jump_Server", EdgeTypeHumanAccess},
-
-	// PROCESS — edges involving process nodes (9)
-	{"Steve", "Change_Mgmt_Process", EdgeTypeProcess},
-	{"Steve", "Incident_Response", EdgeTypeProcess},
-	{"Steve", "Vendor_Access_Process", EdgeTypeProcess},
-	{"Steve", "Patch_Approval", EdgeTypeProcess},
-	{"Control_Op1", "Incident_Response", EdgeTypeProcess},
-	{"Control_Op2", "Incident_Response", EdgeTypeProcess},
-	{"OT_Manager", "Change_Mgmt_Process", EdgeTypeProcess},
-	{"OT_Manager", "Patch_Approval", EdgeTypeProcess},
-	{"Vendor_Rep", "Vendor_Access_Process", EdgeTypeProcess},
-}
+import (
+	"github.com/dd0wney/cluso-graphdb/examples/ot-representative-models/models"
+)
 
 // BuildStevesUtility creates Model 1: Steve's Utility (33 nodes, 70 undirected edges)
 // Demonstrates how one helpful senior OT technician accumulates cross-domain access,
@@ -144,8 +15,8 @@ func BuildStevesUtility(dataPath string) (*Metadata, error) {
 		return nil, err
 	}
 
-	return b.AddNodes(stevesUtilityNodes).
-		AddEdges(stevesUtilityEdges).
+	return b.AddNodes(models.StevesUtilityNodes).
+		AddEdges(models.StevesUtilityEdges).
 		Build()
 }
 
@@ -161,117 +32,22 @@ func BuildStevesUtilityFiltered(dataPath string, allowedTypes []string) (*Metada
 		return nil, err
 	}
 
-	fb.AddNodes(stevesUtilityNodes)
-	fb.AddEdges(stevesUtilityEdges)
+	fb.AddNodes(models.StevesUtilityNodes)
+	fb.AddEdges(models.StevesUtilityEdges)
 
 	return fb.Build()
 }
 
-// BuildStevesUtilityWithoutSteve creates Model 1 without Steve for removal analysis
+// BuildStevesUtilityWithoutSteve creates Model 1 without Steve for removal analysis.
 func BuildStevesUtilityWithoutSteve(dataPath string) (*Metadata, error) {
-	// Filter out Steve from nodes
-	nodesWithoutSteve := make([]NodeDef, 0, len(stevesUtilityNodes)-1)
-	for _, n := range stevesUtilityNodes {
-		if n.Name != "Steve" {
-			nodesWithoutSteve = append(nodesWithoutSteve, n)
-		}
-	}
-
-	// Filter out Steve's edges
-	edgesWithoutSteve := make([]EdgeDef, 0)
-	for _, e := range stevesUtilityEdges {
-		if e.From != "Steve" && e.To != "Steve" {
-			edgesWithoutSteve = append(edgesWithoutSteve, e)
-		}
-	}
-
 	b, err := NewGraphBuilder(dataPath)
 	if err != nil {
 		return nil, err
 	}
 
-	return b.AddNodes(nodesWithoutSteve).
-		AddEdges(edgesWithoutSteve).
+	return b.AddNodes(models.StevesUtilityNodesWithoutSteve()).
+		AddEdges(models.StevesUtilityEdgesWithoutSteve()).
 		Build()
-}
-
-// ============================================================================
-// CHEMICAL FACILITY NODE AND EDGE DEFINITIONS
-// ============================================================================
-
-var chemicalFacilityNodes = []NodeDef{
-	// Technical Nodes (19)
-	// Safety Layer
-	{"SIS_Controller", []string{"Technical", "SIS", "SafetyCritical"}, "Safety", NodeTypeTechnical, ""},
-	{"SIS_Logic_Solver", []string{"Technical", "SIS"}, "Safety", NodeTypeTechnical, ""},
-	{"ESD_Panel", []string{"Technical", "SIS"}, "Safety", NodeTypeTechnical, ""},
-	// DCS Layer
-	{"DCS_Controller1", []string{"Technical", "DCS"}, "DCS", NodeTypeTechnical, ""},
-	{"DCS_Controller2", []string{"Technical", "DCS"}, "DCS", NodeTypeTechnical, ""},
-	{"DCS_Server", []string{"Technical", "DCS", "Server"}, "DCS", NodeTypeTechnical, ""},
-	{"Op_Console1", []string{"Technical", "Console"}, "DCS", NodeTypeTechnical, ""},
-	{"Op_Console2", []string{"Technical", "Console"}, "DCS", NodeTypeTechnical, ""},
-	// Site Layer
-	{"OT_Firewall", []string{"Technical", "Firewall"}, "Site", NodeTypeTechnical, ""},
-	{"Historian", []string{"Technical", "Database"}, "Site", NodeTypeTechnical, ""},
-	{"MES_Server", []string{"Technical", "Server"}, "Site", NodeTypeTechnical, ""},
-	{"Eng_Station", []string{"Technical", "Workstation"}, "Site", NodeTypeTechnical, ""},
-	// DMZ Layer
-	{"DMZ_Firewall", []string{"Technical", "Firewall"}, "DMZ", NodeTypeTechnical, ""},
-	{"Patch_Relay", []string{"Technical", "Server"}, "DMZ", NodeTypeTechnical, ""},
-	{"Remote_Access", []string{"Technical", "Gateway"}, "DMZ", NodeTypeTechnical, ""},
-	// Corporate Layer
-	{"Corp_Firewall", []string{"Technical", "Firewall"}, "Corporate", NodeTypeTechnical, ""},
-	{"Corp_Network", []string{"Technical", "Network"}, "Corporate", NodeTypeTechnical, ""},
-	{"ERP", []string{"Technical", "Server"}, "Corporate", NodeTypeTechnical, ""},
-	{"Internet_GW", []string{"Technical", "Gateway"}, "Corporate", NodeTypeTechnical, ""},
-
-	// Human Nodes (5)
-	{"DCS_Engineer", []string{"Human", "Engineer"}, "Human", NodeTypeHuman, ""},
-	{"Process_Operator", []string{"Human", "Operator"}, "Human", NodeTypeHuman, ""},
-	{"Safety_Engineer", []string{"Human", "Engineer", "SafetyCertified"}, "Human", NodeTypeHuman, ""},
-	{"IT_OT_Coord", []string{"Human", "Coordinator"}, "Human", NodeTypeHuman, ""},
-	{"Site_IT", []string{"Human", "Admin"}, "Human", NodeTypeHuman, ""},
-}
-
-var chemicalFacilityEdges = [][2]string{
-	{"SIS_Controller", "SIS_Logic_Solver"},
-	{"SIS_Logic_Solver", "ESD_Panel"},
-	{"SIS_Controller", "DCS_Server"},
-	{"DCS_Controller1", "DCS_Server"},
-	{"DCS_Controller2", "DCS_Server"},
-	{"DCS_Server", "Op_Console1"},
-	{"DCS_Server", "Op_Console2"},
-	{"DCS_Server", "OT_Firewall"},
-	{"OT_Firewall", "Historian"},
-	{"OT_Firewall", "MES_Server"},
-	{"OT_Firewall", "Eng_Station"},
-	{"OT_Firewall", "DMZ_Firewall"},
-	{"DMZ_Firewall", "Patch_Relay"},
-	{"DMZ_Firewall", "Remote_Access"},
-	{"DMZ_Firewall", "Corp_Firewall"},
-	{"Corp_Firewall", "Corp_Network"},
-	{"Corp_Network", "ERP"},
-	{"Corp_Network", "Internet_GW"},
-	{"DCS_Engineer", "Eng_Station"},
-	{"DCS_Engineer", "DCS_Server"},
-	{"DCS_Engineer", "DCS_Controller1"},
-	{"DCS_Engineer", "DCS_Controller2"},
-	{"Process_Operator", "Op_Console1"},
-	{"Process_Operator", "Op_Console2"},
-	{"Safety_Engineer", "SIS_Controller"},
-	{"Safety_Engineer", "SIS_Logic_Solver"},
-	{"Safety_Engineer", "DCS_Server"},
-	{"IT_OT_Coord", "OT_Firewall"},
-	{"IT_OT_Coord", "DMZ_Firewall"},
-	{"IT_OT_Coord", "Corp_Firewall"},
-	{"IT_OT_Coord", "Remote_Access"},
-	{"IT_OT_Coord", "Patch_Relay"},
-	{"IT_OT_Coord", "DCS_Engineer"},
-	{"IT_OT_Coord", "Site_IT"},
-	{"Site_IT", "Corp_Network"},
-	{"Site_IT", "Corp_Firewall"},
-	{"Site_IT", "DMZ_Firewall"},
 }
 
 // BuildChemicalFacility creates Model 2: Chemical Facility (24 nodes, 37 undirected edges)
@@ -282,61 +58,9 @@ func BuildChemicalFacility(dataPath string) (*Metadata, error) {
 		return nil, err
 	}
 
-	return b.AddNodes(chemicalFacilityNodes).
-		AddEdgePairsWithAutoType(chemicalFacilityEdges, "TECHNICAL").
+	return b.AddNodes(models.ChemicalFacilityNodes).
+		AddEdgePairsWithAutoType(models.ChemicalFacilityEdgePairs, "TECHNICAL").
 		Build()
-}
-
-// ============================================================================
-// WATER TREATMENT NODE AND EDGE DEFINITIONS
-// ============================================================================
-
-var waterTreatmentNodes = []NodeDef{
-	{"PLC_Chlorine", []string{"Technical", "PLC"}, "Flat", NodeTypeTechnical, ""},
-	{"PLC_Filtration", []string{"Technical", "PLC"}, "Flat", NodeTypeTechnical, ""},
-	{"PLC_Pumping", []string{"Technical", "PLC"}, "Flat", NodeTypeTechnical, ""},
-	{"HMI_1", []string{"Technical", "HMI"}, "Flat", NodeTypeTechnical, ""},
-	{"HMI_2", []string{"Technical", "HMI"}, "Flat", NodeTypeTechnical, ""},
-	{"SCADA_Server", []string{"Technical", "SCADA"}, "Flat", NodeTypeTechnical, ""},
-	{"Historian", []string{"Technical", "Database"}, "Flat", NodeTypeTechnical, ""},
-	{"Switch_A", []string{"Technical", "NetworkSwitch"}, "Flat", NodeTypeTechnical, ""},
-	{"Switch_B", []string{"Technical", "NetworkSwitch"}, "Flat", NodeTypeTechnical, ""},
-	{"Switch_C", []string{"Technical", "NetworkSwitch"}, "Flat", NodeTypeTechnical, ""},
-	{"Eng_Laptop", []string{"Technical", "Workstation"}, "Flat", NodeTypeTechnical, ""},
-	{"Operator_PC", []string{"Technical", "Workstation"}, "Flat", NodeTypeTechnical, ""},
-	{"Router_WAN", []string{"Technical", "Router"}, "Flat", NodeTypeTechnical, ""},
-}
-
-var waterFlatEdges = [][2]string{
-	{"Switch_A", "Switch_B"},
-	{"Switch_B", "Switch_C"},
-	{"Switch_A", "Switch_C"},
-	{"PLC_Chlorine", "Switch_A"},
-	{"PLC_Filtration", "Switch_A"},
-	{"PLC_Pumping", "Switch_B"},
-	{"HMI_1", "Switch_A"},
-	{"HMI_2", "Switch_B"},
-	{"SCADA_Server", "Switch_B"},
-	{"Historian", "Switch_C"},
-	{"Eng_Laptop", "Switch_C"},
-	{"Operator_PC", "Switch_C"},
-	{"Router_WAN", "Switch_C"},
-}
-
-var waterVLANEdges = [][2]string{
-	{"Switch_A", "L3_Core_Switch"},
-	{"Switch_B", "L3_Core_Switch"},
-	{"Switch_C", "L3_Core_Switch"},
-	{"PLC_Chlorine", "Switch_A"},
-	{"PLC_Filtration", "Switch_A"},
-	{"PLC_Pumping", "Switch_A"},
-	{"HMI_1", "Switch_B"},
-	{"HMI_2", "Switch_B"},
-	{"SCADA_Server", "Switch_B"},
-	{"Historian", "Switch_C"},
-	{"Eng_Laptop", "Switch_C"},
-	{"Operator_PC", "Switch_C"},
-	{"Router_WAN", "L3_Core_Switch"},
 }
 
 // BuildWaterTreatmentFlat creates Model 3a: Water Treatment Flat (13 nodes, 13 undirected edges)
@@ -347,8 +71,8 @@ func BuildWaterTreatmentFlat(dataPath string) (*Metadata, error) {
 		return nil, err
 	}
 
-	return b.AddNodes(waterTreatmentNodes).
-		AddEdgePairs(waterFlatEdges, "TECHNICAL").
+	return b.AddNodes(models.WaterTreatmentNodes).
+		AddEdgePairs(models.WaterFlatEdgePairs, "TECHNICAL").
 		Build()
 }
 
@@ -361,16 +85,7 @@ func BuildWaterTreatmentVLAN(dataPath string) (*Metadata, error) {
 		return nil, err
 	}
 
-	// Add the L3 core switch (not in flat model)
-	vlanNodes := append([]NodeDef{}, waterTreatmentNodes...)
-	vlanNodes = append(vlanNodes, NodeDef{
-		Name:     "L3_Core_Switch",
-		Labels:   []string{"Technical", "NetworkSwitch", "CoreRouter"},
-		Level:    "VLAN",
-		NodeType: "technical",
-	})
-
-	return b.AddNodes(vlanNodes).
-		AddEdgePairs(waterVLANEdges, "TECHNICAL").
+	return b.AddNodes(models.WaterVLANNodes()).
+		AddEdgePairs(models.WaterVLANEdgePairs, "TECHNICAL").
 		Build()
 }
