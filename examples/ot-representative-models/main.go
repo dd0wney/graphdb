@@ -78,6 +78,46 @@ func main() {
 	PrintModelResults(stevesResult, 15)
 
 	// ========================================
+	// MODEL 1-DL: Dual-Layer BC Analysis
+	// ========================================
+	fmt.Println()
+	fmt.Println("Building Model 1 (Technical Only): data-plane edges, no human dependencies...")
+	techMeta, err := BuildStevesUtilityTechnicalOnly("./data/steves_utility_technical")
+	if err != nil {
+		log.Fatalf("Failed to build technical-only model: %v", err)
+	}
+	defer techMeta.Graph.Close()
+
+	techBC, err := algorithms.BetweennessCentrality(techMeta.Graph)
+	if err != nil {
+		log.Fatalf("Failed to compute BC for technical-only model: %v", err)
+	}
+
+	// Apply same normalisation correction as composite
+	if rawSteveBC > 0.001 {
+		ratio := rawSteveBC / expectedSteveBC
+		if ratio > 1.5 && ratio < 2.5 {
+			for nodeID := range techBC {
+				techBC[nodeID] /= 2.0
+			}
+		} else if ratio > 0.4 && ratio < 0.6 {
+			for nodeID := range techBC {
+				techBC[nodeID] *= 2.0
+			}
+		}
+	}
+
+	// Map technical BC to node names for comparison
+	techBCByName := make(map[string]float64)
+	for nodeID, bc := range techBC {
+		if name, ok := techMeta.NodeNames[nodeID]; ok {
+			techBCByName[name] = bc
+		}
+	}
+
+	PrintDualLayerAnalysis(stevesResult, techBCByName)
+
+	// ========================================
 	// MODEL 1b: Steve's Utility WITHOUT Steve
 	// ========================================
 	fmt.Println()

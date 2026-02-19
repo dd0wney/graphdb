@@ -237,6 +237,119 @@ func BuildStevesUtility(dataPath string) (*ModelMetadata, error) {
 	return meta, nil
 }
 
+// BuildStevesUtilityTechnicalOnly creates Model 1 with all 33 nodes but only TECHNICAL edges.
+// Human and process nodes exist but have no edges, giving them BC = 0.
+// This isolates the data-plane view: what does the infrastructure look like
+// without any human or process dependencies?
+func BuildStevesUtilityTechnicalOnly(dataPath string) (*ModelMetadata, error) {
+	graph, err := storage.NewGraphStorage(dataPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create graph storage: %w", err)
+	}
+
+	meta := &ModelMetadata{
+		Graph:      graph,
+		NodeNames:  make(map[uint64]string),
+		NodeTypes:  make(map[uint64]string),
+		NodeLevels: make(map[uint64]string),
+		NodeIDs:    make(map[string]uint64),
+	}
+
+	createNode := func(name string, labels []string, level, nodeType string) (*storage.Node, error) {
+		node, err := graph.CreateNode(labels, map[string]storage.Value{
+			"name":      storage.StringValue(name),
+			"level":     storage.StringValue(level),
+			"node_type": storage.StringValue(nodeType),
+		})
+		if err != nil {
+			return nil, err
+		}
+		meta.NodeNames[node.ID] = name
+		meta.NodeTypes[node.ID] = nodeType
+		meta.NodeLevels[node.ID] = level
+		meta.NodeIDs[name] = node.ID
+		return node, nil
+	}
+
+	// All 33 nodes (same as full model — same N for normalization)
+	createNode("PLC_Turbine1", []string{"Technical", "PLC"}, "L0_Process", "technical")
+	createNode("PLC_Turbine2", []string{"Technical", "PLC"}, "L0_Process", "technical")
+	createNode("PLC_Substation", []string{"Technical", "PLC"}, "L0_Process", "technical")
+	createNode("RTU_Remote1", []string{"Technical", "RTU"}, "L0_Process", "technical")
+	createNode("RTU_Remote2", []string{"Technical", "RTU"}, "L0_Process", "technical")
+	createNode("HMI_Control1", []string{"Technical", "HMI"}, "L1_Control", "technical")
+	createNode("HMI_Control2", []string{"Technical", "HMI"}, "L1_Control", "technical")
+	createNode("Safety_PLC", []string{"Technical", "PLC", "SafetyCritical"}, "L1_Control", "technical")
+	createNode("SCADA_Server", []string{"Technical", "SCADA"}, "L2_Supervisory", "technical")
+	createNode("Historian_OT", []string{"Technical", "Database"}, "L2_Supervisory", "technical")
+	createNode("Eng_Workstation", []string{"Technical", "Workstation"}, "L2_Supervisory", "technical")
+	createNode("OT_Switch_Core", []string{"Technical", "NetworkSwitch"}, "L3_SiteOps", "technical")
+	createNode("Patch_Server", []string{"Technical", "Server"}, "L3_SiteOps", "technical")
+	createNode("AD_Server_OT", []string{"Technical", "Server"}, "L3_SiteOps", "technical")
+	createNode("Firewall_ITOT", []string{"Technical", "Firewall"}, "L3.5_DMZ", "technical")
+	createNode("Jump_Server", []string{"Technical", "Server"}, "L3.5_DMZ", "technical")
+	createNode("Data_Diode", []string{"Technical", "SecurityDevice"}, "L3.5_DMZ", "technical")
+	createNode("IT_Switch_Core", []string{"Technical", "NetworkSwitch"}, "L4_IT", "technical")
+	createNode("Email_Server", []string{"Technical", "Server"}, "L4_IT", "technical")
+	createNode("ERP_System", []string{"Technical", "Server"}, "L4_IT", "technical")
+	createNode("AD_Server_IT", []string{"Technical", "Server"}, "L4_IT", "technical")
+	createNode("VPN_Gateway", []string{"Technical", "Gateway"}, "L4_IT", "technical")
+
+	// Human + Process nodes (present for normalization, but NO edges)
+	createNode("Steve", []string{"Human", "Operator"}, "Human", "human")
+	createNode("OT_Manager", []string{"Human", "Manager"}, "Human", "human")
+	createNode("IT_Admin", []string{"Human", "Admin"}, "Human", "human")
+	createNode("Control_Op1", []string{"Human", "Operator"}, "Human", "human")
+	createNode("Control_Op2", []string{"Human", "Operator"}, "Human", "human")
+	createNode("Plant_Manager", []string{"Human", "Manager"}, "Human", "human")
+	createNode("Vendor_Rep", []string{"Human", "Vendor"}, "Human", "human")
+	createNode("Change_Mgmt_Process", []string{"Process", "ChangeManagement"}, "Process", "process")
+	createNode("Incident_Response", []string{"Process", "IncidentResponse"}, "Process", "process")
+	createNode("Vendor_Access_Process", []string{"Process", "VendorManagement"}, "Process", "process")
+	createNode("Patch_Approval", []string{"Process", "PatchManagement"}, "Process", "process")
+
+	// ONLY technical edges (26 undirected) — pure data plane
+	technicalEdges := [][2]string{
+		{"PLC_Turbine1", "HMI_Control1"},
+		{"PLC_Turbine2", "HMI_Control2"},
+		{"PLC_Substation", "HMI_Control1"},
+		{"RTU_Remote1", "SCADA_Server"},
+		{"RTU_Remote2", "SCADA_Server"},
+		{"Safety_PLC", "HMI_Control1"},
+		{"Safety_PLC", "HMI_Control2"},
+		{"HMI_Control1", "SCADA_Server"},
+		{"HMI_Control2", "SCADA_Server"},
+		{"SCADA_Server", "Historian_OT"},
+		{"SCADA_Server", "Eng_Workstation"},
+		{"SCADA_Server", "OT_Switch_Core"},
+		{"Historian_OT", "OT_Switch_Core"},
+		{"Eng_Workstation", "OT_Switch_Core"},
+		{"OT_Switch_Core", "Patch_Server"},
+		{"OT_Switch_Core", "AD_Server_OT"},
+		{"OT_Switch_Core", "Firewall_ITOT"},
+		{"Firewall_ITOT", "Jump_Server"},
+		{"Firewall_ITOT", "Data_Diode"},
+		{"Data_Diode", "Historian_OT"},
+		{"Firewall_ITOT", "IT_Switch_Core"},
+		{"Jump_Server", "IT_Switch_Core"},
+		{"IT_Switch_Core", "Email_Server"},
+		{"IT_Switch_Core", "ERP_System"},
+		{"IT_Switch_Core", "AD_Server_IT"},
+		{"IT_Switch_Core", "VPN_Gateway"},
+	}
+
+	props := map[string]storage.Value{}
+	for _, edge := range technicalEdges {
+		fromID := meta.NodeIDs[edge[0]]
+		toID := meta.NodeIDs[edge[1]]
+		if err := createUndirectedEdge(graph, fromID, toID, "TECHNICAL", props); err != nil {
+			return nil, fmt.Errorf("failed to create edge %s <-> %s: %w", edge[0], edge[1], err)
+		}
+	}
+
+	return meta, nil
+}
+
 // BuildStevesUtilityWithoutSteve creates Model 1 without Steve for removal analysis
 func BuildStevesUtilityWithoutSteve(dataPath string) (*ModelMetadata, error) {
 	graph, err := storage.NewGraphStorage(dataPath)

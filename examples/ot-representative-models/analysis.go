@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 )
 
 // BCResult holds betweenness centrality results for a single node
@@ -308,6 +309,123 @@ func PrintChemicalFacilitySummary(result ModelResult) {
 	fmt.Println()
 	fmt.Println("Key insight: The human IT/OT coordinator has higher betweenness than")
 	fmt.Println("the technical firewall, making them the true bridge between domains.")
+}
+
+// PrintDualLayerAnalysis prints a side-by-side comparison of Technical BC (data plane only)
+// vs Composite BC (all edge types). The delta reveals hidden human dependencies.
+func PrintDualLayerAnalysis(compositeResult ModelResult, technicalBCByName map[string]float64) {
+	fmt.Println()
+	fmt.Println("========================================================================")
+	fmt.Println("DUAL-LAYER BETWEENNESS CENTRALITY: Technical vs Composite")
+	fmt.Println("========================================================================")
+	fmt.Println()
+	fmt.Println("Technical BC  = data-plane edges only (infrastructure without people)")
+	fmt.Println("Composite BC  = all edges (infrastructure + human + process dependencies)")
+	fmt.Println("Delta         = Composite - Technical (negative = human edges suppressing)")
+	fmt.Println()
+
+	type DualEntry struct {
+		Name        string
+		TechBC      float64
+		CompBC      float64
+		Delta       float64
+		Suppression float64 // percentage of technical BC suppressed by human edges
+		NodeType    string
+		Level       string
+	}
+
+	var entries []DualEntry
+	for _, r := range compositeResult.Rankings {
+		techBC := technicalBCByName[r.Name]
+		delta := r.BC - techBC
+		suppression := 0.0
+		if techBC > 0.001 {
+			suppression = (delta / techBC) * 100
+		}
+		entries = append(entries, DualEntry{
+			Name:        r.Name,
+			TechBC:      techBC,
+			CompBC:      r.BC,
+			Delta:       delta,
+			Suppression: suppression,
+			NodeType:    r.NodeType,
+			Level:       r.Level,
+		})
+	}
+
+	// Sort by absolute delta descending (biggest structural impact first)
+	sort.Slice(entries, func(i, j int) bool {
+		return abs(entries[i].Delta) > abs(entries[j].Delta)
+	})
+
+	// Print the table
+	fmt.Printf("%-22s %10s %10s %10s %10s  %s\n",
+		"Node", "Tech BC", "Comp BC", "Delta", "Impact%", "Interpretation")
+	fmt.Println(strings.Repeat("─", 100))
+
+	for _, e := range entries {
+		// Skip nodes with zero in both columns
+		if e.TechBC < 0.0001 && e.CompBC < 0.0001 {
+			continue
+		}
+
+		interpretation := ""
+		sign := ""
+		if e.Delta > 0.0001 {
+			sign = "+"
+		}
+
+		switch {
+		case e.NodeType == "human" || e.NodeType == "process":
+			// Human/process nodes: tech BC is 0, composite BC is their structural role
+			interpretation = "← pure human dependency (invisible to network diagrams)"
+		case e.Delta < -0.01 && e.TechBC > 0.01:
+			// Technical node with BC suppressed by human edges
+			interpretation = fmt.Sprintf("← human edges suppress criticality by %.0f%%", abs(e.Suppression))
+		case e.Delta > 0.01 && e.TechBC > 0.01:
+			// Technical node with BC amplified by human edges
+			interpretation = fmt.Sprintf("← human edges amplify criticality by %.0f%%", e.Suppression)
+		case abs(e.Delta) <= 0.01 && e.TechBC > 0.01:
+			interpretation = "← stable (human edges don't change structural role)"
+		}
+
+		impactStr := ""
+		if e.TechBC > 0.001 {
+			impactStr = fmt.Sprintf("%+.0f%%", e.Suppression)
+		} else if e.CompBC > 0.001 {
+			impactStr = "N/A"
+		}
+
+		fmt.Printf("%-22s %10.4f %10.4f %s%9.4f %10s  %s\n",
+			e.Name, e.TechBC, e.CompBC, sign, e.Delta, impactStr, interpretation)
+	}
+	fmt.Println()
+
+	// Summary statistics
+	totalTechBC := 0.0
+	totalCompBC := 0.0
+	totalSuppressed := 0.0
+	suppressedCount := 0
+	for _, e := range entries {
+		totalTechBC += e.TechBC
+		totalCompBC += e.CompBC
+		if e.NodeType == "technical" && e.Delta < -0.001 {
+			totalSuppressed += abs(e.Delta)
+			suppressedCount++
+		}
+	}
+
+	fmt.Println("--- Summary ---")
+	fmt.Printf("Total Technical BC:    %.4f (infrastructure only)\n", totalTechBC)
+	fmt.Printf("Total Composite BC:    %.4f (with human dependencies)\n", totalCompBC)
+	fmt.Printf("Technical nodes suppressed by human edges: %d\n", suppressedCount)
+	fmt.Printf("Total BC suppression:  %.4f\n", totalSuppressed)
+	fmt.Println()
+
+	fmt.Println("KEY INSIGHT: The delta between Technical and Composite BC reveals how")
+	fmt.Println("much human dependency is hiding structural fragility. Nodes with large")
+	fmt.Println("negative deltas are being propped up by people. When those people leave,")
+	fmt.Println("the node's true structural importance is exposed — and it has no backup.")
 }
 
 // ExportResultsJSON writes all results to a JSON file
