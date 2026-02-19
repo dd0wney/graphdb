@@ -42,6 +42,31 @@ Demonstrates how VLAN segmentation, while improving security, concentrates BC on
 - VLAN max switch BC: 0.7692
 - VLAN increases max BC by 1.34x
 
+### Model 4: Telecommunications Provider (114 nodes, 253 edges)
+
+A telecommunications provider with cross-sector critical infrastructure dependencies. Demonstrates that the invisible node pattern scales to realistic network complexity. The telecom sector is the "infrastructure of infrastructures" with banking, emergency services, healthcare, transport, and energy sectors depending on it.
+
+**Node types:**
+- Technical: 66 nodes (routers, switches, gateways, servers)
+- Human: 22 nodes (engineers, operators, managers, vendors)
+- Process: 8 nodes (CAB, incident management, compliance)
+- External: 18 nodes (dependent sector infrastructure)
+
+**Expected results:**
+- Core_Router_SYD BC: 0.4346 (rank #1)
+- Senior_Network_Eng BC: 0.4058 (rank #2)
+- Senior eng vs core router: 0.93x (human nearly equals backbone hub)
+- Invisible node BC share: 34.5%
+
+**Senior Engineer Removal Analysis:**
+- Core_Router_SYD: +45% BC increase
+- Change_Advisory_Board: +848% BC increase
+- Network_Director: +784% BC increase
+
+**Cascade Failure Analysis:**
+- Core_Router_SYD failure disconnects 2 sectors (Energy, Transport)
+- Each sector gateway is a single point of failure for its dependent infrastructure
+
 ## Running
 
 ```bash
@@ -50,9 +75,11 @@ go run .
 ```
 
 Output includes:
-- BC rankings for each model
+- BC rankings for each model (top 15-20 nodes)
 - Steve removal analysis (before/after comparison)
 - VLAN comparison analysis
+- Telecom gateway and cascade failure analysis
+- Senior engineer removal analysis
 - JSON export to `results.json`
 
 ## Verifying Results
@@ -103,11 +130,16 @@ These are **representative models** based on common OT architectural patterns ob
 ## Files
 
 - `main.go` - Entry point, runs all models and analysis
-- `models.go` - Graph construction functions for all models
+- `models.go` - Graph construction functions for Models 1-3
 - `analysis.go` - BC analysis, comparison, and export functions
-- `TASK.md` - Implementation task description
-- `EDGE_DEFINITIONS.md` - Complete edge lists for all models
-- `NODE_DEFINITIONS.md` - Complete node definitions with properties
+- `telecom_model.go` - Model 4 graph construction (114 nodes, 253 edges)
+- `telecom_analysis.go` - Telecom-specific analysis (gateway BC, cascade failures)
+- `TASK.md` - Implementation task description for Models 1-3
+- `TASK_MODEL4.md` - Implementation task description for Model 4
+- `EDGE_DEFINITIONS.md` - Complete edge lists for Models 1-3
+- `NODE_DEFINITIONS.md` - Complete node definitions for Models 1-3
+- `TELECOM_EDGES.md` - Complete edge lists for Model 4 (253 edges)
+- `TELECOM_NODES.md` - Complete node definitions for Model 4 (114 nodes)
 - `results.json` - JSON export of analysis results (generated at runtime)
 
 ## Connection to the Book
