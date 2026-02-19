@@ -448,3 +448,340 @@ func TestDegreeCentrality_Normalization(t *testing.T) {
 		}
 	}
 }
+
+// TestBetweennessCentrality_ExactValues verifies BC against analytically-derived
+// values for known topologies. All graphs use bidirectional edges to match the
+// real usage pattern (directed Brandes on bidirectional = undirected normalized BC).
+func TestBetweennessCentrality_ExactValues(t *testing.T) {
+	const epsilon = 0.0001
+
+	type nodeExpectation struct {
+		label    string
+		expected float64
+	}
+
+	tests := []struct {
+		name  string
+		edges [][2]int // node index pairs (bidirectional edges created for each)
+		nodes int
+		want  []nodeExpectation
+	}{
+		{
+			name:  "Path_A-B-C",
+			nodes: 3,
+			edges: [][2]int{{0, 1}, {1, 2}},
+			want: []nodeExpectation{
+				{"A", 0.0},
+				{"B", 1.0},
+				{"C", 0.0},
+			},
+		},
+		{
+			name:  "Star_H-ABCD",
+			nodes: 5,
+			edges: [][2]int{{0, 1}, {0, 2}, {0, 3}, {0, 4}},
+			want: []nodeExpectation{
+				{"H", 1.0},
+				{"A", 0.0},
+				{"B", 0.0},
+				{"C", 0.0},
+				{"D", 0.0},
+			},
+		},
+		{
+			name:  "Path_A-B-C-D-E",
+			nodes: 5,
+			edges: [][2]int{{0, 1}, {1, 2}, {2, 3}, {3, 4}},
+			want: []nodeExpectation{
+				{"A", 0.0},
+				{"B", 0.5},
+				{"C", 0.6667},
+				{"D", 0.5},
+				{"E", 0.0},
+			},
+		},
+		{
+			name:  "Diamond_A-BC-D",
+			nodes: 4,
+			edges: [][2]int{{0, 1}, {0, 2}, {1, 3}, {2, 3}},
+			want: []nodeExpectation{
+				{"A", 0.1667},
+				{"B", 0.1667},
+				{"C", 0.1667},
+				{"D", 0.1667},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gs := setupCentralityTestGraph(t)
+
+			// Create nodes
+			nodeIDs := make([]uint64, tt.nodes)
+			for i := 0; i < tt.nodes; i++ {
+				node, err := gs.CreateNode([]string{"Node"}, nil)
+				if err != nil {
+					t.Fatalf("Failed to create node %d: %v", i, err)
+				}
+				nodeIDs[i] = node.ID
+			}
+
+			// Create bidirectional edges
+			for _, edge := range tt.edges {
+				if _, err := gs.CreateEdge(nodeIDs[edge[0]], nodeIDs[edge[1]], "LINKS", nil, 1.0); err != nil {
+					t.Fatalf("Failed to create edge %d->%d: %v", edge[0], edge[1], err)
+				}
+				if _, err := gs.CreateEdge(nodeIDs[edge[1]], nodeIDs[edge[0]], "LINKS", nil, 1.0); err != nil {
+					t.Fatalf("Failed to create edge %d->%d: %v", edge[1], edge[0], err)
+				}
+			}
+
+			result, err := BetweennessCentrality(gs)
+			if err != nil {
+				t.Fatalf("BetweennessCentrality failed: %v", err)
+			}
+
+			for i, w := range tt.want {
+				got := result[nodeIDs[i]]
+				if math.Abs(got-w.expected) > epsilon {
+					t.Errorf("node %s: got BC %.6f, want %.4f (delta %.6f)",
+						w.label, got, w.expected, math.Abs(got-w.expected))
+				}
+			}
+		})
+	}
+}
+
+// TestBetweennessCentrality_StevesUtility reconstructs the full 33-node, 70-undirected-edge
+// model and verifies BC values against NetworkX ground truth (nx.betweenness_centrality,
+// normalized=True). This is the definitive test for the published book values.
+func TestBetweennessCentrality_StevesUtility(t *testing.T) {
+	gs := setupCentralityTestGraph(t)
+
+	// All 33 nodes in creation order
+	nodeNames := []string{
+		// Technical (22)
+		"PLC_Turbine1", "PLC_Turbine2", "PLC_Substation",
+		"RTU_Remote1", "RTU_Remote2",
+		"HMI_Control1", "HMI_Control2", "Safety_PLC",
+		"SCADA_Server", "Historian_OT", "Eng_Workstation",
+		"OT_Switch_Core", "Patch_Server", "AD_Server_OT",
+		"Firewall_ITOT", "Jump_Server", "Data_Diode",
+		"IT_Switch_Core", "Email_Server", "ERP_System", "AD_Server_IT", "VPN_Gateway",
+		// Human (7)
+		"Steve", "OT_Manager", "IT_Admin",
+		"Control_Op1", "Control_Op2", "Plant_Manager", "Vendor_Rep",
+		// Process (4)
+		"Change_Mgmt_Process", "Incident_Response",
+		"Vendor_Access_Process", "Patch_Approval",
+	}
+
+	nameToID := make(map[string]uint64)
+	for _, name := range nodeNames {
+		node, err := gs.CreateNode([]string{"Node"}, nil)
+		if err != nil {
+			t.Fatalf("Failed to create node %s: %v", name, err)
+		}
+		nameToID[name] = node.ID
+	}
+
+	// All 70 undirected edges (each becomes 2 directed edges)
+	edges := [][2]string{
+		// Technical edges (26)
+		{"PLC_Turbine1", "HMI_Control1"},
+		{"PLC_Turbine2", "HMI_Control2"},
+		{"PLC_Substation", "HMI_Control1"},
+		{"RTU_Remote1", "SCADA_Server"},
+		{"RTU_Remote2", "SCADA_Server"},
+		{"Safety_PLC", "HMI_Control1"},
+		{"Safety_PLC", "HMI_Control2"},
+		{"HMI_Control1", "SCADA_Server"},
+		{"HMI_Control2", "SCADA_Server"},
+		{"SCADA_Server", "Historian_OT"},
+		{"SCADA_Server", "Eng_Workstation"},
+		{"SCADA_Server", "OT_Switch_Core"},
+		{"Historian_OT", "OT_Switch_Core"},
+		{"Eng_Workstation", "OT_Switch_Core"},
+		{"OT_Switch_Core", "Patch_Server"},
+		{"OT_Switch_Core", "AD_Server_OT"},
+		{"OT_Switch_Core", "Firewall_ITOT"},
+		{"Firewall_ITOT", "Jump_Server"},
+		{"Firewall_ITOT", "Data_Diode"},
+		{"Data_Diode", "Historian_OT"},
+		{"Firewall_ITOT", "IT_Switch_Core"},
+		{"Jump_Server", "IT_Switch_Core"},
+		{"IT_Switch_Core", "Email_Server"},
+		{"IT_Switch_Core", "ERP_System"},
+		{"IT_Switch_Core", "AD_Server_IT"},
+		{"IT_Switch_Core", "VPN_Gateway"},
+		// Steve's edges (23)
+		{"Steve", "PLC_Turbine1"},
+		{"Steve", "PLC_Turbine2"},
+		{"Steve", "PLC_Substation"},
+		{"Steve", "HMI_Control1"},
+		{"Steve", "HMI_Control2"},
+		{"Steve", "SCADA_Server"},
+		{"Steve", "Eng_Workstation"},
+		{"Steve", "Historian_OT"},
+		{"Steve", "OT_Switch_Core"},
+		{"Steve", "Patch_Server"},
+		{"Steve", "Jump_Server"},
+		{"Steve", "Firewall_ITOT"},
+		{"Steve", "VPN_Gateway"},
+		{"Steve", "AD_Server_OT"},
+		{"Steve", "Change_Mgmt_Process"},
+		{"Steve", "Incident_Response"},
+		{"Steve", "Vendor_Access_Process"},
+		{"Steve", "Patch_Approval"},
+		{"Steve", "Vendor_Rep"},
+		{"Steve", "OT_Manager"},
+		{"Steve", "Control_Op1"},
+		{"Steve", "Control_Op2"},
+		{"Steve", "IT_Admin"},
+		// Other human edges (21)
+		{"Control_Op1", "HMI_Control1"},
+		{"Control_Op1", "HMI_Control2"},
+		{"Control_Op1", "Incident_Response"},
+		{"Control_Op2", "HMI_Control1"},
+		{"Control_Op2", "HMI_Control2"},
+		{"Control_Op2", "Incident_Response"},
+		{"OT_Manager", "SCADA_Server"},
+		{"OT_Manager", "Change_Mgmt_Process"},
+		{"OT_Manager", "Patch_Approval"},
+		{"OT_Manager", "Plant_Manager"},
+		{"IT_Admin", "IT_Switch_Core"},
+		{"IT_Admin", "Email_Server"},
+		{"IT_Admin", "ERP_System"},
+		{"IT_Admin", "AD_Server_IT"},
+		{"IT_Admin", "VPN_Gateway"},
+		{"IT_Admin", "Firewall_ITOT"},
+		{"Plant_Manager", "ERP_System"},
+		{"Plant_Manager", "Email_Server"},
+		{"Vendor_Rep", "VPN_Gateway"},
+		{"Vendor_Rep", "Jump_Server"},
+		{"Vendor_Rep", "Vendor_Access_Process"},
+	}
+
+	// --- Model integrity checks ---
+	if len(nodeNames) != 33 {
+		t.Fatalf("Expected 33 nodes, got %d", len(nodeNames))
+	}
+	if len(edges) != 70 {
+		t.Fatalf("Expected 70 undirected edges, got %d", len(edges))
+	}
+
+	directedEdgeCount := 0
+	for _, edge := range edges {
+		fromID := nameToID[edge[0]]
+		toID := nameToID[edge[1]]
+		if _, err := gs.CreateEdge(fromID, toID, "LINKS", nil, 1.0); err != nil {
+			t.Fatalf("Failed to create edge %s->%s: %v", edge[0], edge[1], err)
+		}
+		if _, err := gs.CreateEdge(toID, fromID, "LINKS", nil, 1.0); err != nil {
+			t.Fatalf("Failed to create edge %s->%s: %v", edge[1], edge[0], err)
+		}
+		directedEdgeCount += 2
+	}
+	if directedEdgeCount != 140 {
+		t.Fatalf("Expected 140 directed edges, got %d", directedEdgeCount)
+	}
+
+	// Verify edge symmetry: every A->B has a matching B->A
+	for _, edge := range edges {
+		fromID := nameToID[edge[0]]
+		toID := nameToID[edge[1]]
+
+		outEdges, err := gs.GetOutgoingEdges(fromID)
+		if err != nil {
+			t.Fatalf("GetOutgoingEdges(%s) failed: %v", edge[0], err)
+		}
+		found := false
+		for _, e := range outEdges {
+			if e.ToNodeID == toID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Missing forward edge %s -> %s", edge[0], edge[1])
+		}
+
+		reverseEdges, err := gs.GetOutgoingEdges(toID)
+		if err != nil {
+			t.Fatalf("GetOutgoingEdges(%s) failed: %v", edge[1], err)
+		}
+		found = false
+		for _, e := range reverseEdges {
+			if e.ToNodeID == fromID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Missing reverse edge %s -> %s", edge[1], edge[0])
+		}
+	}
+
+	// --- Compute BC ---
+	result, err := BetweennessCentrality(gs)
+	if err != nil {
+		t.Fatalf("BetweennessCentrality failed: %v", err)
+	}
+
+	if len(result) != 33 {
+		t.Fatalf("Expected 33 BC scores, got %d", len(result))
+	}
+
+	// NetworkX ground truth (nx.betweenness_centrality, normalized=True)
+	// Generated by: python3 scripts/verify_bc.py
+	expected := map[string]float64{
+		"Steve":                 0.6682,
+		"SCADA_Server":         0.1486,
+		"IT_Admin":             0.1456,
+		"OT_Manager":           0.0638,
+		"Firewall_ITOT":        0.0543,
+		"HMI_Control1":         0.0469,
+		"HMI_Control2":         0.0388,
+		"IT_Switch_Core":       0.0299,
+		"Historian_OT":         0.0275,
+		"OT_Switch_Core":       0.0241,
+		"Plant_Manager":        0.0155,
+		"VPN_Gateway":          0.0149,
+		"Jump_Server":          0.0140,
+		"Email_Server":         0.0062,
+		"ERP_System":           0.0062,
+		"Vendor_Rep":           0.0034,
+		"Control_Op1":          0.0024,
+		"Control_Op2":          0.0024,
+		"Data_Diode":           0.0010,
+		"Incident_Response":    0.0005,
+		"Safety_PLC":           0.0004,
+		"PLC_Turbine1":         0.0,
+		"PLC_Turbine2":         0.0,
+		"PLC_Substation":       0.0,
+		"RTU_Remote1":          0.0,
+		"RTU_Remote2":          0.0,
+		"Eng_Workstation":      0.0,
+		"Patch_Server":         0.0,
+		"AD_Server_OT":         0.0,
+		"AD_Server_IT":         0.0,
+		"Change_Mgmt_Process":  0.0,
+		"Vendor_Access_Process": 0.0,
+		"Patch_Approval":       0.0,
+	}
+
+	const epsilon = 0.001
+	for name, want := range expected {
+		id, ok := nameToID[name]
+		if !ok {
+			t.Errorf("Node %q not found in nameToID map", name)
+			continue
+		}
+		got := result[id]
+		if math.Abs(got-want) > epsilon {
+			t.Errorf("%-25s got BC %.6f, want %.4f (delta %.6f)",
+				name, got, want, math.Abs(got-want))
+		}
+	}
+}

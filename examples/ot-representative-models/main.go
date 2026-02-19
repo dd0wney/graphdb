@@ -45,34 +45,6 @@ func main() {
 		log.Fatalf("Failed to compute BC for Steve's Utility: %v", err)
 	}
 
-	// Check normalisation: Steve's BC should be ~0.6682
-	// If it's ~0.3341 (half), we need to multiply by 2
-	// If it's ~1.3364 (double), we need to divide by 2
-	steveID := stevesMeta.NodeIDs["Steve"]
-	rawSteveBC := stevesBC[steveID]
-	fmt.Printf("  Raw Steve BC: %.4f\n", rawSteveBC)
-
-	// Apply normalisation correction if needed
-	// The algorithm counts paths twice due to bidirectional edges
-	// We need to check if adjustment is required
-	expectedSteveBC := 0.6682
-	if rawSteveBC > 0.001 {
-		ratio := rawSteveBC / expectedSteveBC
-		if ratio > 1.5 && ratio < 2.5 {
-			// Results are approximately double, divide by 2
-			fmt.Println("  Applying normalisation correction (dividing by 2)...")
-			for nodeID := range stevesBC {
-				stevesBC[nodeID] /= 2.0
-			}
-		} else if ratio > 0.4 && ratio < 0.6 {
-			// Results are approximately half, multiply by 2
-			fmt.Println("  Applying normalisation correction (multiplying by 2)...")
-			for nodeID := range stevesBC {
-				stevesBC[nodeID] *= 2.0
-			}
-		}
-	}
-
 	stevesResult := AnalyseModel(stevesMeta, "Steve's Utility", stevesBC)
 	allResults.StevesUtility = stevesResult
 	PrintModelResults(stevesResult, 15)
@@ -95,22 +67,6 @@ func main() {
 	fmt.Println()
 	fmt.Println("Building multi-layer BC analysis (Things / People / Process / Composite)...")
 
-	// Helper to normalise BC using same correction factor as composite
-	normaliseBC := func(bc map[uint64]float64) {
-		if rawSteveBC > 0.001 {
-			ratio := rawSteveBC / expectedSteveBC
-			if ratio > 1.5 && ratio < 2.5 {
-				for nodeID := range bc {
-					bc[nodeID] /= 2.0
-				}
-			} else if ratio > 0.4 && ratio < 0.6 {
-				for nodeID := range bc {
-					bc[nodeID] *= 2.0
-				}
-			}
-		}
-	}
-
 	// Compute BC for each layer and map to node names
 	layerBCByName := make([]map[string]float64, len(layers))
 	layerLabels := make([]string, len(layers))
@@ -125,7 +81,6 @@ func main() {
 			meta.Graph.Close()
 			log.Fatalf("Failed to compute BC for %s layer: %v", layer.Label, err)
 		}
-		normaliseBC(bc)
 
 		bcByName := make(map[string]float64)
 		for nodeID, bcVal := range bc {
@@ -163,20 +118,6 @@ func main() {
 		log.Fatalf("Failed to compute BC for model without Steve: %v", err)
 	}
 
-	// Apply same normalisation correction
-	if rawSteveBC > 0.001 {
-		ratio := rawSteveBC / expectedSteveBC
-		if ratio > 1.5 && ratio < 2.5 {
-			for nodeID := range noSteveBC {
-				noSteveBC[nodeID] /= 2.0
-			}
-		} else if ratio > 0.4 && ratio < 0.6 {
-			for nodeID := range noSteveBC {
-				noSteveBC[nodeID] *= 2.0
-			}
-		}
-	}
-
 	noSteveResult := AnalyseModel(noSteveMeta, "Steve's Utility (Without Steve)", noSteveBC)
 	allResults.StevesRemoval = noSteveResult
 	PrintSteveRemovalComparison(stevesResult, noSteveResult)
@@ -195,20 +136,6 @@ func main() {
 	chemBC, err := algorithms.BetweennessCentrality(chemMeta.Graph)
 	if err != nil {
 		log.Fatalf("Failed to compute BC for Chemical Facility: %v", err)
-	}
-
-	// Apply normalisation correction based on Steve's ratio
-	if rawSteveBC > 0.001 {
-		ratio := rawSteveBC / expectedSteveBC
-		if ratio > 1.5 && ratio < 2.5 {
-			for nodeID := range chemBC {
-				chemBC[nodeID] /= 2.0
-			}
-		} else if ratio > 0.4 && ratio < 0.6 {
-			for nodeID := range chemBC {
-				chemBC[nodeID] *= 2.0
-			}
-		}
 	}
 
 	chemResult := AnalyseModel(chemMeta, "Chemical Facility", chemBC)
@@ -232,20 +159,6 @@ func main() {
 		log.Fatalf("Failed to compute BC for Water Treatment Flat: %v", err)
 	}
 
-	// Apply normalisation correction
-	if rawSteveBC > 0.001 {
-		ratio := rawSteveBC / expectedSteveBC
-		if ratio > 1.5 && ratio < 2.5 {
-			for nodeID := range flatBC {
-				flatBC[nodeID] /= 2.0
-			}
-		} else if ratio > 0.4 && ratio < 0.6 {
-			for nodeID := range flatBC {
-				flatBC[nodeID] *= 2.0
-			}
-		}
-	}
-
 	flatResult := AnalyseModel(flatMeta, "Water Treatment (Flat)", flatBC)
 	allResults.WaterFlat = flatResult
 	PrintModelResults(flatResult, 13)
@@ -264,20 +177,6 @@ func main() {
 	vlanBC, err := algorithms.BetweennessCentrality(vlanMeta.Graph)
 	if err != nil {
 		log.Fatalf("Failed to compute BC for Water Treatment VLAN: %v", err)
-	}
-
-	// Apply normalisation correction
-	if rawSteveBC > 0.001 {
-		ratio := rawSteveBC / expectedSteveBC
-		if ratio > 1.5 && ratio < 2.5 {
-			for nodeID := range vlanBC {
-				vlanBC[nodeID] /= 2.0
-			}
-		} else if ratio > 0.4 && ratio < 0.6 {
-			for nodeID := range vlanBC {
-				vlanBC[nodeID] *= 2.0
-			}
-		}
 	}
 
 	vlanResult := AnalyseModel(vlanMeta, "Water Treatment (VLAN)", vlanBC)
@@ -305,20 +204,6 @@ func main() {
 		log.Fatalf("Failed to compute BC for Telecom Provider: %v", err)
 	}
 
-	// Apply normalisation correction based on Steve's ratio
-	if rawSteveBC > 0.001 {
-		ratio := rawSteveBC / expectedSteveBC
-		if ratio > 1.5 && ratio < 2.5 {
-			for nodeID := range telecomBC {
-				telecomBC[nodeID] /= 2.0
-			}
-		} else if ratio > 0.4 && ratio < 0.6 {
-			for nodeID := range telecomBC {
-				telecomBC[nodeID] *= 2.0
-			}
-		}
-	}
-
 	telecomResult := AnalyseTelecomModel(telecomMeta, "Telecommunications Provider", telecomBC)
 	allResults.TelecomProvider = &telecomResult
 	PrintTelecomResults(telecomResult, 20)
@@ -343,20 +228,6 @@ func main() {
 	noSeniorEngBC, err := algorithms.BetweennessCentrality(noSeniorEngMeta.Graph)
 	if err != nil {
 		log.Fatalf("Failed to compute BC for Telecom without Senior Eng: %v", err)
-	}
-
-	// Apply normalisation correction
-	if rawSteveBC > 0.001 {
-		ratio := rawSteveBC / expectedSteveBC
-		if ratio > 1.5 && ratio < 2.5 {
-			for nodeID := range noSeniorEngBC {
-				noSeniorEngBC[nodeID] /= 2.0
-			}
-		} else if ratio > 0.4 && ratio < 0.6 {
-			for nodeID := range noSeniorEngBC {
-				noSeniorEngBC[nodeID] *= 2.0
-			}
-		}
 	}
 
 	noSeniorEngResult := AnalyseTelecomModel(noSeniorEngMeta, "Telecom (Without Senior Eng)", noSeniorEngBC)
