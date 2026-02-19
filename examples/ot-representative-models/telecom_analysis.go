@@ -201,7 +201,7 @@ func AnalyseCascadeFailures(meta *Metadata) []CascadeResult {
 		},
 	}
 
-	var results []CascadeResult
+	results := make([]CascadeResult, 0, len(sectorGateways)+1)
 
 	// Core_Router_SYD failure analysis (based on topology)
 	// It connects to all gateways except those with redundant paths

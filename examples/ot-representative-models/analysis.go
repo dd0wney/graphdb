@@ -337,7 +337,7 @@ func PrintMultiLayerAnalysis(compositeResult ModelResult, layerBCByName []map[st
 		Level    string
 	}
 
-	var entries []MultiEntry
+	entries := make([]MultiEntry, 0, len(compositeResult.Rankings))
 	for _, r := range compositeResult.Rankings {
 		lbc := make([]float64, len(layerBCByName))
 		for i, m := range layerBCByName {
