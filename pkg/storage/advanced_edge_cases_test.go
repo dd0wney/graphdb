@@ -99,6 +99,9 @@ func TestEdgeCase_VeryDeepTree(t *testing.T) {
 
 // TestEdgeCase_StarPattern tests hub-and-spoke graph pattern
 func TestEdgeCase_StarPattern(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test in short mode")
+	}
 	dataDir := t.TempDir()
 	gs, err := NewGraphStorage(dataDir)
 	if err != nil {
@@ -755,6 +758,9 @@ func TestEdgeCase_ExtremeEdgeWeights(t *testing.T) {
 
 // TestEdgeCase_NodeCreationSpeed tests rapid node creation without properties
 func TestEdgeCase_NodeCreationSpeed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test in short mode")
+	}
 	dataDir := t.TempDir()
 	gs, err := NewGraphStorage(dataDir)
 	if err != nil {
