@@ -244,7 +244,7 @@ func run() error {
 	fmt.Println("   The invisible node pattern scales to realistic network complexity.")
 	fmt.Println()
 	fmt.Printf("5. Cross-sector dependencies: %d external sector nodes depend on telecom.\n",
-		telecomResult.NodeTypeCounts["external"])
+		telecomResult.NodeTypeCounts[NodeTypeExternal])
 	fmt.Println("   Each gateway is a single point of failure for its dependent sector.")
 	fmt.Println()
 	fmt.Printf("6. Invisible node BC share across models:\n")

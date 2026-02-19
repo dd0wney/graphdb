@@ -10,48 +10,48 @@ package main
 var stevesUtilityNodes = []NodeDef{
 	// Technical Nodes (22)
 	// Level 0: Process
-	{"PLC_Turbine1", []string{"Technical", "PLC"}, "L0_Process", "technical", ""},
-	{"PLC_Turbine2", []string{"Technical", "PLC"}, "L0_Process", "technical", ""},
-	{"PLC_Substation", []string{"Technical", "PLC"}, "L0_Process", "technical", ""},
-	{"RTU_Remote1", []string{"Technical", "RTU"}, "L0_Process", "technical", ""},
-	{"RTU_Remote2", []string{"Technical", "RTU"}, "L0_Process", "technical", ""},
+	{"PLC_Turbine1", []string{"Technical", "PLC"}, "L0_Process", NodeTypeTechnical, ""},
+	{"PLC_Turbine2", []string{"Technical", "PLC"}, "L0_Process", NodeTypeTechnical, ""},
+	{"PLC_Substation", []string{"Technical", "PLC"}, "L0_Process", NodeTypeTechnical, ""},
+	{"RTU_Remote1", []string{"Technical", "RTU"}, "L0_Process", NodeTypeTechnical, ""},
+	{"RTU_Remote2", []string{"Technical", "RTU"}, "L0_Process", NodeTypeTechnical, ""},
 	// Level 1: Control
-	{"HMI_Control1", []string{"Technical", "HMI"}, "L1_Control", "technical", ""},
-	{"HMI_Control2", []string{"Technical", "HMI"}, "L1_Control", "technical", ""},
-	{"Safety_PLC", []string{"Technical", "PLC", "SafetyCritical"}, "L1_Control", "technical", ""},
+	{"HMI_Control1", []string{"Technical", "HMI"}, "L1_Control", NodeTypeTechnical, ""},
+	{"HMI_Control2", []string{"Technical", "HMI"}, "L1_Control", NodeTypeTechnical, ""},
+	{"Safety_PLC", []string{"Technical", "PLC", "SafetyCritical"}, "L1_Control", NodeTypeTechnical, ""},
 	// Level 2: Supervisory
-	{"SCADA_Server", []string{"Technical", "SCADA"}, "L2_Supervisory", "technical", ""},
-	{"Historian_OT", []string{"Technical", "Database"}, "L2_Supervisory", "technical", ""},
-	{"Eng_Workstation", []string{"Technical", "Workstation"}, "L2_Supervisory", "technical", ""},
+	{"SCADA_Server", []string{"Technical", "SCADA"}, "L2_Supervisory", NodeTypeTechnical, ""},
+	{"Historian_OT", []string{"Technical", "Database"}, "L2_Supervisory", NodeTypeTechnical, ""},
+	{"Eng_Workstation", []string{"Technical", "Workstation"}, "L2_Supervisory", NodeTypeTechnical, ""},
 	// Level 3: Site Operations
-	{"OT_Switch_Core", []string{"Technical", "NetworkSwitch"}, "L3_SiteOps", "technical", ""},
-	{"Patch_Server", []string{"Technical", "Server"}, "L3_SiteOps", "technical", ""},
-	{"AD_Server_OT", []string{"Technical", "Server"}, "L3_SiteOps", "technical", ""},
+	{"OT_Switch_Core", []string{"Technical", "NetworkSwitch"}, "L3_SiteOps", NodeTypeTechnical, ""},
+	{"Patch_Server", []string{"Technical", "Server"}, "L3_SiteOps", NodeTypeTechnical, ""},
+	{"AD_Server_OT", []string{"Technical", "Server"}, "L3_SiteOps", NodeTypeTechnical, ""},
 	// Level 3.5: DMZ
-	{"Firewall_ITOT", []string{"Technical", "Firewall"}, "L3.5_DMZ", "technical", ""},
-	{"Jump_Server", []string{"Technical", "Server"}, "L3.5_DMZ", "technical", ""},
-	{"Data_Diode", []string{"Technical", "SecurityDevice"}, "L3.5_DMZ", "technical", ""},
+	{"Firewall_ITOT", []string{"Technical", "Firewall"}, "L3.5_DMZ", NodeTypeTechnical, ""},
+	{"Jump_Server", []string{"Technical", "Server"}, "L3.5_DMZ", NodeTypeTechnical, ""},
+	{"Data_Diode", []string{"Technical", "SecurityDevice"}, "L3.5_DMZ", NodeTypeTechnical, ""},
 	// Level 4: IT
-	{"IT_Switch_Core", []string{"Technical", "NetworkSwitch"}, "L4_IT", "technical", ""},
-	{"Email_Server", []string{"Technical", "Server"}, "L4_IT", "technical", ""},
-	{"ERP_System", []string{"Technical", "Server"}, "L4_IT", "technical", ""},
-	{"AD_Server_IT", []string{"Technical", "Server"}, "L4_IT", "technical", ""},
-	{"VPN_Gateway", []string{"Technical", "Gateway"}, "L4_IT", "technical", ""},
+	{"IT_Switch_Core", []string{"Technical", "NetworkSwitch"}, "L4_IT", NodeTypeTechnical, ""},
+	{"Email_Server", []string{"Technical", "Server"}, "L4_IT", NodeTypeTechnical, ""},
+	{"ERP_System", []string{"Technical", "Server"}, "L4_IT", NodeTypeTechnical, ""},
+	{"AD_Server_IT", []string{"Technical", "Server"}, "L4_IT", NodeTypeTechnical, ""},
+	{"VPN_Gateway", []string{"Technical", "Gateway"}, "L4_IT", NodeTypeTechnical, ""},
 
 	// Human Nodes (7)
-	{"Steve", []string{"Human", "Operator"}, "Human", "human", ""},
-	{"OT_Manager", []string{"Human", "Manager"}, "Human", "human", ""},
-	{"IT_Admin", []string{"Human", "Admin"}, "Human", "human", ""},
-	{"Control_Op1", []string{"Human", "Operator"}, "Human", "human", ""},
-	{"Control_Op2", []string{"Human", "Operator"}, "Human", "human", ""},
-	{"Plant_Manager", []string{"Human", "Manager"}, "Human", "human", ""},
-	{"Vendor_Rep", []string{"Human", "Vendor"}, "Human", "human", ""},
+	{"Steve", []string{"Human", "Operator"}, "Human", NodeTypeHuman, ""},
+	{"OT_Manager", []string{"Human", "Manager"}, "Human", NodeTypeHuman, ""},
+	{"IT_Admin", []string{"Human", "Admin"}, "Human", NodeTypeHuman, ""},
+	{"Control_Op1", []string{"Human", "Operator"}, "Human", NodeTypeHuman, ""},
+	{"Control_Op2", []string{"Human", "Operator"}, "Human", NodeTypeHuman, ""},
+	{"Plant_Manager", []string{"Human", "Manager"}, "Human", NodeTypeHuman, ""},
+	{"Vendor_Rep", []string{"Human", "Vendor"}, "Human", NodeTypeHuman, ""},
 
 	// Process Nodes (4)
-	{"Change_Mgmt_Process", []string{"Process", "ChangeManagement"}, "Process", "process", ""},
-	{"Incident_Response", []string{"Process", "IncidentResponse"}, "Process", "process", ""},
-	{"Vendor_Access_Process", []string{"Process", "VendorManagement"}, "Process", "process", ""},
-	{"Patch_Approval", []string{"Process", "PatchManagement"}, "Process", "process", ""},
+	{"Change_Mgmt_Process", []string{"Process", "ChangeManagement"}, "Process", NodeTypeProcess, ""},
+	{"Incident_Response", []string{"Process", "IncidentResponse"}, "Process", NodeTypeProcess, ""},
+	{"Vendor_Access_Process", []string{"Process", "VendorManagement"}, "Process", NodeTypeProcess, ""},
+	{"Patch_Approval", []string{"Process", "PatchManagement"}, "Process", NodeTypeProcess, ""},
 }
 
 // stevesUtilityEdges defines all edges with their types for layer analysis
@@ -202,36 +202,36 @@ func BuildStevesUtilityWithoutSteve(dataPath string) (*Metadata, error) {
 var chemicalFacilityNodes = []NodeDef{
 	// Technical Nodes (19)
 	// Safety Layer
-	{"SIS_Controller", []string{"Technical", "SIS", "SafetyCritical"}, "Safety", "technical", ""},
-	{"SIS_Logic_Solver", []string{"Technical", "SIS"}, "Safety", "technical", ""},
-	{"ESD_Panel", []string{"Technical", "SIS"}, "Safety", "technical", ""},
+	{"SIS_Controller", []string{"Technical", "SIS", "SafetyCritical"}, "Safety", NodeTypeTechnical, ""},
+	{"SIS_Logic_Solver", []string{"Technical", "SIS"}, "Safety", NodeTypeTechnical, ""},
+	{"ESD_Panel", []string{"Technical", "SIS"}, "Safety", NodeTypeTechnical, ""},
 	// DCS Layer
-	{"DCS_Controller1", []string{"Technical", "DCS"}, "DCS", "technical", ""},
-	{"DCS_Controller2", []string{"Technical", "DCS"}, "DCS", "technical", ""},
-	{"DCS_Server", []string{"Technical", "DCS", "Server"}, "DCS", "technical", ""},
-	{"Op_Console1", []string{"Technical", "Console"}, "DCS", "technical", ""},
-	{"Op_Console2", []string{"Technical", "Console"}, "DCS", "technical", ""},
+	{"DCS_Controller1", []string{"Technical", "DCS"}, "DCS", NodeTypeTechnical, ""},
+	{"DCS_Controller2", []string{"Technical", "DCS"}, "DCS", NodeTypeTechnical, ""},
+	{"DCS_Server", []string{"Technical", "DCS", "Server"}, "DCS", NodeTypeTechnical, ""},
+	{"Op_Console1", []string{"Technical", "Console"}, "DCS", NodeTypeTechnical, ""},
+	{"Op_Console2", []string{"Technical", "Console"}, "DCS", NodeTypeTechnical, ""},
 	// Site Layer
-	{"OT_Firewall", []string{"Technical", "Firewall"}, "Site", "technical", ""},
-	{"Historian", []string{"Technical", "Database"}, "Site", "technical", ""},
-	{"MES_Server", []string{"Technical", "Server"}, "Site", "technical", ""},
-	{"Eng_Station", []string{"Technical", "Workstation"}, "Site", "technical", ""},
+	{"OT_Firewall", []string{"Technical", "Firewall"}, "Site", NodeTypeTechnical, ""},
+	{"Historian", []string{"Technical", "Database"}, "Site", NodeTypeTechnical, ""},
+	{"MES_Server", []string{"Technical", "Server"}, "Site", NodeTypeTechnical, ""},
+	{"Eng_Station", []string{"Technical", "Workstation"}, "Site", NodeTypeTechnical, ""},
 	// DMZ Layer
-	{"DMZ_Firewall", []string{"Technical", "Firewall"}, "DMZ", "technical", ""},
-	{"Patch_Relay", []string{"Technical", "Server"}, "DMZ", "technical", ""},
-	{"Remote_Access", []string{"Technical", "Gateway"}, "DMZ", "technical", ""},
+	{"DMZ_Firewall", []string{"Technical", "Firewall"}, "DMZ", NodeTypeTechnical, ""},
+	{"Patch_Relay", []string{"Technical", "Server"}, "DMZ", NodeTypeTechnical, ""},
+	{"Remote_Access", []string{"Technical", "Gateway"}, "DMZ", NodeTypeTechnical, ""},
 	// Corporate Layer
-	{"Corp_Firewall", []string{"Technical", "Firewall"}, "Corporate", "technical", ""},
-	{"Corp_Network", []string{"Technical", "Network"}, "Corporate", "technical", ""},
-	{"ERP", []string{"Technical", "Server"}, "Corporate", "technical", ""},
-	{"Internet_GW", []string{"Technical", "Gateway"}, "Corporate", "technical", ""},
+	{"Corp_Firewall", []string{"Technical", "Firewall"}, "Corporate", NodeTypeTechnical, ""},
+	{"Corp_Network", []string{"Technical", "Network"}, "Corporate", NodeTypeTechnical, ""},
+	{"ERP", []string{"Technical", "Server"}, "Corporate", NodeTypeTechnical, ""},
+	{"Internet_GW", []string{"Technical", "Gateway"}, "Corporate", NodeTypeTechnical, ""},
 
 	// Human Nodes (5)
-	{"DCS_Engineer", []string{"Human", "Engineer"}, "Human", "human", ""},
-	{"Process_Operator", []string{"Human", "Operator"}, "Human", "human", ""},
-	{"Safety_Engineer", []string{"Human", "Engineer", "SafetyCertified"}, "Human", "human", ""},
-	{"IT_OT_Coord", []string{"Human", "Coordinator"}, "Human", "human", ""},
-	{"Site_IT", []string{"Human", "Admin"}, "Human", "human", ""},
+	{"DCS_Engineer", []string{"Human", "Engineer"}, "Human", NodeTypeHuman, ""},
+	{"Process_Operator", []string{"Human", "Operator"}, "Human", NodeTypeHuman, ""},
+	{"Safety_Engineer", []string{"Human", "Engineer", "SafetyCertified"}, "Human", NodeTypeHuman, ""},
+	{"IT_OT_Coord", []string{"Human", "Coordinator"}, "Human", NodeTypeHuman, ""},
+	{"Site_IT", []string{"Human", "Admin"}, "Human", NodeTypeHuman, ""},
 }
 
 var chemicalFacilityEdges = [][2]string{
@@ -292,19 +292,19 @@ func BuildChemicalFacility(dataPath string) (*Metadata, error) {
 // ============================================================================
 
 var waterTreatmentNodes = []NodeDef{
-	{"PLC_Chlorine", []string{"Technical", "PLC"}, "Flat", "technical", ""},
-	{"PLC_Filtration", []string{"Technical", "PLC"}, "Flat", "technical", ""},
-	{"PLC_Pumping", []string{"Technical", "PLC"}, "Flat", "technical", ""},
-	{"HMI_1", []string{"Technical", "HMI"}, "Flat", "technical", ""},
-	{"HMI_2", []string{"Technical", "HMI"}, "Flat", "technical", ""},
-	{"SCADA_Server", []string{"Technical", "SCADA"}, "Flat", "technical", ""},
-	{"Historian", []string{"Technical", "Database"}, "Flat", "technical", ""},
-	{"Switch_A", []string{"Technical", "NetworkSwitch"}, "Flat", "technical", ""},
-	{"Switch_B", []string{"Technical", "NetworkSwitch"}, "Flat", "technical", ""},
-	{"Switch_C", []string{"Technical", "NetworkSwitch"}, "Flat", "technical", ""},
-	{"Eng_Laptop", []string{"Technical", "Workstation"}, "Flat", "technical", ""},
-	{"Operator_PC", []string{"Technical", "Workstation"}, "Flat", "technical", ""},
-	{"Router_WAN", []string{"Technical", "Router"}, "Flat", "technical", ""},
+	{"PLC_Chlorine", []string{"Technical", "PLC"}, "Flat", NodeTypeTechnical, ""},
+	{"PLC_Filtration", []string{"Technical", "PLC"}, "Flat", NodeTypeTechnical, ""},
+	{"PLC_Pumping", []string{"Technical", "PLC"}, "Flat", NodeTypeTechnical, ""},
+	{"HMI_1", []string{"Technical", "HMI"}, "Flat", NodeTypeTechnical, ""},
+	{"HMI_2", []string{"Technical", "HMI"}, "Flat", NodeTypeTechnical, ""},
+	{"SCADA_Server", []string{"Technical", "SCADA"}, "Flat", NodeTypeTechnical, ""},
+	{"Historian", []string{"Technical", "Database"}, "Flat", NodeTypeTechnical, ""},
+	{"Switch_A", []string{"Technical", "NetworkSwitch"}, "Flat", NodeTypeTechnical, ""},
+	{"Switch_B", []string{"Technical", "NetworkSwitch"}, "Flat", NodeTypeTechnical, ""},
+	{"Switch_C", []string{"Technical", "NetworkSwitch"}, "Flat", NodeTypeTechnical, ""},
+	{"Eng_Laptop", []string{"Technical", "Workstation"}, "Flat", NodeTypeTechnical, ""},
+	{"Operator_PC", []string{"Technical", "Workstation"}, "Flat", NodeTypeTechnical, ""},
+	{"Router_WAN", []string{"Technical", "Router"}, "Flat", NodeTypeTechnical, ""},
 }
 
 var waterFlatEdges = [][2]string{

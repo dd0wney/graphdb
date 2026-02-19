@@ -3,6 +3,14 @@ package main
 
 import "github.com/dd0wney/cluso-graphdb/pkg/storage"
 
+// Node type constants used throughout the codebase.
+const (
+	NodeTypeTechnical = "technical"
+	NodeTypeHuman     = "human"
+	NodeTypeProcess   = "process"
+	NodeTypeExternal  = "external"
+)
+
 // Metadata holds node mappings for a graph model.
 // This unified type replaces the former ModelMetadata and TelecomMetadata.
 type Metadata struct {

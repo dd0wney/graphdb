@@ -12,7 +12,7 @@ type NodeDef struct {
 	Name     string
 	Labels   []string
 	Level    string
-	NodeType string // "technical", "human", "process", "external"
+	NodeType string // NodeTypeTechnical, NodeTypeHuman, NodeTypeProcess, NodeTypeExternal
 	Function string // optional function description (for telecom model)
 }
 
@@ -150,8 +150,8 @@ func (b *GraphBuilder) AddEdgePairs(pairs [][2]string, edgeType string) *GraphBu
 }
 
 // AddEdgePairsWithAutoType creates undirected edges with automatic type detection:
-// - PROCESS if either node is type "process"
-// - HUMAN_ACCESS if either node is type "human"
+// - PROCESS if either node is NodeTypeProcess
+// - HUMAN_ACCESS if either node is NodeTypeHuman
 // - defaultType otherwise
 func (b *GraphBuilder) AddEdgePairsWithAutoType(pairs [][2]string, defaultType string) *GraphBuilder {
 	for _, pair := range pairs {
@@ -159,9 +159,9 @@ func (b *GraphBuilder) AddEdgePairsWithAutoType(pairs [][2]string, defaultType s
 		fromID := b.nodeIDs[pair[0]]
 		toID := b.nodeIDs[pair[1]]
 
-		if b.nodeTypes[fromID] == "process" || b.nodeTypes[toID] == "process" {
+		if b.nodeTypes[fromID] == NodeTypeProcess || b.nodeTypes[toID] == NodeTypeProcess {
 			edgeType = "PROCESS"
-		} else if b.nodeTypes[fromID] == "human" || b.nodeTypes[toID] == "human" {
+		} else if b.nodeTypes[fromID] == NodeTypeHuman || b.nodeTypes[toID] == NodeTypeHuman {
 			edgeType = "HUMAN_ACCESS"
 		}
 

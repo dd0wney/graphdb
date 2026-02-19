@@ -72,55 +72,12 @@ func analyseGateways(meta *Metadata, bc map[uint64]float64, rankings []BCResult)
 
 // PrintTelecomResults prints formatted BC ranking for the telecom model
 func PrintTelecomResults(result ModelResult, topN int) {
-	fmt.Println()
-	fmt.Println("========================================================================")
-	fmt.Printf("MODEL 4: %s (%d nodes, %d undirected edges)\n", result.ModelName, result.NodeCount, result.EdgeCount)
-	fmt.Println("========================================================================")
-	fmt.Println()
-
-	// Node type breakdown
-	fmt.Println("--- Node Type Breakdown ---")
-	typeOrder := []string{"technical", "human", "process", "external"}
-	for _, t := range typeOrder {
-		if count, ok := result.NodeTypeCounts[t]; ok {
-			fmt.Printf("  %s: %d\n", t, count)
-		}
-	}
-	fmt.Println()
-
-	fmt.Println("--- Betweenness Centrality (normalised) ---")
-	fmt.Println()
-	fmt.Printf("%-4s %-28s %8s  %-12s %-18s\n", "Rank", "Node", "BC", "Type", "Level")
-	fmt.Println("---------------------------------------------------------------------------")
-
-	displayCount := topN
-	if displayCount > len(result.Rankings) {
-		displayCount = len(result.Rankings)
-	}
-
-	for i := 0; i < displayCount; i++ {
-		r := result.Rankings[i]
-		flag := ""
-		if r.NodeType == "human" || r.NodeType == "process" {
-			flag = " *** INVISIBLE"
-		} else if r.NodeType == "external" {
-			flag = " [EXTERNAL]"
-		}
-		fmt.Printf("#%-3d %-28s %8.4f  %-12s %-18s%s\n", r.Rank, r.Name, r.BC, r.NodeType, r.Level, flag)
-	}
-
-	fmt.Println()
-	fmt.Println("--- Summary Statistics ---")
-	fmt.Printf("Invisible Node BC Share:     %.1f%%\n", result.InvisibleNodeShare*100)
-	if result.TopInvisibleNode != "" {
-		fmt.Printf("Top Invisible Node:          %s (BC: %.4f)\n", result.TopInvisibleNode, result.TopInvisibleBC)
-	}
-	if result.TopTechnicalNode != "" {
-		fmt.Printf("Top Technical Node:          %s (BC: %.4f)\n", result.TopTechnicalNode, result.TopTechnicalBC)
-	}
-	if result.InvisibleMultiplier > 0 {
-		fmt.Printf("Invisible vs Technical:      %.2fx\n", result.InvisibleMultiplier)
-	}
+	PrintResults(result, topN, PrintOptions{
+		TitlePrefix:      "MODEL 4",
+		ShowTypeCounts:   true,
+		ShowRankColumn:   true,
+		ShowExternalFlag: true,
+	})
 }
 
 // PrintGatewayAnalysis prints cross-sector gateway BC analysis
@@ -295,5 +252,5 @@ func PrintTelecomFinalSummary(result ModelResult, cascades []CascadeResult) {
 	fmt.Println("   infrastructure. Gateway_Emergency failure disconnects 000 services.")
 	fmt.Println()
 	fmt.Println("4. The telecom provider is the 'infrastructure of infrastructures' with")
-	fmt.Printf("   %d external sector nodes depending on it.\n", result.NodeTypeCounts["external"])
+	fmt.Printf("   %d external sector nodes depending on it.\n", result.NodeTypeCounts[NodeTypeExternal])
 }

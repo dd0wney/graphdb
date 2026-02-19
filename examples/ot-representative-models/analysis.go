@@ -43,12 +43,12 @@ func Analyse(meta *Metadata, modelName string, bc map[uint64]float64, opts Analy
 
 	for _, r := range results {
 		totalBC += r.BC
-		if r.NodeType == "human" || r.NodeType == "process" {
+		if r.NodeType == NodeTypeHuman || r.NodeType == NodeTypeProcess {
 			invisibleBC += r.BC
 			if topInvisible.Name == "" || r.BC > topInvisible.BC {
 				topInvisible = r
 			}
-		} else if r.NodeType == "technical" {
+		} else if r.NodeType == NodeTypeTechnical {
 			if topTechnical.Name == "" || r.BC > topTechnical.BC {
 				topTechnical = r
 			}
@@ -100,16 +100,43 @@ func AnalyseModel(meta *Metadata, modelName string, bc map[uint64]float64) Model
 	return Analyse(meta, modelName, bc, AnalysisOptions{})
 }
 
-// PrintModelResults prints a formatted BC ranking report
-func PrintModelResults(result ModelResult, topN int) {
+// PrintOptions configures the output format for PrintResults.
+type PrintOptions struct {
+	TitlePrefix      string // e.g., "MODEL" or "MODEL 4"
+	ShowTypeCounts   bool   // Show node type breakdown
+	ShowRankColumn   bool   // Include rank number in output
+	ShowExternalFlag bool   // Show [EXTERNAL] flag for external nodes
+}
+
+// PrintResults prints a formatted BC ranking report with configurable options.
+func PrintResults(result ModelResult, topN int, opts PrintOptions) {
 	fmt.Println()
 	fmt.Println("========================================================================")
-	fmt.Printf("MODEL: %s (%d nodes, %d undirected edges)\n", result.ModelName, result.NodeCount, result.EdgeCount)
+	fmt.Printf("%s: %s (%d nodes, %d undirected edges)\n", opts.TitlePrefix, result.ModelName, result.NodeCount, result.EdgeCount)
 	fmt.Println("========================================================================")
 	fmt.Println()
+
+	// Optional: node type breakdown
+	if opts.ShowTypeCounts && result.NodeTypeCounts != nil {
+		fmt.Println("--- Node Type Breakdown ---")
+		typeOrder := []string{NodeTypeTechnical, NodeTypeHuman, NodeTypeProcess, NodeTypeExternal}
+		for _, t := range typeOrder {
+			if count, ok := result.NodeTypeCounts[t]; ok {
+				fmt.Printf("  %s: %d\n", t, count)
+			}
+		}
+		fmt.Println()
+	}
+
 	fmt.Println("--- Betweenness Centrality (normalised) ---")
 	fmt.Println()
-	fmt.Printf("%-28s %8s  %-12s %-18s\n", "Node", "BC", "Type", "Level")
+
+	// Print header based on options
+	if opts.ShowRankColumn {
+		fmt.Printf("%-4s %-28s %8s  %-12s %-18s\n", "Rank", "Node", "BC", "Type", "Level")
+	} else {
+		fmt.Printf("%-28s %8s  %-12s %-18s\n", "Node", "BC", "Type", "Level")
+	}
 	fmt.Println("---------------------------------------------------------------------------")
 
 	displayCount := topN
@@ -119,11 +146,18 @@ func PrintModelResults(result ModelResult, topN int) {
 
 	for i := 0; i < displayCount; i++ {
 		r := result.Rankings[i]
-		invisible := ""
-		if r.NodeType == "human" || r.NodeType == "process" {
-			invisible = " *** INVISIBLE"
+		flag := ""
+		if r.NodeType == NodeTypeHuman || r.NodeType == NodeTypeProcess {
+			flag = " *** INVISIBLE"
+		} else if opts.ShowExternalFlag && r.NodeType == NodeTypeExternal {
+			flag = " [EXTERNAL]"
 		}
-		fmt.Printf("%-28s %8.4f  %-12s %-18s%s\n", r.Name, r.BC, r.NodeType, r.Level, invisible)
+
+		if opts.ShowRankColumn {
+			fmt.Printf("#%-3d %-28s %8.4f  %-12s %-18s%s\n", r.Rank, r.Name, r.BC, r.NodeType, r.Level, flag)
+		} else {
+			fmt.Printf("%-28s %8.4f  %-12s %-18s%s\n", r.Name, r.BC, r.NodeType, r.Level, flag)
+		}
 	}
 
 	fmt.Println()
@@ -138,6 +172,13 @@ func PrintModelResults(result ModelResult, topN int) {
 	if result.InvisibleMultiplier > 0 {
 		fmt.Printf("Invisible vs Technical:      %.2fx\n", result.InvisibleMultiplier)
 	}
+}
+
+// PrintModelResults prints a formatted BC ranking report (standard format).
+func PrintModelResults(result ModelResult, topN int) {
+	PrintResults(result, topN, PrintOptions{
+		TitlePrefix: "MODEL",
+	})
 }
 
 // RemovalConfig holds configuration for node removal comparison output.
@@ -399,9 +440,9 @@ func PrintMultiLayerAnalysis(compositeResult ModelResult, layerBCByName []map[st
 		techProcessBC := e.LayerBC[2]
 
 		switch {
-		case e.NodeType == "human":
+		case e.NodeType == NodeTypeHuman:
 			interpretation = "← human node (invisible)"
-		case e.NodeType == "process":
+		case e.NodeType == NodeTypeProcess:
 			interpretation = "← process node (invisible)"
 		case techBC > 0.001 && e.Delta < -0.01:
 			// Technical node suppressed — figure out which layer causes it
@@ -450,7 +491,7 @@ func PrintMultiLayerAnalysis(compositeResult ModelResult, layerBCByName []map[st
 	suppressedCount := 0
 	amplifiedCount := 0
 	for _, e := range entries {
-		if e.NodeType == "technical" {
+		if e.NodeType == NodeTypeTechnical {
 			if e.Delta < -0.01 {
 				suppressedCount++
 			} else if e.Delta > 0.01 {
