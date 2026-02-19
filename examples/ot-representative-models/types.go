@@ -11,6 +11,13 @@ const (
 	NodeTypeExternal  = "external"
 )
 
+// Edge type constants used for layer analysis.
+const (
+	EdgeTypeTechnical   = "TECHNICAL"
+	EdgeTypeHumanAccess = "HUMAN_ACCESS"
+	EdgeTypeProcess     = "PROCESS"
+)
+
 // Metadata holds node mappings for a graph model.
 // This unified type replaces the former ModelMetadata and TelecomMetadata.
 type Metadata struct {

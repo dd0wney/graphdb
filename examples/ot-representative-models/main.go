@@ -268,9 +268,9 @@ func buildMultiLayerAnalysis() ([]map[string]float64, []string, error) {
 		EdgeTypes []string
 	}
 	layers := []layerSpec{
-		{"Technical", "./data/layer_technical", []string{"TECHNICAL"}},
-		{"Tech+Human", "./data/layer_tech_human", []string{"TECHNICAL", "HUMAN_ACCESS"}},
-		{"Tech+Process", "./data/layer_tech_process", []string{"TECHNICAL", "PROCESS"}},
+		{"Technical", "./data/layer_technical", []string{EdgeTypeTechnical}},
+		{"Tech+Human", "./data/layer_tech_human", []string{EdgeTypeTechnical, EdgeTypeHumanAccess}},
+		{"Tech+Process", "./data/layer_tech_process", []string{EdgeTypeTechnical, EdgeTypeProcess}},
 	}
 
 	fmt.Println()

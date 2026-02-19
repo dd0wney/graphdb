@@ -308,7 +308,7 @@ var telecomEdgeGroups = []struct {
 		{"CAD_System", "Fire_Dispatch"},
 		{"CAD_System", "Ambulance_Dispatch"},
 	}},
-	{"HUMAN_ACCESS", [][2]string{
+	{EdgeTypeHumanAccess, [][2]string{
 		{"Core_Router_SYD", "Senior_Network_Eng"},
 		{"Core_Router_SYD", "IP_Engineer"},
 		{"Core_Router_MEL", "Senior_Network_Eng"},

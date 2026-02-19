@@ -20,7 +20,7 @@ type NodeDef struct {
 type EdgeDef struct {
 	From     string
 	To       string
-	EdgeType string // e.g., "TECHNICAL", "HUMAN_ACCESS", "PROCESS"
+	EdgeType string // EdgeTypeTechnical, EdgeTypeHumanAccess, EdgeTypeProcess
 }
 
 // GraphBuilder provides a fluent interface for building OT network models
@@ -160,9 +160,9 @@ func (b *GraphBuilder) AddEdgePairsWithAutoType(pairs [][2]string, defaultType s
 		toID := b.nodeIDs[pair[1]]
 
 		if b.nodeTypes[fromID] == NodeTypeProcess || b.nodeTypes[toID] == NodeTypeProcess {
-			edgeType = "PROCESS"
+			edgeType = EdgeTypeProcess
 		} else if b.nodeTypes[fromID] == NodeTypeHuman || b.nodeTypes[toID] == NodeTypeHuman {
-			edgeType = "HUMAN_ACCESS"
+			edgeType = EdgeTypeHumanAccess
 		}
 
 		b.AddUndirectedEdge(pair[0], pair[1], edgeType)
