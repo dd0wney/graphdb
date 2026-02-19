@@ -169,3 +169,22 @@ graphdb-nng-primary
 graphdb-nng-replica
 graphdb-*-replica
 graphdb-*-primary
+
+# Compiled example binaries (go build output at repo root)
+/hospital-network
+/juniper-zeroize
+/ot-representative-models
+/pipeline-ransomware
+/power-grid-cascade
+/water-treatment-attack
+examples/juniper-zeroize/juniper-zeroize
+
+# Generated output
+results.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Serena IDE plugin
+.serena/
