@@ -2,9 +2,7 @@
 package main
 
 import (
-	"fmt"
 	"sort"
-	"strings"
 )
 
 // AnalyseTelecomModel computes BC and returns structured results for the telecom model.
@@ -16,7 +14,7 @@ func AnalyseTelecomModel(meta *Metadata, modelName string, bc map[uint64]float64
 	})
 }
 
-// analyseGateways computes BC and external node counts for each gateway
+// analyseGateways computes BC and external node counts for each gateway.
 func analyseGateways(meta *Metadata, bc map[uint64]float64, rankings []BCResult) []GatewayResult {
 	// Define gateway to external node mappings
 	gatewayExternalNodes := map[string][]string{
@@ -70,39 +68,7 @@ func analyseGateways(meta *Metadata, bc map[uint64]float64, rankings []BCResult)
 	return gatewayResults
 }
 
-// PrintTelecomResults prints formatted BC ranking for the telecom model
-func PrintTelecomResults(result ModelResult, topN int) {
-	PrintResults(result, topN, PrintOptions{
-		TitlePrefix:      "MODEL 4",
-		ShowTypeCounts:   true,
-		ShowRankColumn:   true,
-		ShowExternalFlag: true,
-	})
-}
-
-// PrintGatewayAnalysis prints cross-sector gateway BC analysis
-func PrintGatewayAnalysis(result ModelResult) {
-	fmt.Println()
-	fmt.Println("--- Cross-Sector Gateway BC ---")
-	for _, gw := range result.GatewayAnalysis {
-		fmt.Printf("  %-24s BC = %.4f  (serves %d external nodes)\n", gw.Name, gw.BC, gw.ExternalNodeCount)
-	}
-}
-
-// PrintSeniorEngRemovalComparison compares BC before and after removing Senior_Network_Eng.
-func PrintSeniorEngRemovalComparison(before ModelResult, after ModelResult) {
-	PrintRemovalComparison(before, after, RemovalConfig{
-		Title:       "SENIOR NETWORK ENGINEER REMOVAL ANALYSIS",
-		Question:    "What happens when the Senior Network Engineer leaves?",
-		RemovedNode: "Senior_Network_Eng",
-		RemovedRank: "rank #2",
-		Insight: "Key insight: When the senior engineer leaves, BC redistributes to\n" +
-			"technical infrastructure and remaining human nodes. The CAB process\n" +
-			"sees massive increase as it becomes the primary coordination point.",
-	})
-}
-
-// AnalyseCascadeFailures tests which internal node failures disconnect external sectors
+// AnalyseCascadeFailures tests which internal node failures disconnect external sectors.
 func AnalyseCascadeFailures(meta *Metadata) []CascadeResult {
 	// This is a simplified analysis that identifies which gateways are single points
 	// of failure for their sectors. A full implementation would rebuild the graph
@@ -205,52 +171,4 @@ func AnalyseCascadeFailures(meta *Metadata) []CascadeResult {
 	})
 
 	return results
-}
-
-// PrintCascadeFailureAnalysis prints cascade failure results
-func PrintCascadeFailureAnalysis(cascades []CascadeResult) {
-	fmt.Println()
-	fmt.Println("--- Cascade Failure Analysis ---")
-	fmt.Println()
-
-	// Nodes that disconnect 2+ sectors
-	fmt.Println("Nodes whose failure disconnects 2+ sectors:")
-	for _, c := range cascades {
-		if c.SectorsAffected >= 2 {
-			fmt.Printf("  %s: %d sectors, %d external nodes\n", c.NodeName, c.SectorsAffected, c.ExternalNodesLost)
-			for sector, nodes := range c.SectorDetails {
-				fmt.Printf("    %s: %s\n", sector, strings.Join(nodes, ", "))
-			}
-		}
-	}
-	fmt.Println()
-
-	// Nodes that disconnect exactly 1 sector (gateways)
-	fmt.Println("Nodes whose failure disconnects exactly 1 sector (gateway SPOFs):")
-	for _, c := range cascades {
-		if c.SectorsAffected == 1 {
-			for sector, nodes := range c.SectorDetails {
-				fmt.Printf("  %s -> %s (%d nodes)\n", c.NodeName, sector, len(nodes))
-			}
-		}
-	}
-}
-
-// PrintTelecomFinalSummary prints the final summary for Model 4
-func PrintTelecomFinalSummary(result ModelResult, cascades []CascadeResult) {
-	fmt.Println()
-	fmt.Println("--- Model 4 Key Findings ---")
-	fmt.Println()
-	fmt.Printf("1. Senior_Network_Eng (human) has BC %.4f, nearly matching the core router\n", result.TopInvisibleBC)
-	fmt.Printf("   (%.2fx of top technical node). This demonstrates the invisible node\n", result.InvisibleMultiplier)
-	fmt.Println("   pattern scales to realistic network complexity.")
-	fmt.Println()
-	fmt.Printf("2. Invisible node BC share: %.1f%% (human + process nodes)\n", result.InvisibleNodeShare*100)
-	fmt.Println("   Over a third of network criticality is in non-technical nodes.")
-	fmt.Println()
-	fmt.Println("3. Each sector gateway is a single point of failure for its dependent")
-	fmt.Println("   infrastructure. Gateway_Emergency failure disconnects 000 services.")
-	fmt.Println()
-	fmt.Println("4. The telecom provider is the 'infrastructure of infrastructures' with")
-	fmt.Printf("   %d external sector nodes depending on it.\n", result.NodeTypeCounts[NodeTypeExternal])
 }
