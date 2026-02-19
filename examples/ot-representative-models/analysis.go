@@ -311,121 +311,160 @@ func PrintChemicalFacilitySummary(result ModelResult) {
 	fmt.Println("the technical firewall, making them the true bridge between domains.")
 }
 
-// PrintDualLayerAnalysis prints a side-by-side comparison of Technical BC (data plane only)
-// vs Composite BC (all edge types). The delta reveals hidden human dependencies.
-func PrintDualLayerAnalysis(compositeResult ModelResult, technicalBCByName map[string]float64) {
+// PrintMultiLayerAnalysis prints a multi-layer BC comparison aligned with ISO 15288:
+// Things (Technical), People (Tech+Human), Process (Tech+Process), Composite (all).
+// The delta between layers reveals where hidden dependencies live.
+func PrintMultiLayerAnalysis(compositeResult ModelResult, layerBCByName []map[string]float64, layerLabels []string, compositeBCByName map[string]float64) {
 	fmt.Println()
 	fmt.Println("========================================================================")
-	fmt.Println("DUAL-LAYER BETWEENNESS CENTRALITY: Technical vs Composite")
+	fmt.Println("MULTI-LAYER BETWEENNESS CENTRALITY (ISO 15288: People / Process / Things)")
 	fmt.Println("========================================================================")
 	fmt.Println()
-	fmt.Println("Technical BC  = data-plane edges only (infrastructure without people)")
-	fmt.Println("Composite BC  = all edges (infrastructure + human + process dependencies)")
-	fmt.Println("Delta         = Composite - Technical (negative = human edges suppressing)")
+	fmt.Println("Technical     = data-plane edges only (things)")
+	fmt.Println("Tech+Human    = infrastructure + human access edges (things + people)")
+	fmt.Println("Tech+Process  = infrastructure + process edges (things + process)")
+	fmt.Println("Composite     = all edges (things + people + process)")
+	fmt.Println("Delta         = Composite − Technical (total hidden dependency)")
 	fmt.Println()
 
-	type DualEntry struct {
-		Name        string
-		TechBC      float64
-		CompBC      float64
-		Delta       float64
-		Suppression float64 // percentage of technical BC suppressed by human edges
-		NodeType    string
-		Level       string
+	type MultiEntry struct {
+		Name     string
+		LayerBC  []float64 // BC for each filtered layer
+		CompBC   float64   // composite BC
+		Delta    float64   // composite - technical
+		NodeType string
+		Level    string
 	}
 
-	var entries []DualEntry
+	var entries []MultiEntry
 	for _, r := range compositeResult.Rankings {
-		techBC := technicalBCByName[r.Name]
-		delta := r.BC - techBC
-		suppression := 0.0
-		if techBC > 0.001 {
-			suppression = (delta / techBC) * 100
+		lbc := make([]float64, len(layerBCByName))
+		for i, m := range layerBCByName {
+			lbc[i] = m[r.Name]
 		}
-		entries = append(entries, DualEntry{
-			Name:        r.Name,
-			TechBC:      techBC,
-			CompBC:      r.BC,
-			Delta:       delta,
-			Suppression: suppression,
-			NodeType:    r.NodeType,
-			Level:       r.Level,
+		compBC := compositeBCByName[r.Name]
+		delta := compBC - lbc[0] // composite - technical
+		entries = append(entries, MultiEntry{
+			Name:     r.Name,
+			LayerBC:  lbc,
+			CompBC:   compBC,
+			Delta:    delta,
+			NodeType: r.NodeType,
+			Level:    r.Level,
 		})
 	}
 
-	// Sort by absolute delta descending (biggest structural impact first)
+	// Sort by composite BC descending (most critical first)
 	sort.Slice(entries, func(i, j int) bool {
-		return abs(entries[i].Delta) > abs(entries[j].Delta)
+		return entries[i].CompBC > entries[j].CompBC
 	})
 
-	// Print the table
-	fmt.Printf("%-22s %10s %10s %10s %10s  %s\n",
-		"Node", "Tech BC", "Comp BC", "Delta", "Impact%", "Interpretation")
-	fmt.Println(strings.Repeat("─", 100))
+	// Print header
+	fmt.Printf("%-22s", "Node")
+	for _, label := range layerLabels {
+		fmt.Printf(" %10s", label)
+	}
+	fmt.Printf(" %10s %10s  %s\n", "Composite", "Delta", "Interpretation")
+	fmt.Println(strings.Repeat("─", 22+11*len(layerLabels)+11+11+2+40))
 
 	for _, e := range entries {
-		// Skip nodes with zero in both columns
-		if e.TechBC < 0.0001 && e.CompBC < 0.0001 {
+		// Skip nodes with near-zero BC across all layers
+		allZero := e.CompBC < 0.0001
+		for _, bc := range e.LayerBC {
+			if bc >= 0.0001 {
+				allZero = false
+				break
+			}
+		}
+		if allZero {
 			continue
 		}
 
-		interpretation := ""
+		fmt.Printf("%-22s", e.Name)
+		for _, bc := range e.LayerBC {
+			fmt.Printf(" %10.4f", bc)
+		}
+
 		sign := ""
 		if e.Delta > 0.0001 {
 			sign = "+"
 		}
+		fmt.Printf(" %10.4f %s%9.4f", e.CompBC, sign, e.Delta)
+
+		// Interpretation based on where BC appears
+		interpretation := ""
+		techBC := e.LayerBC[0]
+		techHumanBC := e.LayerBC[1]
+		techProcessBC := e.LayerBC[2]
 
 		switch {
-		case e.NodeType == "human" || e.NodeType == "process":
-			// Human/process nodes: tech BC is 0, composite BC is their structural role
-			interpretation = "← pure human dependency (invisible to network diagrams)"
-		case e.Delta < -0.01 && e.TechBC > 0.01:
-			// Technical node with BC suppressed by human edges
-			interpretation = fmt.Sprintf("← human edges suppress criticality by %.0f%%", abs(e.Suppression))
-		case e.Delta > 0.01 && e.TechBC > 0.01:
-			// Technical node with BC amplified by human edges
-			interpretation = fmt.Sprintf("← human edges amplify criticality by %.0f%%", e.Suppression)
-		case abs(e.Delta) <= 0.01 && e.TechBC > 0.01:
-			interpretation = "← stable (human edges don't change structural role)"
+		case e.NodeType == "human":
+			interpretation = "← human node (invisible)"
+		case e.NodeType == "process":
+			interpretation = "← process node (invisible)"
+		case techBC > 0.001 && e.Delta < -0.01:
+			// Technical node suppressed — figure out which layer causes it
+			humanEffect := techHumanBC - techBC
+			processEffect := techProcessBC - techBC
+			if abs(humanEffect) > abs(processEffect) {
+				interpretation = fmt.Sprintf("← people suppress %.0f%%", (e.Delta/techBC)*100)
+			} else {
+				interpretation = fmt.Sprintf("← process suppresses %.0f%%", (e.Delta/techBC)*100)
+			}
+		case techBC > 0.001 && e.Delta > 0.01:
+			humanEffect := techHumanBC - techBC
+			processEffect := techProcessBC - techBC
+			if humanEffect > processEffect {
+				interpretation = fmt.Sprintf("← people amplify +%.0f%%", (e.Delta/techBC)*100)
+			} else {
+				interpretation = fmt.Sprintf("← process amplifies +%.0f%%", (e.Delta/techBC)*100)
+			}
+		case techBC > 0.001 && abs(e.Delta) <= 0.01:
+			interpretation = "← stable across layers"
+		case techBC < 0.001 && e.CompBC > 0.001:
+			interpretation = "← only visible with human/process edges"
 		}
 
-		impactStr := ""
-		if e.TechBC > 0.001 {
-			impactStr = fmt.Sprintf("%+.0f%%", e.Suppression)
-		} else if e.CompBC > 0.001 {
-			impactStr = "N/A"
-		}
-
-		fmt.Printf("%-22s %10.4f %10.4f %s%9.4f %10s  %s\n",
-			e.Name, e.TechBC, e.CompBC, sign, e.Delta, impactStr, interpretation)
+		fmt.Printf("  %s\n", interpretation)
 	}
 	fmt.Println()
 
-	// Summary statistics
-	totalTechBC := 0.0
-	totalCompBC := 0.0
-	totalSuppressed := 0.0
-	suppressedCount := 0
+	// Summary: BC totals per layer
+	fmt.Println("--- Layer Totals ---")
+	for i, label := range layerLabels {
+		total := 0.0
+		for _, e := range entries {
+			total += e.LayerBC[i]
+		}
+		fmt.Printf("%-18s total BC: %.4f\n", label, total)
+	}
+	compTotal := 0.0
 	for _, e := range entries {
-		totalTechBC += e.TechBC
-		totalCompBC += e.CompBC
-		if e.NodeType == "technical" && e.Delta < -0.001 {
-			totalSuppressed += abs(e.Delta)
-			suppressedCount++
-		}
+		compTotal += e.CompBC
 	}
-
-	fmt.Println("--- Summary ---")
-	fmt.Printf("Total Technical BC:    %.4f (infrastructure only)\n", totalTechBC)
-	fmt.Printf("Total Composite BC:    %.4f (with human dependencies)\n", totalCompBC)
-	fmt.Printf("Technical nodes suppressed by human edges: %d\n", suppressedCount)
-	fmt.Printf("Total BC suppression:  %.4f\n", totalSuppressed)
+	fmt.Printf("%-18s total BC: %.4f\n", "Composite", compTotal)
 	fmt.Println()
 
-	fmt.Println("KEY INSIGHT: The delta between Technical and Composite BC reveals how")
-	fmt.Println("much human dependency is hiding structural fragility. Nodes with large")
-	fmt.Println("negative deltas are being propped up by people. When those people leave,")
-	fmt.Println("the node's true structural importance is exposed — and it has no backup.")
+	// Summary: suppression/amplification counts
+	suppressedCount := 0
+	amplifiedCount := 0
+	for _, e := range entries {
+		if e.NodeType == "technical" {
+			if e.Delta < -0.01 {
+				suppressedCount++
+			} else if e.Delta > 0.01 {
+				amplifiedCount++
+			}
+		}
+	}
+	fmt.Printf("Technical nodes suppressed by human/process edges: %d\n", suppressedCount)
+	fmt.Printf("Technical nodes amplified by human/process edges:  %d\n", amplifiedCount)
+	fmt.Println()
+
+	fmt.Println("KEY INSIGHT: Comparing layers reveals WHERE hidden dependencies live.")
+	fmt.Println("If Tech+Human >> Technical, people are the hidden bridge. If Tech+Process >>")
+	fmt.Println("Technical, organisational processes are the hidden bridge. The composite")
+	fmt.Println("shows the full picture — but each layer tells you what to fix first.")
 }
 
 // ExportResultsJSON writes all results to a JSON file

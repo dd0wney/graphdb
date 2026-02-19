@@ -191,10 +191,15 @@ func BuildStevesUtility(dataPath string) (*ModelMetadata, error) {
 		{"Steve", "IT_Admin"},
 	}
 
+	// Tag edges involving process nodes as PROCESS, others as HUMAN_ACCESS
 	for _, edge := range steveEdges {
 		fromID := meta.NodeIDs[edge[0]]
 		toID := meta.NodeIDs[edge[1]]
-		if err := createUndirectedEdge(graph, fromID, toID, "HUMAN_ACCESS", props); err != nil {
+		edgeType := "HUMAN_ACCESS"
+		if meta.NodeTypes[fromID] == "process" || meta.NodeTypes[toID] == "process" {
+			edgeType = "PROCESS"
+		}
+		if err := createUndirectedEdge(graph, fromID, toID, edgeType, props); err != nil {
 			return nil, fmt.Errorf("failed to create edge %s <-> %s: %w", edge[0], edge[1], err)
 		}
 	}
@@ -229,7 +234,11 @@ func BuildStevesUtility(dataPath string) (*ModelMetadata, error) {
 	for _, edge := range otherHumanEdges {
 		fromID := meta.NodeIDs[edge[0]]
 		toID := meta.NodeIDs[edge[1]]
-		if err := createUndirectedEdge(graph, fromID, toID, "HUMAN_ACCESS", props); err != nil {
+		edgeType := "HUMAN_ACCESS"
+		if meta.NodeTypes[fromID] == "process" || meta.NodeTypes[toID] == "process" {
+			edgeType = "PROCESS"
+		}
+		if err := createUndirectedEdge(graph, fromID, toID, edgeType, props); err != nil {
 			return nil, fmt.Errorf("failed to create edge %s <-> %s: %w", edge[0], edge[1], err)
 		}
 	}
@@ -237,11 +246,18 @@ func BuildStevesUtility(dataPath string) (*ModelMetadata, error) {
 	return meta, nil
 }
 
-// BuildStevesUtilityTechnicalOnly creates Model 1 with all 33 nodes but only TECHNICAL edges.
-// Human and process nodes exist but have no edges, giving them BC = 0.
-// This isolates the data-plane view: what does the infrastructure look like
-// without any human or process dependencies?
-func BuildStevesUtilityTechnicalOnly(dataPath string) (*ModelMetadata, error) {
+// BuildStevesUtilityFiltered creates Model 1 with all 33 nodes but only edges
+// whose type is in the allowedTypes set. This enables layer-by-layer BC analysis:
+//   - ["TECHNICAL"]                          → data plane only (things)
+//   - ["TECHNICAL", "HUMAN_ACCESS"]          → things + people
+//   - ["TECHNICAL", "PROCESS"]               → things + organisational processes
+//   - ["TECHNICAL", "HUMAN_ACCESS", "PROCESS"] → composite (all)
+func BuildStevesUtilityFiltered(dataPath string, allowedTypes []string) (*ModelMetadata, error) {
+	allowed := make(map[string]bool, len(allowedTypes))
+	for _, t := range allowedTypes {
+		allowed[t] = true
+	}
+
 	graph, err := storage.NewGraphStorage(dataPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create graph storage: %w", err)
@@ -255,23 +271,23 @@ func BuildStevesUtilityTechnicalOnly(dataPath string) (*ModelMetadata, error) {
 		NodeIDs:    make(map[string]uint64),
 	}
 
-	createNode := func(name string, labels []string, level, nodeType string) (*storage.Node, error) {
+	createNode := func(name string, labels []string, level, nodeType string) {
 		node, err := graph.CreateNode(labels, map[string]storage.Value{
 			"name":      storage.StringValue(name),
 			"level":     storage.StringValue(level),
 			"node_type": storage.StringValue(nodeType),
 		})
 		if err != nil {
-			return nil, err
+			// Reuse log.Fatalf pattern from other builders
+			panic(fmt.Sprintf("failed to create node %s: %v", name, err))
 		}
 		meta.NodeNames[node.ID] = name
 		meta.NodeTypes[node.ID] = nodeType
 		meta.NodeLevels[node.ID] = level
 		meta.NodeIDs[name] = node.ID
-		return node, nil
 	}
 
-	// All 33 nodes (same as full model — same N for normalization)
+	// All 33 nodes (same N for normalization across all layers)
 	createNode("PLC_Turbine1", []string{"Technical", "PLC"}, "L0_Process", "technical")
 	createNode("PLC_Turbine2", []string{"Technical", "PLC"}, "L0_Process", "technical")
 	createNode("PLC_Substation", []string{"Technical", "PLC"}, "L0_Process", "technical")
@@ -294,8 +310,6 @@ func BuildStevesUtilityTechnicalOnly(dataPath string) (*ModelMetadata, error) {
 	createNode("ERP_System", []string{"Technical", "Server"}, "L4_IT", "technical")
 	createNode("AD_Server_IT", []string{"Technical", "Server"}, "L4_IT", "technical")
 	createNode("VPN_Gateway", []string{"Technical", "Gateway"}, "L4_IT", "technical")
-
-	// Human + Process nodes (present for normalization, but NO edges)
 	createNode("Steve", []string{"Human", "Operator"}, "Human", "human")
 	createNode("OT_Manager", []string{"Human", "Manager"}, "Human", "human")
 	createNode("IT_Admin", []string{"Human", "Admin"}, "Human", "human")
@@ -308,42 +322,97 @@ func BuildStevesUtilityTechnicalOnly(dataPath string) (*ModelMetadata, error) {
 	createNode("Vendor_Access_Process", []string{"Process", "VendorManagement"}, "Process", "process")
 	createNode("Patch_Approval", []string{"Process", "PatchManagement"}, "Process", "process")
 
-	// ONLY technical edges (26 undirected) — pure data plane
-	technicalEdges := [][2]string{
-		{"PLC_Turbine1", "HMI_Control1"},
-		{"PLC_Turbine2", "HMI_Control2"},
-		{"PLC_Substation", "HMI_Control1"},
-		{"RTU_Remote1", "SCADA_Server"},
-		{"RTU_Remote2", "SCADA_Server"},
-		{"Safety_PLC", "HMI_Control1"},
-		{"Safety_PLC", "HMI_Control2"},
-		{"HMI_Control1", "SCADA_Server"},
-		{"HMI_Control2", "SCADA_Server"},
-		{"SCADA_Server", "Historian_OT"},
-		{"SCADA_Server", "Eng_Workstation"},
-		{"SCADA_Server", "OT_Switch_Core"},
-		{"Historian_OT", "OT_Switch_Core"},
-		{"Eng_Workstation", "OT_Switch_Core"},
-		{"OT_Switch_Core", "Patch_Server"},
-		{"OT_Switch_Core", "AD_Server_OT"},
-		{"OT_Switch_Core", "Firewall_ITOT"},
-		{"Firewall_ITOT", "Jump_Server"},
-		{"Firewall_ITOT", "Data_Diode"},
-		{"Data_Diode", "Historian_OT"},
-		{"Firewall_ITOT", "IT_Switch_Core"},
-		{"Jump_Server", "IT_Switch_Core"},
-		{"IT_Switch_Core", "Email_Server"},
-		{"IT_Switch_Core", "ERP_System"},
-		{"IT_Switch_Core", "AD_Server_IT"},
-		{"IT_Switch_Core", "VPN_Gateway"},
+	// All edges with their types — only include if type is in allowed set
+	type taggedEdge struct {
+		From, To, Type string
+	}
+
+	allEdges := []taggedEdge{
+		// TECHNICAL (26)
+		{"PLC_Turbine1", "HMI_Control1", "TECHNICAL"},
+		{"PLC_Turbine2", "HMI_Control2", "TECHNICAL"},
+		{"PLC_Substation", "HMI_Control1", "TECHNICAL"},
+		{"RTU_Remote1", "SCADA_Server", "TECHNICAL"},
+		{"RTU_Remote2", "SCADA_Server", "TECHNICAL"},
+		{"Safety_PLC", "HMI_Control1", "TECHNICAL"},
+		{"Safety_PLC", "HMI_Control2", "TECHNICAL"},
+		{"HMI_Control1", "SCADA_Server", "TECHNICAL"},
+		{"HMI_Control2", "SCADA_Server", "TECHNICAL"},
+		{"SCADA_Server", "Historian_OT", "TECHNICAL"},
+		{"SCADA_Server", "Eng_Workstation", "TECHNICAL"},
+		{"SCADA_Server", "OT_Switch_Core", "TECHNICAL"},
+		{"Historian_OT", "OT_Switch_Core", "TECHNICAL"},
+		{"Eng_Workstation", "OT_Switch_Core", "TECHNICAL"},
+		{"OT_Switch_Core", "Patch_Server", "TECHNICAL"},
+		{"OT_Switch_Core", "AD_Server_OT", "TECHNICAL"},
+		{"OT_Switch_Core", "Firewall_ITOT", "TECHNICAL"},
+		{"Firewall_ITOT", "Jump_Server", "TECHNICAL"},
+		{"Firewall_ITOT", "Data_Diode", "TECHNICAL"},
+		{"Data_Diode", "Historian_OT", "TECHNICAL"},
+		{"Firewall_ITOT", "IT_Switch_Core", "TECHNICAL"},
+		{"Jump_Server", "IT_Switch_Core", "TECHNICAL"},
+		{"IT_Switch_Core", "Email_Server", "TECHNICAL"},
+		{"IT_Switch_Core", "ERP_System", "TECHNICAL"},
+		{"IT_Switch_Core", "AD_Server_IT", "TECHNICAL"},
+		{"IT_Switch_Core", "VPN_Gateway", "TECHNICAL"},
+		// HUMAN_ACCESS — Steve's edges to technical/human nodes (19)
+		{"Steve", "PLC_Turbine1", "HUMAN_ACCESS"},
+		{"Steve", "PLC_Turbine2", "HUMAN_ACCESS"},
+		{"Steve", "PLC_Substation", "HUMAN_ACCESS"},
+		{"Steve", "HMI_Control1", "HUMAN_ACCESS"},
+		{"Steve", "HMI_Control2", "HUMAN_ACCESS"},
+		{"Steve", "SCADA_Server", "HUMAN_ACCESS"},
+		{"Steve", "Eng_Workstation", "HUMAN_ACCESS"},
+		{"Steve", "Historian_OT", "HUMAN_ACCESS"},
+		{"Steve", "OT_Switch_Core", "HUMAN_ACCESS"},
+		{"Steve", "Patch_Server", "HUMAN_ACCESS"},
+		{"Steve", "Jump_Server", "HUMAN_ACCESS"},
+		{"Steve", "Firewall_ITOT", "HUMAN_ACCESS"},
+		{"Steve", "VPN_Gateway", "HUMAN_ACCESS"},
+		{"Steve", "AD_Server_OT", "HUMAN_ACCESS"},
+		{"Steve", "Vendor_Rep", "HUMAN_ACCESS"},
+		{"Steve", "OT_Manager", "HUMAN_ACCESS"},
+		{"Steve", "Control_Op1", "HUMAN_ACCESS"},
+		{"Steve", "Control_Op2", "HUMAN_ACCESS"},
+		{"Steve", "IT_Admin", "HUMAN_ACCESS"},
+		// HUMAN_ACCESS — other human edges to technical/human nodes (16)
+		{"Control_Op1", "HMI_Control1", "HUMAN_ACCESS"},
+		{"Control_Op1", "HMI_Control2", "HUMAN_ACCESS"},
+		{"Control_Op2", "HMI_Control1", "HUMAN_ACCESS"},
+		{"Control_Op2", "HMI_Control2", "HUMAN_ACCESS"},
+		{"OT_Manager", "SCADA_Server", "HUMAN_ACCESS"},
+		{"OT_Manager", "Plant_Manager", "HUMAN_ACCESS"},
+		{"IT_Admin", "IT_Switch_Core", "HUMAN_ACCESS"},
+		{"IT_Admin", "Email_Server", "HUMAN_ACCESS"},
+		{"IT_Admin", "ERP_System", "HUMAN_ACCESS"},
+		{"IT_Admin", "AD_Server_IT", "HUMAN_ACCESS"},
+		{"IT_Admin", "VPN_Gateway", "HUMAN_ACCESS"},
+		{"IT_Admin", "Firewall_ITOT", "HUMAN_ACCESS"},
+		{"Plant_Manager", "ERP_System", "HUMAN_ACCESS"},
+		{"Plant_Manager", "Email_Server", "HUMAN_ACCESS"},
+		{"Vendor_Rep", "VPN_Gateway", "HUMAN_ACCESS"},
+		{"Vendor_Rep", "Jump_Server", "HUMAN_ACCESS"},
+		// PROCESS — edges involving process nodes (9)
+		{"Steve", "Change_Mgmt_Process", "PROCESS"},
+		{"Steve", "Incident_Response", "PROCESS"},
+		{"Steve", "Vendor_Access_Process", "PROCESS"},
+		{"Steve", "Patch_Approval", "PROCESS"},
+		{"Control_Op1", "Incident_Response", "PROCESS"},
+		{"Control_Op2", "Incident_Response", "PROCESS"},
+		{"OT_Manager", "Change_Mgmt_Process", "PROCESS"},
+		{"OT_Manager", "Patch_Approval", "PROCESS"},
+		{"Vendor_Rep", "Vendor_Access_Process", "PROCESS"},
 	}
 
 	props := map[string]storage.Value{}
-	for _, edge := range technicalEdges {
-		fromID := meta.NodeIDs[edge[0]]
-		toID := meta.NodeIDs[edge[1]]
-		if err := createUndirectedEdge(graph, fromID, toID, "TECHNICAL", props); err != nil {
-			return nil, fmt.Errorf("failed to create edge %s <-> %s: %w", edge[0], edge[1], err)
+	for _, e := range allEdges {
+		if !allowed[e.Type] {
+			continue
+		}
+		fromID := meta.NodeIDs[e.From]
+		toID := meta.NodeIDs[e.To]
+		if err := createUndirectedEdge(graph, fromID, toID, e.Type, props); err != nil {
+			return nil, fmt.Errorf("failed to create edge %s <-> %s: %w", e.From, e.To, err)
 		}
 	}
 
@@ -486,7 +555,11 @@ func BuildStevesUtilityWithoutSteve(dataPath string) (*ModelMetadata, error) {
 	for _, edge := range otherHumanEdges {
 		fromID := meta.NodeIDs[edge[0]]
 		toID := meta.NodeIDs[edge[1]]
-		if err := createUndirectedEdge(graph, fromID, toID, "HUMAN_ACCESS", props); err != nil {
+		edgeType := "HUMAN_ACCESS"
+		if meta.NodeTypes[fromID] == "process" || meta.NodeTypes[toID] == "process" {
+			edgeType = "PROCESS"
+		}
+		if err := createUndirectedEdge(graph, fromID, toID, edgeType, props); err != nil {
 			return nil, fmt.Errorf("failed to create edge %s <-> %s: %w", edge[0], edge[1], err)
 		}
 	}

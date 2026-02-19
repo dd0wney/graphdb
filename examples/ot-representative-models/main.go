@@ -78,44 +78,74 @@ func main() {
 	PrintModelResults(stevesResult, 15)
 
 	// ========================================
-	// MODEL 1-DL: Dual-Layer BC Analysis
+	// MODEL 1-ML: Multi-Layer BC Analysis
 	// ========================================
+	// Build 3 filtered variants (composite is the original)
+	type layerSpec struct {
+		Label     string
+		DataDir   string
+		EdgeTypes []string
+	}
+	layers := []layerSpec{
+		{"Technical", "./data/layer_technical", []string{"TECHNICAL"}},
+		{"Tech+Human", "./data/layer_tech_human", []string{"TECHNICAL", "HUMAN_ACCESS"}},
+		{"Tech+Process", "./data/layer_tech_process", []string{"TECHNICAL", "PROCESS"}},
+	}
+
 	fmt.Println()
-	fmt.Println("Building Model 1 (Technical Only): data-plane edges, no human dependencies...")
-	techMeta, err := BuildStevesUtilityTechnicalOnly("./data/steves_utility_technical")
-	if err != nil {
-		log.Fatalf("Failed to build technical-only model: %v", err)
-	}
-	defer techMeta.Graph.Close()
+	fmt.Println("Building multi-layer BC analysis (Things / People / Process / Composite)...")
 
-	techBC, err := algorithms.BetweennessCentrality(techMeta.Graph)
-	if err != nil {
-		log.Fatalf("Failed to compute BC for technical-only model: %v", err)
-	}
-
-	// Apply same normalisation correction as composite
-	if rawSteveBC > 0.001 {
-		ratio := rawSteveBC / expectedSteveBC
-		if ratio > 1.5 && ratio < 2.5 {
-			for nodeID := range techBC {
-				techBC[nodeID] /= 2.0
-			}
-		} else if ratio > 0.4 && ratio < 0.6 {
-			for nodeID := range techBC {
-				techBC[nodeID] *= 2.0
+	// Helper to normalise BC using same correction factor as composite
+	normaliseBC := func(bc map[uint64]float64) {
+		if rawSteveBC > 0.001 {
+			ratio := rawSteveBC / expectedSteveBC
+			if ratio > 1.5 && ratio < 2.5 {
+				for nodeID := range bc {
+					bc[nodeID] /= 2.0
+				}
+			} else if ratio > 0.4 && ratio < 0.6 {
+				for nodeID := range bc {
+					bc[nodeID] *= 2.0
+				}
 			}
 		}
 	}
 
-	// Map technical BC to node names for comparison
-	techBCByName := make(map[string]float64)
-	for nodeID, bc := range techBC {
-		if name, ok := techMeta.NodeNames[nodeID]; ok {
-			techBCByName[name] = bc
+	// Compute BC for each layer and map to node names
+	layerBCByName := make([]map[string]float64, len(layers))
+	layerLabels := make([]string, len(layers))
+	for i, layer := range layers {
+		layerLabels[i] = layer.Label
+		meta, err := BuildStevesUtilityFiltered(layer.DataDir, layer.EdgeTypes)
+		if err != nil {
+			log.Fatalf("Failed to build %s layer: %v", layer.Label, err)
+		}
+		bc, err := algorithms.BetweennessCentrality(meta.Graph)
+		if err != nil {
+			meta.Graph.Close()
+			log.Fatalf("Failed to compute BC for %s layer: %v", layer.Label, err)
+		}
+		normaliseBC(bc)
+
+		bcByName := make(map[string]float64)
+		for nodeID, bcVal := range bc {
+			if name, ok := meta.NodeNames[nodeID]; ok {
+				bcByName[name] = bcVal
+			}
+		}
+		layerBCByName[i] = bcByName
+		meta.Graph.Close()
+	}
+
+	// Composite BC by name (from the full model)
+	compositeBCByName := make(map[string]float64)
+	for nodeID, bcVal := range stevesBC {
+		if name, ok := stevesMeta.NodeNames[nodeID]; ok {
+			compositeBCByName[name] = bcVal
 		}
 	}
 
-	PrintDualLayerAnalysis(stevesResult, techBCByName)
+	PrintMultiLayerAnalysis(stevesResult, layerBCByName, layerLabels, compositeBCByName)
 
 	// ========================================
 	// MODEL 1b: Steve's Utility WITHOUT Steve
