@@ -16,6 +16,12 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	fmt.Println()
 	fmt.Println("=========================================================================")
 	fmt.Println(" OT Representative Models: Betweenness Centrality Analysis")
@@ -36,13 +42,13 @@ func main() {
 	fmt.Println("Building Model 1: Steve's Utility...")
 	stevesMeta, err := BuildStevesUtility("./data/steves_utility")
 	if err != nil {
-		log.Fatalf("Failed to build Steve's Utility: %v", err)
+		return fmt.Errorf("failed to build Steve's Utility: %w", err)
 	}
 	defer stevesMeta.Graph.Close()
 
 	stevesBC, err := algorithms.BetweennessCentrality(stevesMeta.Graph)
 	if err != nil {
-		log.Fatalf("Failed to compute BC for Steve's Utility: %v", err)
+		return fmt.Errorf("failed to compute BC for Steve's Utility: %w", err)
 	}
 
 	stevesResult := AnalyseModel(stevesMeta, "Steve's Utility", stevesBC)
@@ -52,44 +58,9 @@ func main() {
 	// ========================================
 	// MODEL 1-ML: Multi-Layer BC Analysis
 	// ========================================
-	// Build 3 filtered variants (composite is the original)
-	type layerSpec struct {
-		Label     string
-		DataDir   string
-		EdgeTypes []string
-	}
-	layers := []layerSpec{
-		{"Technical", "./data/layer_technical", []string{"TECHNICAL"}},
-		{"Tech+Human", "./data/layer_tech_human", []string{"TECHNICAL", "HUMAN_ACCESS"}},
-		{"Tech+Process", "./data/layer_tech_process", []string{"TECHNICAL", "PROCESS"}},
-	}
-
-	fmt.Println()
-	fmt.Println("Building multi-layer BC analysis (Things / People / Process / Composite)...")
-
-	// Compute BC for each layer and map to node names
-	layerBCByName := make([]map[string]float64, len(layers))
-	layerLabels := make([]string, len(layers))
-	for i, layer := range layers {
-		layerLabels[i] = layer.Label
-		meta, err := BuildStevesUtilityFiltered(layer.DataDir, layer.EdgeTypes)
-		if err != nil {
-			log.Fatalf("Failed to build %s layer: %v", layer.Label, err)
-		}
-		bc, err := algorithms.BetweennessCentrality(meta.Graph)
-		if err != nil {
-			meta.Graph.Close()
-			log.Fatalf("Failed to compute BC for %s layer: %v", layer.Label, err)
-		}
-
-		bcByName := make(map[string]float64)
-		for nodeID, bcVal := range bc {
-			if name, ok := meta.NodeNames[nodeID]; ok {
-				bcByName[name] = bcVal
-			}
-		}
-		layerBCByName[i] = bcByName
-		meta.Graph.Close()
+	layerBCByName, layerLabels, err := buildMultiLayerAnalysis()
+	if err != nil {
+		return err
 	}
 
 	// Composite BC by name (from the full model)
@@ -109,13 +80,13 @@ func main() {
 	fmt.Println("Building Model 1b: Steve's Utility WITHOUT Steve...")
 	noSteveMeta, err := BuildStevesUtilityWithoutSteve("./data/steves_utility_no_steve")
 	if err != nil {
-		log.Fatalf("Failed to build Steve's Utility without Steve: %v", err)
+		return fmt.Errorf("failed to build Steve's Utility without Steve: %w", err)
 	}
 	defer noSteveMeta.Graph.Close()
 
 	noSteveBC, err := algorithms.BetweennessCentrality(noSteveMeta.Graph)
 	if err != nil {
-		log.Fatalf("Failed to compute BC for model without Steve: %v", err)
+		return fmt.Errorf("failed to compute BC for model without Steve: %w", err)
 	}
 
 	noSteveResult := AnalyseModel(noSteveMeta, "Steve's Utility (Without Steve)", noSteveBC)
@@ -129,13 +100,13 @@ func main() {
 	fmt.Println("Building Model 2: Chemical Facility...")
 	chemMeta, err := BuildChemicalFacility("./data/chemical_facility")
 	if err != nil {
-		log.Fatalf("Failed to build Chemical Facility: %v", err)
+		return fmt.Errorf("failed to build Chemical Facility: %w", err)
 	}
 	defer chemMeta.Graph.Close()
 
 	chemBC, err := algorithms.BetweennessCentrality(chemMeta.Graph)
 	if err != nil {
-		log.Fatalf("Failed to compute BC for Chemical Facility: %v", err)
+		return fmt.Errorf("failed to compute BC for Chemical Facility: %w", err)
 	}
 
 	chemResult := AnalyseModel(chemMeta, "Chemical Facility", chemBC)
@@ -150,13 +121,13 @@ func main() {
 	fmt.Println("Building Model 3a: Water Treatment (Flat)...")
 	flatMeta, err := BuildWaterTreatmentFlat("./data/water_flat")
 	if err != nil {
-		log.Fatalf("Failed to build Water Treatment Flat: %v", err)
+		return fmt.Errorf("failed to build Water Treatment Flat: %w", err)
 	}
 	defer flatMeta.Graph.Close()
 
 	flatBC, err := algorithms.BetweennessCentrality(flatMeta.Graph)
 	if err != nil {
-		log.Fatalf("Failed to compute BC for Water Treatment Flat: %v", err)
+		return fmt.Errorf("failed to compute BC for Water Treatment Flat: %w", err)
 	}
 
 	flatResult := AnalyseModel(flatMeta, "Water Treatment (Flat)", flatBC)
@@ -170,13 +141,13 @@ func main() {
 	fmt.Println("Building Model 3b: Water Treatment (VLAN)...")
 	vlanMeta, err := BuildWaterTreatmentVLAN("./data/water_vlan")
 	if err != nil {
-		log.Fatalf("Failed to build Water Treatment VLAN: %v", err)
+		return fmt.Errorf("failed to build Water Treatment VLAN: %w", err)
 	}
 	defer vlanMeta.Graph.Close()
 
 	vlanBC, err := algorithms.BetweennessCentrality(vlanMeta.Graph)
 	if err != nil {
-		log.Fatalf("Failed to compute BC for Water Treatment VLAN: %v", err)
+		return fmt.Errorf("failed to compute BC for Water Treatment VLAN: %w", err)
 	}
 
 	vlanResult := AnalyseModel(vlanMeta, "Water Treatment (VLAN)", vlanBC)
@@ -195,13 +166,13 @@ func main() {
 	fmt.Println("Building Model 4: Telecommunications Provider...")
 	telecomMeta, err := BuildTelecomProvider("./data/telecom")
 	if err != nil {
-		log.Fatalf("Failed to build Telecom Provider: %v", err)
+		return fmt.Errorf("failed to build Telecom Provider: %w", err)
 	}
 	defer telecomMeta.Graph.Close()
 
 	telecomBC, err := algorithms.BetweennessCentrality(telecomMeta.Graph)
 	if err != nil {
-		log.Fatalf("Failed to compute BC for Telecom Provider: %v", err)
+		return fmt.Errorf("failed to compute BC for Telecom Provider: %w", err)
 	}
 
 	telecomResult := AnalyseTelecomModel(telecomMeta, "Telecommunications Provider", telecomBC)
@@ -221,13 +192,13 @@ func main() {
 	fmt.Println("Building Model 4b: Telecom WITHOUT Senior Network Engineer...")
 	noSeniorEngMeta, err := BuildTelecomProviderWithoutSeniorEng("./data/telecom_no_senior")
 	if err != nil {
-		log.Fatalf("Failed to build Telecom without Senior Eng: %v", err)
+		return fmt.Errorf("failed to build Telecom without Senior Eng: %w", err)
 	}
 	defer noSeniorEngMeta.Graph.Close()
 
 	noSeniorEngBC, err := algorithms.BetweennessCentrality(noSeniorEngMeta.Graph)
 	if err != nil {
-		log.Fatalf("Failed to compute BC for Telecom without Senior Eng: %v", err)
+		return fmt.Errorf("failed to compute BC for Telecom without Senior Eng: %w", err)
 	}
 
 	noSeniorEngResult := AnalyseTelecomModel(noSeniorEngMeta, "Telecom (Without Senior Eng)", noSeniorEngBC)
@@ -285,4 +256,51 @@ func main() {
 	fmt.Println("=========================================================================")
 	fmt.Println(" Analysis Complete")
 	fmt.Println("=========================================================================")
+
+	return nil
+}
+
+// buildMultiLayerAnalysis builds filtered graph variants for multi-layer BC analysis.
+func buildMultiLayerAnalysis() ([]map[string]float64, []string, error) {
+	type layerSpec struct {
+		Label     string
+		DataDir   string
+		EdgeTypes []string
+	}
+	layers := []layerSpec{
+		{"Technical", "./data/layer_technical", []string{"TECHNICAL"}},
+		{"Tech+Human", "./data/layer_tech_human", []string{"TECHNICAL", "HUMAN_ACCESS"}},
+		{"Tech+Process", "./data/layer_tech_process", []string{"TECHNICAL", "PROCESS"}},
+	}
+
+	fmt.Println()
+	fmt.Println("Building multi-layer BC analysis (Things / People / Process / Composite)...")
+
+	layerBCByName := make([]map[string]float64, len(layers))
+	layerLabels := make([]string, len(layers))
+
+	for i, layer := range layers {
+		layerLabels[i] = layer.Label
+		meta, err := BuildStevesUtilityFiltered(layer.DataDir, layer.EdgeTypes)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to build %s layer: %w", layer.Label, err)
+		}
+
+		bc, err := algorithms.BetweennessCentrality(meta.Graph)
+		if err != nil {
+			meta.Graph.Close()
+			return nil, nil, fmt.Errorf("failed to compute BC for %s layer: %w", layer.Label, err)
+		}
+
+		bcByName := make(map[string]float64)
+		for nodeID, bcVal := range bc {
+			if name, ok := meta.NodeNames[nodeID]; ok {
+				bcByName[name] = bcVal
+			}
+		}
+		layerBCByName[i] = bcByName
+		meta.Graph.Close()
+	}
+
+	return layerBCByName, layerLabels, nil
 }

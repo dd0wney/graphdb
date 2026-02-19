@@ -3,88 +3,18 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 )
 
 // AnalyseTelecomModel computes BC and returns structured results for the telecom model.
-// This uses the unified Metadata and ModelResult types with telecom-specific options.
+// This wraps the unified Analyse function with telecom-specific options enabled.
 func AnalyseTelecomModel(meta *Metadata, modelName string, bc map[uint64]float64) ModelResult {
-	stats := meta.Graph.GetStatistics()
-
-	// Build sorted results
-	results := make([]BCResult, 0, len(bc))
-	for nodeID, bcValue := range bc {
-		results = append(results, BCResult{
-			Name:     meta.NodeNames[nodeID],
-			BC:       bcValue,
-			NodeType: meta.NodeTypes[nodeID],
-			Level:    meta.NodeLevels[nodeID],
-		})
-	}
-
-	// Sort by BC descending
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].BC > results[j].BC
+	return Analyse(meta, modelName, bc, AnalysisOptions{
+		IncludeTypeCounts:   true,
+		IncludeGatewayStats: true,
 	})
-
-	// Assign ranks
-	for i := range results {
-		results[i].Rank = i + 1
-	}
-
-	// Count nodes by type
-	typeCounts := make(map[string]int)
-	for _, nodeType := range meta.NodeTypes {
-		typeCounts[nodeType]++
-	}
-
-	// Calculate invisible node share (human + process, NOT external)
-	totalBC := 0.0
-	invisibleBC := 0.0
-	var topInvisible, topTechnical BCResult
-
-	for _, r := range results {
-		totalBC += r.BC
-		if r.NodeType == "human" || r.NodeType == "process" {
-			invisibleBC += r.BC
-			if topInvisible.Name == "" || r.BC > topInvisible.BC {
-				topInvisible = r
-			}
-		} else if r.NodeType == "technical" {
-			if topTechnical.Name == "" || r.BC > topTechnical.BC {
-				topTechnical = r
-			}
-		}
-	}
-
-	invisibleShare := 0.0
-	if totalBC > 0 {
-		invisibleShare = invisibleBC / totalBC
-	}
-
-	multiplier := 0.0
-	if topTechnical.BC > 0 {
-		multiplier = topInvisible.BC / topTechnical.BC
-	}
-
-	// Gateway analysis
-	gatewayAnalysis := analyseGateways(meta, bc, results)
-
-	return ModelResult{
-		ModelName:           modelName,
-		NodeCount:           int(stats.NodeCount),
-		EdgeCount:           int(stats.EdgeCount) / 2, // Divide by 2 for undirected
-		Rankings:            results,
-		InvisibleNodeShare:  invisibleShare,
-		NodeTypeCounts:      typeCounts,
-		TopInvisibleNode:    topInvisible.Name,
-		TopInvisibleBC:      topInvisible.BC,
-		TopTechnicalNode:    topTechnical.Name,
-		TopTechnicalBC:      topTechnical.BC,
-		InvisibleMultiplier: multiplier,
-		GatewayAnalysis:     gatewayAnalysis,
-	}
 }
 
 // analyseGateways computes BC and external node counts for each gateway
@@ -257,7 +187,7 @@ func PrintSeniorEngRemovalComparison(before ModelResult, after ModelResult) {
 
 	// Sort by absolute change
 	sort.Slice(changes, func(i, j int) bool {
-		return abs(changes[i].Delta) > abs(changes[j].Delta)
+		return math.Abs(changes[i].Delta) > math.Abs(changes[j].Delta)
 	})
 
 	fmt.Printf("%-28s %10s %10s %10s %10s\n", "Node", "Before", "After", "Change", "% Change")

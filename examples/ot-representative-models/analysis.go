@@ -4,13 +4,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strings"
 )
 
-// AnalyseModel computes betweenness centrality and returns structured results
-func AnalyseModel(meta *Metadata, modelName string, bc map[uint64]float64) ModelResult {
+// Analyse computes betweenness centrality and returns structured results.
+// Use opts to enable optional features like type counts and gateway analysis.
+func Analyse(meta *Metadata, modelName string, bc map[uint64]float64, opts AnalysisOptions) ModelResult {
 	stats := meta.Graph.GetStatistics()
 
 	// Build sorted results
@@ -63,7 +65,7 @@ func AnalyseModel(meta *Metadata, modelName string, bc map[uint64]float64) Model
 		multiplier = topInvisible.BC / topTechnical.BC
 	}
 
-	return ModelResult{
+	result := ModelResult{
 		ModelName:           modelName,
 		NodeCount:           int(stats.NodeCount),
 		EdgeCount:           int(stats.EdgeCount) / 2, // Divide by 2 since edges are bidirectional
@@ -75,6 +77,27 @@ func AnalyseModel(meta *Metadata, modelName string, bc map[uint64]float64) Model
 		TopTechnicalBC:      topTechnical.BC,
 		InvisibleMultiplier: multiplier,
 	}
+
+	// Optional: include node type counts
+	if opts.IncludeTypeCounts {
+		typeCounts := make(map[string]int)
+		for _, nodeType := range meta.NodeTypes {
+			typeCounts[nodeType]++
+		}
+		result.NodeTypeCounts = typeCounts
+	}
+
+	// Optional: include gateway analysis (telecom-specific)
+	if opts.IncludeGatewayStats {
+		result.GatewayAnalysis = analyseGateways(meta, bc, results)
+	}
+
+	return result
+}
+
+// AnalyseModel computes betweenness centrality with default options (no extras).
+func AnalyseModel(meta *Metadata, modelName string, bc map[uint64]float64) ModelResult {
+	return Analyse(meta, modelName, bc, AnalysisOptions{})
 }
 
 // PrintModelResults prints a formatted BC ranking report
@@ -171,7 +194,7 @@ func PrintSteveRemovalComparison(before, after ModelResult) {
 
 	// Sort by absolute change
 	sort.Slice(changes, func(i, j int) bool {
-		return abs(changes[i].Delta) > abs(changes[j].Delta)
+		return math.Abs(changes[i].Delta) > math.Abs(changes[j].Delta)
 	})
 
 	fmt.Printf("%-28s %10s %10s %10s %10s\n", "Node", "Before", "After", "Change", "% Change")
@@ -373,7 +396,7 @@ func PrintMultiLayerAnalysis(compositeResult ModelResult, layerBCByName []map[st
 			// Technical node suppressed — figure out which layer causes it
 			humanEffect := techHumanBC - techBC
 			processEffect := techProcessBC - techBC
-			if abs(humanEffect) > abs(processEffect) {
+			if math.Abs(humanEffect) > math.Abs(processEffect) {
 				interpretation = fmt.Sprintf("← people suppress %.0f%%", (e.Delta/techBC)*100)
 			} else {
 				interpretation = fmt.Sprintf("← process suppresses %.0f%%", (e.Delta/techBC)*100)
@@ -386,7 +409,7 @@ func PrintMultiLayerAnalysis(compositeResult ModelResult, layerBCByName []map[st
 			} else {
 				interpretation = fmt.Sprintf("← process amplifies +%.0f%%", (e.Delta/techBC)*100)
 			}
-		case techBC > 0.001 && abs(e.Delta) <= 0.01:
+		case techBC > 0.001 && math.Abs(e.Delta) <= 0.01:
 			interpretation = "← stable across layers"
 		case techBC < 0.001 && e.CompBC > 0.001:
 			interpretation = "← only visible with human/process edges"
@@ -446,12 +469,4 @@ func ExportResultsJSON(results AllResults, filename string) error {
 	}
 
 	return nil
-}
-
-// Helper function for absolute value
-func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
 }
