@@ -33,11 +33,12 @@ type ModelResult struct {
 
 // AllResults contains results from all models
 type AllResults struct {
-	StevesUtility    ModelResult `json:"steves_utility"`
-	StevesRemoval    ModelResult `json:"steves_utility_without_steve"`
-	ChemicalFacility ModelResult `json:"chemical_facility"`
-	WaterFlat        ModelResult `json:"water_treatment_flat"`
-	WaterVLAN        ModelResult `json:"water_treatment_vlan"`
+	StevesUtility    ModelResult    `json:"steves_utility"`
+	StevesRemoval    ModelResult    `json:"steves_utility_without_steve"`
+	ChemicalFacility ModelResult    `json:"chemical_facility"`
+	WaterFlat        ModelResult    `json:"water_treatment_flat"`
+	WaterVLAN        ModelResult    `json:"water_treatment_vlan"`
+	TelecomProvider  *TelecomResult `json:"telecom_provider,omitempty"`
 }
 
 // AnalyseModel computes betweenness centrality and returns structured results
