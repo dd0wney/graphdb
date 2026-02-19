@@ -7,41 +7,9 @@ import (
 	"strings"
 )
 
-// TelecomResult holds complete analysis results for the telecom model
-type TelecomResult struct {
-	ModelName           string              `json:"model_name"`
-	NodeCount           int                 `json:"node_count"`
-	EdgeCount           int                 `json:"edge_count"`
-	Rankings            []BCResult          `json:"rankings"`
-	InvisibleNodeShare  float64             `json:"invisible_node_share"`
-	NodeTypeCounts      map[string]int      `json:"node_type_counts"`
-	TopInvisibleNode    string              `json:"top_invisible_node,omitempty"`
-	TopInvisibleBC      float64             `json:"top_invisible_bc,omitempty"`
-	TopTechnicalNode    string              `json:"top_technical_node,omitempty"`
-	TopTechnicalBC      float64             `json:"top_technical_bc,omitempty"`
-	InvisibleMultiplier float64             `json:"invisible_multiplier,omitempty"`
-	GatewayAnalysis     []GatewayResult     `json:"gateway_analysis"`
-	CascadeFailures     []CascadeResult     `json:"cascade_failures,omitempty"`
-}
-
-// GatewayResult holds BC analysis for sector gateways
-type GatewayResult struct {
-	Name              string   `json:"name"`
-	BC                float64  `json:"bc"`
-	ExternalNodeCount int      `json:"external_node_count"`
-	ExternalNodes     []string `json:"external_nodes"`
-}
-
-// CascadeResult holds cascade failure analysis for a node
-type CascadeResult struct {
-	NodeName          string              `json:"node_name"`
-	SectorsAffected   int                 `json:"sectors_affected"`
-	ExternalNodesLost int                 `json:"external_nodes_lost"`
-	SectorDetails     map[string][]string `json:"sector_details"`
-}
-
-// AnalyseTelecomModel computes BC and returns structured results for the telecom model
-func AnalyseTelecomModel(meta *TelecomMetadata, modelName string, bc map[uint64]float64) TelecomResult {
+// AnalyseTelecomModel computes BC and returns structured results for the telecom model.
+// This uses the unified Metadata and ModelResult types with telecom-specific options.
+func AnalyseTelecomModel(meta *Metadata, modelName string, bc map[uint64]float64) ModelResult {
 	stats := meta.Graph.GetStatistics()
 
 	// Build sorted results
@@ -103,7 +71,7 @@ func AnalyseTelecomModel(meta *TelecomMetadata, modelName string, bc map[uint64]
 	// Gateway analysis
 	gatewayAnalysis := analyseGateways(meta, bc, results)
 
-	return TelecomResult{
+	return ModelResult{
 		ModelName:           modelName,
 		NodeCount:           int(stats.NodeCount),
 		EdgeCount:           int(stats.EdgeCount) / 2, // Divide by 2 for undirected
@@ -120,7 +88,7 @@ func AnalyseTelecomModel(meta *TelecomMetadata, modelName string, bc map[uint64]
 }
 
 // analyseGateways computes BC and external node counts for each gateway
-func analyseGateways(meta *TelecomMetadata, bc map[uint64]float64, rankings []BCResult) []GatewayResult {
+func analyseGateways(meta *Metadata, bc map[uint64]float64, rankings []BCResult) []GatewayResult {
 	// Define gateway to external node mappings
 	gatewayExternalNodes := map[string][]string{
 		"Gateway_Banking": {
@@ -174,7 +142,7 @@ func analyseGateways(meta *TelecomMetadata, bc map[uint64]float64, rankings []BC
 }
 
 // PrintTelecomResults prints formatted BC ranking for the telecom model
-func PrintTelecomResults(result TelecomResult, topN int) {
+func PrintTelecomResults(result ModelResult, topN int) {
 	fmt.Println()
 	fmt.Println("========================================================================")
 	fmt.Printf("MODEL 4: %s (%d nodes, %d undirected edges)\n", result.ModelName, result.NodeCount, result.EdgeCount)
@@ -227,7 +195,7 @@ func PrintTelecomResults(result TelecomResult, topN int) {
 }
 
 // PrintGatewayAnalysis prints cross-sector gateway BC analysis
-func PrintGatewayAnalysis(result TelecomResult) {
+func PrintGatewayAnalysis(result ModelResult) {
 	fmt.Println()
 	fmt.Println("--- Cross-Sector Gateway BC ---")
 	for _, gw := range result.GatewayAnalysis {
@@ -236,7 +204,7 @@ func PrintGatewayAnalysis(result TelecomResult) {
 }
 
 // PrintSeniorEngRemovalComparison compares BC before and after removing Senior_Network_Eng
-func PrintSeniorEngRemovalComparison(before TelecomResult, after TelecomResult) {
+func PrintSeniorEngRemovalComparison(before ModelResult, after ModelResult) {
 	fmt.Println()
 	fmt.Println("========================================================================")
 	fmt.Println("SENIOR NETWORK ENGINEER REMOVAL ANALYSIS")
@@ -319,7 +287,7 @@ func PrintSeniorEngRemovalComparison(before TelecomResult, after TelecomResult) 
 }
 
 // AnalyseCascadeFailures tests which internal node failures disconnect external sectors
-func AnalyseCascadeFailures(meta *TelecomMetadata) []CascadeResult {
+func AnalyseCascadeFailures(meta *Metadata) []CascadeResult {
 	// This is a simplified analysis that identifies which gateways are single points
 	// of failure for their sectors. A full implementation would rebuild the graph
 	// for each node removal and test connectivity.
@@ -453,7 +421,7 @@ func PrintCascadeFailureAnalysis(cascades []CascadeResult) {
 }
 
 // PrintTelecomFinalSummary prints the final summary for Model 4
-func PrintTelecomFinalSummary(result TelecomResult, cascades []CascadeResult) {
+func PrintTelecomFinalSummary(result ModelResult, cascades []CascadeResult) {
 	fmt.Println()
 	fmt.Println("--- Model 4 Key Findings ---")
 	fmt.Println()

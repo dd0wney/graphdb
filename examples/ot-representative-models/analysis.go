@@ -9,41 +9,8 @@ import (
 	"strings"
 )
 
-// BCResult holds betweenness centrality results for a single node
-type BCResult struct {
-	Name     string  `json:"name"`
-	BC       float64 `json:"bc"`
-	NodeType string  `json:"node_type"`
-	Level    string  `json:"level"`
-	Rank     int     `json:"rank"`
-}
-
-// ModelResult holds complete analysis results for a model
-type ModelResult struct {
-	ModelName           string     `json:"model_name"`
-	NodeCount           int        `json:"node_count"`
-	EdgeCount           int        `json:"edge_count"`
-	Rankings            []BCResult `json:"rankings"`
-	InvisibleNodeShare  float64    `json:"invisible_node_share"`
-	TopInvisibleNode    string     `json:"top_invisible_node,omitempty"`
-	TopInvisibleBC      float64    `json:"top_invisible_bc,omitempty"`
-	TopTechnicalNode    string     `json:"top_technical_node,omitempty"`
-	TopTechnicalBC      float64    `json:"top_technical_bc,omitempty"`
-	InvisibleMultiplier float64    `json:"invisible_multiplier,omitempty"`
-}
-
-// AllResults contains results from all models
-type AllResults struct {
-	StevesUtility    ModelResult    `json:"steves_utility"`
-	StevesRemoval    ModelResult    `json:"steves_utility_without_steve"`
-	ChemicalFacility ModelResult    `json:"chemical_facility"`
-	WaterFlat        ModelResult    `json:"water_treatment_flat"`
-	WaterVLAN        ModelResult    `json:"water_treatment_vlan"`
-	TelecomProvider  *TelecomResult `json:"telecom_provider,omitempty"`
-}
-
 // AnalyseModel computes betweenness centrality and returns structured results
-func AnalyseModel(meta *ModelMetadata, modelName string, bc map[uint64]float64) ModelResult {
+func AnalyseModel(meta *Metadata, modelName string, bc map[uint64]float64) ModelResult {
 	stats := meta.Graph.GetStatistics()
 
 	// Build sorted results
@@ -246,7 +213,7 @@ func PrintVLANComparison(flat, vlan ModelResult) {
 	flatMaxSwitch := 0.0
 	flatMaxName := ""
 	for _, r := range flat.Rankings {
-		if containsLabel(r.Level, "Flat") && containsLabel(r.Name, "Switch") {
+		if strings.Contains(r.Level, "Flat") && strings.Contains(r.Name, "Switch") {
 			if r.BC > flatMaxSwitch {
 				flatMaxSwitch = r.BC
 				flatMaxName = r.Name
@@ -257,7 +224,7 @@ func PrintVLANComparison(flat, vlan ModelResult) {
 	vlanMaxSwitch := 0.0
 	vlanMaxName := ""
 	for _, r := range vlan.Rankings {
-		if containsLabel(r.Name, "Switch") || containsLabel(r.Name, "Core") {
+		if strings.Contains(r.Name, "Switch") || strings.Contains(r.Name, "Core") {
 			if r.BC > vlanMaxSwitch {
 				vlanMaxSwitch = r.BC
 				vlanMaxName = r.Name
@@ -474,7 +441,7 @@ func ExportResultsJSON(results AllResults, filename string) error {
 		return fmt.Errorf("failed to marshal results: %w", err)
 	}
 
-	if err := os.WriteFile(filename, data, 0644); err != nil {
+	if err := os.WriteFile(filename, data, 0600); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
@@ -487,18 +454,4 @@ func abs(x float64) float64 {
 		return -x
 	}
 	return x
-}
-
-// Helper function to check if string contains substring
-func containsLabel(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
