@@ -140,14 +140,23 @@ func PrintModelResults(result ModelResult, topN int) {
 	}
 }
 
-// PrintSteveRemovalComparison compares BC before and after removing Steve
-func PrintSteveRemovalComparison(before, after ModelResult) {
+// RemovalConfig holds configuration for node removal comparison output.
+type RemovalConfig struct {
+	Title       string // e.g., "STEVE REMOVAL ANALYSIS"
+	Question    string // e.g., "What happens when Steve leaves?"
+	RemovedNode string // e.g., "Steve"
+	RemovedRank string // e.g., "rank #1"
+	Insight     string // Multi-line key insight text
+}
+
+// PrintRemovalComparison compares BC before and after removing a node.
+func PrintRemovalComparison(before, after ModelResult, cfg RemovalConfig) {
 	fmt.Println()
 	fmt.Println("========================================================================")
-	fmt.Println("STEVE REMOVAL ANALYSIS")
+	fmt.Println(cfg.Title)
 	fmt.Println("========================================================================")
 	fmt.Println()
-	fmt.Println("What happens when Steve leaves?")
+	fmt.Println(cfg.Question)
 	fmt.Println()
 
 	// Build lookup maps
@@ -156,23 +165,16 @@ func PrintSteveRemovalComparison(before, after ModelResult) {
 		beforeMap[r.Name] = r.BC
 	}
 
-	afterMap := make(map[string]float64)
-	for _, r := range after.Rankings {
-		afterMap[r.Name] = r.BC
-	}
-
 	// Calculate changes
-	type Change struct {
-		Name      string
-		Before    float64
-		After     float64
-		Delta     float64
-		DeltaPct  float64
-		NodeType  string
-		Increased bool
+	type change struct {
+		Name     string
+		Before   float64
+		After    float64
+		Delta    float64
+		DeltaPct float64
 	}
 
-	changes := make([]Change, 0)
+	changes := make([]change, 0, len(after.Rankings))
 	for _, r := range after.Rankings {
 		beforeBC := beforeMap[r.Name]
 		afterBC := r.BC
@@ -181,14 +183,12 @@ func PrintSteveRemovalComparison(before, after ModelResult) {
 		if beforeBC > 0 {
 			deltaPct = (delta / beforeBC) * 100
 		}
-		changes = append(changes, Change{
-			Name:      r.Name,
-			Before:    beforeBC,
-			After:     afterBC,
-			Delta:     delta,
-			DeltaPct:  deltaPct,
-			NodeType:  r.NodeType,
-			Increased: delta > 0,
+		changes = append(changes, change{
+			Name:     r.Name,
+			Before:   beforeBC,
+			After:    afterBC,
+			Delta:    delta,
+			DeltaPct: deltaPct,
 		})
 	}
 
@@ -216,10 +216,21 @@ func PrintSteveRemovalComparison(before, after ModelResult) {
 	}
 
 	fmt.Println()
-	fmt.Printf("Steve's BC before removal:   %.4f (rank #1)\n", beforeMap["Steve"])
+	fmt.Printf("%s BC before removal: %.4f (%s)\n", cfg.RemovedNode, beforeMap[cfg.RemovedNode], cfg.RemovedRank)
 	fmt.Println()
-	fmt.Println("Key insight: When Steve leaves, work redistributes to technical systems")
-	fmt.Println("that now become single points of failure. The organisation had no backup.")
+	fmt.Println(cfg.Insight)
+}
+
+// PrintSteveRemovalComparison compares BC before and after removing Steve.
+func PrintSteveRemovalComparison(before, after ModelResult) {
+	PrintRemovalComparison(before, after, RemovalConfig{
+		Title:       "STEVE REMOVAL ANALYSIS",
+		Question:    "What happens when Steve leaves?",
+		RemovedNode: "Steve",
+		RemovedRank: "rank #1",
+		Insight: "Key insight: When Steve leaves, work redistributes to technical systems\n" +
+			"that now become single points of failure. The organisation had no backup.",
+	})
 }
 
 // PrintVLANComparison compares flat vs VLAN network topologies

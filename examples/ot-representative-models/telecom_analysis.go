@@ -3,7 +3,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 )
@@ -133,87 +132,17 @@ func PrintGatewayAnalysis(result ModelResult) {
 	}
 }
 
-// PrintSeniorEngRemovalComparison compares BC before and after removing Senior_Network_Eng
+// PrintSeniorEngRemovalComparison compares BC before and after removing Senior_Network_Eng.
 func PrintSeniorEngRemovalComparison(before ModelResult, after ModelResult) {
-	fmt.Println()
-	fmt.Println("========================================================================")
-	fmt.Println("SENIOR NETWORK ENGINEER REMOVAL ANALYSIS")
-	fmt.Println("========================================================================")
-	fmt.Println()
-	fmt.Println("What happens when the Senior Network Engineer leaves?")
-	fmt.Println()
-
-	// Build lookup maps
-	beforeMap := make(map[string]float64)
-	for _, r := range before.Rankings {
-		beforeMap[r.Name] = r.BC
-	}
-
-	afterMap := make(map[string]float64)
-	for _, r := range after.Rankings {
-		afterMap[r.Name] = r.BC
-	}
-
-	// Calculate changes
-	type Change struct {
-		Name      string
-		Before    float64
-		After     float64
-		Delta     float64
-		DeltaPct  float64
-		NodeType  string
-		Increased bool
-	}
-
-	changes := make([]Change, 0)
-	for _, r := range after.Rankings {
-		beforeBC := beforeMap[r.Name]
-		afterBC := r.BC
-		delta := afterBC - beforeBC
-		deltaPct := 0.0
-		if beforeBC > 0 {
-			deltaPct = (delta / beforeBC) * 100
-		}
-		changes = append(changes, Change{
-			Name:      r.Name,
-			Before:    beforeBC,
-			After:     afterBC,
-			Delta:     delta,
-			DeltaPct:  deltaPct,
-			NodeType:  r.NodeType,
-			Increased: delta > 0,
-		})
-	}
-
-	// Sort by absolute change
-	sort.Slice(changes, func(i, j int) bool {
-		return math.Abs(changes[i].Delta) > math.Abs(changes[j].Delta)
+	PrintRemovalComparison(before, after, RemovalConfig{
+		Title:       "SENIOR NETWORK ENGINEER REMOVAL ANALYSIS",
+		Question:    "What happens when the Senior Network Engineer leaves?",
+		RemovedNode: "Senior_Network_Eng",
+		RemovedRank: "rank #2",
+		Insight: "Key insight: When the senior engineer leaves, BC redistributes to\n" +
+			"technical infrastructure and remaining human nodes. The CAB process\n" +
+			"sees massive increase as it becomes the primary coordination point.",
 	})
-
-	fmt.Printf("%-28s %10s %10s %10s %10s\n", "Node", "Before", "After", "Change", "% Change")
-	fmt.Println("---------------------------------------------------------------------------")
-
-	displayCount := 10
-	if displayCount > len(changes) {
-		displayCount = len(changes)
-	}
-
-	for i := 0; i < displayCount; i++ {
-		c := changes[i]
-		sign := ""
-		if c.Delta > 0 {
-			sign = "+"
-		}
-		fmt.Printf("%-28s %10.4f %10.4f %s%9.4f %s%9.1f%%\n",
-			c.Name, c.Before, c.After, sign, c.Delta, sign, c.DeltaPct)
-	}
-
-	fmt.Println()
-	fmt.Printf("Senior_Network_Eng BC before removal: %.4f (rank #2)\n", beforeMap["Senior_Network_Eng"])
-	fmt.Println()
-	fmt.Println("Key insight: When the senior engineer leaves, BC redistributes to")
-	fmt.Println("technical infrastructure and remaining human nodes. The CAB process")
-	fmt.Println("sees massive increase as it becomes the primary coordination point.")
 }
 
 // AnalyseCascadeFailures tests which internal node failures disconnect external sectors
