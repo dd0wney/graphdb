@@ -1,7 +1,11 @@
 package admin
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -400,4 +404,386 @@ func hasSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// --- NewUpgradeManager Tests ---
+
+func TestNewUpgradeManager(t *testing.T) {
+	storage := &storage.GraphStorage{}
+	config := UpgradeConfig{ReplicationPort: 9090}
+
+	um := NewUpgradeManager(storage, nil, nil, true, config)
+
+	if um == nil {
+		t.Fatal("NewUpgradeManager returned nil")
+	}
+	if um.storage != storage {
+		t.Error("storage not set correctly")
+	}
+	if !um.isPrimary {
+		t.Error("isPrimary should be true")
+	}
+	if um.config.ReplicationPort != 9090 {
+		t.Errorf("ReplicationPort = %d, want 9090", um.config.ReplicationPort)
+	}
+}
+
+func TestNewUpgradeManager_DefaultPort(t *testing.T) {
+	// When port is 0, should default to 9090
+	config := UpgradeConfig{ReplicationPort: 0}
+
+	um := NewUpgradeManager(&storage.GraphStorage{}, nil, nil, false, config)
+
+	if um.config.ReplicationPort != 9090 {
+		t.Errorf("ReplicationPort = %d, want default 9090", um.config.ReplicationPort)
+	}
+}
+
+func TestNewUpgradeManager_WithReplica(t *testing.T) {
+	mockReplica := &mockReplicaNode{
+		replicaStatus: replication.ReplicaStatusInfo{
+			ReplicaID: "replica-1",
+		},
+	}
+	config := UpgradeConfig{ReplicationPort: 9091}
+
+	um := NewUpgradeManager(&storage.GraphStorage{}, nil, mockReplica, false, config)
+
+	if um.replica == nil {
+		t.Error("replica should be set")
+	}
+	if um.isPrimary {
+		t.Error("isPrimary should be false")
+	}
+}
+
+// --- SetElectionManager Tests ---
+
+func TestSetElectionManager_Enable(t *testing.T) {
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: true,
+	}
+
+	// Since ElectionManager requires actual cluster setup, test with nil
+	// to verify the disable path
+	um.SetElectionManager(nil)
+
+	if um.clusterEnabled {
+		t.Error("clusterEnabled should be false when electionMgr is nil")
+	}
+	if um.electionMgr != nil {
+		t.Error("electionMgr should be nil")
+	}
+}
+
+// --- HTTP Handler Tests ---
+
+func TestRegisterHandlers(t *testing.T) {
+	// Use standalone mode (no replica, not primary) to avoid nil pointer
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: false,
+		replica:   nil, // standalone mode
+		config:    UpgradeConfig{ReplicationPort: 9090},
+	}
+
+	mux := http.NewServeMux()
+	um.RegisterHandlers(mux)
+
+	// Test status endpoint (should work in standalone mode)
+	req := httptest.NewRequest(http.MethodGet, "/admin/upgrade/status", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code == http.StatusNotFound {
+		t.Error("Handler not registered for /admin/upgrade/status")
+	}
+
+	// Test promote with wrong method (verifies registration)
+	req = httptest.NewRequest(http.MethodGet, "/admin/upgrade/promote", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code == http.StatusNotFound {
+		t.Error("Handler not registered for /admin/upgrade/promote")
+	}
+
+	// Test stepdown with wrong method (verifies registration)
+	req = httptest.NewRequest(http.MethodGet, "/admin/upgrade/stepdown", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code == http.StatusNotFound {
+		t.Error("Handler not registered for /admin/upgrade/stepdown")
+	}
+}
+
+func TestHandleUpgradeStatus_Success(t *testing.T) {
+	// Test in standalone mode to avoid nil replication pointer
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: false,
+		replica:   nil, // standalone mode
+		config:    UpgradeConfig{ReplicationPort: 9090},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/upgrade/status", nil)
+	w := httptest.NewRecorder()
+
+	um.handleUpgradeStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("handleUpgradeStatus() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", contentType)
+	}
+
+	var status UpgradeStatus
+	if err := json.NewDecoder(w.Body).Decode(&status); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if status.CurrentRole != "standalone" {
+		t.Errorf("CurrentRole = %q, want standalone", status.CurrentRole)
+	}
+	if status.Phase != "standalone" {
+		t.Errorf("Phase = %q, want standalone", status.Phase)
+	}
+}
+
+func TestHandleUpgradeStatus_ReplicaMode(t *testing.T) {
+	mockReplica := &mockReplicaNode{
+		replicaStatus: replication.ReplicaStatusInfo{
+			ReplicaID:        "replica-1",
+			PrimaryID:        "primary-123",
+			Connected:        true,
+			LastAppliedLSN:   1000,
+			LastHeartbeatSeq: 10,
+			Timestamp:        time.Now(),
+		},
+	}
+
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: false,
+		replica:   mockReplica,
+		config:    UpgradeConfig{ReplicationPort: 9090},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/upgrade/status", nil)
+	w := httptest.NewRecorder()
+
+	um.handleUpgradeStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("handleUpgradeStatus() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var status UpgradeStatus
+	if err := json.NewDecoder(w.Body).Decode(&status); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if status.CurrentRole != "replica" {
+		t.Errorf("CurrentRole = %q, want replica", status.CurrentRole)
+	}
+	if status.Phase != "replica_running" {
+		t.Errorf("Phase = %q, want replica_running", status.Phase)
+	}
+}
+
+func TestHandleUpgradeStatus_MethodNotAllowed(t *testing.T) {
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: false,
+		replica:   nil, // standalone mode
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/upgrade/status", nil)
+	w := httptest.NewRecorder()
+
+	um.handleUpgradeStatus(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("handleUpgradeStatus() status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestHandlePromote_MethodNotAllowed(t *testing.T) {
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: false,
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/upgrade/promote", nil)
+	w := httptest.NewRecorder()
+
+	um.handlePromote(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("handlePromote() status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestHandlePromote_Success(t *testing.T) {
+	mockReplica := &mockReplicaNode{
+		replicaStatus: replication.ReplicaStatusInfo{
+			ReplicaID:        "replica-1",
+			PrimaryID:        "primary-123",
+			Connected:        true,
+			LastAppliedLSN:   1000,
+			LastHeartbeatSeq: 10,
+			Timestamp:        time.Now(),
+		},
+		lagLSN: 0,
+	}
+
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: false,
+		replica:   mockReplica,
+		config:    UpgradeConfig{ReplicationPort: 0},
+	}
+
+	body := bytes.NewBufferString(`{"wait_for_sync": false, "timeout": 5000000000}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/upgrade/promote", body)
+	w := httptest.NewRecorder()
+
+	um.handlePromote(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("handlePromote() status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp PromoteResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if !resp.Success {
+		t.Errorf("Response success = %v, want true", resp.Success)
+	}
+}
+
+func TestHandlePromote_AlreadyPrimary(t *testing.T) {
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: true,
+		config:    UpgradeConfig{ReplicationPort: 9090},
+	}
+
+	body := bytes.NewBufferString(`{}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/upgrade/promote", body)
+	w := httptest.NewRecorder()
+
+	um.handlePromote(w, req)
+
+	// Should return error status since already primary
+	if w.Code == http.StatusOK {
+		t.Error("handlePromote() should fail for primary node")
+	}
+}
+
+func TestHandleStepDown_MethodNotAllowed(t *testing.T) {
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: true,
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/upgrade/stepdown", nil)
+	w := httptest.NewRecorder()
+
+	um.handleStepDown(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("handleStepDown() status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestHandleStepDown_InvalidBody(t *testing.T) {
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: true,
+	}
+
+	body := bytes.NewBufferString(`invalid json`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/upgrade/stepdown", body)
+	w := httptest.NewRecorder()
+
+	um.handleStepDown(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("handleStepDown() status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleStepDown_MissingNewPrimaryID(t *testing.T) {
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: true,
+	}
+
+	body := bytes.NewBufferString(`{"timeout": 5000000000}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/upgrade/stepdown", body)
+	w := httptest.NewRecorder()
+
+	um.handleStepDown(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("handleStepDown() status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleStepDown_NotPrimary(t *testing.T) {
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: false,
+		config:    UpgradeConfig{ReplicationPort: 9090},
+	}
+
+	body := bytes.NewBufferString(`{"new_primary_id": "new-primary-addr:9090"}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/upgrade/stepdown", body)
+	w := httptest.NewRecorder()
+
+	um.handleStepDown(w, req)
+
+	// Should return error status since not primary
+	if w.Code == http.StatusOK {
+		t.Error("handleStepDown() should fail for non-primary node")
+	}
+}
+
+func TestHandlePromote_NoBody(t *testing.T) {
+	mockReplica := &mockReplicaNode{
+		replicaStatus: replication.ReplicaStatusInfo{
+			ReplicaID:        "replica-1",
+			PrimaryID:        "primary-123",
+			Connected:        true,
+			LastAppliedLSN:   1000,
+			LastHeartbeatSeq: 10,
+			Timestamp:        time.Now(),
+		},
+		lagLSN: 0,
+	}
+
+	um := &UpgradeManager{
+		storage:   &storage.GraphStorage{},
+		isPrimary: false,
+		replica:   mockReplica,
+		config:    UpgradeConfig{ReplicationPort: 0},
+	}
+
+	// Empty body - should use defaults
+	req := httptest.NewRequest(http.MethodPost, "/admin/upgrade/promote", nil)
+	w := httptest.NewRecorder()
+
+	um.handlePromote(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("handlePromote() status = %d, want %d", w.Code, http.StatusOK)
+	}
 }
