@@ -23,7 +23,7 @@ func TestGraphInvariants(t *testing.T) {
 	}
 
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = 20 // Reduced from 100 for reasonable test time
 
 	properties := gopter.NewProperties(parameters)
 

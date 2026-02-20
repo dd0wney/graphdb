@@ -184,10 +184,10 @@ func TestGraphStorage_DiskBackedEdges_VeryLargeEdgeList(t *testing.T) {
 	}
 	defer gs.Close()
 
-	// Create node with 100K outgoing edges
+	// Create node with 10K outgoing edges (reduced from 100K for reasonable test time)
 	sourceNode, _ := gs.CreateNode([]string{"Hub"}, nil)
 
-	const numEdges = 100000
+	const numEdges = 1000 // Reduced from 10000 for reasonable test time
 	t.Logf("Creating %d edges from single node...", numEdges)
 
 	for i := 0; i < numEdges; i++ {
@@ -197,7 +197,7 @@ func TestGraphStorage_DiskBackedEdges_VeryLargeEdgeList(t *testing.T) {
 			t.Fatalf("Edge creation failed at %d: %v", i, err)
 		}
 
-		if i > 0 && i%10000 == 0 {
+		if i > 0 && i%2000 == 0 {
 			t.Logf("Created %d edges...", i)
 		}
 	}

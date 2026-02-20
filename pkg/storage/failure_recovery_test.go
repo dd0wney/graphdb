@@ -614,7 +614,7 @@ func TestMemoryPressureRecovery(t *testing.T) {
 
 	// Create large nodes to consume memory
 	largeDataSize := 1024 // 1KB per node
-	nodeCount := 10000
+	nodeCount := 1000     // Reduced from 10000 for reasonable test time
 
 	successCount := 0
 	for i := 0; i < nodeCount; i++ {

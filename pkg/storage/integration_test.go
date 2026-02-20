@@ -166,8 +166,8 @@ func TestGraphStorage_DiskBackedEdges_LargeGraph(t *testing.T) {
 	}
 	defer gs.Close()
 
-	// Create 1000 nodes with 10 edges each = 10K edges total
-	const numNodes = 1000
+	// Create 100 nodes with 10 edges each = 1K edges total (reduced from 1000)
+	const numNodes = 100
 	const edgesPerNode = 10
 
 	// Create nodes

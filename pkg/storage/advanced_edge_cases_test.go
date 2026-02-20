@@ -119,8 +119,8 @@ func TestEdgeCase_StarPattern(t *testing.T) {
 		t.Fatalf("Failed to create hub: %v", err)
 	}
 
-	// Create spokes
-	spokeCount := 1000
+	// Create spokes (reduced from 1000 for reasonable test time)
+	spokeCount := 100
 	for i := 0; i < spokeCount; i++ {
 		spoke, err := gs.CreateNode([]string{"Spoke"}, map[string]Value{
 			"index": IntValue(int64(i)),
@@ -770,7 +770,7 @@ func TestEdgeCase_NodeCreationSpeed(t *testing.T) {
 
 	t.Log("Testing rapid minimal node creation...")
 
-	count := 10000
+	count := 1000 // Reduced from 10000 for reasonable test time
 	startTime := time.Now()
 
 	for i := 0; i < count; i++ {

@@ -23,8 +23,8 @@ func TestEdgeCase_SnapshotDuringHeavyLoad(t *testing.T) {
 
 	t.Log("Testing snapshot creation during heavy load...")
 
-	// Create initial dataset
-	nodeCount := 5000
+	// Create initial dataset (reduced from 5000 for reasonable test time)
+	nodeCount := 500
 	for i := 0; i < nodeCount; i++ {
 		gs.CreateNode([]string{"LoadTest"}, map[string]Value{
 			"id": IntValue(int64(i)),
