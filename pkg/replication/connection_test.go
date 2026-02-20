@@ -197,3 +197,52 @@ func TestManagedWaitGroup_MultipleGo(t *testing.T) {
 		t.Errorf("Expected counter to be 10, got %d", counter)
 	}
 }
+
+// --- Additional coverage for Add and Done methods ---
+
+func TestManagedWaitGroup_AddAndDone(t *testing.T) {
+	mwg := &ManagedWaitGroup{}
+
+	// Manually test Add and Done
+	mwg.Add(1)
+	done := make(chan struct{})
+
+	go func() {
+		defer mwg.Done()
+		close(done)
+	}()
+
+	mwg.Wait()
+
+	select {
+	case <-done:
+		// Success
+	default:
+		t.Error("Expected goroutine to have run")
+	}
+}
+
+func TestManagedWaitGroup_AddMultipleDone(t *testing.T) {
+	mwg := &ManagedWaitGroup{}
+
+	// Add multiple
+	mwg.Add(3)
+
+	var counter int64
+	var mu sync.Mutex
+
+	for i := 0; i < 3; i++ {
+		go func() {
+			defer mwg.Done()
+			mu.Lock()
+			counter++
+			mu.Unlock()
+		}()
+	}
+
+	mwg.Wait()
+
+	if counter != 3 {
+		t.Errorf("Expected counter to be 3, got %d", counter)
+	}
+}

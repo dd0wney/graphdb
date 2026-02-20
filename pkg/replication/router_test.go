@@ -234,3 +234,80 @@ func TestMessageBuilderShortcuts(t *testing.T) {
 		})
 	}
 }
+
+// --- Additional coverage tests ---
+
+func TestMessageRouter_SetLogger(t *testing.T) {
+	router := NewMessageRouter()
+
+	// Should handle nil logger without panic
+	router.SetLogger(nil)
+
+	// Verify setting logger doesn't break dispatch
+	router.Handle(MsgHeartbeat, func(data []byte) error { return nil })
+	msg, _ := NewMessage(MsgHeartbeat, HeartbeatMessage{From: "test"})
+	if err := router.Dispatch(msg); err != nil {
+		t.Errorf("Dispatch failed after SetLogger: %v", err)
+	}
+}
+
+func TestMessageRouter_DispatchWithLogger(t *testing.T) {
+	router := NewMessageRouter()
+
+	// Set a logger so the logging path is exercised
+	router.SetLogger(nil) // nil is allowed, just no output
+
+	expectedErr := errors.New("logged error")
+	router.Handle(MsgHeartbeat, func(data []byte) error {
+		return expectedErr
+	})
+
+	msg, _ := NewMessage(MsgHeartbeat, HeartbeatMessage{From: "test"})
+	err := router.Dispatch(msg)
+	if !errors.Is(err, expectedErr) {
+		t.Errorf("Expected error %v, got %v", expectedErr, err)
+	}
+}
+
+func TestMessageRouter_DispatchRaw_InvalidJSON(t *testing.T) {
+	router := NewMessageRouter()
+
+	// Dispatch raw data that is not valid JSON
+	err := router.DispatchRaw([]byte("not valid json"))
+	if err == nil {
+		t.Error("Expected error for invalid JSON")
+	}
+}
+
+func TestHandleFunc_DecodeError(t *testing.T) {
+	router := NewMessageRouter()
+
+	HandleFunc(router, MsgHeartbeat, func(hb *HeartbeatMessage) error {
+		return nil
+	})
+
+	// Create a message with mismatched data type
+	msg := &Message{
+		Type: MsgHeartbeat,
+		Data: []byte(`"not a heartbeat object"`), // String instead of object
+	}
+
+	err := router.Dispatch(msg)
+	if err == nil {
+		t.Error("Expected error when decoding mismatched data type")
+	}
+}
+
+func TestMessageBuilder_MustBuild_Panic(t *testing.T) {
+	// Test that MustBuild panics on unmarshalable data
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected MustBuild to panic on unmarshalable data")
+		}
+	}()
+
+	// Create data that cannot be marshaled to JSON
+	// A channel cannot be marshaled
+	ch := make(chan int)
+	Heartbeat().WithData(ch).MustBuild()
+}
