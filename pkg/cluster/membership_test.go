@@ -340,6 +340,121 @@ func TestTermManagement(t *testing.T) {
 	}
 }
 
+// --- NodeRole.String() Tests ---
+
+func TestNodeRole_String(t *testing.T) {
+	tests := []struct {
+		role     NodeRole
+		expected string
+	}{
+		{RoleReplica, "replica"},
+		{RoleCandidate, "candidate"},
+		{RolePrimary, "primary"},
+		{NodeRole(99), "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			if got := tt.role.String(); got != tt.expected {
+				t.Errorf("NodeRole(%d).String() = %q, want %q", tt.role, got, tt.expected)
+			}
+		})
+	}
+}
+
+// --- GetNodesByRole Tests ---
+
+func TestGetNodesByRole(t *testing.T) {
+	membership := NewClusterMembership("node-1", "localhost:9090")
+
+	// Add nodes with different roles
+	membership.AddNode(NodeInfo{ID: "node-2", Addr: "localhost:9091", Role: RoleReplica})
+	membership.AddNode(NodeInfo{ID: "node-3", Addr: "localhost:9092", Role: RoleReplica})
+	membership.AddNode(NodeInfo{ID: "node-4", Addr: "localhost:9093", Role: RolePrimary})
+
+	// Query by replica role
+	replicas := membership.GetNodesByRole(RoleReplica)
+	if len(replicas) != 3 { // local + node-2 + node-3
+		t.Errorf("Expected 3 replicas, got %d", len(replicas))
+	}
+
+	// Query by primary role
+	primaries := membership.GetNodesByRole(RolePrimary)
+	if len(primaries) != 1 {
+		t.Errorf("Expected 1 primary, got %d", len(primaries))
+	}
+
+	// Query by candidate role (none exist)
+	candidates := membership.GetNodesByRole(RoleCandidate)
+	if len(candidates) != 0 {
+		t.Errorf("Expected 0 candidates, got %d", len(candidates))
+	}
+}
+
+// --- GetNodeCount Tests ---
+
+func TestGetNodeCount(t *testing.T) {
+	membership := NewClusterMembership("node-1", "localhost:9090")
+
+	// Should start with 1 (local node)
+	if count := membership.GetNodeCount(); count != 1 {
+		t.Errorf("Expected 1 node, got %d", count)
+	}
+
+	// Add nodes
+	membership.AddNode(NodeInfo{ID: "node-2", Addr: "localhost:9091"})
+	membership.AddNode(NodeInfo{ID: "node-3", Addr: "localhost:9092"})
+
+	if count := membership.GetNodeCount(); count != 3 {
+		t.Errorf("Expected 3 nodes, got %d", count)
+	}
+
+	// Remove a node
+	membership.RemoveNode("node-2")
+
+	if count := membership.GetNodeCount(); count != 2 {
+		t.Errorf("Expected 2 nodes after removal, got %d", count)
+	}
+}
+
+// --- UpdateNodeRole Tests ---
+
+func TestUpdateNodeRole(t *testing.T) {
+	membership := NewClusterMembership("node-1", "localhost:9090")
+
+	// Add a node as replica
+	membership.AddNode(NodeInfo{ID: "node-2", Addr: "localhost:9091", Role: RoleReplica})
+
+	// Update to primary
+	err := membership.UpdateNodeRole("node-2", RolePrimary)
+	if err != nil {
+		t.Fatalf("Failed to update role: %v", err)
+	}
+
+	// Verify update
+	node, _ := membership.GetNode("node-2")
+	if node.Role != RolePrimary {
+		t.Errorf("Expected RolePrimary, got %v", node.Role)
+	}
+
+	// Try to update non-existent node
+	err = membership.UpdateNodeRole("node-999", RoleCandidate)
+	if err != ErrNodeNotFound {
+		t.Errorf("Expected ErrNodeNotFound, got %v", err)
+	}
+}
+
+// --- RemoveNode error case: cannot remove self ---
+
+func TestRemoveNode_CannotRemoveSelf(t *testing.T) {
+	membership := NewClusterMembership("node-1", "localhost:9090")
+
+	err := membership.RemoveNode("node-1")
+	if err != ErrCannotRemoveSelf {
+		t.Errorf("Expected ErrCannotRemoveSelf, got %v", err)
+	}
+}
+
 // Helper functions
 func nodeID(i int) string {
 	return "node-" + string(rune('0'+i))

@@ -7,6 +7,28 @@ import (
 	"time"
 )
 
+// --- ElectionState.String() Tests ---
+
+func TestElectionState_String(t *testing.T) {
+	tests := []struct {
+		state    ElectionState
+		expected string
+	}{
+		{StateFollower, "follower"},
+		{StateCandidate, "candidate"},
+		{StateLeader, "leader"},
+		{ElectionState(99), "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			if got := tt.state.String(); got != tt.expected {
+				t.Errorf("ElectionState(%d).String() = %q, want %q", tt.state, got, tt.expected)
+			}
+		})
+	}
+}
+
 // TestNewElectionManager tests creation of election manager
 func TestNewElectionManager(t *testing.T) {
 	config := DefaultClusterConfig()
