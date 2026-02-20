@@ -218,6 +218,50 @@ func TestPropertyConverter_ConvertAndSanitize(t *testing.T) {
 	}
 }
 
+func TestRequestDecoder_Error_WithError(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Create a request with invalid JSON to trigger an error
+	req := httptest.NewRequest("POST", "/test", bytes.NewBufferString(`{invalid json}`))
+	rr := httptest.NewRecorder()
+
+	var nodeReq NodeRequest
+	decoder := server.NewRequestDecoder(rr, req)
+	decoder.DecodeJSON(&nodeReq)
+
+	// Test that Error() returns the actual error when there is one
+	err := decoder.Error()
+	if err == nil {
+		t.Error("Expected Error() to return non-nil error")
+	}
+	if !decoder.HasError() {
+		t.Error("Expected HasError() to return true")
+	}
+}
+
+func TestRequestDecoder_Error_NoError(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Create a request with valid JSON
+	req := httptest.NewRequest("POST", "/test", bytes.NewBufferString(`{"labels": ["Test"]}`))
+	rr := httptest.NewRecorder()
+
+	var nodeReq NodeRequest
+	decoder := server.NewRequestDecoder(rr, req)
+	decoder.DecodeJSON(&nodeReq)
+
+	// Test that Error() returns nil when there is no error
+	err := decoder.Error()
+	if err != nil {
+		t.Errorf("Expected Error() to return nil, got %v", err)
+	}
+	if decoder.HasError() {
+		t.Error("Expected HasError() to return false")
+	}
+}
+
 func TestMethodRouter(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
