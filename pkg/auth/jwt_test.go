@@ -442,3 +442,79 @@ func TestJWTManager_RoleValidation(t *testing.T) {
 		})
 	}
 }
+
+// TestJWTManager_Name tests that Name returns the correct validator name
+func TestJWTManager_Name(t *testing.T) {
+	secret := "test-secret-key-must-be-at-least-32-characters-long"
+	jwtManager, err := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
+
+	expected := "jwt-hs256"
+	if got := jwtManager.Name(); got != expected {
+		t.Errorf("Name() = %q, want %q", got, expected)
+	}
+}
+
+// TestJWTManager_GetTokenDuration tests that GetTokenDuration returns the configured duration
+func TestJWTManager_GetTokenDuration(t *testing.T) {
+	secret := "test-secret-key-must-be-at-least-32-characters-long"
+	tests := []struct {
+		name          string
+		tokenDuration time.Duration
+	}{
+		{"15 minutes", 15 * time.Minute},
+		{"1 hour", 1 * time.Hour},
+		{"24 hours", 24 * time.Hour},
+		{"30 days", 30 * 24 * time.Hour},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jwtManager, err := NewJWTManager(secret, tt.tokenDuration, 7*24*time.Hour)
+			if err != nil {
+				t.Fatalf("Failed to create JWT manager: %v", err)
+			}
+
+			if got := jwtManager.GetTokenDuration(); got != tt.tokenDuration {
+				t.Errorf("GetTokenDuration() = %v, want %v", got, tt.tokenDuration)
+			}
+		})
+	}
+}
+
+// TestJWTManager_GenerateTokenWithTenant tests token generation with tenant context
+func TestJWTManager_GenerateTokenWithTenant(t *testing.T) {
+	secret := "test-secret-key-must-be-at-least-32-characters-long"
+	jwtManager, err := NewJWTManager(secret, 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		tenantID string
+	}{
+		{"with tenant", "tenant-123"},
+		{"empty tenant (default)", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token, err := jwtManager.GenerateTokenWithTenant("user123", "alice", "admin", tt.tenantID)
+			if err != nil {
+				t.Fatalf("Failed to generate token: %v", err)
+			}
+
+			claims, err := jwtManager.ValidateToken(context.Background(), token)
+			if err != nil {
+				t.Fatalf("Failed to validate token: %v", err)
+			}
+
+			if claims.TenantID != tt.tenantID {
+				t.Errorf("TenantID = %q, want %q", claims.TenantID, tt.tenantID)
+			}
+		})
+	}
+}

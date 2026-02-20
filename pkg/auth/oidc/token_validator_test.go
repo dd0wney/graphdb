@@ -383,3 +383,20 @@ func TestIsSupportedAlgorithm(t *testing.T) {
 		}
 	}
 }
+
+// TestOIDCTokenValidator_Name tests that Name returns the correct validator name
+func TestOIDCTokenValidator_Name(t *testing.T) {
+	config := &Config{
+		Issuer:   "https://example.com",
+		ClientID: "test-client",
+	}
+	discoveryClient := NewDiscoveryClient()
+	jwksClient := NewJWKSClient(5 * time.Minute)
+
+	validator := NewOIDCTokenValidatorWithClients(config, discoveryClient, jwksClient)
+
+	expected := "oidc-rs256"
+	if got := validator.Name(); got != expected {
+		t.Errorf("Name() = %q, want %q", got, expected)
+	}
+}

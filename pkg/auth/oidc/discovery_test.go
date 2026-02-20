@@ -242,3 +242,42 @@ func TestValidateDiscovery(t *testing.T) {
 		})
 	}
 }
+
+// TestDiscoveryClient_ClearCache tests clearing the entire cache
+func TestDiscoveryClient_ClearCache(t *testing.T) {
+	client := NewDiscoveryClient()
+	ctx := context.Background()
+
+	// Set up multiple mock servers
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		discovery := OIDCDiscovery{
+			Issuer:                "https://issuer1.example.com",
+			AuthorizationEndpoint: "https://issuer1.example.com/authorize",
+			TokenEndpoint:         "https://issuer1.example.com/token",
+			JWKSUri:               "https://issuer1.example.com/.well-known/jwks.json",
+		}
+		json.NewEncoder(w).Encode(discovery)
+	}))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		discovery := OIDCDiscovery{
+			Issuer:                "https://issuer2.example.com",
+			AuthorizationEndpoint: "https://issuer2.example.com/authorize",
+			TokenEndpoint:         "https://issuer2.example.com/token",
+			JWKSUri:               "https://issuer2.example.com/.well-known/jwks.json",
+		}
+		json.NewEncoder(w).Encode(discovery)
+	}))
+	defer server2.Close()
+
+	// Fetch from both to populate cache
+	_, _ = client.GetDiscovery(ctx, server1.URL)
+	_, _ = client.GetDiscovery(ctx, server2.URL)
+
+	// Clear entire cache
+	client.ClearCache()
+
+	// Verify cache is empty (will fetch again, but this is behavior validation)
+	// The fact that ClearCache doesn't panic is the main test
+}
