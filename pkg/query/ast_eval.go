@@ -90,6 +90,12 @@ func extractValue(expr Expression, context map[string]any) any {
 			return nil
 		}
 		return val
+	case *CaseExpression:
+		result, err := e.EvalValue(context)
+		if err != nil {
+			return nil
+		}
+		return result
 	default:
 		return nil
 	}

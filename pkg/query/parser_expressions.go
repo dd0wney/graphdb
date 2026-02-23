@@ -138,6 +138,9 @@ func (p *Parser) parsePrimaryExpression() (Expression, error) {
 		tok := p.advance()
 		return &ParameterExpression{Name: tok.Value}, nil
 
+	case TokenCase:
+		return p.parseCaseExpression()
+
 	case TokenLeftParen:
 		p.advance()
 		expr, err := p.parseExpression()
@@ -150,4 +153,60 @@ func (p *Parser) parsePrimaryExpression() (Expression, error) {
 	default:
 		return nil, fmt.Errorf("unexpected token in expression: %s", token.Type)
 	}
+}
+
+// parseCaseExpression parses CASE [operand] WHEN ... THEN ... [ELSE ...] END
+func (p *Parser) parseCaseExpression() (Expression, error) {
+	p.advance() // consume CASE
+
+	caseExpr := &CaseExpression{}
+
+	// Simple form if next token is not WHEN
+	if p.peek().Type != TokenWhen {
+		operand, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		caseExpr.Operand = operand
+	}
+
+	// Parse WHEN clauses
+	for p.peek().Type == TokenWhen {
+		p.advance() // consume WHEN
+		condition, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(TokenThen); err != nil {
+			return nil, fmt.Errorf("expected THEN after WHEN condition")
+		}
+		result, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		caseExpr.WhenClauses = append(caseExpr.WhenClauses, CaseWhen{
+			Condition: condition,
+			Result:    result,
+		})
+	}
+
+	if len(caseExpr.WhenClauses) == 0 {
+		return nil, fmt.Errorf("CASE requires at least one WHEN clause")
+	}
+
+	// Optional ELSE
+	if p.peek().Type == TokenElse {
+		p.advance() // consume ELSE
+		elseResult, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		caseExpr.ElseResult = elseResult
+	}
+
+	if _, err := p.expect(TokenEnd); err != nil {
+		return nil, fmt.Errorf("expected END to close CASE expression")
+	}
+
+	return caseExpr, nil
 }

@@ -116,8 +116,17 @@ func isAggregateFunction(name string) bool {
 func (p *Parser) parseReturnItem() (*ReturnItem, error) {
 	item := &ReturnItem{}
 
-	// Check for function calls (aggregates or regular functions)
-	if p.peek().Type == TokenIdentifier {
+	tok := p.peek().Type
+
+	// CASE expressions and parameters in RETURN
+	if tok == TokenCase || tok == TokenParameter {
+		expr, err := p.parsePrimaryExpression()
+		if err != nil {
+			return nil, err
+		}
+		item.ValueExpr = expr
+	} else if tok == TokenIdentifier {
+		// Check for function calls (aggregates or regular functions)
 		nextToken := p.peekAhead(1)
 		if nextToken.Type == TokenLeftParen {
 			funcName := p.peek().Value

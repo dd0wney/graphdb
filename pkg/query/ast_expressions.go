@@ -120,6 +120,59 @@ func (pe *ParameterExpression) EvalValue(context map[string]any) (any, error) {
 	return val, nil
 }
 
+// CaseExpression represents a CASE expression (both searched and simple forms)
+type CaseExpression struct {
+	Operand     Expression // non-nil for simple CASE, nil for searched CASE
+	WhenClauses []CaseWhen
+	ElseResult  Expression // nil if no ELSE
+}
+
+// CaseWhen represents a single WHEN/THEN branch
+type CaseWhen struct {
+	Condition Expression // bool condition (searched) or comparison value (simple)
+	Result    Expression
+}
+
+// Eval evaluates CASE as a boolean (for WHERE usage) by coercing the result value
+func (ce *CaseExpression) Eval(context map[string]any) (bool, error) {
+	val, err := ce.EvalValue(context)
+	if err != nil {
+		return false, err
+	}
+	return coerceToBool(val), nil
+}
+
+// EvalValue returns the raw value of the first matching WHEN branch
+func (ce *CaseExpression) EvalValue(context map[string]any) (any, error) {
+	if ce.Operand == nil {
+		// Searched form: CASE WHEN <bool> THEN <result> ...
+		for _, wc := range ce.WhenClauses {
+			match, err := wc.Condition.Eval(context)
+			if err != nil {
+				return nil, err
+			}
+			if match {
+				return extractValue(wc.Result, context), nil
+			}
+		}
+	} else {
+		// Simple form: CASE <operand> WHEN <value> THEN <result> ...
+		operandVal := extractValue(ce.Operand, context)
+		for _, wc := range ce.WhenClauses {
+			condVal := extractValue(wc.Condition, context)
+			if operandVal == condVal {
+				return extractValue(wc.Result, context), nil
+			}
+		}
+	}
+
+	// No match — fall through to ELSE or nil
+	if ce.ElseResult != nil {
+		return extractValue(ce.ElseResult, context), nil
+	}
+	return nil, nil
+}
+
 // coerceToBool converts an arbitrary value to a boolean
 func coerceToBool(val any) bool {
 	if val == nil {
