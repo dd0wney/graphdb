@@ -34,14 +34,14 @@ func (p *Parser) parseOrExpression() (Expression, error) {
 
 // parseAndExpression parses AND expressions
 func (p *Parser) parseAndExpression() (Expression, error) {
-	left, err := p.parseComparisonExpression()
+	left, err := p.parseNotExpression()
 	if err != nil {
 		return nil, err
 	}
 
 	for p.peek().Type == TokenAnd {
 		p.advance()
-		right, err := p.parseComparisonExpression()
+		right, err := p.parseNotExpression()
 		if err != nil {
 			return nil, err
 		}
@@ -55,9 +55,22 @@ func (p *Parser) parseAndExpression() (Expression, error) {
 	return left, nil
 }
 
+// parseNotExpression parses NOT prefix (binds tighter than AND, looser than comparisons)
+func (p *Parser) parseNotExpression() (Expression, error) {
+	if p.peek().Type == TokenNot {
+		p.advance()
+		operand, err := p.parseNotExpression() // right-recursive for NOT NOT x
+		if err != nil {
+			return nil, err
+		}
+		return &UnaryExpression{Operator: "NOT", Operand: operand}, nil
+	}
+	return p.parseComparisonExpression()
+}
+
 // parseComparisonExpression parses comparison expressions
 func (p *Parser) parseComparisonExpression() (Expression, error) {
-	left, err := p.parsePrimaryExpression()
+	left, err := p.parseAddSubExpression()
 	if err != nil {
 		return nil, err
 	}
@@ -101,9 +114,28 @@ func (p *Parser) parseComparisonExpression() (Expression, error) {
 			Operator: "IS NULL",
 			Right:    &LiteralExpression{Value: nil},
 		}, nil
+	case TokenNot:
+		// NOT IN: expr NOT IN [list]
+		if p.peekAhead(1).Type == TokenIn {
+			p.advance() // consume NOT
+			p.advance() // consume IN
+			right, err := p.parseAddSubExpression()
+			if err != nil {
+				return nil, err
+			}
+			return &UnaryExpression{
+				Operator: "NOT",
+				Operand: &BinaryExpression{
+					Left:     left,
+					Operator: "IN",
+					Right:    right,
+				},
+			}, nil
+		}
+		return left, nil
 	case TokenIn:
 		p.advance() // consume IN
-		right, err := p.parsePrimaryExpression()
+		right, err := p.parseAddSubExpression()
 		if err != nil {
 			return nil, err
 		}
@@ -118,7 +150,7 @@ func (p *Parser) parseComparisonExpression() (Expression, error) {
 
 	p.advance()
 
-	right, err := p.parsePrimaryExpression()
+	right, err := p.parseAddSubExpression()
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +160,78 @@ func (p *Parser) parseComparisonExpression() (Expression, error) {
 		Operator: operator,
 		Right:    right,
 	}, nil
+}
+
+// parseAddSubExpression parses + and - (left-associative, lower precedence than * / %)
+func (p *Parser) parseAddSubExpression() (Expression, error) {
+	left, err := p.parseMulDivExpression()
+	if err != nil {
+		return nil, err
+	}
+
+	for p.peek().Type == TokenPlus || p.peek().Type == TokenMinus {
+		op := p.advance()
+		opStr := "+"
+		if op.Type == TokenMinus {
+			opStr = "-"
+		}
+		right, err := p.parseMulDivExpression()
+		if err != nil {
+			return nil, err
+		}
+		left = &ArithmeticExpression{
+			Left:     left,
+			Operator: opStr,
+			Right:    right,
+		}
+	}
+
+	return left, nil
+}
+
+// parseMulDivExpression parses *, /, % (left-associative, higher precedence than + -)
+func (p *Parser) parseMulDivExpression() (Expression, error) {
+	left, err := p.parseUnaryExpression()
+	if err != nil {
+		return nil, err
+	}
+
+	for p.peek().Type == TokenStar || p.peek().Type == TokenSlash || p.peek().Type == TokenPercent {
+		op := p.advance()
+		var opStr string
+		switch op.Type {
+		case TokenStar:
+			opStr = "*"
+		case TokenSlash:
+			opStr = "/"
+		case TokenPercent:
+			opStr = "%"
+		}
+		right, err := p.parseUnaryExpression()
+		if err != nil {
+			return nil, err
+		}
+		left = &ArithmeticExpression{
+			Left:     left,
+			Operator: opStr,
+			Right:    right,
+		}
+	}
+
+	return left, nil
+}
+
+// parseUnaryExpression parses unary minus (tightest binding before primary)
+func (p *Parser) parseUnaryExpression() (Expression, error) {
+	if p.peek().Type == TokenMinus {
+		p.advance()
+		operand, err := p.parseUnaryExpression() // right-recursive for --x
+		if err != nil {
+			return nil, err
+		}
+		return &UnaryExpression{Operator: "-", Operand: operand}, nil
+	}
+	return p.parsePrimaryExpression()
 }
 
 // parsePrimaryExpression parses primary expressions
