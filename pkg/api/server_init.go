@@ -16,6 +16,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
+	"github.com/dd0wney/cluso-graphdb/pkg/queryutil"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
@@ -233,7 +234,7 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 
 	server := &Server{
 		graph:               graph,
-		executor:            query.NewExecutor(graph),
+		executor:            queryutil.WireCapabilities(query.NewExecutor(graph), graph),
 		graphqlHandler:      graphqlHandler,
 		graphqlSchema:       schema,
 		complexityConfig:    complexityConfig,

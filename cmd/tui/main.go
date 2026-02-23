@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
+	"github.com/dd0wney/cluso-graphdb/pkg/queryutil"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
@@ -198,7 +199,7 @@ func initialModel(graph *storage.GraphStorage) model {
 
 	return model{
 		graph:       graph,
-		executor:    query.NewExecutor(graph),
+		executor:    queryutil.WireCapabilities(query.NewExecutor(graph), graph),
 		currentView: dashboardView,
 		queryInput:  ti,
 		nodeTable:   t,
