@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
@@ -56,11 +57,20 @@ type BindingSet struct {
 	bindings map[string]any
 }
 
+// StepProfile holds profiling data for a single execution step
+type StepProfile struct {
+	StepName string
+	Detail   string
+	Duration time.Duration
+	RowsOut  int
+}
+
 // ResultSet represents query results
 type ResultSet struct {
 	Columns []string
 	Rows    []map[string]any
 	Count   int
+	Profile []StepProfile // Populated when PROFILE is used
 }
 
 // buildExecutionPlan creates an execution plan from a query

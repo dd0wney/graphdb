@@ -23,6 +23,15 @@ func NewParser(tokens []Token) *Parser {
 func (p *Parser) Parse() (*Query, error) {
 	query := &Query{}
 
+	// Check for EXPLAIN or PROFILE prefix
+	if p.peek().Type == TokenExplain {
+		p.advance()
+		query.Explain = true
+	} else if p.peek().Type == TokenProfile {
+		p.advance()
+		query.Profile = true
+	}
+
 	for !p.isAtEnd() {
 		token := p.peek()
 

@@ -93,6 +93,16 @@ func (e *Executor) ExecuteWithContext(ctx context.Context, query *Query) (result
 	// Optimize plan
 	optimizedPlan := e.optimizer.Optimize(plan, query)
 
+	// EXPLAIN: return the plan without executing
+	if query.Explain {
+		return buildExplainResult(optimizedPlan), nil
+	}
+
+	// PROFILE: execute with timing instrumentation
+	if query.Profile {
+		return e.executeWithProfiling(ctx, optimizedPlan, query)
+	}
+
 	// Execute optimized plan with context
 	return e.executePlanWithContext(ctx, optimizedPlan, query)
 }

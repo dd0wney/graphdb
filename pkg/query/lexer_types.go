@@ -40,6 +40,11 @@ const (
 	TokenNot
 	TokenGroup
 	TokenBy
+	TokenExplain
+	TokenProfile
+	TokenUnwind
+	TokenMerge
+	TokenOn
 
 	// Identifiers and literals
 	TokenIdentifier
@@ -104,6 +109,11 @@ var keywords = map[string]TokenType{
 	"TRUE":     TokenTrue,
 	"FALSE":    TokenFalse,
 	"NULL":     TokenNull,
+	"EXPLAIN":  TokenExplain,
+	"PROFILE":  TokenProfile,
+	"UNWIND":   TokenUnwind,
+	"MERGE":    TokenMerge,
+	"ON":       TokenOn,
 }
 
 func (t TokenType) String() string {
@@ -122,6 +132,16 @@ func (t TokenType) String() string {
 		return "CREATE"
 	case TokenDelete:
 		return "DELETE"
+	case TokenExplain:
+		return "EXPLAIN"
+	case TokenProfile:
+		return "PROFILE"
+	case TokenUnwind:
+		return "UNWIND"
+	case TokenMerge:
+		return "MERGE"
+	case TokenOn:
+		return "ON"
 	case TokenIdentifier:
 		return "IDENTIFIER"
 	case TokenString:

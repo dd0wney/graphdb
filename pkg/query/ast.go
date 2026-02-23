@@ -4,14 +4,23 @@ package query
 
 // Query represents a complete query statement
 type Query struct {
-	Match  *MatchClause
-	Where  *WhereClause
-	Return *ReturnClause
-	Create *CreateClause
-	Delete *DeleteClause
-	Set    *SetClause
-	Limit  int
-	Skip   int
+	Match   *MatchClause
+	Where   *WhereClause
+	Return  *ReturnClause
+	Create  *CreateClause
+	Delete  *DeleteClause
+	Set     *SetClause
+	Unwind  *UnwindClause
+	Merge   *MergeClause
+	With    *WithClause
+	Next    *Query // For WITH chaining
+	Limit   int
+	Skip    int
+	Explain bool
+	Profile bool
+
+	// InitialBindings are injected by WITH clause chaining
+	InitialBindings []*BindingSet
 }
 
 // MatchClause represents a MATCH pattern
@@ -114,4 +123,23 @@ type Assignment struct {
 	Variable string
 	Property string
 	Value    any
+}
+
+// UnwindClause represents an UNWIND operation
+type UnwindClause struct {
+	Expression *PropertyExpression
+	Alias      string
+}
+
+// MergeClause represents a MERGE operation (match-or-create)
+type MergeClause struct {
+	Pattern  *Pattern
+	OnMatch  *SetClause
+	OnCreate *SetClause
+}
+
+// WithClause represents a WITH projection between query segments
+type WithClause struct {
+	Items []*ReturnItem
+	Where *WhereClause
 }
