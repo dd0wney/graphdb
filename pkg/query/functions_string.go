@@ -9,6 +9,7 @@ func init() {
 	RegisterFunction("toLower", fnToLower)
 	RegisterFunction("toUpper", fnToUpper)
 	RegisterFunction("toString", fnToString)
+	RegisterFunction("toBoolean", fnToBoolean)
 	RegisterFunction("trim", fnTrim)
 	RegisterFunction("replace", fnReplace)
 	RegisterFunction("substring", fnSubstring)
@@ -40,6 +41,34 @@ func toInt64(val any) (int64, bool) {
 		return int64(v), true
 	default:
 		return 0, false
+	}
+}
+
+func fnToBoolean(args []any) (any, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("toBoolean requires 1 argument")
+	}
+	if args[0] == nil {
+		return nil, nil
+	}
+	switch v := args[0].(type) {
+	case bool:
+		return v, nil
+	case string:
+		switch strings.ToLower(v) {
+		case "true":
+			return true, nil
+		case "false":
+			return false, nil
+		default:
+			return nil, nil
+		}
+	case int64:
+		return v != 0, nil
+	case float64:
+		return v != 0, nil
+	default:
+		return nil, fmt.Errorf("toBoolean: unsupported type %T", args[0])
 	}
 }
 
