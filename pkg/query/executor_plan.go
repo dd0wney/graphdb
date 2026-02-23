@@ -119,6 +119,11 @@ func (e *Executor) buildExecutionPlan(query *Query) *ExecutionPlan {
 		plan.Steps = append(plan.Steps, &SetStep{set: query.Set})
 	}
 
+	// Add REMOVE step
+	if query.Remove != nil {
+		plan.Steps = append(plan.Steps, &RemoveStep{remove: query.Remove})
+	}
+
 	// Add DELETE step
 	if query.Delete != nil {
 		plan.Steps = append(plan.Steps, &DeleteStep{delete: query.Delete})

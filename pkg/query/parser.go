@@ -127,6 +127,13 @@ func (p *Parser) Parse() (*Query, error) {
 			}
 			query.Set = setClause
 
+		case TokenRemove:
+			removeClause, err := p.parseRemove()
+			if err != nil {
+				return nil, err
+			}
+			query.Remove = removeClause
+
 		case TokenLimit:
 			p.advance() // consume LIMIT
 			limitToken, err := p.expect(TokenNumber)

@@ -326,6 +326,43 @@ func (p *Parser) parseSet() (*SetClause, error) {
 	return setClause, nil
 }
 
+// parseRemove parses a REMOVE clause: REMOVE n.prop, m.prop
+func (p *Parser) parseRemove() (*RemoveClause, error) {
+	if _, err := p.expect(TokenRemove); err != nil {
+		return nil, err
+	}
+
+	clause := &RemoveClause{
+		Items: make([]*RemoveItem, 0),
+	}
+
+	for {
+		varToken, err := p.expect(TokenIdentifier)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(TokenDot); err != nil {
+			return nil, err
+		}
+		propToken, err := p.expect(TokenIdentifier)
+		if err != nil {
+			return nil, err
+		}
+
+		clause.Items = append(clause.Items, &RemoveItem{
+			Variable: varToken.Value,
+			Property: propToken.Value,
+		})
+
+		if p.peek().Type != TokenComma {
+			break
+		}
+		p.advance()
+	}
+
+	return clause, nil
+}
+
 // parseFunctionCall parses a function call: name(arg1, arg2, ...)
 func (p *Parser) parseFunctionCall(name string) (Expression, error) {
 	if _, err := p.expect(TokenLeftParen); err != nil {

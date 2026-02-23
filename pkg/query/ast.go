@@ -10,6 +10,7 @@ type Query struct {
 	Create  *CreateClause
 	Delete  *DeleteClause
 	Set     *SetClause
+	Remove  *RemoveClause
 	Unwind  *UnwindClause
 	Merge   *MergeClause
 	With    *WithClause
@@ -162,4 +163,15 @@ type UnionClause struct {
 type OptionalMatchClause struct {
 	Patterns []*Pattern
 	Where    *WhereClause // WHERE scoped to this optional match
+}
+
+// RemoveClause represents property or label removal
+type RemoveClause struct {
+	Items []*RemoveItem
+}
+
+// RemoveItem represents a single property or label to remove
+type RemoveItem struct {
+	Variable string
+	Property string // non-empty for property removal
 }

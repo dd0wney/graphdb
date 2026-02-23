@@ -143,6 +143,40 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	return nil
 }
 
+// RemoveNodeProperties removes specified properties from a node.
+// Unlike UpdateNode (which merges), this deletes keys from the properties map.
+func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+
+	node, exists := gs.nodes[nodeID]
+	if !exists {
+		return ErrNodeNotFound
+	}
+
+	for _, key := range keys {
+		// Remove from property indexes
+		if idx, exists := gs.propertyIndexes[key]; exists {
+			if oldValue, hasKey := node.Properties[key]; hasKey {
+				idx.Remove(nodeID, oldValue)
+			}
+		}
+		delete(node.Properties, key)
+	}
+	node.UpdatedAt = time.Now().Unix()
+
+	// Write remaining properties to WAL for durability
+	gs.writeToWAL(wal.OpUpdateNode, struct {
+		NodeID     uint64
+		Properties map[string]Value
+	}{
+		NodeID:     nodeID,
+		Properties: node.Properties,
+	})
+
+	return nil
+}
+
 // DeleteNode deletes a node and all its edges
 func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	gs.mu.Lock()

@@ -255,6 +255,38 @@ func (ss *SetStep) executeAssignment(ctx *ExecutionContext, binding *BindingSet,
 	return nil
 }
 
+// RemoveStep executes a REMOVE clause — removes properties from nodes
+type RemoveStep struct {
+	remove *RemoveClause
+}
+
+func (rs *RemoveStep) Execute(ctx *ExecutionContext) error {
+	for _, binding := range ctx.results {
+		for _, item := range rs.remove.Items {
+			if err := rs.removeProperty(ctx, binding, item); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (rs *RemoveStep) removeProperty(ctx *ExecutionContext, binding *BindingSet, item *RemoveItem) error {
+	obj, ok := binding.bindings[item.Variable]
+	if !ok {
+		return nil
+	}
+	node, ok := obj.(*storage.Node)
+	if !ok {
+		return nil
+	}
+
+	return ctx.graph.RemoveNodeProperties(node.ID, []string{item.Property})
+}
+
+func (rs *RemoveStep) StepName() string   { return "RemoveStep" }
+func (rs *RemoveStep) StepDetail() string { return fmt.Sprintf("items=%d", len(rs.remove.Items)) }
+
 // DeleteStep executes a DELETE clause
 type DeleteStep struct {
 	delete *DeleteClause
