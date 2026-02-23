@@ -46,6 +46,14 @@ func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+	case "edge_betweenness":
+		var err error
+		results, err = s.executeEdgeBetweenness(ctx)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
 	case "detect_cycles":
 		var err error
 		results, err = s.executeDetectCycles(ctx, req.Parameters)
@@ -103,7 +111,7 @@ func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
 		}
 
 	default:
-		s.respondError(w, http.StatusBadRequest, "Unknown algorithm (supported: pagerank, betweenness, detect_cycles, has_cycle, triangles, scc, node_similarity, link_prediction, khop)")
+		s.respondError(w, http.StatusBadRequest, "Unknown algorithm (supported: pagerank, betweenness, edge_betweenness, detect_cycles, has_cycle, triangles, scc, node_similarity, link_prediction, khop)")
 		return
 	}
 
@@ -178,6 +186,33 @@ func (s *Server) executeBetweenness(ctx context.Context) (map[string]any, error)
 		return nil, fmt.Errorf("%s", sanitizeError(err, "betweenness centrality"))
 	}
 	return map[string]any{"centrality": centrality}, nil
+}
+
+// executeEdgeBetweenness runs the edge betweenness centrality algorithm
+func (s *Server) executeEdgeBetweenness(ctx context.Context) (map[string]any, error) {
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("request timed out")
+	default:
+	}
+
+	result, err := algorithms.EdgeBetweennessCentrality(s.graph)
+	if err != nil {
+		return nil, fmt.Errorf("%s", sanitizeError(err, "edge betweenness centrality"))
+	}
+
+	// Convert ByNodePair to JSON-friendly string keys
+	byNodePair := make(map[string]float64, len(result.ByNodePair))
+	for pair, score := range result.ByNodePair {
+		key := fmt.Sprintf("%d->%d", pair[0], pair[1])
+		byNodePair[key] = score
+	}
+
+	return map[string]any{
+		"by_edge_id":   result.ByEdgeID,
+		"by_node_pair": byNodePair,
+		"top_edges":    result.TopEdges,
+	}, nil
 }
 
 // executeDetectCycles runs cycle detection with validated parameters
@@ -274,9 +309,9 @@ func (s *Server) executeTriangles(ctx context.Context) (map[string]any, error) {
 		return nil, fmt.Errorf("%s", sanitizeError(err, "triangle counting"))
 	}
 	return map[string]any{
-		"per_node":                 result.PerNode,
-		"global_count":             result.GlobalCount,
-		"clustering_coefficients":  result.ClusteringCoefficients,
+		"per_node":                result.PerNode,
+		"global_count":            result.GlobalCount,
+		"clustering_coefficients": result.ClusteringCoefficients,
 	}, nil
 }
 
@@ -299,9 +334,9 @@ func (s *Server) executeSCC(ctx context.Context) (map[string]any, error) {
 	}
 
 	return map[string]any{
-		"communities":    result.Communities,
-		"node_community": result.NodeCommunity,
-		"largest_scc":    largestSize,
+		"communities":     result.Communities,
+		"node_community":  result.NodeCommunity,
+		"largest_scc":     largestSize,
 		"singleton_count": result.SingletonCount,
 	}, nil
 }
