@@ -292,6 +292,62 @@ func (ds *DeleteStep) deleteVariable(ctx *ExecutionContext, binding *BindingSet,
 	return nil
 }
 
+// MergeStep executes a MERGE clause (match-or-create)
+type MergeStep struct {
+	merge *MergeClause
+}
+
+func (ms *MergeStep) Execute(ctx *ExecutionContext) error {
+	// Try to match the pattern
+	matchStep := &MatchStep{match: &MatchClause{Patterns: []*Pattern{ms.merge.Pattern}}}
+
+	// Save current results, try matching
+	savedResults := ctx.results
+	matchCtx := &ExecutionContext{
+		context:  ctx.context,
+		graph:    ctx.graph,
+		bindings: make(map[string]any),
+		results: []*BindingSet{
+			{bindings: make(map[string]any)},
+		},
+	}
+
+	if err := matchStep.Execute(matchCtx); err != nil {
+		return err
+	}
+
+	if len(matchCtx.results) > 0 {
+		// Found — apply ON MATCH SET if present
+		ctx.results = matchCtx.results
+		if ms.merge.OnMatch != nil {
+			setStep := &SetStep{set: ms.merge.OnMatch}
+			if err := setStep.Execute(ctx); err != nil {
+				return err
+			}
+		}
+	} else {
+		// Not found — create via pattern
+		ctx.results = savedResults
+		createStep := &CreateStep{create: &CreateClause{Patterns: []*Pattern{ms.merge.Pattern}}}
+		if err := createStep.Execute(ctx); err != nil {
+			return err
+		}
+
+		// Apply ON CREATE SET if present
+		if ms.merge.OnCreate != nil {
+			setStep := &SetStep{set: ms.merge.OnCreate}
+			if err := setStep.Execute(ctx); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (ms *MergeStep) StepName() string   { return "MergeStep" }
+func (ms *MergeStep) StepDetail() string { return "match-or-create" }
+
 // UnwindStep executes an UNWIND clause - expands list values into individual bindings
 type UnwindStep struct {
 	unwind *UnwindClause

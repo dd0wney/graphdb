@@ -312,6 +312,49 @@ func (p *Parser) parseFunctionCall(name string) (Expression, error) {
 	}, nil
 }
 
+// parseMerge parses a MERGE clause with optional ON CREATE SET / ON MATCH SET
+func (p *Parser) parseMerge() (*MergeClause, error) {
+	if _, err := p.expect(TokenMerge); err != nil {
+		return nil, err
+	}
+
+	pattern, err := p.parsePattern()
+	if err != nil {
+		return nil, err
+	}
+
+	merge := &MergeClause{Pattern: pattern}
+
+	// Parse optional ON CREATE SET and ON MATCH SET (in any order)
+	for p.peek().Type == TokenOn {
+		p.advance() // consume ON
+
+		next := p.peek()
+		switch next.Type {
+		case TokenCreate:
+			p.advance() // consume CREATE
+			setClause, err := p.parseSet()
+			if err != nil {
+				return nil, err
+			}
+			merge.OnCreate = setClause
+
+		case TokenMatch:
+			p.advance() // consume MATCH
+			setClause, err := p.parseSet()
+			if err != nil {
+				return nil, err
+			}
+			merge.OnMatch = setClause
+
+		default:
+			return nil, fmt.Errorf("expected CREATE or MATCH after ON, got %s", next.Type)
+		}
+	}
+
+	return merge, nil
+}
+
 // parseUnwind parses an UNWIND clause: UNWIND expr AS alias
 func (p *Parser) parseUnwind() (*UnwindClause, error) {
 	if _, err := p.expect(TokenUnwind); err != nil {

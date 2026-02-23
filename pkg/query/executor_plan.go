@@ -89,6 +89,11 @@ func (e *Executor) buildExecutionPlan(query *Query) *ExecutionPlan {
 		plan.Steps = append(plan.Steps, &FilterStep{where: query.Where})
 	}
 
+	// Add MERGE step
+	if query.Merge != nil {
+		plan.Steps = append(plan.Steps, &MergeStep{merge: query.Merge})
+	}
+
 	// Add UNWIND step (after filter, before create)
 	if query.Unwind != nil {
 		plan.Steps = append(plan.Steps, &UnwindStep{unwind: query.Unwind})
