@@ -165,13 +165,18 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	}
 	node.UpdatedAt = time.Now().Unix()
 
-	// Write remaining properties to WAL for durability
+	// Snapshot properties for WAL — avoid passing the live map reference
+	// which could race with concurrent writers after the lock is released.
+	walProps := make(map[string]Value, len(node.Properties))
+	for k, v := range node.Properties {
+		walProps[k] = v
+	}
 	gs.writeToWAL(wal.OpUpdateNode, struct {
 		NodeID     uint64
 		Properties map[string]Value
 	}{
 		NodeID:     nodeID,
-		Properties: node.Properties,
+		Properties: walProps,
 	})
 
 	return nil

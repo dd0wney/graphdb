@@ -30,16 +30,23 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 	case "IS NOT NULL":
 		return leftVal != nil, nil
 	case "IN":
+		// Cypher: null IN [...] evaluates to null (treated as false in boolean context)
+		if leftVal == nil {
+			return false, nil
+		}
 		list, ok := rightVal.([]any)
 		if !ok {
 			return false, fmt.Errorf("IN requires a list on the right side")
 		}
 		for _, item := range list {
+			if item == nil {
+				continue // skip null elements in list
+			}
 			if leftVal == item {
 				return true, nil
 			}
 			// Handle numeric type coercion (int64 vs float64)
-			if compareValues(leftVal, item) == 0 && leftVal != nil && item != nil {
+			if compareValues(leftVal, item) == 0 {
 				return true, nil
 			}
 		}

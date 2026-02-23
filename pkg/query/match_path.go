@@ -112,7 +112,13 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 	queue := []bfsEntry{{node: currentNode, depth: 0, edges: nil, visited: startVisited}}
 
 	for len(queue) > 0 {
+		// Periodic cancellation check to respect query timeouts
+		if ctx.IsCancelled() {
+			return results
+		}
+
 		entry := queue[0]
+		queue[0] = bfsEntry{} // release references for GC
 		queue = queue[1:]
 
 		// Collect results at depths within [MinHops, MaxHops]
