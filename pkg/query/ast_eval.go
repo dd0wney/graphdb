@@ -59,6 +59,10 @@ func extractValue(expr Expression, context map[string]any) any {
 						if boolVal, err := val.AsBool(); err == nil {
 							return boolVal
 						}
+					case storage.TypeVector:
+						if vecVal, err := val.AsVector(); err == nil {
+							return vecVal
+						}
 					}
 				}
 				return nil

@@ -111,6 +111,10 @@ func (ac *AggregationComputer) ExtractValue(val storage.Value) any {
 		if boolVal, err := val.AsBool(); err == nil {
 			return boolVal
 		}
+	case storage.TypeVector:
+		if vecVal, err := val.AsVector(); err == nil {
+			return vecVal
+		}
 	case storage.TypeTimestamp:
 		if timeVal, err := val.AsTimestamp(); err == nil {
 			return timeVal.Unix()
