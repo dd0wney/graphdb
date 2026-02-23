@@ -24,6 +24,7 @@ type Executor struct {
 	optimizer    *Optimizer
 	cache        *QueryCache
 	queryTimeout time.Duration
+	searchIndex  any // *search.FullTextIndex, stored as any to avoid import cycle
 }
 
 // NewExecutor creates a new query executor
