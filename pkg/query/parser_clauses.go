@@ -159,13 +159,16 @@ func (p *Parser) parseReturnItem() (*ReturnItem, error) {
 				item.ValueExpr = expr
 			}
 		} else {
-			// Regular property expression
+			// Regular property expression or namespaced function call
 			expr, err := p.parsePrimaryExpression()
 			if err != nil {
 				return nil, err
 			}
 			if propExpr, ok := expr.(*PropertyExpression); ok {
 				item.Expression = propExpr
+			} else {
+				// Namespaced function calls (e.g., vector.similarity(...)) land here
+				item.ValueExpr = expr
 			}
 		}
 	}

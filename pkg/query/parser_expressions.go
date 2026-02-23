@@ -116,6 +116,10 @@ func (p *Parser) parsePrimaryExpression() (Expression, error) {
 			if err != nil {
 				return nil, err
 			}
+			// Namespaced function call: namespace.function(args)
+			if p.peek().Type == TokenLeftParen {
+				return p.parseFunctionCall(variable + "." + propertyToken.Value)
+			}
 			return &PropertyExpression{
 				Variable: variable,
 				Property: propertyToken.Value,
