@@ -89,6 +89,15 @@ func (e *Executor) buildExecutionPlan(query *Query) *ExecutionPlan {
 		plan.Steps = append(plan.Steps, &FilterStep{where: query.Where})
 	}
 
+	// Add OPTIONAL MATCH steps (after WHERE so required match is filtered first)
+	for _, om := range query.OptionalMatches {
+		mc := &MatchClause{Patterns: om.Patterns}
+		plan.Steps = append(plan.Steps, &OptionalMatchStep{
+			match: mc,
+			where: om.Where,
+		})
+	}
+
 	// Add MERGE step
 	if query.Merge != nil {
 		plan.Steps = append(plan.Steps, &MergeStep{merge: query.Merge})

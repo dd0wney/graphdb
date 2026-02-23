@@ -400,6 +400,78 @@ func (us *UnwindStep) StepDetail() string {
 	return fmt.Sprintf("alias=%s", us.unwind.Alias)
 }
 
+// OptionalMatchStep executes an OPTIONAL MATCH clause with left-outer-join semantics.
+// When no match is found, variables from the pattern are set to nil (null propagation).
+type OptionalMatchStep struct {
+	match *MatchClause
+	where *WhereClause
+}
+
+func (oms *OptionalMatchStep) Execute(ctx *ExecutionContext) error {
+	matchHelper := &MatchStep{match: oms.match}
+	newResults := make([]*BindingSet, 0)
+
+	for _, binding := range ctx.results {
+		matches := make([]*BindingSet, 0)
+
+		for _, pattern := range oms.match.Patterns {
+			patternMatches, err := matchHelper.matchPattern(ctx, pattern, binding)
+			if err != nil {
+				return err
+			}
+			matches = append(matches, patternMatches...)
+		}
+
+		// Apply scoped WHERE filter if present
+		if oms.where != nil && len(matches) > 0 {
+			filtered := make([]*BindingSet, 0)
+			for _, r := range matches {
+				match, err := oms.where.Expression.Eval(r.bindings)
+				if err != nil {
+					continue
+				}
+				if match {
+					filtered = append(filtered, r)
+				}
+			}
+			matches = filtered
+		}
+
+		if len(matches) > 0 {
+			newResults = append(newResults, matches...)
+		} else {
+			// No match: create null bindings for all new variables in the pattern
+			nullBinding := &BindingSet{bindings: make(map[string]any, len(binding.bindings))}
+			for k, v := range binding.bindings {
+				nullBinding.bindings[k] = v
+			}
+			for _, pattern := range oms.match.Patterns {
+				for _, node := range pattern.Nodes {
+					if node.Variable != "" {
+						if _, exists := nullBinding.bindings[node.Variable]; !exists {
+							nullBinding.bindings[node.Variable] = nil
+						}
+					}
+				}
+				for _, rel := range pattern.Relationships {
+					if rel.Variable != "" {
+						if _, exists := nullBinding.bindings[rel.Variable]; !exists {
+							nullBinding.bindings[rel.Variable] = nil
+						}
+					}
+				}
+			}
+			newResults = append(newResults, nullBinding)
+		}
+	}
+
+	ctx.results = newResults
+	return nil
+}
+
+func (oms *OptionalMatchStep) StepName() string   { return "OptionalMatchStep" }
+func (oms *OptionalMatchStep) StepDetail() string  { return fmt.Sprintf("patterns=%d", len(oms.match.Patterns)) }
+
 // ReturnStep executes a RETURN clause
 type ReturnStep struct {
 	returnClause *ReturnClause

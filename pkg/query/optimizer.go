@@ -34,11 +34,12 @@ func (o *Optimizer) applyIndexSelection(plan *ExecutionPlan, query *Query) *Exec
 	optimized := &ExecutionPlan{Steps: make([]ExecutionStep, 0)}
 
 	for _, step := range plan.Steps {
-		// Check if this is a MatchStep that could use an index
-		if matchStep, ok := step.(*MatchStep); ok {
-			optimizedStep := o.optimizeMatchWithIndex(matchStep, query)
+		switch s := step.(type) {
+		case *MatchStep:
+			optimizedStep := o.optimizeMatchWithIndex(s, query)
 			optimized.Steps = append(optimized.Steps, optimizedStep)
-		} else {
+		default:
+			// OptionalMatchStep and others pass through without index optimization
 			optimized.Steps = append(optimized.Steps, step)
 		}
 	}
@@ -193,7 +194,7 @@ func (o *Optimizer) applyFilterPushdown(plan *ExecutionPlan, query *Query) *Exec
 	for _, step := range otherSteps {
 		optimized.Steps = append(optimized.Steps, step)
 
-		// Insert applicable filters after match steps
+		// Insert applicable filters after match steps (but not after optional match)
 		if _, ok := step.(*MatchStep); ok {
 			for _, filter := range filterSteps {
 				optimized.Steps = append(optimized.Steps, ExecutionStep(filter))

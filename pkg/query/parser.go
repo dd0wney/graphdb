@@ -36,6 +36,26 @@ func (p *Parser) Parse() (*Query, error) {
 		token := p.peek()
 
 		switch token.Type {
+		case TokenOptional:
+			p.advance() // consume OPTIONAL
+			if p.peek().Type != TokenMatch {
+				return nil, fmt.Errorf("expected MATCH after OPTIONAL at line %d", token.Line)
+			}
+			matchClause, err := p.parseMatch()
+			if err != nil {
+				return nil, err
+			}
+			entry := &OptionalMatchClause{Patterns: matchClause.Patterns}
+			// WHERE after OPTIONAL MATCH attaches to this optional match
+			if p.peek().Type == TokenWhere {
+				where, err := p.parseWhere()
+				if err != nil {
+					return nil, err
+				}
+				entry.Where = where
+			}
+			query.OptionalMatches = append(query.OptionalMatches, entry)
+
 		case TokenMatch:
 			matchClause, err := p.parseMatch()
 			if err != nil {
@@ -130,6 +150,21 @@ func (p *Parser) Parse() (*Query, error) {
 			} else {
 				return nil, fmt.Errorf("invalid SKIP value: %s", skipToken.Value)
 			}
+
+		case TokenUnion:
+			p.advance() // consume UNION
+			all := false
+			if p.peek().Type == TokenAll {
+				p.advance() // consume ALL
+				all = true
+			}
+			query.Union = &UnionClause{All: all}
+			next, err := p.Parse()
+			if err != nil {
+				return nil, err
+			}
+			query.UnionNext = next
+			return query, nil
 
 		case TokenSemicolon:
 			p.advance()

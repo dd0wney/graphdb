@@ -1,10 +1,32 @@
 package query
 
-import "fmt"
+import (
+	"fmt"
 
-// matchNode matches a single node pattern against the graph
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+)
+
+// matchNode matches a single node pattern against the graph.
+// If the variable is already bound in existingBinding, only validates that the
+// bound node matches labels/properties (avoids re-scanning all nodes).
 func (ms *MatchStep) matchNode(ctx *ExecutionContext, nodePattern *NodePattern, existingBinding *BindingSet) ([]*BindingSet, error) {
 	results := make([]*BindingSet, 0)
+
+	// If the variable is already bound, validate the bound node instead of scanning
+	if nodePattern.Variable != "" {
+		if existing, ok := existingBinding.bindings[nodePattern.Variable]; ok && existing != nil {
+			if node, ok := existing.(*storage.Node); ok {
+				if len(nodePattern.Labels) > 0 && !ms.hasLabels(node, nodePattern.Labels) {
+					return results, nil
+				}
+				if !ms.matchProperties(node.Properties, nodePattern.Properties) {
+					return results, nil
+				}
+				newBinding := ms.copyBinding(existingBinding)
+				return append(results, newBinding), nil
+			}
+		}
+	}
 
 	// Get all nodes with matching labels
 	stats := ctx.graph.GetStatistics()

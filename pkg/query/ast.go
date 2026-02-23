@@ -13,8 +13,11 @@ type Query struct {
 	Unwind  *UnwindClause
 	Merge   *MergeClause
 	With    *WithClause
-	Next    *Query // For WITH chaining
-	Limit   int
+	OptionalMatches []*OptionalMatchClause
+	Union           *UnionClause
+	UnionNext       *Query // For UNION chaining
+	Next            *Query // For WITH chaining
+	Limit           int
 	Skip    int
 	Explain bool
 	Profile bool
@@ -148,4 +151,15 @@ type WithClause struct {
 // ParameterRef represents a parameter reference in property maps ({name: $name})
 type ParameterRef struct {
 	Name string // "name" from $name
+}
+
+// UnionClause represents a UNION between query segments
+type UnionClause struct {
+	All bool // true = UNION ALL (keep duplicates), false = UNION (deduplicate)
+}
+
+// OptionalMatchClause represents an OPTIONAL MATCH pattern with left-outer-join semantics
+type OptionalMatchClause struct {
+	Patterns []*Pattern
+	Where    *WhereClause // WHERE scoped to this optional match
 }
