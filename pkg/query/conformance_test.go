@@ -807,3 +807,188 @@ func TestConformance_VectorScoreComparison(t *testing.T) {
 		}
 	}
 }
+
+// --- Phase 3: Core Operators + Variable-Length Paths Conformance Tests ---
+
+// setupPhase3ConformanceGraph creates a graph for combined Phase 3 conformance scenarios.
+// Topology: Alice->Bob->Charlie->Diana (KNOWS chain), Alice->Charlie (shortcut).
+// Eve is isolated with no edges and missing "role" property.
+func setupPhase3ConformanceGraph(t *testing.T) (*storage.GraphStorage, *Executor, func()) {
+	t.Helper()
+	gs, cleanup := setupExecutorTestGraph(t)
+
+	alice, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Alice"),
+		"age":  storage.IntValue(30),
+		"role": storage.StringValue("Engineer"),
+	})
+	bob, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Bob"),
+		"age":  storage.IntValue(25),
+		"role": storage.StringValue("Designer"),
+	})
+	charlie, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Charlie"),
+		"age":  storage.IntValue(35),
+		"role": storage.StringValue("Manager"),
+	})
+	diana, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Diana"),
+		"age":  storage.IntValue(28),
+		"role": storage.StringValue("Engineer"),
+	})
+	// Eve: no role, no edges
+	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Eve"),
+		"age":  storage.IntValue(22),
+	})
+
+	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
+	gs.CreateEdge(bob.ID, charlie.ID, "KNOWS", nil, 1.0)
+	gs.CreateEdge(charlie.ID, diana.ID, "KNOWS", nil, 1.0)
+	gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", nil, 1.0)
+
+	executor := NewExecutor(gs)
+	return gs, executor, cleanup
+}
+
+// Tests IS NULL with OPTIONAL MATCH on variable-length paths
+func TestConformance_Phase3_IsNull_OptionalVarPath(t *testing.T) {
+	_, executor, cleanup := setupPhase3ConformanceGraph(t)
+	defer cleanup()
+
+	// OPTIONAL MATCH a variable-length path from each person.
+	// Eve has no outgoing KNOWS, so friend should be null.
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) OPTIONAL MATCH (n)-[:KNOWS*1..2]->(friend:Person) RETURN n.name, friend IS NULL AS isolated`)
+
+	isolatedNames := make(map[string]bool)
+	for _, row := range result.Rows {
+		if row["isolated"] == true {
+			isolatedNames[row["n.name"].(string)] = true
+		}
+	}
+
+	// Eve has no outgoing edges at all; Diana has no outgoing KNOWS edges
+	if !isolatedNames["Eve"] {
+		t.Error("expected Eve to be isolated (no outgoing KNOWS paths)")
+	}
+}
+
+// Tests IN combined with CASE expression
+func TestConformance_Phase3_InWithCase(t *testing.T) {
+	_, executor, cleanup := setupPhase3ConformanceGraph(t)
+	defer cleanup()
+
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE n.role IN ['Engineer', 'Manager']
+		 RETURN n.name, CASE WHEN n.age > 30 THEN 'senior' ELSE 'junior' END AS level`)
+
+	if result.Count != 3 {
+		t.Fatalf("expected 3 results (Alice, Charlie, Diana), got %d", result.Count)
+	}
+
+	levels := make(map[string]string)
+	for _, row := range result.Rows {
+		levels[row["n.name"].(string)] = row["level"].(string)
+	}
+
+	// Charlie is 35 (> 30) → senior; Alice is 30 (not > 30) → junior
+	if levels["Charlie"] != "senior" {
+		t.Errorf("expected Charlie=senior, got %s", levels["Charlie"])
+	}
+	if levels["Alice"] != "junior" {
+		t.Errorf("expected Alice=junior, got %s", levels["Alice"])
+	}
+}
+
+// Tests REMOVE followed by IS NULL verification
+func TestConformance_Phase3_RemoveThenIsNull(t *testing.T) {
+	_, executor, cleanup := setupPhase3ConformanceGraph(t)
+	defer cleanup()
+
+	// Remove Bob's role, then verify it's null
+	parseAndExecute(t, executor, `MATCH (n:Person {name: 'Bob'}) REMOVE n.role`)
+
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE n.role IS NULL RETURN n.name`)
+
+	names := make(map[string]bool)
+	for _, row := range result.Rows {
+		names[row["n.name"].(string)] = true
+	}
+
+	// Eve never had role; Bob had it removed
+	if !names["Eve"] || !names["Bob"] {
+		t.Errorf("expected Eve and Bob to have null role, got %v", names)
+	}
+	if len(names) != 2 {
+		t.Errorf("expected exactly 2 null-role persons, got %d", len(names))
+	}
+}
+
+// Tests variable-length path with IN filter on target node
+func TestConformance_Phase3_VarPathWithInFilter(t *testing.T) {
+	_, executor, cleanup := setupPhase3ConformanceGraph(t)
+	defer cleanup()
+
+	// Find people reachable from Alice in 1-3 hops who are Engineers
+	result := parseAndExecute(t, executor,
+		`MATCH (a:Person {name: 'Alice'})-[:KNOWS*1..3]->(b:Person)
+		 WHERE b.role IN ['Engineer', 'Designer']
+		 RETURN DISTINCT b.name`)
+
+	names := make(map[string]bool)
+	for _, row := range result.Rows {
+		names[row["b.name"].(string)] = true
+	}
+
+	// Bob (Designer, 1 hop), Diana (Engineer, 2+ hops)
+	if !names["Bob"] {
+		t.Error("expected Bob reachable from Alice with role in [Engineer, Designer]")
+	}
+	if !names["Diana"] {
+		t.Error("expected Diana reachable from Alice with role in [Engineer, Designer]")
+	}
+}
+
+// Tests toBoolean with CASE in a WHERE clause
+func TestConformance_Phase3_ToBooleanInWhere(t *testing.T) {
+	_, executor, cleanup := setupPhase3ConformanceGraph(t)
+	defer cleanup()
+
+	// Use toBoolean to convert a string to boolean in a WHERE check
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE toBoolean('true') AND n.age > 30 RETURN n.name`)
+
+	if result.Count != 1 || result.Rows[0]["n.name"] != "Charlie" {
+		t.Errorf("expected only Charlie (age 35 > 30), got %d rows", result.Count)
+	}
+}
+
+// Tests all Phase 3 features in a single query pipeline
+func TestConformance_Phase3_AllFeaturesCombined(t *testing.T) {
+	_, executor, cleanup := setupPhase3ConformanceGraph(t)
+	defer cleanup()
+
+	// Pipeline: MATCH -> WHERE with IN -> variable-length OPTIONAL MATCH -> IS NULL check
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE n.role IN ['Engineer', 'Manager']
+		 OPTIONAL MATCH (n)-[:KNOWS*1..2]->(friend:Person)
+		 RETURN n.name, friend IS NULL AS noFriends`)
+
+	if result.Count < 3 {
+		t.Fatalf("expected at least 3 rows, got %d", result.Count)
+	}
+
+	// Diana is an Engineer but has no outgoing KNOWS edges
+	foundDianaIsolated := false
+	for _, row := range result.Rows {
+		if row["n.name"] == "Diana" && row["noFriends"] == true {
+			foundDianaIsolated = true
+		}
+	}
+	if !foundDianaIsolated {
+		t.Error("expected Diana (Engineer, no outgoing edges) to have noFriends=true")
+	}
+}
