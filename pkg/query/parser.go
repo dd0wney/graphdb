@@ -71,6 +71,13 @@ func (p *Parser) Parse() (*Query, error) {
 			}
 			query.Delete = deleteClause
 
+		case TokenUnwind:
+			unwindClause, err := p.parseUnwind()
+			if err != nil {
+				return nil, err
+			}
+			query.Unwind = unwindClause
+
 		case TokenSet:
 			setClause, err := p.parseSet()
 			if err != nil {

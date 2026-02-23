@@ -257,6 +257,36 @@ func (p *Parser) parseSet() (*SetClause, error) {
 	return setClause, nil
 }
 
+// parseUnwind parses an UNWIND clause: UNWIND expr AS alias
+func (p *Parser) parseUnwind() (*UnwindClause, error) {
+	if _, err := p.expect(TokenUnwind); err != nil {
+		return nil, err
+	}
+
+	expr, err := p.parsePrimaryExpression()
+	if err != nil {
+		return nil, err
+	}
+	propExpr, ok := expr.(*PropertyExpression)
+	if !ok {
+		return nil, fmt.Errorf("UNWIND expression must be a property reference")
+	}
+
+	if _, err := p.expect(TokenAs); err != nil {
+		return nil, fmt.Errorf("expected AS after UNWIND expression")
+	}
+
+	aliasToken, err := p.expect(TokenIdentifier)
+	if err != nil {
+		return nil, fmt.Errorf("expected alias after UNWIND ... AS")
+	}
+
+	return &UnwindClause{
+		Expression: propExpr,
+		Alias:      aliasToken.Value,
+	}, nil
+}
+
 // parseLimitSkip parses LIMIT and SKIP values
 func (p *Parser) parseLimitSkip(query *Query) error {
 	token := p.peek()

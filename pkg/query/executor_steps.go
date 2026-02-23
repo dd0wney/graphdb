@@ -292,6 +292,58 @@ func (ds *DeleteStep) deleteVariable(ctx *ExecutionContext, binding *BindingSet,
 	return nil
 }
 
+// UnwindStep executes an UNWIND clause - expands list values into individual bindings
+type UnwindStep struct {
+	unwind *UnwindClause
+}
+
+func (us *UnwindStep) Execute(ctx *ExecutionContext) error {
+	newResults := make([]*BindingSet, 0)
+
+	for _, binding := range ctx.results {
+		// Extract the value to unwind
+		var val any
+		expr := us.unwind.Expression
+		if expr.Property == "" {
+			// Variable reference without property — get the raw binding value
+			val = binding.bindings[expr.Variable]
+		} else {
+			val = extractValue(expr, binding.bindings)
+		}
+		if val == nil {
+			continue // Skip nil values
+		}
+
+		// Convert to list
+		var items []any
+		switch v := val.(type) {
+		case []any:
+			items = v
+		default:
+			// Non-list values treated as single-element list
+			items = []any{v}
+		}
+
+		// Create one new binding per element
+		for _, item := range items {
+			newBinding := &BindingSet{bindings: make(map[string]any, len(binding.bindings)+1)}
+			for k, v := range binding.bindings {
+				newBinding.bindings[k] = v
+			}
+			newBinding.bindings[us.unwind.Alias] = item
+			newResults = append(newResults, newBinding)
+		}
+	}
+
+	ctx.results = newResults
+	return nil
+}
+
+func (us *UnwindStep) StepName() string { return "UnwindStep" }
+func (us *UnwindStep) StepDetail() string {
+	return fmt.Sprintf("alias=%s", us.unwind.Alias)
+}
+
 // ReturnStep executes a RETURN clause
 type ReturnStep struct {
 	returnClause *ReturnClause
