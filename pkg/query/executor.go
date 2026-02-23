@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -248,41 +249,81 @@ func resolveParameters(query *Query, params map[string]any) error {
 
 func resolvePatternParams(pattern *Pattern, params map[string]any) error {
 	for _, node := range pattern.Nodes {
-		if err := resolvePropertyParams(node.Properties, params); err != nil {
+		resolved, err := resolvePropertyParams(node.Properties, params)
+		if err != nil {
 			return err
 		}
+		node.Properties = resolved
 	}
 	for _, rel := range pattern.Relationships {
-		if err := resolvePropertyParams(rel.Properties, params); err != nil {
+		resolved, err := resolvePropertyParams(rel.Properties, params)
+		if err != nil {
+			return err
+		}
+		rel.Properties = resolved
+	}
+	return nil
+}
+
+// resolvePropertyParams returns a new map with ParameterRef values replaced by actual values.
+// The original map is not modified, making repeated calls with different params safe.
+func resolvePropertyParams(props map[string]any, params map[string]any) (map[string]any, error) {
+	if props == nil {
+		return nil, nil
+	}
+	resolved := make(map[string]any, len(props))
+	for key, val := range props {
+		if ref, ok := val.(*ParameterRef); ok {
+			actual, exists := params[ref.Name]
+			if !exists {
+				return nil, fmt.Errorf("missing parameter: $%s", ref.Name)
+			}
+			resolved[key] = actual
+		} else {
+			resolved[key] = val
+		}
+	}
+	return resolved, nil
+}
+
+// validateParameterExpressions walks all expression trees in the query to find
+// ParameterExpression nodes and ensures corresponding params exist.
+func validateParameterExpressions(query *Query, params map[string]any) error {
+	if query.Where != nil {
+		if err := validateExprParams(query.Where.Expression, params); err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-func resolvePropertyParams(props map[string]any, params map[string]any) error {
-	for key, val := range props {
-		if ref, ok := val.(*ParameterRef); ok {
-			resolved, exists := params[ref.Name]
-			if !exists {
-				return fmt.Errorf("missing parameter: $%s", ref.Name)
+	for _, om := range query.OptionalMatches {
+		if om.Where != nil {
+			if err := validateExprParams(om.Where.Expression, params); err != nil {
+				return err
 			}
-			props[key] = resolved
 		}
 	}
-	return nil
-}
-
-// validateParameterExpressions walks the WHERE clause to find any ParameterExpression
-// and ensures corresponding params exist
-func validateParameterExpressions(query *Query, params map[string]any) error {
-	if query.Where != nil {
-		return validateExprParams(query.Where.Expression, params)
+	if query.Return != nil {
+		for _, item := range query.Return.Items {
+			if item.ValueExpr != nil {
+				if err := validateExprParams(item.ValueExpr, params); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if query.With != nil {
+		if query.With.Where != nil {
+			if err := validateExprParams(query.With.Where.Expression, params); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
 func validateExprParams(expr Expression, params map[string]any) error {
+	if expr == nil {
+		return nil
+	}
 	switch e := expr.(type) {
 	case *ParameterExpression:
 		if _, ok := params[e.Name]; !ok {
@@ -293,6 +334,27 @@ func validateExprParams(expr Expression, params map[string]any) error {
 			return err
 		}
 		return validateExprParams(e.Right, params)
+	case *FunctionCallExpression:
+		for _, arg := range e.Args {
+			if err := validateExprParams(arg, params); err != nil {
+				return err
+			}
+		}
+	case *CaseExpression:
+		if err := validateExprParams(e.Operand, params); err != nil {
+			return err
+		}
+		for _, wc := range e.WhenClauses {
+			if err := validateExprParams(wc.Condition, params); err != nil {
+				return err
+			}
+			if err := validateExprParams(wc.Result, params); err != nil {
+				return err
+			}
+		}
+		if err := validateExprParams(e.ElseResult, params); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -300,18 +362,12 @@ func validateExprParams(expr Expression, params map[string]any) error {
 // executeUnion executes two query segments and combines their results.
 // UNION deduplicates rows; UNION ALL preserves all rows.
 func (e *Executor) executeUnion(ctx context.Context, query *Query) (*ResultSet, error) {
-	// Execute first segment (temporarily detach Union to prevent recursion)
-	savedUnion := query.Union
-	savedUnionNext := query.UnionNext
-	query.Union = nil
-	query.UnionNext = nil
+	// Execute first segment via a shallow copy to avoid mutating the original AST
+	firstSegment := *query
+	firstSegment.Union = nil
+	firstSegment.UnionNext = nil
 
-	first, err := e.ExecuteWithContext(ctx, query)
-
-	// Restore union fields
-	query.Union = savedUnion
-	query.UnionNext = savedUnionNext
-
+	first, err := e.ExecuteWithContext(ctx, &firstSegment)
 	if err != nil {
 		return nil, fmt.Errorf("UNION first segment: %w", err)
 	}
@@ -370,16 +426,22 @@ func deduplicateRows(rows []map[string]any, columns []string) []map[string]any {
 	return result
 }
 
-// rowKey builds a string key from row values for deduplication
+// rowKey builds a string key from row values for deduplication.
+// Uses type-prefixed encoding to distinguish nil from "" and int from float.
 func rowKey(row map[string]any, columns []string) string {
-	key := ""
+	var b strings.Builder
 	for i, col := range columns {
 		if i > 0 {
-			key += "\x00"
+			b.WriteByte(0)
 		}
-		key += fmt.Sprintf("%v", row[col])
+		v := row[col]
+		if v == nil {
+			b.WriteString("N:")
+		} else {
+			fmt.Fprintf(&b, "V:%v", v)
+		}
 	}
-	return key
+	return b.String()
 }
 
 // ExecuteWithText executes a query from text and uses query caching

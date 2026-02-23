@@ -184,6 +184,28 @@ func TestCaseExpression_EvalValue_Simple(t *testing.T) {
 	}
 }
 
+func TestCaseExpression_SimpleCrosType(t *testing.T) {
+	// Verify int64 matches float64 via compareValues (not interface equality)
+	caseExpr := &CaseExpression{
+		Operand: &LiteralExpression{Value: int64(1)},
+		WhenClauses: []CaseWhen{
+			{
+				Condition: &LiteralExpression{Value: float64(1.0)},
+				Result:    &LiteralExpression{Value: "matched"},
+			},
+		},
+		ElseResult: &LiteralExpression{Value: "no match"},
+	}
+
+	result, err := caseExpr.EvalValue(map[string]any{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "matched" {
+		t.Errorf("int64(1) should match float64(1.0), got %v", result)
+	}
+}
+
 func TestCaseExpression_NoElse_ReturnsNil(t *testing.T) {
 	caseExpr := &CaseExpression{
 		WhenClauses: []CaseWhen{
