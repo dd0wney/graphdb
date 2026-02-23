@@ -54,7 +54,8 @@ func (ec *ExecutionContext) CheckCancellation() error {
 
 // BindingSet represents a set of variable bindings
 type BindingSet struct {
-	bindings map[string]any
+	bindings     map[string]any
+	vectorScores map[string]float64 // variable -> similarity score from VectorSearchStep
 }
 
 // StepProfile holds profiling data for a single execution step
