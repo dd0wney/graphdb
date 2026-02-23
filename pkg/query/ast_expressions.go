@@ -66,3 +66,53 @@ func (le *LiteralExpression) Eval(context map[string]any) (bool, error) {
 	}
 	return false, fmt.Errorf("cannot convert literal to boolean")
 }
+
+// FunctionCallExpression represents a function call (e.g., toLower(n.name))
+type FunctionCallExpression struct {
+	Name string
+	Args []Expression
+}
+
+// Eval evaluates the function and coerces the result to bool (for WHERE usage)
+func (fce *FunctionCallExpression) Eval(context map[string]any) (bool, error) {
+	result, err := fce.EvalValue(context)
+	if err != nil {
+		return false, err
+	}
+	return coerceToBool(result), nil
+}
+
+// EvalValue evaluates the function and returns the raw result
+func (fce *FunctionCallExpression) EvalValue(context map[string]any) (any, error) {
+	fn, err := GetFunction(fce.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Evaluate arguments
+	args := make([]any, len(fce.Args))
+	for i, arg := range fce.Args {
+		args[i] = extractValue(arg, context)
+	}
+
+	return fn(args)
+}
+
+// coerceToBool converts an arbitrary value to a boolean
+func coerceToBool(val any) bool {
+	if val == nil {
+		return false
+	}
+	switch v := val.(type) {
+	case bool:
+		return v
+	case int64:
+		return v != 0
+	case float64:
+		return v != 0
+	case string:
+		return v != ""
+	default:
+		return true
+	}
+}

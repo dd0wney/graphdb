@@ -24,6 +24,12 @@ func buildColumnName(item *ReturnItem) string {
 		return fmt.Sprintf("%s(*)", item.Aggregate)
 	}
 
+	if item.ValueExpr != nil {
+		if fce, ok := item.ValueExpr.(*FunctionCallExpression); ok {
+			return fce.Name + "(...)"
+		}
+	}
+
 	if item.Expression != nil {
 		return fmt.Sprintf("%s.%s", item.Expression.Variable, item.Expression.Property)
 	}
@@ -123,6 +129,12 @@ func (e *Executor) buildRow(binding *BindingSet, items []*ReturnItem, columns []
 
 	for i, item := range items {
 		columnName := columns[i]
+
+		// ValueExpr takes precedence (e.g. function calls)
+		if item.ValueExpr != nil {
+			row[columnName] = extractValue(item.ValueExpr, binding.bindings)
+			continue
+		}
 
 		// Extract value - check for nil Expression first
 		if item.Expression != nil {

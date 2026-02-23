@@ -102,8 +102,14 @@ func (p *Parser) parsePrimaryExpression() (Expression, error) {
 
 	switch token.Type {
 	case TokenIdentifier:
-		// Could be: variable.property or just variable
+		// Could be: function call, variable.property, or just variable
 		variable := p.advance().Value
+
+		// Check for function call: identifier followed by (
+		if p.peek().Type == TokenLeftParen {
+			return p.parseFunctionCall(variable)
+		}
+
 		if p.peek().Type == TokenDot {
 			p.advance()
 			propertyToken, err := p.expect(TokenIdentifier)

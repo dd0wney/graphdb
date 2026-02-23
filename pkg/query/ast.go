@@ -92,8 +92,9 @@ type ReturnClause struct {
 // ReturnItem represents a single return item
 type ReturnItem struct {
 	Expression *PropertyExpression
+	ValueExpr  Expression // Broader type for function calls; if non-nil, takes precedence
 	Alias      string
-	Aggregate  string // COUNT, SUM, AVG, MIN, MAX
+	Aggregate  string // COUNT, SUM, AVG, MIN, MAX, COLLECT
 }
 
 // OrderByItem represents ordering specification

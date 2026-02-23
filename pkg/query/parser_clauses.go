@@ -102,32 +102,53 @@ func (p *Parser) parseReturn() (*ReturnClause, error) {
 	return returnClause, nil
 }
 
+// isAggregateFunction checks if a name is a known aggregate function
+func isAggregateFunction(name string) bool {
+	switch name {
+	case "COUNT", "SUM", "AVG", "MIN", "MAX", "COLLECT":
+		return true
+	default:
+		return false
+	}
+}
+
 // parseReturnItem parses a single return item
 func (p *Parser) parseReturnItem() (*ReturnItem, error) {
 	item := &ReturnItem{}
 
-	// Check for aggregation functions
+	// Check for function calls (aggregates or regular functions)
 	if p.peek().Type == TokenIdentifier {
 		nextToken := p.peekAhead(1)
 		if nextToken.Type == TokenLeftParen {
-			// Aggregation function
-			funcName := p.advance().Value
-			p.advance() // consume (
+			funcName := p.peek().Value
 
-			// Parse argument
-			expr, err := p.parsePrimaryExpression()
-			if err != nil {
-				return nil, err
-			}
-			if propExpr, ok := expr.(*PropertyExpression); ok {
-				item.Expression = propExpr
-			}
+			if isAggregateFunction(funcName) {
+				// Known aggregate function
+				p.advance() // consume function name
+				p.advance() // consume (
 
-			if _, err := p.expect(TokenRightParen); err != nil {
-				return nil, err
-			}
+				// Parse argument
+				expr, err := p.parsePrimaryExpression()
+				if err != nil {
+					return nil, err
+				}
+				if propExpr, ok := expr.(*PropertyExpression); ok {
+					item.Expression = propExpr
+				}
 
-			item.Aggregate = funcName
+				if _, err := p.expect(TokenRightParen); err != nil {
+					return nil, err
+				}
+
+				item.Aggregate = funcName
+			} else {
+				// Regular function call in RETURN
+				expr, err := p.parsePrimaryExpression()
+				if err != nil {
+					return nil, err
+				}
+				item.ValueExpr = expr
+			}
 		} else {
 			// Regular property expression
 			expr, err := p.parsePrimaryExpression()
@@ -255,6 +276,40 @@ func (p *Parser) parseSet() (*SetClause, error) {
 	}
 
 	return setClause, nil
+}
+
+// parseFunctionCall parses a function call: name(arg1, arg2, ...)
+func (p *Parser) parseFunctionCall(name string) (Expression, error) {
+	if _, err := p.expect(TokenLeftParen); err != nil {
+		return nil, err
+	}
+
+	args := make([]Expression, 0)
+
+	// Handle empty argument list
+	if p.peek().Type != TokenRightParen {
+		for {
+			arg, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, arg)
+
+			if p.peek().Type != TokenComma {
+				break
+			}
+			p.advance() // consume comma
+		}
+	}
+
+	if _, err := p.expect(TokenRightParen); err != nil {
+		return nil, fmt.Errorf("expected ) after function arguments")
+	}
+
+	return &FunctionCallExpression{
+		Name: name,
+		Args: args,
+	}, nil
 }
 
 // parseUnwind parses an UNWIND clause: UNWIND expr AS alias
