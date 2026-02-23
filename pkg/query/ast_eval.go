@@ -132,6 +132,18 @@ func extractValue(expr Expression, context map[string]any) any {
 			return nil
 		}
 		return result
+	case *ArithmeticExpression:
+		result, err := e.EvalValue(context)
+		if err != nil {
+			return nil
+		}
+		return result
+	case *UnaryExpression:
+		result, err := e.EvalValue(context)
+		if err != nil {
+			return nil
+		}
+		return result
 	default:
 		return nil
 	}
