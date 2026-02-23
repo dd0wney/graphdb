@@ -45,8 +45,17 @@ const (
 	TokenUnwind
 	TokenMerge
 	TokenOn
+	TokenOptional
+	TokenCase
+	TokenWhen
+	TokenThen
+	TokenElse
+	TokenEnd
+	TokenUnion
+	TokenAll
 
 	// Identifiers and literals
+	TokenParameter // $name
 	TokenIdentifier
 	TokenString
 	TokenNumber
@@ -114,6 +123,14 @@ var keywords = map[string]TokenType{
 	"UNWIND":   TokenUnwind,
 	"MERGE":    TokenMerge,
 	"ON":       TokenOn,
+	"OPTIONAL": TokenOptional,
+	"CASE":     TokenCase,
+	"WHEN":     TokenWhen,
+	"THEN":     TokenThen,
+	"ELSE":     TokenElse,
+	"END":      TokenEnd,
+	"UNION":    TokenUnion,
+	"ALL":      TokenAll,
 }
 
 func (t TokenType) String() string {
@@ -142,6 +159,24 @@ func (t TokenType) String() string {
 		return "MERGE"
 	case TokenOn:
 		return "ON"
+	case TokenOptional:
+		return "OPTIONAL"
+	case TokenCase:
+		return "CASE"
+	case TokenWhen:
+		return "WHEN"
+	case TokenThen:
+		return "THEN"
+	case TokenElse:
+		return "ELSE"
+	case TokenEnd:
+		return "END"
+	case TokenUnion:
+		return "UNION"
+	case TokenAll:
+		return "ALL"
+	case TokenParameter:
+		return "PARAMETER"
 	case TokenIdentifier:
 		return "IDENTIFIER"
 	case TokenString:

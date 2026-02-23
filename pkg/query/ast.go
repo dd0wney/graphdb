@@ -144,3 +144,8 @@ type WithClause struct {
 	Items []*ReturnItem
 	Where *WhereClause
 }
+
+// ParameterRef represents a parameter reference in property maps ({name: $name})
+type ParameterRef struct {
+	Name string // "name" from $name
+}

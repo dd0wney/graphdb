@@ -193,6 +193,105 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	return e.ExecuteWithContext(ctx, query.Next)
 }
 
+// ExecuteWithParams executes a parameterized query. Parameters are provided as a map
+// and injected into the query before execution. ParameterRef values in property maps
+// are resolved to actual values, and parameters are made available in bindings as "$name" keys.
+func (e *Executor) ExecuteWithParams(query *Query, params map[string]any) (*ResultSet, error) {
+	// Validate and resolve ParameterRef values in property maps
+	if err := resolveParameters(query, params); err != nil {
+		return nil, err
+	}
+
+	// Validate that all ParameterExpression references have corresponding params
+	if err := validateParameterExpressions(query, params); err != nil {
+		return nil, err
+	}
+
+	// Inject params into initial bindings with "$" prefix to avoid collision with variables
+	bindings := &BindingSet{bindings: make(map[string]any)}
+	for k, v := range params {
+		bindings.bindings["$"+k] = v
+	}
+	query.InitialBindings = []*BindingSet{bindings}
+
+	return e.Execute(query)
+}
+
+// resolveParameters replaces ParameterRef values in pattern property maps with actual param values
+func resolveParameters(query *Query, params map[string]any) error {
+	if query.Match != nil {
+		for _, pattern := range query.Match.Patterns {
+			if err := resolvePatternParams(pattern, params); err != nil {
+				return err
+			}
+		}
+	}
+	if query.Create != nil {
+		for _, pattern := range query.Create.Patterns {
+			if err := resolvePatternParams(pattern, params); err != nil {
+				return err
+			}
+		}
+	}
+	if query.Merge != nil {
+		if err := resolvePatternParams(query.Merge.Pattern, params); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func resolvePatternParams(pattern *Pattern, params map[string]any) error {
+	for _, node := range pattern.Nodes {
+		if err := resolvePropertyParams(node.Properties, params); err != nil {
+			return err
+		}
+	}
+	for _, rel := range pattern.Relationships {
+		if err := resolvePropertyParams(rel.Properties, params); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func resolvePropertyParams(props map[string]any, params map[string]any) error {
+	for key, val := range props {
+		if ref, ok := val.(*ParameterRef); ok {
+			resolved, exists := params[ref.Name]
+			if !exists {
+				return fmt.Errorf("missing parameter: $%s", ref.Name)
+			}
+			props[key] = resolved
+		}
+	}
+	return nil
+}
+
+// validateParameterExpressions walks the WHERE clause to find any ParameterExpression
+// and ensures corresponding params exist
+func validateParameterExpressions(query *Query, params map[string]any) error {
+	if query.Where != nil {
+		return validateExprParams(query.Where.Expression, params)
+	}
+	return nil
+}
+
+func validateExprParams(expr Expression, params map[string]any) error {
+	switch e := expr.(type) {
+	case *ParameterExpression:
+		if _, ok := params[e.Name]; !ok {
+			return fmt.Errorf("missing parameter: $%s", e.Name)
+		}
+	case *BinaryExpression:
+		if err := validateExprParams(e.Left, params); err != nil {
+			return err
+		}
+		return validateExprParams(e.Right, params)
+	}
+	return nil
+}
+
 // ExecuteWithText executes a query from text and uses query caching
 func (e *Executor) ExecuteWithText(queryText string, query *Query) (*ResultSet, error) {
 	// Check cache

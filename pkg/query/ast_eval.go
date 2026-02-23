@@ -84,6 +84,12 @@ func extractValue(expr Expression, context map[string]any) any {
 			return nil
 		}
 		return result
+	case *ParameterExpression:
+		val, ok := context["$"+e.Name]
+		if !ok {
+			return nil
+		}
+		return val
 	default:
 		return nil
 	}

@@ -145,6 +145,11 @@ func (l *Lexer) nextToken() (Token, error) {
 		return l.readString()
 	}
 
+	// Parameters ($name)
+	if ch == '$' {
+		return l.readParameter()
+	}
+
 	// Numbers
 	if unicode.IsDigit(rune(ch)) {
 		return l.readNumber()
@@ -298,6 +303,30 @@ func (l *Lexer) skipLineComment() {
 	for l.pos < len(l.input) && l.input[l.pos] != '\n' {
 		l.advance()
 	}
+}
+
+// readParameter reads a $parameter token
+func (l *Lexer) readParameter() (Token, error) {
+	start := l.pos
+	startCol := l.column
+	l.advance() // consume '$'
+
+	if l.pos >= len(l.input) || (!unicode.IsLetter(rune(l.input[l.pos])) && l.input[l.pos] != '_') {
+		return Token{}, fmt.Errorf("expected parameter name after '$' at line %d, column %d", l.line, startCol)
+	}
+
+	nameStart := l.pos
+	for l.pos < len(l.input) && (unicode.IsLetter(rune(l.input[l.pos])) || unicode.IsDigit(rune(l.input[l.pos])) || l.input[l.pos] == '_') {
+		l.advance()
+	}
+
+	return Token{
+		Type:   TokenParameter,
+		Value:  l.input[nameStart:l.pos],
+		Pos:    start,
+		Line:   l.line,
+		Column: startCol,
+	}, nil
 }
 
 func (l *Lexer) makeToken(tokenType TokenType, value string) Token {

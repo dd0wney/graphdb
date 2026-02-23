@@ -98,6 +98,28 @@ func (fce *FunctionCallExpression) EvalValue(context map[string]any) (any, error
 	return fn(args)
 }
 
+// ParameterExpression represents a query parameter reference ($name) in expressions
+type ParameterExpression struct {
+	Name string // "name" from $name
+}
+
+func (pe *ParameterExpression) Eval(context map[string]any) (bool, error) {
+	val, ok := context["$"+pe.Name]
+	if !ok {
+		return false, fmt.Errorf("missing parameter: $%s", pe.Name)
+	}
+	return coerceToBool(val), nil
+}
+
+// EvalValue returns the raw parameter value for use in comparisons
+func (pe *ParameterExpression) EvalValue(context map[string]any) (any, error) {
+	val, ok := context["$"+pe.Name]
+	if !ok {
+		return nil, fmt.Errorf("missing parameter: $%s", pe.Name)
+	}
+	return val, nil
+}
+
 // coerceToBool converts an arbitrary value to a boolean
 func coerceToBool(val any) bool {
 	if val == nil {

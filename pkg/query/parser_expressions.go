@@ -134,6 +134,10 @@ func (p *Parser) parsePrimaryExpression() (Expression, error) {
 		}
 		return &LiteralExpression{Value: value}, nil
 
+	case TokenParameter:
+		tok := p.advance()
+		return &ParameterExpression{Name: tok.Value}, nil
+
 	case TokenLeftParen:
 		p.advance()
 		expr, err := p.parseExpression()
