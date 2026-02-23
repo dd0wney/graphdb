@@ -116,96 +116,39 @@ func isAggregateFunction(name string) bool {
 func (p *Parser) parseReturnItem() (*ReturnItem, error) {
 	item := &ReturnItem{}
 
-	tok := p.peek().Type
+	// Aggregate functions need special handling: COUNT(x), SUM(x), etc.
+	// Detect: identifier + '(' where identifier is a known aggregate
+	if p.peek().Type == TokenIdentifier && p.peekAhead(1).Type == TokenLeftParen && isAggregateFunction(p.peek().Value) {
+		funcName := p.advance().Value // consume function name
+		p.advance()                   // consume (
 
-	// CASE expressions and parameters in RETURN
-	if tok == TokenCase || tok == TokenParameter {
 		expr, err := p.parsePrimaryExpression()
 		if err != nil {
 			return nil, err
 		}
-		item.ValueExpr = expr
-	} else if tok == TokenIdentifier {
-		// Check for function calls (aggregates or regular functions)
-		nextToken := p.peekAhead(1)
-		if nextToken.Type == TokenLeftParen {
-			funcName := p.peek().Value
+		if propExpr, ok := expr.(*PropertyExpression); ok {
+			item.Expression = propExpr
+		}
 
-			if isAggregateFunction(funcName) {
-				// Known aggregate function
-				p.advance() // consume function name
-				p.advance() // consume (
+		if _, err := p.expect(TokenRightParen); err != nil {
+			return nil, err
+		}
 
-				// Parse argument
-				expr, err := p.parsePrimaryExpression()
-				if err != nil {
-					return nil, err
-				}
-				if propExpr, ok := expr.(*PropertyExpression); ok {
-					item.Expression = propExpr
-				}
+		item.Aggregate = funcName
+	} else {
+		// Everything else: delegate to parseExpression which handles
+		// arithmetic, unary minus/NOT, IS NULL, function calls, properties, etc.
+		expr, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
 
-				if _, err := p.expect(TokenRightParen); err != nil {
-					return nil, err
-				}
-
-				item.Aggregate = funcName
-			} else {
-				// Regular function call in RETURN
-				expr, err := p.parsePrimaryExpression()
-				if err != nil {
-					return nil, err
-				}
-				item.ValueExpr = expr
-			}
+		// If the result is a simple PropertyExpression, store it in Expression
+		// for backward compatibility with the existing result-building pipeline.
+		if propExpr, ok := expr.(*PropertyExpression); ok {
+			item.Expression = propExpr
 		} else {
-			// Regular property expression or namespaced function call
-			expr, err := p.parsePrimaryExpression()
-			if err != nil {
-				return nil, err
-			}
-			if propExpr, ok := expr.(*PropertyExpression); ok {
-				item.Expression = propExpr
-			} else {
-				// Namespaced function calls (e.g., vector.similarity(...)) land here
-				item.ValueExpr = expr
-			}
-		}
-	}
-
-	// Handle postfix IS NULL / IS NOT NULL on the parsed expression
-	if p.peek().Type == TokenIs {
-		var baseExpr Expression
-		if item.ValueExpr != nil {
-			baseExpr = item.ValueExpr
-		} else if item.Expression != nil {
-			baseExpr = item.Expression
-		}
-		if baseExpr != nil {
-			p.advance() // consume IS
-			if p.peek().Type == TokenNot {
-				p.advance() // consume NOT
-				if p.peek().Type != TokenNull {
-					return nil, fmt.Errorf("expected NULL after IS NOT in RETURN item")
-				}
-				p.advance() // consume NULL
-				item.ValueExpr = &BinaryExpression{
-					Left:     baseExpr,
-					Operator: "IS NOT NULL",
-					Right:    &LiteralExpression{Value: nil},
-				}
-				item.Expression = nil
-			} else if p.peek().Type == TokenNull {
-				p.advance() // consume NULL
-				item.ValueExpr = &BinaryExpression{
-					Left:     baseExpr,
-					Operator: "IS NULL",
-					Right:    &LiteralExpression{Value: nil},
-				}
-				item.Expression = nil
-			} else {
-				return nil, fmt.Errorf("expected NULL or NOT NULL after IS in RETURN item")
-			}
+			item.ValueExpr = expr
 		}
 	}
 
