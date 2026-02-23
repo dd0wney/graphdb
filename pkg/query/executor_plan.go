@@ -140,10 +140,14 @@ func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPl
 		results:  make([]*BindingSet, 0),
 	}
 
-	// Start with empty binding
-	execCtx.results = append(execCtx.results, &BindingSet{
-		bindings: make(map[string]any),
-	})
+	// Use initial bindings if provided (from WITH chaining), otherwise start with empty binding
+	if query.InitialBindings != nil {
+		execCtx.results = query.InitialBindings
+	} else {
+		execCtx.results = append(execCtx.results, &BindingSet{
+			bindings: make(map[string]any),
+		})
+	}
 
 	// Execute each step with cancellation checks
 	for i, step := range plan.Steps {

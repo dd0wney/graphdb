@@ -71,6 +71,21 @@ func (p *Parser) Parse() (*Query, error) {
 			}
 			query.Delete = deleteClause
 
+		case TokenWith:
+			withClause, err := p.parseWith()
+			if err != nil {
+				return nil, err
+			}
+			query.With = withClause
+
+			// Recursively parse the next query segment
+			next, err := p.Parse()
+			if err != nil {
+				return nil, err
+			}
+			query.Next = next
+			return query, nil
+
 		case TokenMerge:
 			mergeClause, err := p.parseMerge()
 			if err != nil {

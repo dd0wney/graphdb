@@ -312,6 +312,42 @@ func (p *Parser) parseFunctionCall(name string) (Expression, error) {
 	}, nil
 }
 
+// parseWith parses a WITH clause: WITH items [WHERE ...]
+func (p *Parser) parseWith() (*WithClause, error) {
+	if _, err := p.expect(TokenWith); err != nil {
+		return nil, err
+	}
+
+	withClause := &WithClause{
+		Items: make([]*ReturnItem, 0),
+	}
+
+	// Parse WITH items (same format as RETURN items)
+	for {
+		item, err := p.parseReturnItem()
+		if err != nil {
+			return nil, err
+		}
+		withClause.Items = append(withClause.Items, item)
+
+		if p.peek().Type != TokenComma {
+			break
+		}
+		p.advance() // consume comma
+	}
+
+	// Optional WHERE after WITH
+	if p.peek().Type == TokenWhere {
+		where, err := p.parseWhere()
+		if err != nil {
+			return nil, err
+		}
+		withClause.Where = where
+	}
+
+	return withClause, nil
+}
+
 // parseMerge parses a MERGE clause with optional ON CREATE SET / ON MATCH SET
 func (p *Parser) parseMerge() (*MergeClause, error) {
 	if _, err := p.expect(TokenMerge); err != nil {

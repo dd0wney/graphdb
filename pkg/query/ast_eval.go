@@ -37,6 +37,9 @@ func extractValue(expr Expression, context map[string]any) any {
 		if obj, ok := context[e.Variable]; ok {
 			// Handle storage.Node objects
 			if node, ok := obj.(*storage.Node); ok {
+				if e.Property == "" {
+					return node
+				}
 				if val, found := node.Properties[e.Property]; found {
 					// Extract the actual value from storage.Value based on type
 					switch val.Type {
@@ -62,7 +65,14 @@ func extractValue(expr Expression, context map[string]any) any {
 			}
 			// Fallback to map[string]any for backward compatibility
 			if m, ok := obj.(map[string]any); ok {
+				if e.Property == "" {
+					return m
+				}
 				return m[e.Property]
+			}
+			// Raw value binding (e.g., from WITH projections)
+			if e.Property == "" {
+				return obj
 			}
 		}
 		return nil

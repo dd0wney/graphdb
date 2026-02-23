@@ -104,8 +104,93 @@ func (e *Executor) ExecuteWithContext(ctx context.Context, query *Query) (result
 		return e.executeWithProfiling(ctx, optimizedPlan, query)
 	}
 
+	// Handle WITH chaining — needs bindings, not just results
+	if query.With != nil && query.Next != nil {
+		return e.executeWithChain(ctx, optimizedPlan, query)
+	}
+
 	// Execute optimized plan with context
 	return e.executePlanWithContext(ctx, optimizedPlan, query)
+}
+
+// executeWithChain handles WITH clause chaining between query segments
+func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, query *Query) (*ResultSet, error) {
+	execCtx := &ExecutionContext{
+		context:  ctx,
+		graph:    e.graph,
+		bindings: make(map[string]any),
+		results:  make([]*BindingSet, 0),
+	}
+
+	// Use initial bindings if provided, otherwise start with empty binding
+	if query.InitialBindings != nil {
+		execCtx.results = query.InitialBindings
+	} else {
+		execCtx.results = append(execCtx.results, &BindingSet{
+			bindings: make(map[string]any),
+		})
+	}
+
+	// Execute each step
+	for _, step := range plan.Steps {
+		if err := execCtx.CheckCancellation(); err != nil {
+			return nil, err
+		}
+		if err := step.Execute(execCtx); err != nil {
+			return nil, err
+		}
+	}
+
+	// Project bindings through WITH items
+	computer := &AggregationComputer{}
+	projectedBindings := make([]*BindingSet, 0, len(execCtx.results))
+
+	for _, binding := range execCtx.results {
+		newBinding := &BindingSet{bindings: make(map[string]any)}
+
+		for _, item := range query.With.Items {
+			alias := item.Alias
+			if alias == "" && item.Expression != nil {
+				alias = item.Expression.Variable
+			}
+			if alias == "" {
+				continue
+			}
+
+			// Extract the value from the current binding
+			if item.ValueExpr != nil {
+				newBinding.bindings[alias] = extractValue(item.ValueExpr, binding.bindings)
+			} else if item.Expression != nil {
+				if item.Expression.Property == "" {
+					// Pass the whole node/variable through
+					newBinding.bindings[alias] = binding.bindings[item.Expression.Variable]
+				} else {
+					newBinding.bindings[alias] = e.extractValueFromBinding(binding, item.Expression, computer)
+				}
+			}
+		}
+
+		projectedBindings = append(projectedBindings, newBinding)
+	}
+
+	// Apply optional WITH WHERE filter
+	if query.With.Where != nil {
+		filtered := make([]*BindingSet, 0)
+		for _, binding := range projectedBindings {
+			match, err := query.With.Where.Expression.Eval(binding.bindings)
+			if err != nil {
+				continue
+			}
+			if match {
+				filtered = append(filtered, binding)
+			}
+		}
+		projectedBindings = filtered
+	}
+
+	// Execute the next query segment with projected bindings as initial state
+	query.Next.InitialBindings = projectedBindings
+	return e.ExecuteWithContext(ctx, query.Next)
 }
 
 // ExecuteWithText executes a query from text and uses query caching

@@ -152,19 +152,26 @@ func (e *Executor) extractValueFromBinding(binding *BindingSet, expr *PropertyEx
 		return nil
 	}
 
-	node, ok := obj.(*storage.Node)
-	if !ok {
-		return nil
-	}
-
-	if expr.Property != "" {
-		if prop, exists := node.Properties[expr.Property]; exists {
-			// Reuse ExtractValue from AggregationComputer
-			return computer.ExtractValue(prop)
+	// Handle *storage.Node bindings
+	if node, ok := obj.(*storage.Node); ok {
+		if expr.Property != "" {
+			if prop, exists := node.Properties[expr.Property]; exists {
+				return computer.ExtractValue(prop)
+			}
+			return nil
 		}
-		return nil
+		return node
 	}
 
-	// Return whole node
-	return node
+	// Handle raw value bindings (e.g., from WITH projections)
+	if expr.Property == "" {
+		return obj
+	}
+
+	// Try map access for backwards compatibility
+	if m, ok := obj.(map[string]any); ok {
+		return m[expr.Property]
+	}
+
+	return nil
 }
