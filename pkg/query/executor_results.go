@@ -25,8 +25,11 @@ func buildColumnName(item *ReturnItem) string {
 	}
 
 	if item.ValueExpr != nil {
-		if fce, ok := item.ValueExpr.(*FunctionCallExpression); ok {
-			return fce.Name + "(...)"
+		switch item.ValueExpr.(type) {
+		case *FunctionCallExpression:
+			return item.ValueExpr.(*FunctionCallExpression).Name + "(...)"
+		case *ArithmeticExpression, *UnaryExpression, *BinaryExpression:
+			return "<expr>"
 		}
 	}
 

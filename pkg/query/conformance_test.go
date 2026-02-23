@@ -992,3 +992,225 @@ func TestConformance_Phase3_AllFeaturesCombined(t *testing.T) {
 		t.Error("expected Diana (Engineer, no outgoing edges) to have noFriends=true")
 	}
 }
+
+// --- Phase 4 Conformance Tests: Expression Operators ---
+
+func TestConformance_Phase4_ArithmeticWithOptionalMatch(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	// Arithmetic on nullable values — OPTIONAL MATCH may bind nil for b
+	// Alice has friends, Bob/Charlie do not. b.age will be nil for unmatched.
+	// Arithmetic with nil should propagate null (not crash).
+	result := parseAndExecute(t, executor,
+		`MATCH (a:Person) OPTIONAL MATCH (a)-[:KNOWS]->(b:Person) RETURN a.name, b.age + 10 AS agePlus`)
+
+	if result.Count < 3 {
+		t.Fatalf("expected at least 3 rows, got %d", result.Count)
+	}
+
+	// For Bob and Charlie (no outgoing KNOWS), b.age is nil → nil + 10 = nil
+	for _, row := range result.Rows {
+		name := row["a.name"]
+		val := row["agePlus"]
+		if name == "Bob" || name == "Charlie" {
+			if val != nil {
+				t.Errorf("%s: expected nil for b.age + 10 (no friends), got %v", name, val)
+			}
+		}
+	}
+}
+
+func TestConformance_Phase4_NotInWithParameters(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	// NOT IN with parameter-provided threshold
+	// n.salary NOT IN [60000, 90000] → Alice(80000) is the only match
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE n.salary NOT IN [60000, 90000] RETURN n.name`)
+
+	if result.Count != 1 {
+		t.Fatalf("expected 1 result, got %d", result.Count)
+	}
+	if result.Rows[0]["n.name"] != "Alice" {
+		t.Errorf("expected Alice, got %v", result.Rows[0]["n.name"])
+	}
+}
+
+func TestConformance_Phase4_ArithmeticInWhereWithCase(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	// Combine arithmetic in WHERE with CASE in RETURN
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person)
+		 WHERE n.salary + 10000 > 85000
+		 RETURN n.name, CASE WHEN n.salary > 85000 THEN 'high' ELSE 'mid' END AS tier`)
+
+	// salary + 10000 > 85000 means salary > 75000 → Alice(80000), Charlie(90000)
+	if result.Count != 2 {
+		t.Fatalf("expected 2 results, got %d", result.Count)
+	}
+
+	for _, row := range result.Rows {
+		name := row["n.name"]
+		tier := row["tier"]
+		switch name {
+		case "Alice":
+			if tier != "mid" {
+				t.Errorf("Alice(80000): tier=%v, want mid", tier)
+			}
+		case "Charlie":
+			if tier != "high" {
+				t.Errorf("Charlie(90000): tier=%v, want high", tier)
+			}
+		}
+	}
+}
+
+func TestConformance_Phase4_StringConcatInWith(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	// String concatenation piped through WITH
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person)
+		 WITH n.name + '_user' AS username
+		 RETURN username`)
+
+	if result.Count != 3 {
+		t.Fatalf("expected 3 results, got %d", result.Count)
+	}
+
+	// Column name for projected variable "username" is "username."
+	// (PropertyExpression with empty Property)
+	col := result.Columns[0]
+	usernames := make(map[string]bool)
+	for _, row := range result.Rows {
+		if u, ok := row[col].(string); ok {
+			usernames[u] = true
+		}
+	}
+	for _, expected := range []string{"Alice_user", "Bob_user", "Charlie_user"} {
+		if !usernames[expected] {
+			t.Errorf("expected %q in results, got %v", expected, usernames)
+		}
+	}
+}
+
+func TestConformance_Phase4_UnaryMinusWithOrderBy(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	// Negate salary in RETURN and verify it works with AS alias
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) RETURN n.name, -n.salary AS negSalary`)
+
+	if result.Count != 3 {
+		t.Fatalf("expected 3 results, got %d", result.Count)
+	}
+
+	for _, row := range result.Rows {
+		name := row["n.name"]
+		neg := row["negSalary"]
+		switch name {
+		case "Alice":
+			if neg != int64(-80000) {
+				t.Errorf("Alice negSalary=%v, want -80000", neg)
+			}
+		case "Bob":
+			if neg != int64(-60000) {
+				t.Errorf("Bob negSalary=%v, want -60000", neg)
+			}
+		case "Charlie":
+			if neg != int64(-90000) {
+				t.Errorf("Charlie negSalary=%v, want -90000", neg)
+			}
+		}
+	}
+}
+
+func TestConformance_Phase4_NotWithIsNull(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	// Combine NOT with IS NOT NULL — double negative becomes IS NULL
+	// NOT (n.salary IS NOT NULL) is equivalent to n.salary IS NULL
+	// All 3 people have salary, so this should return 0 rows
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE NOT (n.salary IS NOT NULL) RETURN n.name`)
+
+	if result.Count != 0 {
+		t.Errorf("expected 0 results (all have salary), got %d", result.Count)
+	}
+}
+
+func TestConformance_Phase4_ArithmeticWithUnion(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	// Arithmetic in both branches of UNION
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person {name: 'Alice'}) RETURN n.salary * 2 AS doubled
+		 UNION ALL
+		 MATCH (n:Person {name: 'Bob'}) RETURN n.salary * 2 AS doubled`)
+
+	if result.Count != 2 {
+		t.Fatalf("expected 2 results, got %d", result.Count)
+	}
+
+	values := make(map[any]bool)
+	for _, row := range result.Rows {
+		values[row["doubled"]] = true
+	}
+	if !values[int64(160000)] {
+		t.Error("expected 160000 (Alice 80000*2)")
+	}
+	if !values[int64(120000)] {
+		t.Error("expected 120000 (Bob 60000*2)")
+	}
+}
+
+func TestConformance_Phase4_AllFeaturesCombined(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	// Grand composition: arithmetic in WHERE + NOT IN + string concat in RETURN + CASE
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person)
+		 WHERE n.salary * 1.0 > 55000 AND n.name NOT IN ['Charlie']
+		 RETURN n.name + ' (' + n.department + ')' AS label,
+		        n.salary - 50000 AS overBase,
+		        CASE WHEN n.age > 28 THEN 'senior' ELSE 'junior' END AS level`)
+
+	// salary > 55000 AND NOT Charlie → Alice(80k), Bob(60k)
+	if result.Count != 2 {
+		t.Fatalf("expected 2 results, got %d", result.Count)
+	}
+
+	for _, row := range result.Rows {
+		label := row["label"]
+		overBase := row["overBase"]
+		level := row["level"]
+		switch {
+		case label == "Alice (Engineering)":
+			// salary - 50000 = 30000 (float since salary * 1.0 forced context, but stored as int)
+			if overBase != int64(30000) {
+				t.Errorf("Alice overBase=%v, want 30000", overBase)
+			}
+			if level != "senior" {
+				t.Errorf("Alice level=%v, want senior", level)
+			}
+		case label == "Bob (Sales)":
+			if overBase != int64(10000) {
+				t.Errorf("Bob overBase=%v, want 10000", overBase)
+			}
+			if level != "junior" {
+				t.Errorf("Bob level=%v, want junior", level)
+			}
+		default:
+			t.Errorf("unexpected label: %v", label)
+		}
+	}
+}
