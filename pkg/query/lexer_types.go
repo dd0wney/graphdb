@@ -53,6 +53,9 @@ const (
 	TokenEnd
 	TokenUnion
 	TokenAll
+	TokenIs
+	TokenIn
+	TokenRemove
 
 	// Identifiers and literals
 	TokenParameter // $name
@@ -131,6 +134,9 @@ var keywords = map[string]TokenType{
 	"END":      TokenEnd,
 	"UNION":    TokenUnion,
 	"ALL":      TokenAll,
+	"IS":       TokenIs,
+	"IN":       TokenIn,
+	"REMOVE":   TokenRemove,
 }
 
 func (t TokenType) String() string {
@@ -175,6 +181,12 @@ func (t TokenType) String() string {
 		return "UNION"
 	case TokenAll:
 		return "ALL"
+	case TokenIs:
+		return "IS"
+	case TokenIn:
+		return "IN"
+	case TokenRemove:
+		return "REMOVE"
 	case TokenParameter:
 		return "PARAMETER"
 	case TokenIdentifier:

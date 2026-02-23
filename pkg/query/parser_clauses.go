@@ -173,6 +173,42 @@ func (p *Parser) parseReturnItem() (*ReturnItem, error) {
 		}
 	}
 
+	// Handle postfix IS NULL / IS NOT NULL on the parsed expression
+	if p.peek().Type == TokenIs {
+		var baseExpr Expression
+		if item.ValueExpr != nil {
+			baseExpr = item.ValueExpr
+		} else if item.Expression != nil {
+			baseExpr = item.Expression
+		}
+		if baseExpr != nil {
+			p.advance() // consume IS
+			if p.peek().Type == TokenNot {
+				p.advance() // consume NOT
+				if p.peek().Type != TokenNull {
+					return nil, fmt.Errorf("expected NULL after IS NOT in RETURN item")
+				}
+				p.advance() // consume NULL
+				item.ValueExpr = &BinaryExpression{
+					Left:     baseExpr,
+					Operator: "IS NOT NULL",
+					Right:    &LiteralExpression{Value: nil},
+				}
+				item.Expression = nil
+			} else if p.peek().Type == TokenNull {
+				p.advance() // consume NULL
+				item.ValueExpr = &BinaryExpression{
+					Left:     baseExpr,
+					Operator: "IS NULL",
+					Right:    &LiteralExpression{Value: nil},
+				}
+				item.Expression = nil
+			} else {
+				return nil, fmt.Errorf("expected NULL or NOT NULL after IS in RETURN item")
+			}
+		}
+	}
+
 	// AS alias (optional)
 	if p.peek().Type == TokenAs {
 		p.advance()

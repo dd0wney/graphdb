@@ -25,6 +25,25 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 		return compareValues(leftVal, rightVal) >= 0, nil
 	case "<=":
 		return compareValues(leftVal, rightVal) <= 0, nil
+	case "IS NULL":
+		return leftVal == nil, nil
+	case "IS NOT NULL":
+		return leftVal != nil, nil
+	case "IN":
+		list, ok := rightVal.([]any)
+		if !ok {
+			return false, fmt.Errorf("IN requires a list on the right side")
+		}
+		for _, item := range list {
+			if leftVal == item {
+				return true, nil
+			}
+			// Handle numeric type coercion (int64 vs float64)
+			if compareValues(leftVal, item) == 0 && leftVal != nil && item != nil {
+				return true, nil
+			}
+		}
+		return false, nil
 	default:
 		return false, fmt.Errorf("unknown comparison operator: %s", op)
 	}
@@ -96,6 +115,12 @@ func extractValue(expr Expression, context map[string]any) any {
 		return val
 	case *CaseExpression:
 		result, err := e.EvalValue(context)
+		if err != nil {
+			return nil
+		}
+		return result
+	case *BinaryExpression:
+		result, err := e.Eval(context)
 		if err != nil {
 			return nil
 		}

@@ -78,6 +78,40 @@ func (p *Parser) parseComparisonExpression() (Expression, error) {
 		operator = "<="
 	case TokenGreaterEquals:
 		operator = ">="
+	case TokenIs:
+		p.advance() // consume IS
+		if p.peek().Type == TokenNot {
+			p.advance() // consume NOT
+			if p.peek().Type != TokenNull {
+				return nil, fmt.Errorf("expected NULL after IS NOT")
+			}
+			p.advance() // consume NULL
+			return &BinaryExpression{
+				Left:     left,
+				Operator: "IS NOT NULL",
+				Right:    &LiteralExpression{Value: nil},
+			}, nil
+		}
+		if p.peek().Type != TokenNull {
+			return nil, fmt.Errorf("expected NULL after IS")
+		}
+		p.advance() // consume NULL
+		return &BinaryExpression{
+			Left:     left,
+			Operator: "IS NULL",
+			Right:    &LiteralExpression{Value: nil},
+		}, nil
+	case TokenIn:
+		p.advance() // consume IN
+		right, err := p.parsePrimaryExpression()
+		if err != nil {
+			return nil, err
+		}
+		return &BinaryExpression{
+			Left:     left,
+			Operator: "IN",
+			Right:    right,
+		}, nil
 	default:
 		return left, nil // No comparison operator
 	}

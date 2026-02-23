@@ -33,7 +33,7 @@ func (be *BinaryExpression) Eval(context map[string]any) (bool, error) {
 		}
 		return be.Right.Eval(context)
 
-	case "=", ">", "<", ">=", "<=", "!=":
+	case "=", ">", "<", ">=", "<=", "!=", "IS NULL", "IS NOT NULL", "IN":
 		// Comparison operators
 		return evalComparison(be.Left, be.Right, be.Operator, context)
 
