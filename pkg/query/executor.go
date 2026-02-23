@@ -81,6 +81,11 @@ func (e *Executor) ExecuteWithContext(ctx context.Context, query *Query) (result
 	default:
 	}
 
+	// Handle UNION before normal execution
+	if query.Union != nil && query.UnionNext != nil {
+		return e.executeUnion(ctx, query)
+	}
+
 	// Build execution plan
 	plan := e.buildExecutionPlan(query)
 
@@ -290,6 +295,91 @@ func validateExprParams(expr Expression, params map[string]any) error {
 		return validateExprParams(e.Right, params)
 	}
 	return nil
+}
+
+// executeUnion executes two query segments and combines their results.
+// UNION deduplicates rows; UNION ALL preserves all rows.
+func (e *Executor) executeUnion(ctx context.Context, query *Query) (*ResultSet, error) {
+	// Execute first segment (temporarily detach Union to prevent recursion)
+	savedUnion := query.Union
+	savedUnionNext := query.UnionNext
+	query.Union = nil
+	query.UnionNext = nil
+
+	first, err := e.ExecuteWithContext(ctx, query)
+
+	// Restore union fields
+	query.Union = savedUnion
+	query.UnionNext = savedUnionNext
+
+	if err != nil {
+		return nil, fmt.Errorf("UNION first segment: %w", err)
+	}
+
+	// Execute second segment (handles chained UNIONs recursively)
+	second, err := e.ExecuteWithContext(ctx, query.UnionNext)
+	if err != nil {
+		return nil, fmt.Errorf("UNION second segment: %w", err)
+	}
+
+	// Validate column count
+	if len(first.Columns) != len(second.Columns) {
+		return nil, fmt.Errorf("UNION column count mismatch: first has %d columns, second has %d",
+			len(first.Columns), len(second.Columns))
+	}
+
+	// Remap second segment's rows to first segment's column names
+	combined := &ResultSet{
+		Columns: first.Columns,
+		Rows:    make([]map[string]any, 0, len(first.Rows)+len(second.Rows)),
+	}
+
+	combined.Rows = append(combined.Rows, first.Rows...)
+
+	for _, row := range second.Rows {
+		remapped := make(map[string]any, len(first.Columns))
+		for i, col := range first.Columns {
+			if i < len(second.Columns) {
+				remapped[col] = row[second.Columns[i]]
+			}
+		}
+		combined.Rows = append(combined.Rows, remapped)
+	}
+
+	// Deduplicate for UNION (not UNION ALL)
+	if !query.Union.All {
+		combined.Rows = deduplicateRows(combined.Rows, first.Columns)
+	}
+
+	combined.Count = len(combined.Rows)
+	return combined, nil
+}
+
+// deduplicateRows removes duplicate rows based on all column values
+func deduplicateRows(rows []map[string]any, columns []string) []map[string]any {
+	seen := make(map[string]bool)
+	result := make([]map[string]any, 0, len(rows))
+
+	for _, row := range rows {
+		key := rowKey(row, columns)
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, row)
+		}
+	}
+	return result
+}
+
+// rowKey builds a string key from row values for deduplication
+func rowKey(row map[string]any, columns []string) string {
+	key := ""
+	for i, col := range columns {
+		if i > 0 {
+			key += "\x00"
+		}
+		key += fmt.Sprintf("%v", row[col])
+	}
+	return key
 }
 
 // ExecuteWithText executes a query from text and uses query caching
