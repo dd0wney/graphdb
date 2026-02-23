@@ -287,6 +287,110 @@ func setupVectorExecutor(t *testing.T) *Executor {
 	return executor
 }
 
+// --- Score binding Approach B tests ---
+
+func TestSyntheticProperty_SimilarityScore(t *testing.T) {
+	node := &storage.Node{
+		ID:     1,
+		Labels: []string{"Concept"},
+		Properties: map[string]storage.Value{
+			"name": storage.StringValue("Quantum Mechanics"),
+		},
+	}
+
+	binding := &BindingSet{
+		bindings:     map[string]any{"c": node},
+		vectorScores: map[string]float64{"c": 0.95},
+	}
+
+	computer := &AggregationComputer{}
+
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to create graph: %v", err)
+	}
+	defer graph.Close()
+	executor := NewExecutor(graph)
+
+	expr := &PropertyExpression{Variable: "c", Property: "similarity_score"}
+	result := executor.extractValueFromBinding(binding, expr, computer)
+
+	score, ok := result.(float64)
+	if !ok {
+		t.Fatalf("expected float64, got %T", result)
+	}
+
+	if score != 0.95 {
+		t.Errorf("expected score 0.95, got %f", score)
+	}
+}
+
+func TestSyntheticProperty_RealPropertyTakesPrecedence(t *testing.T) {
+	node := &storage.Node{
+		ID:     1,
+		Labels: []string{"Concept"},
+		Properties: map[string]storage.Value{
+			"similarity_score": storage.FloatValue(0.42),
+		},
+	}
+
+	binding := &BindingSet{
+		bindings:     map[string]any{"c": node},
+		vectorScores: map[string]float64{"c": 0.95},
+	}
+
+	computer := &AggregationComputer{}
+
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to create graph: %v", err)
+	}
+	defer graph.Close()
+	executor := NewExecutor(graph)
+
+	expr := &PropertyExpression{Variable: "c", Property: "similarity_score"}
+	result := executor.extractValueFromBinding(binding, expr, computer)
+
+	score, ok := result.(float64)
+	if !ok {
+		t.Fatalf("expected float64, got %T", result)
+	}
+
+	// Real property (0.42) should take precedence over synthetic (0.95)
+	if score != 0.42 {
+		t.Errorf("expected real property 0.42, got %f", score)
+	}
+}
+
+func TestSyntheticProperty_NilWhenNoVectorSearchRan(t *testing.T) {
+	node := &storage.Node{
+		ID:         1,
+		Labels:     []string{"Concept"},
+		Properties: map[string]storage.Value{},
+	}
+
+	binding := &BindingSet{
+		bindings: map[string]any{"c": node},
+		// No vectorScores
+	}
+
+	computer := &AggregationComputer{}
+
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to create graph: %v", err)
+	}
+	defer graph.Close()
+	executor := NewExecutor(graph)
+
+	expr := &PropertyExpression{Variable: "c", Property: "similarity_score"}
+	result := executor.extractValueFromBinding(binding, expr, computer)
+
+	if result != nil {
+		t.Errorf("expected nil when no VectorSearchStep ran, got %v", result)
+	}
+}
+
 func TestExtractValue_TypeVector(t *testing.T) {
 	embedding := []float32{0.1, 0.2, 0.3, 0.4}
 	node := &storage.Node{

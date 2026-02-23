@@ -155,8 +155,15 @@ func (e *Executor) extractValueFromBinding(binding *BindingSet, expr *PropertyEx
 	// Handle *storage.Node bindings
 	if node, ok := obj.(*storage.Node); ok {
 		if expr.Property != "" {
+			// Real property takes precedence
 			if prop, exists := node.Properties[expr.Property]; exists {
 				return computer.ExtractValue(prop)
+			}
+			// Synthetic property: similarity_score from VectorSearchStep
+			if expr.Property == "similarity_score" && binding.vectorScores != nil {
+				if score, ok := binding.vectorScores[expr.Variable]; ok {
+					return score
+				}
 			}
 			return nil
 		}
