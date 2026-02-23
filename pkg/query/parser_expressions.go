@@ -188,6 +188,9 @@ func (p *Parser) parsePrimaryExpression() (Expression, error) {
 		p.expect(TokenRightParen)
 		return expr, nil
 
+	case TokenLeftBracket:
+		return p.parseListLiteral()
+
 	default:
 		return nil, fmt.Errorf("unexpected token in expression: %s", token.Type)
 	}
@@ -247,4 +250,38 @@ func (p *Parser) parseCaseExpression() (Expression, error) {
 	}
 
 	return caseExpr, nil
+}
+
+// parseListLiteral parses [val1, val2, ...] into a LiteralExpression with []any value
+func (p *Parser) parseListLiteral() (Expression, error) {
+	if _, err := p.expect(TokenLeftBracket); err != nil {
+		return nil, err
+	}
+
+	items := make([]any, 0)
+
+	// Handle empty list
+	if p.peek().Type == TokenRightBracket {
+		p.advance()
+		return &LiteralExpression{Value: items}, nil
+	}
+
+	for {
+		val, err := p.parseValue()
+		if err != nil {
+			return nil, fmt.Errorf("invalid list element: %w", err)
+		}
+		items = append(items, val)
+
+		if p.peek().Type != TokenComma {
+			break
+		}
+		p.advance() // consume comma
+	}
+
+	if _, err := p.expect(TokenRightBracket); err != nil {
+		return nil, fmt.Errorf("expected ] to close list literal")
+	}
+
+	return &LiteralExpression{Value: items}, nil
 }
