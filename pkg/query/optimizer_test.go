@@ -670,3 +670,221 @@ func TestCardinalityEstimation(t *testing.T) {
 		t.Errorf("Expected cardinality around 50, got %d", cardinality)
 	}
 }
+
+// --- Vector search optimizer tests ---
+
+func TestExtractVectorCondition_Simple(t *testing.T) {
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to create graph: %v", err)
+	}
+	defer graph.Close()
+	optimizer := NewOptimizer(graph)
+
+	// vector.similarity(c.embedding, $query_embedding) > 0.8
+	expr := &BinaryExpression{
+		Left: &FunctionCallExpression{
+			Name: "vector.similarity",
+			Args: []Expression{
+				&PropertyExpression{Variable: "c", Property: "embedding"},
+				&ParameterExpression{Name: "query_embedding"},
+			},
+		},
+		Operator: ">",
+		Right:    &LiteralExpression{Value: float64(0.8)},
+	}
+
+	vc := optimizer.extractVectorCondition(expr)
+	if vc == nil {
+		t.Fatal("expected vector condition to be extracted")
+	}
+
+	if vc.variable != "c" {
+		t.Errorf("expected variable 'c', got %q", vc.variable)
+	}
+	if vc.propertyName != "embedding" {
+		t.Errorf("expected property 'embedding', got %q", vc.propertyName)
+	}
+	if vc.threshold != 0.8 {
+		t.Errorf("expected threshold 0.8, got %f", vc.threshold)
+	}
+	if vc.queryParamName != "query_embedding" {
+		t.Errorf("expected param name 'query_embedding', got %q", vc.queryParamName)
+	}
+}
+
+func TestExtractVectorCondition_WithAND(t *testing.T) {
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to create graph: %v", err)
+	}
+	defer graph.Close()
+	optimizer := NewOptimizer(graph)
+
+	// name = "X" AND vector.similarity(c.embedding, $q) > 0.8
+	expr := &BinaryExpression{
+		Left: &BinaryExpression{
+			Left:     &PropertyExpression{Variable: "target", Property: "name"},
+			Operator: "=",
+			Right:    &LiteralExpression{Value: "Hawking Radiation"},
+		},
+		Operator: "AND",
+		Right: &BinaryExpression{
+			Left: &FunctionCallExpression{
+				Name: "vector.similarity",
+				Args: []Expression{
+					&PropertyExpression{Variable: "c", Property: "embedding"},
+					&ParameterExpression{Name: "q"},
+				},
+			},
+			Operator: ">",
+			Right:    &LiteralExpression{Value: float64(0.8)},
+		},
+	}
+
+	vc := optimizer.extractVectorCondition(expr)
+	if vc == nil {
+		t.Fatal("expected vector condition to be extracted from AND")
+	}
+
+	if vc.variable != "c" || vc.propertyName != "embedding" {
+		t.Errorf("unexpected extraction: %+v", vc)
+	}
+}
+
+func TestExtractVectorCondition_NonVector(t *testing.T) {
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to create graph: %v", err)
+	}
+	defer graph.Close()
+	optimizer := NewOptimizer(graph)
+
+	// n.age > 30 — should return nil
+	expr := &BinaryExpression{
+		Left:     &PropertyExpression{Variable: "n", Property: "age"},
+		Operator: ">",
+		Right:    &LiteralExpression{Value: float64(30)},
+	}
+
+	vc := optimizer.extractVectorCondition(expr)
+	if vc != nil {
+		t.Errorf("expected nil for non-vector condition, got %+v", vc)
+	}
+}
+
+func TestOptimizer_InsertVectorSearchStep(t *testing.T) {
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to create graph: %v", err)
+	}
+	defer graph.Close()
+	optimizer := NewOptimizer(graph)
+
+	// Wire up mock vector functions
+	optimizer.hasVectorIndex = func(prop string) bool { return prop == "embedding" }
+	optimizer.vectorSearch = func(prop string, q []float32, k, ef int) ([]VectorSearchResult, error) {
+		return nil, nil
+	}
+	optimizer.similarityFn = func(a, b []float32) (float64, error) { return 0, nil }
+	optimizer.getNodeFn = func(id uint64) (any, error) { return nil, nil }
+
+	query := &Query{
+		Match: &MatchClause{
+			Patterns: []*Pattern{
+				{Nodes: []*NodePattern{{Variable: "c", Labels: []string{"Concept"}}}},
+			},
+		},
+		Where: &WhereClause{
+			Expression: &BinaryExpression{
+				Left: &FunctionCallExpression{
+					Name: "vector.similarity",
+					Args: []Expression{
+						&PropertyExpression{Variable: "c", Property: "embedding"},
+						&ParameterExpression{Name: "q"},
+					},
+				},
+				Operator: ">",
+				Right:    &LiteralExpression{Value: float64(0.8)},
+			},
+		},
+	}
+
+	plan := &ExecutionPlan{
+		Steps: []ExecutionStep{
+			&MatchStep{match: query.Match},
+			&FilterStep{where: query.Where},
+		},
+	}
+
+	optimized := optimizer.Optimize(plan, query)
+
+	// VectorSearchStep should be the first step
+	if len(optimized.Steps) < 1 {
+		t.Fatal("expected at least 1 step")
+	}
+
+	vs, ok := optimized.Steps[0].(*VectorSearchStep)
+	if !ok {
+		t.Fatalf("expected first step to be VectorSearchStep, got %T", optimized.Steps[0])
+	}
+
+	if vs.variable != "c" {
+		t.Errorf("expected variable 'c', got %q", vs.variable)
+	}
+	if vs.threshold != 0.8 {
+		t.Errorf("expected threshold 0.8, got %f", vs.threshold)
+	}
+	if vs.propertyName != "embedding" {
+		t.Errorf("expected property 'embedding', got %q", vs.propertyName)
+	}
+}
+
+func TestOptimizer_NoVectorIndex_NoOptimization(t *testing.T) {
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to create graph: %v", err)
+	}
+	defer graph.Close()
+	optimizer := NewOptimizer(graph)
+
+	// No vector index configured
+	optimizer.hasVectorIndex = func(prop string) bool { return false }
+
+	query := &Query{
+		Match: &MatchClause{
+			Patterns: []*Pattern{
+				{Nodes: []*NodePattern{{Variable: "c", Labels: []string{"Concept"}}}},
+			},
+		},
+		Where: &WhereClause{
+			Expression: &BinaryExpression{
+				Left: &FunctionCallExpression{
+					Name: "vector.similarity",
+					Args: []Expression{
+						&PropertyExpression{Variable: "c", Property: "embedding"},
+						&ParameterExpression{Name: "q"},
+					},
+				},
+				Operator: ">",
+				Right:    &LiteralExpression{Value: float64(0.8)},
+			},
+		},
+	}
+
+	plan := &ExecutionPlan{
+		Steps: []ExecutionStep{
+			&MatchStep{match: query.Match},
+			&FilterStep{where: query.Where},
+		},
+	}
+
+	optimized := optimizer.Optimize(plan, query)
+
+	// Should NOT insert VectorSearchStep when no index exists
+	for _, step := range optimized.Steps {
+		if _, ok := step.(*VectorSearchStep); ok {
+			t.Error("should not insert VectorSearchStep when no vector index exists")
+		}
+	}
+}
