@@ -340,6 +340,150 @@ func TestConformance_ExplainParsed(t *testing.T) {
 	}
 }
 
+// parseAndExecuteWithParams is a helper that parses and executes a parameterized query
+func parseAndExecuteWithParams(t *testing.T, executor *Executor, queryText string, params map[string]any) *ResultSet {
+	t.Helper()
+
+	lexer := NewLexer(queryText)
+	tokens, err := lexer.Tokenize()
+	if err != nil {
+		t.Fatalf("Tokenize failed for %q: %v", queryText, err)
+	}
+
+	parser := NewParser(tokens)
+	query, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed for %q: %v", queryText, err)
+	}
+
+	result, err := executor.ExecuteWithParams(query, params)
+	if err != nil {
+		t.Fatalf("ExecuteWithParams failed for %q: %v", queryText, err)
+	}
+
+	return result
+}
+
+// --- Phase 2A Conformance Tests ---
+
+func TestConformance_ParameterizedQuery(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	result := parseAndExecuteWithParams(t, executor,
+		`MATCH (n:Person {name: $name}) RETURN n.age`,
+		map[string]any{"name": "Alice"},
+	)
+
+	if result.Count != 1 {
+		t.Fatalf("Expected 1 result, got %d", result.Count)
+	}
+	if result.Rows[0]["n.age"] != int64(30) {
+		t.Errorf("Expected age 30, got %v", result.Rows[0]["n.age"])
+	}
+}
+
+func TestConformance_CaseInReturn(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) RETURN n.name, CASE WHEN n.age > 30 THEN "senior" ELSE "junior" END AS tier`)
+
+	if result.Count != 3 {
+		t.Fatalf("Expected 3 results, got %d", result.Count)
+	}
+
+	for _, row := range result.Rows {
+		name := row["n.name"]
+		tier := row["tier"]
+		switch name {
+		case "Alice":
+			if tier != "junior" {
+				t.Errorf("Alice (age 30): tier = %v, want junior", tier)
+			}
+		case "Charlie":
+			if tier != "senior" {
+				t.Errorf("Charlie (age 35): tier = %v, want senior", tier)
+			}
+		case "Bob":
+			if tier != "junior" {
+				t.Errorf("Bob (age 25): tier = %v, want junior", tier)
+			}
+		}
+	}
+}
+
+func TestConformance_OptionalMatch(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	// Alice -> Bob (KNOWS), Alice -> Charlie (KNOWS)
+	// Bob and Charlie have no outgoing KNOWS edges
+	result := parseAndExecute(t, executor,
+		`MATCH (a:Person) OPTIONAL MATCH (a)-[:KNOWS]->(b:Person) RETURN a.name, b.name`)
+
+	// Alice has 2 friends, Bob has 0, Charlie has 0
+	// Expected: Alice->Bob, Alice->Charlie, Bob->nil, Charlie->nil = 4 rows
+	if result.Count != 4 {
+		t.Fatalf("Expected 4 rows, got %d", result.Count)
+	}
+
+	nullCount := 0
+	for _, row := range result.Rows {
+		if row["b.name"] == nil {
+			nullCount++
+		}
+	}
+	if nullCount != 2 {
+		t.Errorf("Expected 2 null b.name rows, got %d", nullCount)
+	}
+}
+
+func TestConformance_Union(t *testing.T) {
+	gs, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+		"title": storage.StringValue("Graph Databases"),
+	})
+
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) RETURN n.name AS name UNION MATCH (n:Article) RETURN n.title AS name`)
+
+	// 3 persons + 1 article = 4 unique names
+	if result.Count != 4 {
+		t.Errorf("Expected 4 rows, got %d", result.Count)
+	}
+}
+
+func TestConformance_CombinedPhase2A(t *testing.T) {
+	_, executor, cleanup := setupConformanceGraph(t)
+	defer cleanup()
+
+	// Parameterized + OPTIONAL MATCH + CASE
+	result := parseAndExecuteWithParams(t, executor,
+		`MATCH (a:Person {name: $name}) OPTIONAL MATCH (a)-[:KNOWS]->(b:Person) RETURN a.name, b.name, CASE WHEN b.name = "Bob" THEN "friend" ELSE "unknown" END AS relation`,
+		map[string]any{"name": "Alice"},
+	)
+
+	// Alice knows Bob and Charlie
+	if result.Count != 2 {
+		t.Fatalf("Expected 2 rows, got %d", result.Count)
+	}
+
+	for _, row := range result.Rows {
+		bName := row["b.name"]
+		rel := row["relation"]
+		if bName == "Bob" && rel != "friend" {
+			t.Errorf("Bob relation = %v, want friend", rel)
+		}
+		if bName == "Charlie" && rel != "unknown" {
+			t.Errorf("Charlie relation = %v, want unknown", rel)
+		}
+	}
+}
+
 func TestConformance_MergeOnCreateSet(t *testing.T) {
 	gs, cleanup := setupExecutorTestGraph(t)
 	defer cleanup()
