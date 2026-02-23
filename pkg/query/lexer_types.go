@@ -30,7 +30,8 @@ const (
 	TokenWith
 	TokenLimit
 	TokenSkip
-	TokenOrderBy
+	TokenOrder
+	TokenOrderBy // BY keyword
 	TokenAsc
 	TokenDesc
 	TokenDistinct
@@ -56,6 +57,9 @@ const (
 	TokenIs
 	TokenIn
 	TokenRemove
+	TokenStarts
+	TokenEnds
+	TokenContains
 
 	// Identifiers and literals
 	TokenParameter // $name
@@ -108,7 +112,7 @@ var keywords = map[string]TokenType{
 	"WITH":     TokenWith,
 	"LIMIT":    TokenLimit,
 	"SKIP":     TokenSkip,
-	"ORDER":    TokenOrderBy,
+	"ORDER":    TokenOrder,
 	"BY":       TokenOrderBy,
 	"ASC":      TokenAsc,
 	"DESC":     TokenDesc,
@@ -137,6 +141,9 @@ var keywords = map[string]TokenType{
 	"IS":       TokenIs,
 	"IN":       TokenIn,
 	"REMOVE":   TokenRemove,
+	"STARTS":   TokenStarts,
+	"ENDS":     TokenEnds,
+	"CONTAINS": TokenContains,
 }
 
 func (t TokenType) String() string {
@@ -187,6 +194,16 @@ func (t TokenType) String() string {
 		return "IN"
 	case TokenRemove:
 		return "REMOVE"
+	case TokenOrder:
+		return "ORDER"
+	case TokenOrderBy:
+		return "BY"
+	case TokenStarts:
+		return "STARTS"
+	case TokenEnds:
+		return "ENDS"
+	case TokenContains:
+		return "CONTAINS"
 	case TokenParameter:
 		return "PARAMETER"
 	case TokenIdentifier:

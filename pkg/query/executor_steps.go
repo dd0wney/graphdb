@@ -240,17 +240,28 @@ func (ss *SetStep) executeAssignment(ctx *ExecutionContext, binding *BindingSet,
 		return nil // Not a node, skip
 	}
 
+	// Resolve the value: expression RHS takes precedence over literal
+	var val any
+	if assignment.ValueExpr != nil {
+		val = extractValue(assignment.ValueExpr, binding.bindings)
+	} else {
+		val = assignment.Value
+	}
+
 	// Create updated properties map
 	updatedProps := make(map[string]storage.Value)
 	for k, v := range node.Properties {
 		updatedProps[k] = v
 	}
-	updatedProps[assignment.Property] = convertToStorageValue(assignment.Value)
+	updatedProps[assignment.Property] = convertToStorageValue(val)
 
 	// Update in storage
 	if err := ctx.graph.UpdateNode(node.ID, updatedProps); err != nil {
 		return fmt.Errorf("failed to update node %d: %w", node.ID, err)
 	}
+
+	// Keep binding in sync so subsequent assignments in the same SET see updated values
+	node.Properties = updatedProps
 
 	return nil
 }

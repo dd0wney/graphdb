@@ -11,6 +11,15 @@ const (
 	invalidColumnName = "<invalid>"
 )
 
+// orderByColKey returns the map key for an ORDER BY expression.
+// Bare variables (empty Property) use just the variable name to match aliases.
+func orderByColKey(expr *PropertyExpression) string {
+	if expr.Property == "" {
+		return expr.Variable
+	}
+	return fmt.Sprintf("%s.%s", expr.Variable, expr.Property)
+}
+
 // buildColumnName builds a column name from a return item
 func buildColumnName(item *ReturnItem) string {
 	if item.Alias != "" {
@@ -113,15 +122,48 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 		resultSet.Columns = append(resultSet.Columns, buildColumnName(item))
 	}
 
-	// Build rows
+	// Identify ORDER BY columns that aren't already in the result set
+	var extraSortCols []string
+	if len(returnClause.OrderBy) > 0 {
+		colSet := make(map[string]bool, len(resultSet.Columns))
+		for _, c := range resultSet.Columns {
+			colSet[c] = true
+		}
+		for _, ob := range returnClause.OrderBy {
+			if ob.Expression != nil {
+				name := orderByColKey(ob.Expression)
+				if !colSet[name] {
+					extraSortCols = append(extraSortCols, name)
+					colSet[name] = true
+				}
+			}
+		}
+	}
+
+	// Build rows with extra sort columns injected from bindings
 	computer := &AggregationComputer{}
 	for _, binding := range ctx.results {
 		row := e.buildRow(binding, returnClause.Items, resultSet.Columns, computer)
+		for _, ob := range returnClause.OrderBy {
+			if ob.Expression != nil {
+				name := orderByColKey(ob.Expression)
+				if _, exists := row[name]; !exists {
+					row[name] = e.extractValueFromBinding(binding, ob.Expression, computer)
+				}
+			}
+		}
 		resultSet.Rows = append(resultSet.Rows, row)
 	}
 
 	// Apply post-processing (DISTINCT, ORDER BY, SKIP, LIMIT)
 	e.applyPostProcessing(resultSet, returnClause, limit, skip, true)
+
+	// Strip extra sort columns from final results
+	for _, col := range extraSortCols {
+		for _, row := range resultSet.Rows {
+			delete(row, col)
+		}
+	}
 
 	return resultSet
 }
@@ -171,6 +213,17 @@ func (e *Executor) extractValueFromBinding(binding *BindingSet, expr *PropertyEx
 			return nil
 		}
 		return node
+	}
+
+	// Handle *storage.Edge bindings
+	if edge, ok := obj.(*storage.Edge); ok {
+		if expr.Property != "" {
+			if prop, exists := edge.Properties[expr.Property]; exists {
+				return extractStorageValue(prop)
+			}
+			return nil
+		}
+		return edge
 	}
 
 	// Handle raw value bindings (e.g., from WITH projections)

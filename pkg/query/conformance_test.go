@@ -1214,3 +1214,240 @@ func TestConformance_Phase4_AllFeaturesCombined(t *testing.T) {
 		}
 	}
 }
+
+// --- Phase 5 Conformance Tests: Cross-Feature Composition ---
+
+// setupPhase5ConformanceGraph creates a graph suitable for testing Phase 5 features
+// combined with prior phases. Includes edge properties, multiple labels, varied names.
+func setupPhase5ConformanceGraph(t *testing.T) (*storage.GraphStorage, *Executor, func()) {
+	t.Helper()
+	gs, cleanup := setupExecutorTestGraph(t)
+
+	alice, _ := gs.CreateNode([]string{"Person", "Employee"}, map[string]storage.Value{
+		"name":       storage.StringValue("Alice Anderson"),
+		"age":        storage.IntValue(30),
+		"department": storage.StringValue("Engineering"),
+		"salary":     storage.IntValue(80000),
+	})
+	bob, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name":       storage.StringValue("Bob Baker"),
+		"age":        storage.IntValue(25),
+		"department": storage.StringValue("Sales"),
+		"salary":     storage.IntValue(60000),
+	})
+	charlie, _ := gs.CreateNode([]string{"Person", "Manager"}, map[string]storage.Value{
+		"name":       storage.StringValue("Charlie Chen"),
+		"age":        storage.IntValue(35),
+		"department": storage.StringValue("Engineering"),
+		"salary":     storage.IntValue(90000),
+	})
+
+	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{
+		"since": storage.IntValue(2020),
+		"trust": storage.FloatValue(0.9),
+	}, 1.0)
+	gs.CreateEdge(alice.ID, charlie.ID, "MANAGES", map[string]storage.Value{
+		"since": storage.IntValue(2018),
+	}, 1.0)
+	gs.CreateEdge(charlie.ID, bob.ID, "MENTORS", map[string]storage.Value{
+		"since":   storage.IntValue(2021),
+		"project": storage.StringValue("Atlas"),
+	}, 1.0)
+
+	executor := NewExecutor(gs)
+	return gs, executor, cleanup
+}
+
+func TestConformance_Phase5_OrderByWithStartsWith(t *testing.T) {
+	_, executor, cleanup := setupPhase5ConformanceGraph(t)
+	defer cleanup()
+
+	// STARTS WITH to filter, ORDER BY to sort remaining
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE n.name STARTS WITH 'Alice' OR n.name STARTS WITH 'Charlie'
+		 RETURN n.name ORDER BY n.salary DESC`)
+
+	if result.Count != 2 {
+		t.Fatalf("expected 2 rows, got %d", result.Count)
+	}
+	// Charlie(90k) first, Alice(80k) second
+	if result.Rows[0]["n.name"] != "Charlie Chen" {
+		t.Errorf("row 0: expected Charlie Chen, got %v", result.Rows[0]["n.name"])
+	}
+	if result.Rows[1]["n.name"] != "Alice Anderson" {
+		t.Errorf("row 1: expected Alice Anderson, got %v", result.Rows[1]["n.name"])
+	}
+}
+
+func TestConformance_Phase5_EdgePropsWithSchemaFunctions(t *testing.T) {
+	_, executor, cleanup := setupPhase5ConformanceGraph(t)
+	defer cleanup()
+
+	// Combine type(r), r.since, and labels(n) in a single query
+	result := parseAndExecute(t, executor,
+		`MATCH (a:Person)-[r]->(b:Person) RETURN a.name, type(r) AS relType, r.since, labels(b) AS bLabels`)
+
+	if result.Count != 3 {
+		t.Fatalf("expected 3 edges, got %d", result.Count)
+	}
+
+	foundMentors := false
+	for _, row := range result.Rows {
+		if row["relType"] == "MENTORS" {
+			foundMentors = true
+			if row["r.since"] != int64(2021) {
+				t.Errorf("MENTORS since=%v, want 2021", row["r.since"])
+			}
+		}
+	}
+	if !foundMentors {
+		t.Error("expected to find MENTORS edge")
+	}
+}
+
+func TestConformance_Phase5_SetExprWithEdgeProperty(t *testing.T) {
+	_, executor, cleanup := setupPhase5ConformanceGraph(t)
+	defer cleanup()
+
+	// Use edge property in WHERE, then SET expression to update the node
+	parseAndExecute(t, executor,
+		`MATCH (a:Person)-[r:KNOWS]->(b:Person) WHERE r.since > 2019 SET b.salary = b.salary + 5000`)
+
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE n.name = 'Bob Baker' RETURN n.salary`)
+
+	if result.Rows[0]["n.salary"] != int64(65000) {
+		t.Errorf("expected salary=65000 after raise, got %v", result.Rows[0]["n.salary"])
+	}
+}
+
+func TestConformance_Phase5_ContainsWithOrderByAlias(t *testing.T) {
+	_, executor, cleanup := setupPhase5ConformanceGraph(t)
+	defer cleanup()
+
+	// CONTAINS filter + ORDER BY aliased column
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE n.name CONTAINS 'e'
+		 RETURN n.name AS name, n.age AS age ORDER BY age`)
+
+	// "Alice Anderson" and "Charlie Chen" contain 'e'; "Bob Baker" has 'e' in Baker
+	if result.Count < 2 {
+		t.Fatalf("expected at least 2 results containing 'e', got %d", result.Count)
+	}
+	// Verify ascending order
+	for i := 1; i < len(result.Rows); i++ {
+		prev, _ := result.Rows[i-1]["age"].(int64)
+		curr, _ := result.Rows[i]["age"].(int64)
+		if curr < prev {
+			t.Errorf("ORDER BY age broken: row %d has %d < row %d with %d", i, curr, i-1, prev)
+		}
+	}
+}
+
+func TestConformance_Phase5_IdAndKeysWithOptionalMatch(t *testing.T) {
+	_, executor, cleanup := setupPhase5ConformanceGraph(t)
+	defer cleanup()
+
+	// Use id() and keys() with OPTIONAL MATCH
+	result := parseAndExecute(t, executor,
+		`MATCH (a:Person {name: 'Alice Anderson'})
+		 OPTIONAL MATCH (a)-[r:MENTORS]->(b:Person)
+		 RETURN id(a) AS aid, keys(a) AS akeys, type(r) AS relType`)
+
+	if result.Count != 1 {
+		t.Fatalf("expected 1 row, got %d", result.Count)
+	}
+
+	// Alice has no outgoing MENTORS (she KNOWS Bob and MANAGES Charlie)
+	if result.Rows[0]["relType"] != nil {
+		t.Errorf("expected nil relType (no MENTORS from Alice), got %v", result.Rows[0]["relType"])
+	}
+	aid, ok := result.Rows[0]["aid"].(int64)
+	if !ok || aid <= 0 {
+		t.Errorf("expected positive id for Alice, got %v", result.Rows[0]["aid"])
+	}
+	akeys, ok := result.Rows[0]["akeys"].([]any)
+	if !ok || len(akeys) < 3 {
+		t.Errorf("expected keys for Alice, got %v", result.Rows[0]["akeys"])
+	}
+}
+
+func TestConformance_Phase5_EndsWithInUnion(t *testing.T) {
+	_, executor, cleanup := setupPhase5ConformanceGraph(t)
+	defer cleanup()
+
+	// ENDS WITH in both branches of UNION
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE n.name ENDS WITH 'Anderson' RETURN n.name AS name
+		 UNION ALL
+		 MATCH (n:Person) WHERE n.name ENDS WITH 'Chen' RETURN n.name AS name`)
+
+	if result.Count != 2 {
+		t.Fatalf("expected 2 rows, got %d", result.Count)
+	}
+
+	names := make(map[string]bool)
+	for _, row := range result.Rows {
+		names[row["name"].(string)] = true
+	}
+	if !names["Alice Anderson"] || !names["Charlie Chen"] {
+		t.Errorf("expected Alice Anderson and Charlie Chen, got %v", names)
+	}
+}
+
+func TestConformance_Phase5_PropertiesWithArithmetic(t *testing.T) {
+	_, executor, cleanup := setupPhase5ConformanceGraph(t)
+	defer cleanup()
+
+	// Use properties() combined with arithmetic in RETURN
+	result := parseAndExecute(t, executor,
+		`MATCH (n:Person) WHERE n.name = 'Bob Baker'
+		 RETURN properties(n) AS props, n.salary * 2 AS doubleSalary`)
+
+	if result.Count != 1 {
+		t.Fatalf("expected 1 row, got %d", result.Count)
+	}
+
+	props, ok := result.Rows[0]["props"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any for properties, got %T", result.Rows[0]["props"])
+	}
+	if props["name"] != "Bob Baker" {
+		t.Errorf("expected name=Bob Baker in properties, got %v", props["name"])
+	}
+	if result.Rows[0]["doubleSalary"] != int64(120000) {
+		t.Errorf("expected doubleSalary=120000, got %v", result.Rows[0]["doubleSalary"])
+	}
+}
+
+func TestConformance_Phase5_AllFeaturesCombined(t *testing.T) {
+	_, executor, cleanup := setupPhase5ConformanceGraph(t)
+	defer cleanup()
+
+	// Grand composition: edge properties + type() + CONTAINS + ORDER BY + SET expression + CASE
+	// 1. Query edges where relationship started after 2019
+	// 2. Return edge type, node names, and a tier classification
+	// 3. Order by since date
+	result := parseAndExecute(t, executor,
+		`MATCH (a:Person)-[r]->(b:Person)
+		 WHERE r.since >= 2020 AND a.name CONTAINS 'Alice'
+		 RETURN type(r) AS relType, b.name, r.since,
+		        CASE WHEN r.since > 2019 THEN 'recent' ELSE 'old' END AS era
+		 ORDER BY r.since`)
+
+	// Alice -> Bob (KNOWS, 2020), Alice -> Charlie (MANAGES, 2018 filtered out)
+	if result.Count != 1 {
+		t.Fatalf("expected 1 result (KNOWS since 2020), got %d", result.Count)
+	}
+
+	row := result.Rows[0]
+	if row["relType"] != "KNOWS" {
+		t.Errorf("expected relType=KNOWS, got %v", row["relType"])
+	}
+	if row["b.name"] != "Bob Baker" {
+		t.Errorf("expected b.name=Bob Baker, got %v", row["b.name"])
+	}
+	if row["era"] != "recent" {
+		t.Errorf("expected era=recent, got %v", row["era"])
+	}
+}

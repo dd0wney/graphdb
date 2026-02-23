@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
@@ -51,6 +52,36 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 			}
 		}
 		return false, nil
+	case "STARTS WITH":
+		if leftVal == nil || rightVal == nil {
+			return false, nil
+		}
+		lStr, lOk := leftVal.(string)
+		rStr, rOk := rightVal.(string)
+		if !lOk || !rOk {
+			return false, nil
+		}
+		return strings.HasPrefix(lStr, rStr), nil
+	case "ENDS WITH":
+		if leftVal == nil || rightVal == nil {
+			return false, nil
+		}
+		lStr, lOk := leftVal.(string)
+		rStr, rOk := rightVal.(string)
+		if !lOk || !rOk {
+			return false, nil
+		}
+		return strings.HasSuffix(lStr, rStr), nil
+	case "CONTAINS":
+		if leftVal == nil || rightVal == nil {
+			return false, nil
+		}
+		lStr, lOk := leftVal.(string)
+		rStr, rOk := rightVal.(string)
+		if !lOk || !rOk {
+			return false, nil
+		}
+		return strings.Contains(lStr, rStr), nil
 	default:
 		return false, fmt.Errorf("unknown comparison operator: %s", op)
 	}
@@ -67,29 +98,17 @@ func extractValue(expr Expression, context map[string]any) any {
 					return node
 				}
 				if val, found := node.Properties[e.Property]; found {
-					// Extract the actual value from storage.Value based on type
-					switch val.Type {
-					case storage.TypeInt:
-						if intVal, err := val.AsInt(); err == nil {
-							return intVal
-						}
-					case storage.TypeString:
-						if strVal, err := val.AsString(); err == nil {
-							return strVal
-						}
-					case storage.TypeFloat:
-						if floatVal, err := val.AsFloat(); err == nil {
-							return floatVal
-						}
-					case storage.TypeBool:
-						if boolVal, err := val.AsBool(); err == nil {
-							return boolVal
-						}
-					case storage.TypeVector:
-						if vecVal, err := val.AsVector(); err == nil {
-							return vecVal
-						}
-					}
+					return extractStorageValue(val)
+				}
+				return nil
+			}
+			// Handle storage.Edge objects
+			if edge, ok := obj.(*storage.Edge); ok {
+				if e.Property == "" {
+					return edge
+				}
+				if val, found := edge.Properties[e.Property]; found {
+					return extractStorageValue(val)
 				}
 				return nil
 			}

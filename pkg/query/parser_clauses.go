@@ -77,7 +77,7 @@ func (p *Parser) parseReturn() (*ReturnClause, error) {
 	// GROUP BY (optional)
 	if p.peek().Type == TokenGroup {
 		p.advance() // consume GROUP
-		if p.peek().Type != TokenOrderBy { // TokenOrderBy is used for BY keyword
+		if p.peek().Type != TokenOrderBy {
 			return nil, fmt.Errorf("expected BY after GROUP")
 		}
 		p.advance() // consume BY
@@ -91,6 +91,45 @@ func (p *Parser) parseReturn() (*ReturnClause, error) {
 			if propExpr, ok := expr.(*PropertyExpression); ok {
 				returnClause.GroupBy = append(returnClause.GroupBy, propExpr)
 			}
+
+			if p.peek().Type != TokenComma {
+				break
+			}
+			p.advance()
+		}
+	}
+
+	// ORDER BY (optional)
+	if p.peek().Type == TokenOrder {
+		p.advance() // consume ORDER
+		if p.peek().Type != TokenOrderBy {
+			return nil, fmt.Errorf("expected BY after ORDER")
+		}
+		p.advance() // consume BY
+
+		for {
+			expr, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+
+			item := &OrderByItem{Ascending: true}
+			if propExpr, ok := expr.(*PropertyExpression); ok {
+				item.Expression = propExpr
+			} else {
+				item.ValueExpr = expr
+			}
+
+			// Optional ASC/DESC
+			if p.peek().Type == TokenAsc {
+				p.advance()
+				item.Ascending = true
+			} else if p.peek().Type == TokenDesc {
+				p.advance()
+				item.Ascending = false
+			}
+
+			returnClause.OrderBy = append(returnClause.OrderBy, item)
 
 			if p.peek().Type != TokenComma {
 				break
@@ -249,16 +288,22 @@ func (p *Parser) parseSet() (*SetClause, error) {
 			return nil, err
 		}
 
-		value, err := p.parseValue()
+		expr, err := p.parseExpression()
 		if err != nil {
 			return nil, err
 		}
 
-		setClause.Assignments = append(setClause.Assignments, &Assignment{
+		assignment := &Assignment{
 			Variable: varToken.Value,
 			Property: propToken.Value,
-			Value:    value,
-		})
+		}
+		// If the expression is a simple literal, store in Value for backward compat
+		if lit, ok := expr.(*LiteralExpression); ok {
+			assignment.Value = lit.Value
+		} else {
+			assignment.ValueExpr = expr
+		}
+		setClause.Assignments = append(setClause.Assignments, assignment)
 
 		if p.peek().Type != TokenComma {
 			break

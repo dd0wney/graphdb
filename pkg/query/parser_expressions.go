@@ -144,6 +144,45 @@ func (p *Parser) parseComparisonExpression() (Expression, error) {
 			Operator: "IN",
 			Right:    right,
 		}, nil
+	case TokenStarts:
+		p.advance() // consume STARTS
+		if _, err := p.expect(TokenWith); err != nil {
+			return nil, fmt.Errorf("expected WITH after STARTS")
+		}
+		right, err := p.parseAddSubExpression()
+		if err != nil {
+			return nil, err
+		}
+		return &BinaryExpression{
+			Left:     left,
+			Operator: "STARTS WITH",
+			Right:    right,
+		}, nil
+	case TokenEnds:
+		p.advance() // consume ENDS
+		if _, err := p.expect(TokenWith); err != nil {
+			return nil, fmt.Errorf("expected WITH after ENDS")
+		}
+		right, err := p.parseAddSubExpression()
+		if err != nil {
+			return nil, err
+		}
+		return &BinaryExpression{
+			Left:     left,
+			Operator: "ENDS WITH",
+			Right:    right,
+		}, nil
+	case TokenContains:
+		p.advance() // consume CONTAINS
+		right, err := p.parseAddSubExpression()
+		if err != nil {
+			return nil, err
+		}
+		return &BinaryExpression{
+			Left:     left,
+			Operator: "CONTAINS",
+			Right:    right,
+		}, nil
 	default:
 		return left, nil // No comparison operator
 	}
@@ -282,6 +321,15 @@ func (p *Parser) parsePrimaryExpression() (Expression, error) {
 
 	case TokenCase:
 		return p.parseCaseExpression()
+
+	// Keywords that can also be function names: contains(), startsWith(), endsWith()
+	case TokenContains, TokenStarts, TokenEnds:
+		name := p.advance().Value
+		if p.peek().Type == TokenLeftParen {
+			return p.parseFunctionCall(name)
+		}
+		// Bare usage (shouldn't happen in practice, but treat as variable ref)
+		return &PropertyExpression{Variable: name, Property: ""}, nil
 
 	case TokenLeftParen:
 		p.advance()

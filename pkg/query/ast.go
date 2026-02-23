@@ -104,6 +104,7 @@ type ReturnItem struct {
 // OrderByItem represents ordering specification
 type OrderByItem struct {
 	Expression *PropertyExpression
+	ValueExpr  Expression // broader expression (takes precedence when non-nil)
 	Ascending  bool
 }
 
@@ -125,9 +126,10 @@ type SetClause struct {
 
 // Assignment represents a property assignment
 type Assignment struct {
-	Variable string
-	Property string
-	Value    any
+	Variable  string
+	Property  string
+	Value     any        // literal value (used when ValueExpr is nil)
+	ValueExpr Expression // expression RHS (takes precedence over Value when non-nil)
 }
 
 // UnwindClause represents an UNWIND operation
