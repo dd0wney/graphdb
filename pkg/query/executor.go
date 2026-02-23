@@ -26,6 +26,12 @@ type Executor struct {
 	cache        *QueryCache
 	queryTimeout time.Duration
 	searchIndex  any // *search.FullTextIndex, stored as any to avoid import cycle
+
+	// Vector search closures (set via SetVectorSearch)
+	vectorSimilarity VectorSimilarityFunc
+	vectorSearch     VectorSearchFunc
+	hasVectorIndex   HasVectorIndexFunc
+	getNode          GetNodeFunc
 }
 
 // NewExecutor creates a new query executor

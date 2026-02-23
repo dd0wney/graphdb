@@ -8,6 +8,12 @@ import (
 type Optimizer struct {
 	graph *storage.GraphStorage
 	stats *storage.Statistics
+
+	// Vector search closures (set via Executor.SetVectorSearch)
+	vectorSearch   VectorSearchFunc
+	similarityFn   VectorSimilarityFunc
+	hasVectorIndex HasVectorIndexFunc
+	getNodeFn      GetNodeFunc
 }
 
 // NewOptimizer creates a new query optimizer

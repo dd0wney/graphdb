@@ -1,6 +1,8 @@
 package query
 
 import (
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -132,6 +134,157 @@ func TestParser_PropertyExpressionStillWorks(t *testing.T) {
 	if item.ValueExpr != nil {
 		t.Errorf("expected ValueExpr to be nil for property expression, got %T", item.ValueExpr)
 	}
+}
+
+// --- vector.similarity function tests ---
+
+func TestVectorSimilarity_IdenticalVectors(t *testing.T) {
+	executor := setupVectorExecutor(t)
+	_ = executor // ensure registration happened
+
+	fn, err := GetFunction("vector.similarity")
+	if err != nil {
+		t.Fatalf("vector.similarity not registered: %v", err)
+	}
+
+	a := []float32{1.0, 0.0, 0.0}
+	b := []float32{1.0, 0.0, 0.0}
+
+	result, err := fn([]any{a, b})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	score, ok := result.(float64)
+	if !ok {
+		t.Fatalf("expected float64, got %T", result)
+	}
+
+	if score < 0.99 || score > 1.01 {
+		t.Errorf("expected similarity ~1.0 for identical vectors, got %f", score)
+	}
+}
+
+func TestVectorSimilarity_OrthogonalVectors(t *testing.T) {
+	executor := setupVectorExecutor(t)
+	_ = executor
+
+	fn, err := GetFunction("vector.similarity")
+	if err != nil {
+		t.Fatalf("vector.similarity not registered: %v", err)
+	}
+
+	a := []float32{1.0, 0.0, 0.0}
+	b := []float32{0.0, 1.0, 0.0}
+
+	result, err := fn([]any{a, b})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	score, ok := result.(float64)
+	if !ok {
+		t.Fatalf("expected float64, got %T", result)
+	}
+
+	if score < -0.01 || score > 0.01 {
+		t.Errorf("expected similarity ~0.0 for orthogonal vectors, got %f", score)
+	}
+}
+
+func TestVectorSimilarity_MismatchedDimensions(t *testing.T) {
+	executor := setupVectorExecutor(t)
+	_ = executor
+
+	fn, err := GetFunction("vector.similarity")
+	if err != nil {
+		t.Fatalf("vector.similarity not registered: %v", err)
+	}
+
+	a := []float32{1.0, 0.0}
+	b := []float32{1.0, 0.0, 0.0}
+
+	_, err = fn([]any{a, b})
+	if err == nil {
+		t.Fatal("expected error for mismatched dimensions")
+	}
+}
+
+func TestVectorSimilarity_NonVectorArguments(t *testing.T) {
+	executor := setupVectorExecutor(t)
+	_ = executor
+
+	fn, err := GetFunction("vector.similarity")
+	if err != nil {
+		t.Fatalf("vector.similarity not registered: %v", err)
+	}
+
+	_, err = fn([]any{"not a vector", 42})
+	if err == nil {
+		t.Fatal("expected error for non-vector arguments")
+	}
+}
+
+func TestToFloat32Slice(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   any
+		wantOK  bool
+		wantLen int
+	}{
+		{"[]float32", []float32{1.0, 2.0}, true, 2},
+		{"[]float64", []float64{1.0, 2.0}, true, 2},
+		{"[]any with float64", []any{float64(1.0), float64(2.0)}, true, 2},
+		{"[]any with float32", []any{float32(1.0), float32(2.0)}, true, 2},
+		{"string", "not a vector", false, 0},
+		{"nil", nil, false, 0},
+		{"int", 42, false, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, ok := toFloat32Slice(tt.input)
+			if ok != tt.wantOK {
+				t.Errorf("toFloat32Slice ok = %v, want %v", ok, tt.wantOK)
+			}
+			if ok && len(result) != tt.wantLen {
+				t.Errorf("toFloat32Slice len = %d, want %d", len(result), tt.wantLen)
+			}
+		})
+	}
+}
+
+// setupVectorExecutor creates an executor with vector search wired up
+func setupVectorExecutor(t *testing.T) *Executor {
+	t.Helper()
+	graph, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to create graph storage: %v", err)
+	}
+	executor := NewExecutor(graph)
+
+	// Provide cosine similarity as the similarity function
+	executor.SetVectorSearch(
+		func(a, b []float32) (float64, error) {
+			if len(a) != len(b) {
+				return 0, fmt.Errorf("dimension mismatch: %d vs %d", len(a), len(b))
+			}
+			var dotProd, normA, normB float64
+			for i := range a {
+				dotProd += float64(a[i]) * float64(b[i])
+				normA += float64(a[i]) * float64(a[i])
+				normB += float64(b[i]) * float64(b[i])
+			}
+			if normA == 0 || normB == 0 {
+				return 0, nil
+			}
+			return dotProd / (math.Sqrt(normA) * math.Sqrt(normB)), nil
+		},
+		nil, // searchFn - not needed for basic tests
+		nil, // hasIndexFn
+		nil, // getNodeFn
+	)
+	return executor
 }
 
 func TestExtractValue_TypeVector(t *testing.T) {
