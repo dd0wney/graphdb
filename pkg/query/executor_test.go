@@ -2583,6 +2583,185 @@ func TestExecutor_Integration_DISTINCT_WHERE_OrderBy(t *testing.T) {
 	}
 }
 
+// TestExecutor_Aggregation_COLLECT tests COLLECT aggregation
+func TestExecutor_Aggregation_COLLECT(t *testing.T) {
+	gs, cleanup := setupExecutorTestGraph(t)
+	defer cleanup()
+
+	names := []string{"Alice", "Bob", "Charlie"}
+	for _, name := range names {
+		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+			"name": storage.StringValue(name),
+		})
+	}
+
+	executor := NewExecutor(gs)
+
+	query := &Query{
+		Match: &MatchClause{
+			Patterns: []*Pattern{
+				{
+					Nodes: []*NodePattern{
+						{Variable: "n", Labels: []string{"Person"}},
+					},
+				},
+			},
+		},
+		Return: &ReturnClause{
+			Items: []*ReturnItem{
+				{
+					Aggregate:  "COLLECT",
+					Expression: &PropertyExpression{Variable: "n", Property: "name"},
+					Alias:      "names",
+				},
+			},
+		},
+	}
+
+	result, err := executor.Execute(query)
+	if err != nil {
+		t.Fatalf("Failed to execute COLLECT query: %v", err)
+	}
+
+	if result.Count != 1 {
+		t.Fatalf("Expected 1 row for aggregation, got %d", result.Count)
+	}
+
+	collected, ok := result.Rows[0]["names"].([]any)
+	if !ok {
+		t.Fatalf("Expected []any, got %T: %v", result.Rows[0]["names"], result.Rows[0]["names"])
+	}
+
+	if len(collected) != 3 {
+		t.Errorf("Expected 3 collected values, got %d", len(collected))
+	}
+
+	// All names should be present (order depends on storage)
+	nameSet := make(map[string]bool)
+	for _, v := range collected {
+		if s, ok := v.(string); ok {
+			nameSet[s] = true
+		}
+	}
+	for _, name := range names {
+		if !nameSet[name] {
+			t.Errorf("Expected %q in collected names", name)
+		}
+	}
+}
+
+// TestExecutor_Aggregation_COLLECT_Empty tests COLLECT on empty results
+func TestExecutor_Aggregation_COLLECT_Empty(t *testing.T) {
+	gs, cleanup := setupExecutorTestGraph(t)
+	defer cleanup()
+
+	executor := NewExecutor(gs)
+
+	query := &Query{
+		Match: &MatchClause{
+			Patterns: []*Pattern{
+				{
+					Nodes: []*NodePattern{
+						{Variable: "n", Labels: []string{"Person"}},
+					},
+				},
+			},
+		},
+		Return: &ReturnClause{
+			Items: []*ReturnItem{
+				{
+					Aggregate:  "COLLECT",
+					Expression: &PropertyExpression{Variable: "n", Property: "name"},
+					Alias:      "names",
+				},
+			},
+		},
+	}
+
+	result, err := executor.Execute(query)
+	if err != nil {
+		t.Fatalf("Failed to execute COLLECT on empty: %v", err)
+	}
+
+	collected, ok := result.Rows[0]["names"].([]any)
+	if !ok {
+		t.Fatalf("Expected []any, got %T", result.Rows[0]["names"])
+	}
+
+	if len(collected) != 0 {
+		t.Errorf("Expected empty collection, got %d items", len(collected))
+	}
+}
+
+// TestExecutor_Aggregation_COLLECT_WithGroupBy tests COLLECT with GROUP BY
+func TestExecutor_Aggregation_COLLECT_WithGroupBy(t *testing.T) {
+	gs, cleanup := setupExecutorTestGraph(t)
+	defer cleanup()
+
+	data := []struct{ dept, name string }{
+		{"Engineering", "Alice"},
+		{"Engineering", "Bob"},
+		{"Sales", "Charlie"},
+	}
+	for _, d := range data {
+		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+			"department": storage.StringValue(d.dept),
+			"name":       storage.StringValue(d.name),
+		})
+	}
+
+	executor := NewExecutor(gs)
+
+	query := &Query{
+		Match: &MatchClause{
+			Patterns: []*Pattern{
+				{
+					Nodes: []*NodePattern{
+						{Variable: "n", Labels: []string{"Person"}},
+					},
+				},
+			},
+		},
+		Return: &ReturnClause{
+			Items: []*ReturnItem{
+				{Expression: &PropertyExpression{Variable: "n", Property: "department"}},
+				{
+					Aggregate:  "COLLECT",
+					Expression: &PropertyExpression{Variable: "n", Property: "name"},
+					Alias:      "names",
+				},
+			},
+			GroupBy: []*PropertyExpression{
+				{Variable: "n", Property: "department"},
+			},
+		},
+	}
+
+	result, err := executor.Execute(query)
+	if err != nil {
+		t.Fatalf("Failed to execute COLLECT with GROUP BY: %v", err)
+	}
+
+	if result.Count != 2 {
+		t.Fatalf("Expected 2 groups, got %d", result.Count)
+	}
+
+	for _, row := range result.Rows {
+		dept := row["n.department"].(string)
+		collected := row["names"].([]any)
+		switch dept {
+		case "Engineering":
+			if len(collected) != 2 {
+				t.Errorf("Engineering: expected 2 names, got %d", len(collected))
+			}
+		case "Sales":
+			if len(collected) != 1 {
+				t.Errorf("Sales: expected 1 name, got %d", len(collected))
+			}
+		}
+	}
+}
+
 // Helper function to find a row by column value
 func findRowByColumn(rows []map[string]any, column string, value any) map[string]any {
 	for _, row := range rows {

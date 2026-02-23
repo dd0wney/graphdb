@@ -50,6 +50,8 @@ func (ac *AggregationComputer) ComputeAggregates(ctx *ExecutionContext, returnIt
 			result[columnName] = ac.min(values)
 		case "MAX":
 			result[columnName] = ac.max(values)
+		case "COLLECT":
+			result[columnName] = ac.collect(values)
 		default:
 			result[columnName] = nil
 		}
