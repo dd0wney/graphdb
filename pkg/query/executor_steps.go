@@ -240,20 +240,63 @@ func (ss *SetStep) executeAssignment(ctx *ExecutionContext, binding *BindingSet,
 		return nil // Not a node, skip
 	}
 
+	// Resolve the value: expression RHS takes precedence over literal
+	var val any
+	if assignment.ValueExpr != nil {
+		val = extractValue(assignment.ValueExpr, binding.bindings)
+	} else {
+		val = assignment.Value
+	}
+
 	// Create updated properties map
 	updatedProps := make(map[string]storage.Value)
 	for k, v := range node.Properties {
 		updatedProps[k] = v
 	}
-	updatedProps[assignment.Property] = convertToStorageValue(assignment.Value)
+	updatedProps[assignment.Property] = convertToStorageValue(val)
 
 	// Update in storage
 	if err := ctx.graph.UpdateNode(node.ID, updatedProps); err != nil {
 		return fmt.Errorf("failed to update node %d: %w", node.ID, err)
 	}
 
+	// Keep binding in sync so subsequent assignments in the same SET see updated values
+	node.Properties = updatedProps
+
 	return nil
 }
+
+// RemoveStep executes a REMOVE clause — removes properties from nodes
+type RemoveStep struct {
+	remove *RemoveClause
+}
+
+func (rs *RemoveStep) Execute(ctx *ExecutionContext) error {
+	for _, binding := range ctx.results {
+		for _, item := range rs.remove.Items {
+			if err := rs.removeProperty(ctx, binding, item); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (rs *RemoveStep) removeProperty(ctx *ExecutionContext, binding *BindingSet, item *RemoveItem) error {
+	obj, ok := binding.bindings[item.Variable]
+	if !ok {
+		return nil
+	}
+	node, ok := obj.(*storage.Node)
+	if !ok {
+		return nil
+	}
+
+	return ctx.graph.RemoveNodeProperties(node.ID, []string{item.Property})
+}
+
+func (rs *RemoveStep) StepName() string   { return "RemoveStep" }
+func (rs *RemoveStep) StepDetail() string { return fmt.Sprintf("items=%d", len(rs.remove.Items)) }
 
 // DeleteStep executes a DELETE clause
 type DeleteStep struct {
@@ -291,6 +334,186 @@ func (ds *DeleteStep) deleteVariable(ctx *ExecutionContext, binding *BindingSet,
 
 	return nil
 }
+
+// MergeStep executes a MERGE clause (match-or-create)
+type MergeStep struct {
+	merge *MergeClause
+}
+
+func (ms *MergeStep) Execute(ctx *ExecutionContext) error {
+	// Try to match the pattern
+	matchStep := &MatchStep{match: &MatchClause{Patterns: []*Pattern{ms.merge.Pattern}}}
+
+	// Save current results, try matching
+	savedResults := ctx.results
+	matchCtx := &ExecutionContext{
+		context:  ctx.context,
+		graph:    ctx.graph,
+		bindings: make(map[string]any),
+		results: []*BindingSet{
+			{bindings: make(map[string]any)},
+		},
+	}
+
+	if err := matchStep.Execute(matchCtx); err != nil {
+		return err
+	}
+
+	if len(matchCtx.results) > 0 {
+		// Found — apply ON MATCH SET if present
+		ctx.results = matchCtx.results
+		if ms.merge.OnMatch != nil {
+			setStep := &SetStep{set: ms.merge.OnMatch}
+			if err := setStep.Execute(ctx); err != nil {
+				return err
+			}
+		}
+	} else {
+		// Not found — create via pattern
+		ctx.results = savedResults
+		createStep := &CreateStep{create: &CreateClause{Patterns: []*Pattern{ms.merge.Pattern}}}
+		if err := createStep.Execute(ctx); err != nil {
+			return err
+		}
+
+		// Apply ON CREATE SET if present
+		if ms.merge.OnCreate != nil {
+			setStep := &SetStep{set: ms.merge.OnCreate}
+			if err := setStep.Execute(ctx); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (ms *MergeStep) StepName() string   { return "MergeStep" }
+func (ms *MergeStep) StepDetail() string { return "match-or-create" }
+
+// UnwindStep executes an UNWIND clause - expands list values into individual bindings
+type UnwindStep struct {
+	unwind *UnwindClause
+}
+
+func (us *UnwindStep) Execute(ctx *ExecutionContext) error {
+	newResults := make([]*BindingSet, 0)
+
+	for _, binding := range ctx.results {
+		// Extract the value to unwind
+		var val any
+		expr := us.unwind.Expression
+		if expr.Property == "" {
+			// Variable reference without property — get the raw binding value
+			val = binding.bindings[expr.Variable]
+		} else {
+			val = extractValue(expr, binding.bindings)
+		}
+		if val == nil {
+			continue // Skip nil values
+		}
+
+		// Convert to list
+		var items []any
+		switch v := val.(type) {
+		case []any:
+			items = v
+		default:
+			// Non-list values treated as single-element list
+			items = []any{v}
+		}
+
+		// Create one new binding per element
+		for _, item := range items {
+			newBinding := &BindingSet{bindings: make(map[string]any, len(binding.bindings)+1)}
+			for k, v := range binding.bindings {
+				newBinding.bindings[k] = v
+			}
+			newBinding.bindings[us.unwind.Alias] = item
+			newResults = append(newResults, newBinding)
+		}
+	}
+
+	ctx.results = newResults
+	return nil
+}
+
+func (us *UnwindStep) StepName() string { return "UnwindStep" }
+func (us *UnwindStep) StepDetail() string {
+	return fmt.Sprintf("alias=%s", us.unwind.Alias)
+}
+
+// OptionalMatchStep executes an OPTIONAL MATCH clause with left-outer-join semantics.
+// When no match is found, variables from the pattern are set to nil (null propagation).
+type OptionalMatchStep struct {
+	match *MatchClause
+	where *WhereClause
+}
+
+func (oms *OptionalMatchStep) Execute(ctx *ExecutionContext) error {
+	matchHelper := &MatchStep{match: oms.match}
+	newResults := make([]*BindingSet, 0)
+
+	for _, binding := range ctx.results {
+		matches := make([]*BindingSet, 0)
+
+		for _, pattern := range oms.match.Patterns {
+			patternMatches, err := matchHelper.matchPattern(ctx, pattern, binding)
+			if err != nil {
+				return err
+			}
+			matches = append(matches, patternMatches...)
+		}
+
+		// Apply scoped WHERE filter if present
+		if oms.where != nil && len(matches) > 0 {
+			filtered := make([]*BindingSet, 0)
+			for _, r := range matches {
+				match, err := oms.where.Expression.Eval(r.bindings)
+				if err != nil {
+					continue
+				}
+				if match {
+					filtered = append(filtered, r)
+				}
+			}
+			matches = filtered
+		}
+
+		if len(matches) > 0 {
+			newResults = append(newResults, matches...)
+		} else {
+			// No match: create null bindings for all new variables in the pattern
+			nullBinding := &BindingSet{bindings: make(map[string]any, len(binding.bindings))}
+			for k, v := range binding.bindings {
+				nullBinding.bindings[k] = v
+			}
+			for _, pattern := range oms.match.Patterns {
+				for _, node := range pattern.Nodes {
+					if node.Variable != "" {
+						if _, exists := nullBinding.bindings[node.Variable]; !exists {
+							nullBinding.bindings[node.Variable] = nil
+						}
+					}
+				}
+				for _, rel := range pattern.Relationships {
+					if rel.Variable != "" {
+						if _, exists := nullBinding.bindings[rel.Variable]; !exists {
+							nullBinding.bindings[rel.Variable] = nil
+						}
+					}
+				}
+			}
+			newResults = append(newResults, nullBinding)
+		}
+	}
+
+	ctx.results = newResults
+	return nil
+}
+
+func (oms *OptionalMatchStep) StepName() string   { return "OptionalMatchStep" }
+func (oms *OptionalMatchStep) StepDetail() string  { return fmt.Sprintf("patterns=%d", len(oms.match.Patterns)) }
 
 // ReturnStep executes a RETURN clause
 type ReturnStep struct {

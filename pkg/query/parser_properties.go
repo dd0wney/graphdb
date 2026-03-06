@@ -69,6 +69,9 @@ func (p *Parser) parseValue() (any, error) {
 	case TokenNull:
 		p.advance()
 		return nil, nil
+	case TokenParameter:
+		tok := p.advance()
+		return &ParameterRef{Name: tok.Value}, nil
 	default:
 		return nil, fmt.Errorf("expected value, got %s", token.Type)
 	}

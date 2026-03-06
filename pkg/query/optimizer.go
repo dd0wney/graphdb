@@ -8,6 +8,12 @@ import (
 type Optimizer struct {
 	graph *storage.GraphStorage
 	stats *storage.Statistics
+
+	// Vector search closures (set via Executor.SetVectorSearch)
+	vectorSearch   VectorSearchFunc
+	similarityFn   VectorSimilarityFunc
+	hasVectorIndex HasVectorIndexFunc
+	getNodeFn      GetNodeFunc
 }
 
 // NewOptimizer creates a new query optimizer
@@ -20,8 +26,9 @@ func NewOptimizer(graph *storage.GraphStorage) *Optimizer {
 
 // Optimize optimizes an execution plan
 func (o *Optimizer) Optimize(plan *ExecutionPlan, query *Query) *ExecutionPlan {
-	// Apply optimization rules sequentially
-	result := o.applyIndexSelection(plan, query)
+	// Vector search optimization runs first — it can replace the scan strategy
+	result := o.applyVectorSearchOptimization(plan, query)
+	result = o.applyIndexSelection(result, query)
 	result = o.applyFilterPushdown(result, query)
 	result = o.applyJoinOrdering(result, query)
 	result = o.applyEarlyTermination(result, query)
@@ -34,11 +41,12 @@ func (o *Optimizer) applyIndexSelection(plan *ExecutionPlan, query *Query) *Exec
 	optimized := &ExecutionPlan{Steps: make([]ExecutionStep, 0)}
 
 	for _, step := range plan.Steps {
-		// Check if this is a MatchStep that could use an index
-		if matchStep, ok := step.(*MatchStep); ok {
-			optimizedStep := o.optimizeMatchWithIndex(matchStep, query)
+		switch s := step.(type) {
+		case *MatchStep:
+			optimizedStep := o.optimizeMatchWithIndex(s, query)
 			optimized.Steps = append(optimized.Steps, optimizedStep)
-		} else {
+		default:
+			// OptionalMatchStep and others pass through without index optimization
 			optimized.Steps = append(optimized.Steps, step)
 		}
 	}
@@ -172,6 +180,145 @@ func convertToStorageValueForIndex(val any) (storage.Value, bool) {
 	}
 }
 
+// vectorCondition holds extracted info from a vector.similarity predicate in WHERE
+type vectorCondition struct {
+	variable       string  // e.g., "c"
+	propertyName   string  // e.g., "embedding"
+	threshold      float64 // e.g., 0.8
+	queryParamName string  // e.g., "query_embedding" (from $query_embedding)
+}
+
+// applyVectorSearchOptimization detects vector.similarity conditions in WHERE
+// and inserts a VectorSearchStep before the MatchStep for the target variable.
+func (o *Optimizer) applyVectorSearchOptimization(plan *ExecutionPlan, query *Query) *ExecutionPlan {
+	if query.Where == nil || o.hasVectorIndex == nil || o.vectorSearch == nil {
+		return plan
+	}
+
+	vc := o.extractVectorCondition(query.Where.Expression)
+	if vc == nil {
+		return plan
+	}
+
+	// Verify that a vector index exists for this property
+	if !o.hasVectorIndex(vc.propertyName) {
+		return plan
+	}
+
+	// Determine labels from MATCH pattern for the variable
+	var labels []string
+	if query.Match != nil {
+		for _, pattern := range query.Match.Patterns {
+			for _, node := range pattern.Nodes {
+				if node.Variable == vc.variable {
+					labels = node.Labels
+					break
+				}
+			}
+		}
+	}
+
+	// Determine k from LIMIT (default 100, or LIMIT*10 for margin)
+	k := 100
+	if query.Limit > 0 {
+		k = query.Limit * 10
+		if k < 100 {
+			k = 100
+		}
+	}
+
+	// Determine distance metric from the graph's vector index
+	distanceMetric := "cosine"
+	if metric, err := o.graph.GetVectorIndexMetric(vc.propertyName); err == nil {
+		distanceMetric = string(metric)
+	}
+
+	vectorStep := &VectorSearchStep{
+		variable:             vc.variable,
+		propertyName:         vc.propertyName,
+		threshold:            vc.threshold,
+		labels:               labels,
+		queryVectorParamName: vc.queryParamName,
+		searchFn:             o.vectorSearch,
+		similarityFn:         o.similarityFn,
+		getNodeFn:            o.getNodeFn,
+		k:                    k,
+		ef:                   50,
+		distanceMetric:       distanceMetric,
+	}
+
+	// Insert VectorSearchStep before the MatchStep
+	optimized := &ExecutionPlan{Steps: make([]ExecutionStep, 0, len(plan.Steps)+1)}
+	optimized.Steps = append(optimized.Steps, vectorStep)
+	optimized.Steps = append(optimized.Steps, plan.Steps...)
+
+	return optimized
+}
+
+// extractVectorCondition walks an expression tree to find vector.similarity predicates.
+// Returns nil if no vector condition is found.
+func (o *Optimizer) extractVectorCondition(expr Expression) *vectorCondition {
+	if expr == nil {
+		return nil
+	}
+
+	binExpr, ok := expr.(*BinaryExpression)
+	if !ok {
+		return nil
+	}
+
+	// For AND expressions, try both sides recursively
+	if binExpr.Operator == "AND" {
+		if left := o.extractVectorCondition(binExpr.Left); left != nil {
+			return left
+		}
+		return o.extractVectorCondition(binExpr.Right)
+	}
+
+	// Look for: vector.similarity(...) > threshold  or  >= threshold
+	if binExpr.Operator != ">" && binExpr.Operator != ">=" {
+		return nil
+	}
+
+	funcExpr, ok := binExpr.Left.(*FunctionCallExpression)
+	if !ok || funcExpr.Name != "vector.similarity" {
+		return nil
+	}
+
+	litExpr, ok := binExpr.Right.(*LiteralExpression)
+	if !ok {
+		return nil
+	}
+
+	threshold, ok := litExpr.Value.(float64)
+	if !ok {
+		return nil
+	}
+
+	// Extract arguments: vector.similarity(variable.property, $param)
+	if len(funcExpr.Args) < 2 {
+		return nil
+	}
+
+	propExpr, ok := funcExpr.Args[0].(*PropertyExpression)
+	if !ok {
+		return nil
+	}
+
+	// Second argument should be a parameter expression
+	var queryParamName string
+	if paramExpr, ok := funcExpr.Args[1].(*ParameterExpression); ok {
+		queryParamName = paramExpr.Name
+	}
+
+	return &vectorCondition{
+		variable:       propExpr.Variable,
+		propertyName:   propExpr.Property,
+		threshold:      threshold,
+		queryParamName: queryParamName,
+	}
+}
+
 // applyFilterPushdown moves filters as early as possible in execution
 func (o *Optimizer) applyFilterPushdown(plan *ExecutionPlan, query *Query) *ExecutionPlan {
 	optimized := &ExecutionPlan{Steps: make([]ExecutionStep, 0)}
@@ -193,7 +340,7 @@ func (o *Optimizer) applyFilterPushdown(plan *ExecutionPlan, query *Query) *Exec
 	for _, step := range otherSteps {
 		optimized.Steps = append(optimized.Steps, step)
 
-		// Insert applicable filters after match steps
+		// Insert applicable filters after match steps (but not after optional match)
 		if _, ok := step.(*MatchStep); ok {
 			for _, filter := range filterSteps {
 				optimized.Steps = append(optimized.Steps, ExecutionStep(filter))

@@ -4,14 +4,27 @@ package query
 
 // Query represents a complete query statement
 type Query struct {
-	Match  *MatchClause
-	Where  *WhereClause
-	Return *ReturnClause
-	Create *CreateClause
-	Delete *DeleteClause
-	Set    *SetClause
-	Limit  int
-	Skip   int
+	Match   *MatchClause
+	Where   *WhereClause
+	Return  *ReturnClause
+	Create  *CreateClause
+	Delete  *DeleteClause
+	Set     *SetClause
+	Remove  *RemoveClause
+	Unwind  *UnwindClause
+	Merge   *MergeClause
+	With    *WithClause
+	OptionalMatches []*OptionalMatchClause
+	Union           *UnionClause
+	UnionNext       *Query // For UNION chaining
+	Next            *Query // For WITH chaining
+	Limit           int
+	Skip    int
+	Explain bool
+	Profile bool
+
+	// InitialBindings are injected by WITH clause chaining
+	InitialBindings []*BindingSet
 }
 
 // MatchClause represents a MATCH pattern
@@ -83,13 +96,15 @@ type ReturnClause struct {
 // ReturnItem represents a single return item
 type ReturnItem struct {
 	Expression *PropertyExpression
+	ValueExpr  Expression // Broader type for function calls; if non-nil, takes precedence
 	Alias      string
-	Aggregate  string // COUNT, SUM, AVG, MIN, MAX
+	Aggregate  string // COUNT, SUM, AVG, MIN, MAX, COLLECT
 }
 
 // OrderByItem represents ordering specification
 type OrderByItem struct {
 	Expression *PropertyExpression
+	ValueExpr  Expression // broader expression (takes precedence when non-nil)
 	Ascending  bool
 }
 
@@ -111,7 +126,54 @@ type SetClause struct {
 
 // Assignment represents a property assignment
 type Assignment struct {
+	Variable  string
+	Property  string
+	Value     any        // literal value (used when ValueExpr is nil)
+	ValueExpr Expression // expression RHS (takes precedence over Value when non-nil)
+}
+
+// UnwindClause represents an UNWIND operation
+type UnwindClause struct {
+	Expression *PropertyExpression
+	Alias      string
+}
+
+// MergeClause represents a MERGE operation (match-or-create)
+type MergeClause struct {
+	Pattern  *Pattern
+	OnMatch  *SetClause
+	OnCreate *SetClause
+}
+
+// WithClause represents a WITH projection between query segments
+type WithClause struct {
+	Items []*ReturnItem
+	Where *WhereClause
+}
+
+// ParameterRef represents a parameter reference in property maps ({name: $name})
+type ParameterRef struct {
+	Name string // "name" from $name
+}
+
+// UnionClause represents a UNION between query segments
+type UnionClause struct {
+	All bool // true = UNION ALL (keep duplicates), false = UNION (deduplicate)
+}
+
+// OptionalMatchClause represents an OPTIONAL MATCH pattern with left-outer-join semantics
+type OptionalMatchClause struct {
+	Patterns []*Pattern
+	Where    *WhereClause // WHERE scoped to this optional match
+}
+
+// RemoveClause represents property or label removal
+type RemoveClause struct {
+	Items []*RemoveItem
+}
+
+// RemoveItem represents a single property or label to remove
+type RemoveItem struct {
 	Variable string
-	Property string
-	Value    any
+	Property string // non-empty for property removal
 }

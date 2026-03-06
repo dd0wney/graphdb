@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
@@ -53,7 +54,16 @@ func (ec *ExecutionContext) CheckCancellation() error {
 
 // BindingSet represents a set of variable bindings
 type BindingSet struct {
-	bindings map[string]any
+	bindings     map[string]any
+	vectorScores map[string]float64 // variable -> similarity score from VectorSearchStep
+}
+
+// StepProfile holds profiling data for a single execution step
+type StepProfile struct {
+	StepName string
+	Detail   string
+	Duration time.Duration
+	RowsOut  int
 }
 
 // ResultSet represents query results
@@ -61,6 +71,7 @@ type ResultSet struct {
 	Columns []string
 	Rows    []map[string]any
 	Count   int
+	Profile []StepProfile // Populated when PROFILE is used
 }
 
 // buildExecutionPlan creates an execution plan from a query
@@ -79,6 +90,25 @@ func (e *Executor) buildExecutionPlan(query *Query) *ExecutionPlan {
 		plan.Steps = append(plan.Steps, &FilterStep{where: query.Where})
 	}
 
+	// Add OPTIONAL MATCH steps (after WHERE so required match is filtered first)
+	for _, om := range query.OptionalMatches {
+		mc := &MatchClause{Patterns: om.Patterns}
+		plan.Steps = append(plan.Steps, &OptionalMatchStep{
+			match: mc,
+			where: om.Where,
+		})
+	}
+
+	// Add MERGE step
+	if query.Merge != nil {
+		plan.Steps = append(plan.Steps, &MergeStep{merge: query.Merge})
+	}
+
+	// Add UNWIND step (after filter, before create)
+	if query.Unwind != nil {
+		plan.Steps = append(plan.Steps, &UnwindStep{unwind: query.Unwind})
+	}
+
 	// Add CREATE step
 	if query.Create != nil {
 		plan.Steps = append(plan.Steps, &CreateStep{create: query.Create})
@@ -87,6 +117,11 @@ func (e *Executor) buildExecutionPlan(query *Query) *ExecutionPlan {
 	// Add SET step
 	if query.Set != nil {
 		plan.Steps = append(plan.Steps, &SetStep{set: query.Set})
+	}
+
+	// Add REMOVE step
+	if query.Remove != nil {
+		plan.Steps = append(plan.Steps, &RemoveStep{remove: query.Remove})
 	}
 
 	// Add DELETE step
@@ -120,10 +155,14 @@ func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPl
 		results:  make([]*BindingSet, 0),
 	}
 
-	// Start with empty binding
-	execCtx.results = append(execCtx.results, &BindingSet{
-		bindings: make(map[string]any),
-	})
+	// Use initial bindings if provided (from WITH chaining), otherwise start with empty binding
+	if query.InitialBindings != nil {
+		execCtx.results = query.InitialBindings
+	} else {
+		execCtx.results = append(execCtx.results, &BindingSet{
+			bindings: make(map[string]any),
+		})
+	}
 
 	// Execute each step with cancellation checks
 	for i, step := range plan.Steps {

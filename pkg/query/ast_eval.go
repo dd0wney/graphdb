@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
@@ -25,6 +26,62 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 		return compareValues(leftVal, rightVal) >= 0, nil
 	case "<=":
 		return compareValues(leftVal, rightVal) <= 0, nil
+	case "IS NULL":
+		return leftVal == nil, nil
+	case "IS NOT NULL":
+		return leftVal != nil, nil
+	case "IN":
+		// Cypher: null IN [...] evaluates to null (treated as false in boolean context)
+		if leftVal == nil {
+			return false, nil
+		}
+		list, ok := rightVal.([]any)
+		if !ok {
+			return false, fmt.Errorf("IN requires a list on the right side")
+		}
+		for _, item := range list {
+			if item == nil {
+				continue // skip null elements in list
+			}
+			if leftVal == item {
+				return true, nil
+			}
+			// Handle numeric type coercion (int64 vs float64)
+			if compareValues(leftVal, item) == 0 {
+				return true, nil
+			}
+		}
+		return false, nil
+	case "STARTS WITH":
+		if leftVal == nil || rightVal == nil {
+			return false, nil
+		}
+		lStr, lOk := leftVal.(string)
+		rStr, rOk := rightVal.(string)
+		if !lOk || !rOk {
+			return false, nil
+		}
+		return strings.HasPrefix(lStr, rStr), nil
+	case "ENDS WITH":
+		if leftVal == nil || rightVal == nil {
+			return false, nil
+		}
+		lStr, lOk := leftVal.(string)
+		rStr, rOk := rightVal.(string)
+		if !lOk || !rOk {
+			return false, nil
+		}
+		return strings.HasSuffix(lStr, rStr), nil
+	case "CONTAINS":
+		if leftVal == nil || rightVal == nil {
+			return false, nil
+		}
+		lStr, lOk := leftVal.(string)
+		rStr, rOk := rightVal.(string)
+		if !lOk || !rOk {
+			return false, nil
+		}
+		return strings.Contains(lStr, rStr), nil
 	default:
 		return false, fmt.Errorf("unknown comparison operator: %s", op)
 	}
@@ -37,37 +94,75 @@ func extractValue(expr Expression, context map[string]any) any {
 		if obj, ok := context[e.Variable]; ok {
 			// Handle storage.Node objects
 			if node, ok := obj.(*storage.Node); ok {
+				if e.Property == "" {
+					return node
+				}
 				if val, found := node.Properties[e.Property]; found {
-					// Extract the actual value from storage.Value based on type
-					switch val.Type {
-					case storage.TypeInt:
-						if intVal, err := val.AsInt(); err == nil {
-							return intVal
-						}
-					case storage.TypeString:
-						if strVal, err := val.AsString(); err == nil {
-							return strVal
-						}
-					case storage.TypeFloat:
-						if floatVal, err := val.AsFloat(); err == nil {
-							return floatVal
-						}
-					case storage.TypeBool:
-						if boolVal, err := val.AsBool(); err == nil {
-							return boolVal
-						}
-					}
+					return extractStorageValue(val)
+				}
+				return nil
+			}
+			// Handle storage.Edge objects
+			if edge, ok := obj.(*storage.Edge); ok {
+				if e.Property == "" {
+					return edge
+				}
+				if val, found := edge.Properties[e.Property]; found {
+					return extractStorageValue(val)
 				}
 				return nil
 			}
 			// Fallback to map[string]any for backward compatibility
 			if m, ok := obj.(map[string]any); ok {
+				if e.Property == "" {
+					return m
+				}
 				return m[e.Property]
+			}
+			// Raw value binding (e.g., from WITH projections)
+			if e.Property == "" {
+				return obj
 			}
 		}
 		return nil
 	case *LiteralExpression:
 		return e.Value
+	case *FunctionCallExpression:
+		result, err := e.EvalValue(context)
+		if err != nil {
+			return nil
+		}
+		return result
+	case *ParameterExpression:
+		val, ok := context["$"+e.Name]
+		if !ok {
+			return nil
+		}
+		return val
+	case *CaseExpression:
+		result, err := e.EvalValue(context)
+		if err != nil {
+			return nil
+		}
+		return result
+	case *BinaryExpression:
+		result, err := e.Eval(context)
+		if err != nil {
+			return nil
+		}
+		return result
+	case *ArithmeticExpression:
+		result, err := e.EvalValue(context)
+		if err != nil {
+			return nil
+		}
+		return result
+	case *UnaryExpression:
+		result, err := e.EvalValue(context)
+		if err != nil {
+			return nil
+		}
+		return result
 	default:
 		return nil
 	}

@@ -50,25 +50,48 @@ func (e *Executor) deduplicateRows(rows []map[string]any) []map[string]any {
 	return result
 }
 
+// orderByColumnName resolves the column name for an ORDER BY item.
+// It checks the row's existing keys for alias matches and falls back
+// to the formatted property expression.
+func orderByColumnName(item *OrderByItem, row map[string]any) string {
+	if item.Expression != nil {
+		// When property is empty, it's a bare variable name (possibly an alias)
+		if item.Expression.Property == "" {
+			if _, ok := row[item.Expression.Variable]; ok {
+				return item.Expression.Variable
+			}
+		}
+		// Try formatted name: "var.prop"
+		name := fmt.Sprintf("%s.%s", item.Expression.Variable, item.Expression.Property)
+		if _, ok := row[name]; ok {
+			return name
+		}
+		return name
+	}
+	return "<expr>"
+}
+
 // sortRows sorts result rows according to ORDER BY criteria
 func (e *Executor) sortRows(rows []map[string]any, orderBy []*OrderByItem) {
-	if len(orderBy) == 0 {
+	if len(orderBy) == 0 || len(rows) == 0 {
 		return
 	}
 
-	sort.Slice(rows, func(i, j int) bool {
-		// Compare by first order by item
-		item := orderBy[0]
-		columnName := fmt.Sprintf("%s.%s", item.Expression.Variable, item.Expression.Property)
+	sort.SliceStable(rows, func(i, j int) bool {
+		for _, item := range orderBy {
+			colName := orderByColumnName(item, rows[i])
+			valI := rows[i][colName]
+			valJ := rows[j][colName]
 
-		valI := rows[i][columnName]
-		valJ := rows[j][columnName]
-
-		cmp := compareValues(valI, valJ)
-
-		if item.Ascending {
-			return cmp < 0
+			cmp := compareValues(valI, valJ)
+			if cmp == 0 {
+				continue // tie — check next column
+			}
+			if item.Ascending {
+				return cmp < 0
+			}
+			return cmp > 0
 		}
-		return cmp > 0
+		return false // all columns equal
 	})
 }

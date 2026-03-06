@@ -30,7 +30,8 @@ const (
 	TokenWith
 	TokenLimit
 	TokenSkip
-	TokenOrderBy
+	TokenOrder
+	TokenOrderBy // BY keyword
 	TokenAsc
 	TokenDesc
 	TokenDistinct
@@ -40,8 +41,28 @@ const (
 	TokenNot
 	TokenGroup
 	TokenBy
+	TokenExplain
+	TokenProfile
+	TokenUnwind
+	TokenMerge
+	TokenOn
+	TokenOptional
+	TokenCase
+	TokenWhen
+	TokenThen
+	TokenElse
+	TokenEnd
+	TokenUnion
+	TokenAll
+	TokenIs
+	TokenIn
+	TokenRemove
+	TokenStarts
+	TokenEnds
+	TokenContains
 
 	// Identifiers and literals
+	TokenParameter // $name
 	TokenIdentifier
 	TokenString
 	TokenNumber
@@ -91,7 +112,7 @@ var keywords = map[string]TokenType{
 	"WITH":     TokenWith,
 	"LIMIT":    TokenLimit,
 	"SKIP":     TokenSkip,
-	"ORDER":    TokenOrderBy,
+	"ORDER":    TokenOrder,
 	"BY":       TokenOrderBy,
 	"ASC":      TokenAsc,
 	"DESC":     TokenDesc,
@@ -104,6 +125,25 @@ var keywords = map[string]TokenType{
 	"TRUE":     TokenTrue,
 	"FALSE":    TokenFalse,
 	"NULL":     TokenNull,
+	"EXPLAIN":  TokenExplain,
+	"PROFILE":  TokenProfile,
+	"UNWIND":   TokenUnwind,
+	"MERGE":    TokenMerge,
+	"ON":       TokenOn,
+	"OPTIONAL": TokenOptional,
+	"CASE":     TokenCase,
+	"WHEN":     TokenWhen,
+	"THEN":     TokenThen,
+	"ELSE":     TokenElse,
+	"END":      TokenEnd,
+	"UNION":    TokenUnion,
+	"ALL":      TokenAll,
+	"IS":       TokenIs,
+	"IN":       TokenIn,
+	"REMOVE":   TokenRemove,
+	"STARTS":   TokenStarts,
+	"ENDS":     TokenEnds,
+	"CONTAINS": TokenContains,
 }
 
 func (t TokenType) String() string {
@@ -122,6 +162,50 @@ func (t TokenType) String() string {
 		return "CREATE"
 	case TokenDelete:
 		return "DELETE"
+	case TokenExplain:
+		return "EXPLAIN"
+	case TokenProfile:
+		return "PROFILE"
+	case TokenUnwind:
+		return "UNWIND"
+	case TokenMerge:
+		return "MERGE"
+	case TokenOn:
+		return "ON"
+	case TokenOptional:
+		return "OPTIONAL"
+	case TokenCase:
+		return "CASE"
+	case TokenWhen:
+		return "WHEN"
+	case TokenThen:
+		return "THEN"
+	case TokenElse:
+		return "ELSE"
+	case TokenEnd:
+		return "END"
+	case TokenUnion:
+		return "UNION"
+	case TokenAll:
+		return "ALL"
+	case TokenIs:
+		return "IS"
+	case TokenIn:
+		return "IN"
+	case TokenRemove:
+		return "REMOVE"
+	case TokenOrder:
+		return "ORDER"
+	case TokenOrderBy:
+		return "BY"
+	case TokenStarts:
+		return "STARTS"
+	case TokenEnds:
+		return "ENDS"
+	case TokenContains:
+		return "CONTAINS"
+	case TokenParameter:
+		return "PARAMETER"
 	case TokenIdentifier:
 		return "IDENTIFIER"
 	case TokenString:

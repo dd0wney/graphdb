@@ -77,7 +77,7 @@ func (p *Parser) parseReturn() (*ReturnClause, error) {
 	// GROUP BY (optional)
 	if p.peek().Type == TokenGroup {
 		p.advance() // consume GROUP
-		if p.peek().Type != TokenOrderBy { // TokenOrderBy is used for BY keyword
+		if p.peek().Type != TokenOrderBy {
 			return nil, fmt.Errorf("expected BY after GROUP")
 		}
 		p.advance() // consume BY
@@ -99,44 +99,95 @@ func (p *Parser) parseReturn() (*ReturnClause, error) {
 		}
 	}
 
+	// ORDER BY (optional)
+	if p.peek().Type == TokenOrder {
+		p.advance() // consume ORDER
+		if p.peek().Type != TokenOrderBy {
+			return nil, fmt.Errorf("expected BY after ORDER")
+		}
+		p.advance() // consume BY
+
+		for {
+			expr, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+
+			item := &OrderByItem{Ascending: true}
+			if propExpr, ok := expr.(*PropertyExpression); ok {
+				item.Expression = propExpr
+			} else {
+				item.ValueExpr = expr
+			}
+
+			// Optional ASC/DESC
+			if p.peek().Type == TokenAsc {
+				p.advance()
+				item.Ascending = true
+			} else if p.peek().Type == TokenDesc {
+				p.advance()
+				item.Ascending = false
+			}
+
+			returnClause.OrderBy = append(returnClause.OrderBy, item)
+
+			if p.peek().Type != TokenComma {
+				break
+			}
+			p.advance()
+		}
+	}
+
 	return returnClause, nil
+}
+
+// isAggregateFunction checks if a name is a known aggregate function
+func isAggregateFunction(name string) bool {
+	switch name {
+	case "COUNT", "SUM", "AVG", "MIN", "MAX", "COLLECT":
+		return true
+	default:
+		return false
+	}
 }
 
 // parseReturnItem parses a single return item
 func (p *Parser) parseReturnItem() (*ReturnItem, error) {
 	item := &ReturnItem{}
 
-	// Check for aggregation functions
-	if p.peek().Type == TokenIdentifier {
-		nextToken := p.peekAhead(1)
-		if nextToken.Type == TokenLeftParen {
-			// Aggregation function
-			funcName := p.advance().Value
-			p.advance() // consume (
+	// Aggregate functions need special handling: COUNT(x), SUM(x), etc.
+	// Detect: identifier + '(' where identifier is a known aggregate
+	if p.peek().Type == TokenIdentifier && p.peekAhead(1).Type == TokenLeftParen && isAggregateFunction(p.peek().Value) {
+		funcName := p.advance().Value // consume function name
+		p.advance()                   // consume (
 
-			// Parse argument
-			expr, err := p.parsePrimaryExpression()
-			if err != nil {
-				return nil, err
-			}
-			if propExpr, ok := expr.(*PropertyExpression); ok {
-				item.Expression = propExpr
-			}
+		expr, err := p.parsePrimaryExpression()
+		if err != nil {
+			return nil, err
+		}
+		if propExpr, ok := expr.(*PropertyExpression); ok {
+			item.Expression = propExpr
+		}
 
-			if _, err := p.expect(TokenRightParen); err != nil {
-				return nil, err
-			}
+		if _, err := p.expect(TokenRightParen); err != nil {
+			return nil, err
+		}
 
-			item.Aggregate = funcName
+		item.Aggregate = funcName
+	} else {
+		// Everything else: delegate to parseExpression which handles
+		// arithmetic, unary minus/NOT, IS NULL, function calls, properties, etc.
+		expr, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+
+		// If the result is a simple PropertyExpression, store it in Expression
+		// for backward compatibility with the existing result-building pipeline.
+		if propExpr, ok := expr.(*PropertyExpression); ok {
+			item.Expression = propExpr
 		} else {
-			// Regular property expression
-			expr, err := p.parsePrimaryExpression()
-			if err != nil {
-				return nil, err
-			}
-			if propExpr, ok := expr.(*PropertyExpression); ok {
-				item.Expression = propExpr
-			}
+			item.ValueExpr = expr
 		}
 	}
 
@@ -237,16 +288,22 @@ func (p *Parser) parseSet() (*SetClause, error) {
 			return nil, err
 		}
 
-		value, err := p.parseValue()
+		expr, err := p.parseExpression()
 		if err != nil {
 			return nil, err
 		}
 
-		setClause.Assignments = append(setClause.Assignments, &Assignment{
+		assignment := &Assignment{
 			Variable: varToken.Value,
 			Property: propToken.Value,
-			Value:    value,
-		})
+		}
+		// If the expression is a simple literal, store in Value for backward compat
+		if lit, ok := expr.(*LiteralExpression); ok {
+			assignment.Value = lit.Value
+		} else {
+			assignment.ValueExpr = expr
+		}
+		setClause.Assignments = append(setClause.Assignments, assignment)
 
 		if p.peek().Type != TokenComma {
 			break
@@ -255,6 +312,186 @@ func (p *Parser) parseSet() (*SetClause, error) {
 	}
 
 	return setClause, nil
+}
+
+// parseRemove parses a REMOVE clause: REMOVE n.prop, m.prop
+func (p *Parser) parseRemove() (*RemoveClause, error) {
+	if _, err := p.expect(TokenRemove); err != nil {
+		return nil, err
+	}
+
+	clause := &RemoveClause{
+		Items: make([]*RemoveItem, 0),
+	}
+
+	for {
+		varToken, err := p.expect(TokenIdentifier)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(TokenDot); err != nil {
+			return nil, err
+		}
+		propToken, err := p.expect(TokenIdentifier)
+		if err != nil {
+			return nil, err
+		}
+
+		clause.Items = append(clause.Items, &RemoveItem{
+			Variable: varToken.Value,
+			Property: propToken.Value,
+		})
+
+		if p.peek().Type != TokenComma {
+			break
+		}
+		p.advance()
+	}
+
+	return clause, nil
+}
+
+// parseFunctionCall parses a function call: name(arg1, arg2, ...)
+func (p *Parser) parseFunctionCall(name string) (Expression, error) {
+	if _, err := p.expect(TokenLeftParen); err != nil {
+		return nil, err
+	}
+
+	args := make([]Expression, 0)
+
+	// Handle empty argument list
+	if p.peek().Type != TokenRightParen {
+		for {
+			arg, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, arg)
+
+			if p.peek().Type != TokenComma {
+				break
+			}
+			p.advance() // consume comma
+		}
+	}
+
+	if _, err := p.expect(TokenRightParen); err != nil {
+		return nil, fmt.Errorf("expected ) after function arguments")
+	}
+
+	return &FunctionCallExpression{
+		Name: name,
+		Args: args,
+	}, nil
+}
+
+// parseWith parses a WITH clause: WITH items [WHERE ...]
+func (p *Parser) parseWith() (*WithClause, error) {
+	if _, err := p.expect(TokenWith); err != nil {
+		return nil, err
+	}
+
+	withClause := &WithClause{
+		Items: make([]*ReturnItem, 0),
+	}
+
+	// Parse WITH items (same format as RETURN items)
+	for {
+		item, err := p.parseReturnItem()
+		if err != nil {
+			return nil, err
+		}
+		withClause.Items = append(withClause.Items, item)
+
+		if p.peek().Type != TokenComma {
+			break
+		}
+		p.advance() // consume comma
+	}
+
+	// Optional WHERE after WITH
+	if p.peek().Type == TokenWhere {
+		where, err := p.parseWhere()
+		if err != nil {
+			return nil, err
+		}
+		withClause.Where = where
+	}
+
+	return withClause, nil
+}
+
+// parseMerge parses a MERGE clause with optional ON CREATE SET / ON MATCH SET
+func (p *Parser) parseMerge() (*MergeClause, error) {
+	if _, err := p.expect(TokenMerge); err != nil {
+		return nil, err
+	}
+
+	pattern, err := p.parsePattern()
+	if err != nil {
+		return nil, err
+	}
+
+	merge := &MergeClause{Pattern: pattern}
+
+	// Parse optional ON CREATE SET and ON MATCH SET (in any order)
+	for p.peek().Type == TokenOn {
+		p.advance() // consume ON
+
+		next := p.peek()
+		switch next.Type {
+		case TokenCreate:
+			p.advance() // consume CREATE
+			setClause, err := p.parseSet()
+			if err != nil {
+				return nil, err
+			}
+			merge.OnCreate = setClause
+
+		case TokenMatch:
+			p.advance() // consume MATCH
+			setClause, err := p.parseSet()
+			if err != nil {
+				return nil, err
+			}
+			merge.OnMatch = setClause
+
+		default:
+			return nil, fmt.Errorf("expected CREATE or MATCH after ON, got %s", next.Type)
+		}
+	}
+
+	return merge, nil
+}
+
+// parseUnwind parses an UNWIND clause: UNWIND expr AS alias
+func (p *Parser) parseUnwind() (*UnwindClause, error) {
+	if _, err := p.expect(TokenUnwind); err != nil {
+		return nil, err
+	}
+
+	expr, err := p.parsePrimaryExpression()
+	if err != nil {
+		return nil, err
+	}
+	propExpr, ok := expr.(*PropertyExpression)
+	if !ok {
+		return nil, fmt.Errorf("UNWIND expression must be a property reference")
+	}
+
+	if _, err := p.expect(TokenAs); err != nil {
+		return nil, fmt.Errorf("expected AS after UNWIND expression")
+	}
+
+	aliasToken, err := p.expect(TokenIdentifier)
+	if err != nil {
+		return nil, fmt.Errorf("expected alias after UNWIND ... AS")
+	}
+
+	return &UnwindClause{
+		Expression: propExpr,
+		Alias:      aliasToken.Value,
+	}, nil
 }
 
 // parseLimitSkip parses LIMIT and SKIP values

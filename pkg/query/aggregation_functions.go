@@ -81,6 +81,17 @@ func (ac *AggregationComputer) max(values []any) any {
 	return maxVal
 }
 
+// collect returns all non-nil values as a slice, preserving order
+func (ac *AggregationComputer) collect(values []any) []any {
+	result := make([]any, 0, len(values))
+	for _, v := range values {
+		if v != nil {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
 // compare compares two values (returns -1, 0, or 1)
 // Now delegates to the unified compareValues function
 func (ac *AggregationComputer) compare(a, b any) int {

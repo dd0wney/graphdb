@@ -11,6 +11,15 @@ const (
 	invalidColumnName = "<invalid>"
 )
 
+// orderByColKey returns the map key for an ORDER BY expression.
+// Bare variables (empty Property) use just the variable name to match aliases.
+func orderByColKey(expr *PropertyExpression) string {
+	if expr.Property == "" {
+		return expr.Variable
+	}
+	return fmt.Sprintf("%s.%s", expr.Variable, expr.Property)
+}
+
 // buildColumnName builds a column name from a return item
 func buildColumnName(item *ReturnItem) string {
 	if item.Alias != "" {
@@ -22,6 +31,15 @@ func buildColumnName(item *ReturnItem) string {
 			return fmt.Sprintf("%s(%s.%s)", item.Aggregate, item.Expression.Variable, item.Expression.Property)
 		}
 		return fmt.Sprintf("%s(*)", item.Aggregate)
+	}
+
+	if item.ValueExpr != nil {
+		switch item.ValueExpr.(type) {
+		case *FunctionCallExpression:
+			return item.ValueExpr.(*FunctionCallExpression).Name + "(...)"
+		case *ArithmeticExpression, *UnaryExpression, *BinaryExpression:
+			return "<expr>"
+		}
 	}
 
 	if item.Expression != nil {
@@ -104,15 +122,48 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 		resultSet.Columns = append(resultSet.Columns, buildColumnName(item))
 	}
 
-	// Build rows
+	// Identify ORDER BY columns that aren't already in the result set
+	var extraSortCols []string
+	if len(returnClause.OrderBy) > 0 {
+		colSet := make(map[string]bool, len(resultSet.Columns))
+		for _, c := range resultSet.Columns {
+			colSet[c] = true
+		}
+		for _, ob := range returnClause.OrderBy {
+			if ob.Expression != nil {
+				name := orderByColKey(ob.Expression)
+				if !colSet[name] {
+					extraSortCols = append(extraSortCols, name)
+					colSet[name] = true
+				}
+			}
+		}
+	}
+
+	// Build rows with extra sort columns injected from bindings
 	computer := &AggregationComputer{}
 	for _, binding := range ctx.results {
 		row := e.buildRow(binding, returnClause.Items, resultSet.Columns, computer)
+		for _, ob := range returnClause.OrderBy {
+			if ob.Expression != nil {
+				name := orderByColKey(ob.Expression)
+				if _, exists := row[name]; !exists {
+					row[name] = e.extractValueFromBinding(binding, ob.Expression, computer)
+				}
+			}
+		}
 		resultSet.Rows = append(resultSet.Rows, row)
 	}
 
 	// Apply post-processing (DISTINCT, ORDER BY, SKIP, LIMIT)
 	e.applyPostProcessing(resultSet, returnClause, limit, skip, true)
+
+	// Strip extra sort columns from final results
+	for _, col := range extraSortCols {
+		for _, row := range resultSet.Rows {
+			delete(row, col)
+		}
+	}
 
 	return resultSet
 }
@@ -123,6 +174,12 @@ func (e *Executor) buildRow(binding *BindingSet, items []*ReturnItem, columns []
 
 	for i, item := range items {
 		columnName := columns[i]
+
+		// ValueExpr takes precedence (e.g. function calls)
+		if item.ValueExpr != nil {
+			row[columnName] = extractValue(item.ValueExpr, binding.bindings)
+			continue
+		}
 
 		// Extract value - check for nil Expression first
 		if item.Expression != nil {
@@ -140,19 +197,44 @@ func (e *Executor) extractValueFromBinding(binding *BindingSet, expr *PropertyEx
 		return nil
 	}
 
-	node, ok := obj.(*storage.Node)
-	if !ok {
-		return nil
-	}
-
-	if expr.Property != "" {
-		if prop, exists := node.Properties[expr.Property]; exists {
-			// Reuse ExtractValue from AggregationComputer
-			return computer.ExtractValue(prop)
+	// Handle *storage.Node bindings
+	if node, ok := obj.(*storage.Node); ok {
+		if expr.Property != "" {
+			// Real property takes precedence
+			if prop, exists := node.Properties[expr.Property]; exists {
+				return computer.ExtractValue(prop)
+			}
+			// Synthetic property: similarity_score from VectorSearchStep
+			if expr.Property == "similarity_score" && binding.vectorScores != nil {
+				if score, ok := binding.vectorScores[expr.Variable]; ok {
+					return score
+				}
+			}
+			return nil
 		}
-		return nil
+		return node
 	}
 
-	// Return whole node
-	return node
+	// Handle *storage.Edge bindings
+	if edge, ok := obj.(*storage.Edge); ok {
+		if expr.Property != "" {
+			if prop, exists := edge.Properties[expr.Property]; exists {
+				return extractStorageValue(prop)
+			}
+			return nil
+		}
+		return edge
+	}
+
+	// Handle raw value bindings (e.g., from WITH projections)
+	if expr.Property == "" {
+		return obj
+	}
+
+	// Try map access for backwards compatibility
+	if m, ok := obj.(map[string]any); ok {
+		return m[expr.Property]
+	}
+
+	return nil
 }

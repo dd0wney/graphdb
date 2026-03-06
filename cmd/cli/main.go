@@ -11,6 +11,7 @@ import (
 
 	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
+	"github.com/dd0wney/cluso-graphdb/pkg/queryutil"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
@@ -42,7 +43,7 @@ func main() {
 
 	cli := &CLI{
 		graph:    graph,
-		executor: query.NewExecutor(graph),
+		executor: queryutil.WireCapabilities(query.NewExecutor(graph), graph),
 		scanner:  bufio.NewScanner(os.Stdin),
 	}
 

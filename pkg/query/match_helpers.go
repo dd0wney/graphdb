@@ -68,5 +68,12 @@ func (ms *MatchStep) copyBinding(binding *BindingSet) *BindingSet {
 	for k, v := range binding.bindings {
 		newBindings[k] = v
 	}
-	return &BindingSet{bindings: newBindings}
+	newBS := &BindingSet{bindings: newBindings}
+	if len(binding.vectorScores) > 0 {
+		newBS.vectorScores = make(map[string]float64, len(binding.vectorScores))
+		for k, v := range binding.vectorScores {
+			newBS.vectorScores[k] = v
+		}
+	}
+	return newBS
 }

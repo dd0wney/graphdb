@@ -50,6 +50,8 @@ func (ac *AggregationComputer) ComputeAggregates(ctx *ExecutionContext, returnIt
 			result[columnName] = ac.min(values)
 		case "MAX":
 			result[columnName] = ac.max(values)
+		case "COLLECT":
+			result[columnName] = ac.collect(values)
 		default:
 			result[columnName] = nil
 		}
@@ -108,6 +110,10 @@ func (ac *AggregationComputer) ExtractValue(val storage.Value) any {
 	case storage.TypeBool:
 		if boolVal, err := val.AsBool(); err == nil {
 			return boolVal
+		}
+	case storage.TypeVector:
+		if vecVal, err := val.AsVector(); err == nil {
+			return vecVal
 		}
 	case storage.TypeTimestamp:
 		if timeVal, err := val.AsTimestamp(); err == nil {
