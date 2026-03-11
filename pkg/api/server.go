@@ -167,11 +167,14 @@ func (s *Server) Start() error {
 	s.metricsWg.Add(1)
 	go s.updateMetricsPeriodically()
 
+	// Súil observability (no-op if SUIL_ENDPOINT/SUIL_API_KEY not set)
+	suil := newSuilClient()
+
 	// Create HTTP server with timeouts for production security
-	// Middleware chain: metrics -> panicRecovery -> requestID -> rateLimit -> securityHeaders -> inputValidation -> audit -> logging -> CORS -> routes
+	// Middleware chain: suil -> metrics -> panicRecovery -> requestID -> rateLimit -> securityHeaders -> inputValidation -> audit -> logging -> CORS -> routes
 	server := &http.Server{
 		Addr:         addr,
-		Handler:      s.metricsMiddleware(s.panicRecoveryMiddleware(s.requestIDMiddleware(s.rateLimitMiddleware(s.securityHeadersMiddleware(s.inputValidationMiddleware(s.auditMiddleware(s.loggingMiddleware(s.corsMiddleware(mux))))))))),
+		Handler:      suilMiddleware(suil)(s.metricsMiddleware(s.panicRecoveryMiddleware(s.requestIDMiddleware(s.rateLimitMiddleware(s.securityHeadersMiddleware(s.inputValidationMiddleware(s.auditMiddleware(s.loggingMiddleware(s.corsMiddleware(mux)))))))))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
