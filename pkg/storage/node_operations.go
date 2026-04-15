@@ -664,3 +664,56 @@ func (gs *GraphStorage) ForEachNode(fn func(*Node) bool) {
 		return fn(node.Clone())
 	})
 }
+
+// DeleteAllNodes removes every node, edge, and index from the graph and truncates
+// the WAL, then writes an empty snapshot so a restart doesn't replay the old data.
+// Intended for full-reload scenarios where the caller will repopulate the graph
+// immediately after.
+func (gs *GraphStorage) DeleteAllNodes() error {
+	gs.mu.Lock()
+
+	gs.nodes = make(map[uint64]*Node)
+	gs.edges = make(map[uint64]*Edge)
+	gs.nodesByLabel = make(map[string][]uint64)
+	gs.edgesByType = make(map[string][]uint64)
+	gs.outgoingEdges = make(map[uint64][]uint64)
+	gs.incomingEdges = make(map[uint64][]uint64)
+	gs.propertyIndexes = make(map[string]*PropertyIndex)
+	if gs.useEdgeCompression {
+		gs.compressedOutgoing = make(map[uint64]*CompressedEdgeList)
+		gs.compressedIncoming = make(map[uint64]*CompressedEdgeList)
+	}
+
+	// Truncate whichever WAL variant is active so replay doesn't restore deleted data.
+	if gs.wal != nil {
+		if err := gs.wal.Truncate(); err != nil {
+			gs.mu.Unlock()
+			return fmt.Errorf("truncate WAL: %w", err)
+		}
+	}
+	if gs.batchedWAL != nil {
+		if err := gs.batchedWAL.Truncate(); err != nil {
+			gs.mu.Unlock()
+			return fmt.Errorf("truncate batched WAL: %w", err)
+		}
+	}
+	if gs.compressedWAL != nil {
+		if err := gs.compressedWAL.Truncate(); err != nil {
+			gs.mu.Unlock()
+			return fmt.Errorf("truncate compressed WAL: %w", err)
+		}
+	}
+
+	gs.mu.Unlock()
+
+	// Write an empty snapshot so a process restart doesn't reload from the old
+	// snapshot.json + WAL.  Snapshot() acquires its own read lock so we release
+	// the write lock first.
+	if gs.dataDir != "" {
+		if err := gs.Snapshot(); err != nil {
+			return fmt.Errorf("write empty snapshot after clear: %w", err)
+		}
+	}
+
+	return nil
+}

@@ -26,6 +26,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		Get(func() { s.listNodes(w, r) }).
 		Head(func() { s.countNodes(w, r) }).
 		Post(func() { s.createNode(w, r) }).
+		Delete(func() { s.deleteAllNodes(w, r) }).
 		NotAllowed()
 }
 
@@ -48,6 +49,16 @@ func (s *Server) countNodes(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Total-Count", strconv.FormatUint(count, 10))
 	w.WriteHeader(http.StatusOK)
+}
+
+// deleteAllNodes removes all nodes and edges and truncates the WAL+snapshot.
+// Used by wiki-graph before a full reload to prevent unbounded bloat.
+func (s *Server) deleteAllNodes(w http.ResponseWriter, r *http.Request) {
+	if err := s.graph.DeleteAllNodes(); err != nil {
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete all nodes"))
+		return
+	}
+	s.respondJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
 }
 
 func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
