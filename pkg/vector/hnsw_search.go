@@ -8,8 +8,8 @@ import (
 // searchLayer performs greedy search at a specific layer
 func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int) (*hnswNode, float32) {
 	visited := make(map[uint64]bool)
-	candidates := make(priorityQueue, 0)
-	w := make(priorityQueue, 0)
+	candidates := make(minPriorityQueue, 0) // min-heap: explore nearest candidate first
+	w := make(priorityQueue, 0)             // max-heap: drop farthest when |W| > ef
 
 	dist := h.distance(query, ep.vector)
 	heap.Push(&candidates, &queueItem{id: ep.id, distance: dist})
@@ -73,8 +73,8 @@ func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int
 // searchLayerKNN performs k-NN search at a specific layer
 func (h *HNSWIndex) searchLayerKNN(query []float32, ep *hnswNode, ef int, layer int) priorityQueue {
 	visited := make(map[uint64]bool)
-	candidates := make(priorityQueue, 0)
-	w := make(priorityQueue, 0)
+	candidates := make(minPriorityQueue, 0) // min-heap: explore nearest candidate first
+	w := make(priorityQueue, 0)             // max-heap: result set of ef best candidates
 
 	dist := h.distance(query, ep.vector)
 	heap.Push(&candidates, &queueItem{id: ep.id, distance: dist})
@@ -125,23 +125,27 @@ func (h *HNSWIndex) searchLayerKNN(query []float32, ep *hnswNode, ef int, layer 
 	return w
 }
 
-// selectNeighbors selects M best neighbors from candidates
+// selectNeighbors selects M nearest neighbors from a max-heap candidate set.
+// The heap is drained in descending distance order; the M nearest are the
+// last M elements, which are then reversed so index 0 is the nearest.
 func (h *HNSWIndex) selectNeighbors(candidates priorityQueue, m int) []SearchResult {
-	// Simple heuristic: select M nearest
-	results := make([]SearchResult, 0, m)
-
-	for len(results) < m && len(candidates) > 0 {
-		// Defensive: safe type assertion with ok check
+	all := make([]SearchResult, 0, len(candidates))
+	for len(candidates) > 0 {
 		item, ok := heap.Pop(&candidates).(*queueItem)
 		if !ok {
 			continue
 		}
-		results = append(results, SearchResult{
-			ID:       item.id,
-			Distance: item.distance,
-		})
+		all = append(all, SearchResult{ID: item.id, Distance: item.distance})
 	}
-
+	// all[0] = farthest … all[len-1] = nearest; take m nearest
+	start := len(all) - m
+	if start < 0 {
+		start = 0
+	}
+	results := all[start:]
+	for i, j := 0, len(results)-1; i < j; i, j = i+1, j-1 {
+		results[i], results[j] = results[j], results[i]
+	}
 	return results
 }
 

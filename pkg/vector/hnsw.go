@@ -142,23 +142,26 @@ func (h *HNSWIndex) Search(query []float32, k int, ef int) ([]SearchResult, erro
 	// Search at layer 0 with ef
 	candidates := h.searchLayerKNN(query, ep, ef, 0)
 
-	// Select k nearest from candidates
-	results := make([]SearchResult, 0, k)
-	for len(results) < k && len(candidates) > 0 {
-		// Defensive: safe type assertion with ok check
+	// Drain the max-heap into descending-distance order, then take the k
+	// nearest from the tail. Popping all before slicing avoids the previous
+	// bug of extracting the k *farthest* items from a partial drain.
+	all := make([]SearchResult, 0, candidates.Len())
+	for candidates.Len() > 0 {
 		item, ok := heap.Pop(&candidates).(*queueItem)
 		if !ok {
 			continue
 		}
-		results = append(results, SearchResult{
-			ID:       item.id,
-			Distance: item.distance,
-		})
+		all = append(all, SearchResult{ID: item.id, Distance: item.distance})
 	}
-
-	// Reverse results (they're in max-heap order, we want nearest first)
-	for i := 0; i < len(results)/2; i++ {
-		results[i], results[len(results)-1-i] = results[len(results)-1-i], results[i]
+	// all[0] = farthest … all[len-1] = nearest; take k nearest
+	start := len(all) - k
+	if start < 0 {
+		start = 0
+	}
+	results := all[start:]
+	// Reverse so results[0] is nearest
+	for i, j := 0, len(results)-1; i < j; i, j = i+1, j-1 {
+		results[i], results[j] = results[j], results[i]
 	}
 
 	return results, nil

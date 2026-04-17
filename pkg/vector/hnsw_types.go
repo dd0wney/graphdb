@@ -14,36 +14,39 @@ type SearchResult struct {
 	Distance float32
 }
 
-// priorityQueue implements a max-heap for nearest neighbor search
-type priorityQueue []*queueItem
-
 type queueItem struct {
 	id       uint64
 	distance float32
 }
 
-func (pq priorityQueue) Len() int { return len(pq) }
+// priorityQueue is a max-heap used for the result set W.
+// Keeping the farthest element at the root lets us efficiently drop the
+// worst result when the set exceeds ef, and drain in descending order to
+// extract the k nearest at query time.
+type priorityQueue []*queueItem
 
-func (pq priorityQueue) Less(i, j int) bool {
-	// Max-heap: larger distances have higher priority
-	return pq[i].distance > pq[j].distance
-}
-
-func (pq priorityQueue) Swap(i, j int) {
-	pq[i], pq[j] = pq[j], pq[i]
-}
-
-func (pq *priorityQueue) Push(x any) {
-	// heap.Interface.Push contract: callers always pass *queueItem.
-	// Mirrors rankedEdgeHeap.Push / rankedNodeHeap.Push in pkg/algorithms.
-	item, ok := x.(*queueItem)
-	if !ok {
-		panic("priorityQueue.Push: expected *queueItem")
-	}
-	*pq = append(*pq, item)
-}
-
+func (pq priorityQueue) Len() int            { return len(pq) }
+func (pq priorityQueue) Less(i, j int) bool  { return pq[i].distance > pq[j].distance }
+func (pq priorityQueue) Swap(i, j int)       { pq[i], pq[j] = pq[j], pq[i] }
+func (pq *priorityQueue) Push(x any)         { *pq = append(*pq, x.(*queueItem)) }
 func (pq *priorityQueue) Pop() any {
+	old := *pq
+	n := len(old)
+	item := old[n-1]
+	*pq = old[0 : n-1]
+	return item
+}
+
+// minPriorityQueue is a min-heap used for the candidate set C.
+// Popping the nearest candidate enables correct greedy graph traversal
+// toward the query — HNSW's correctness depends on exploring nearest-first.
+type minPriorityQueue []*queueItem
+
+func (pq minPriorityQueue) Len() int            { return len(pq) }
+func (pq minPriorityQueue) Less(i, j int) bool  { return pq[i].distance < pq[j].distance }
+func (pq minPriorityQueue) Swap(i, j int)       { pq[i], pq[j] = pq[j], pq[i] }
+func (pq *minPriorityQueue) Push(x any)         { *pq = append(*pq, x.(*queueItem)) }
+func (pq *minPriorityQueue) Pop() any {
 	old := *pq
 	n := len(old)
 	item := old[n-1]
