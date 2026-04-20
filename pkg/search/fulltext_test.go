@@ -1,6 +1,7 @@
 package search
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -490,5 +491,55 @@ func TestSearchBooleanNoOperator(t *testing.T) {
 	}
 	if len(results) != 2 {
 		t.Errorf("expected 2 results for 'graphdb', got %d", len(results))
+	}
+}
+
+// TestNodeContent covers both branches of the exported accessor: an
+// indexed node returns its stored content; an unindexed node returns
+// ("", false).
+func TestNodeContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := storage.StorageConfig{
+		DataDir:        tmpDir,
+		BulkImportMode: true,
+	}
+	gs, err := storage.NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer gs.Close()
+
+	node, err := gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+		"title": storage.StringValue("Metempsychosis"),
+		"body":  storage.StringValue("The word he'd heard from the bookseller"),
+	})
+	if err != nil {
+		t.Fatalf("CreateNode: %v", err)
+	}
+
+	index := NewFullTextIndex(gs)
+	if err := index.IndexNodes([]string{"Article"}, []string{"title", "body"}); err != nil {
+		t.Fatalf("IndexNodes: %v", err)
+	}
+
+	content, ok := index.NodeContent(node.ID)
+	if !ok {
+		t.Fatalf("expected indexed node %d to return content, got ok=false", node.ID)
+	}
+	// Content is concatenated indexed fields — both title and body text
+	// should be present.
+	if !strings.Contains(strings.ToLower(content), "metempsychosis") {
+		t.Errorf("content missing title token: %q", content)
+	}
+	if !strings.Contains(strings.ToLower(content), "bookseller") {
+		t.Errorf("content missing body token: %q", content)
+	}
+
+	missing, ok := index.NodeContent(999999)
+	if ok {
+		t.Errorf("expected unindexed node to return ok=false, got content=%q", missing)
+	}
+	if missing != "" {
+		t.Errorf("expected empty content for unindexed node, got %q", missing)
 	}
 }

@@ -44,3 +44,15 @@ func NewFullTextIndex(gs *storage.GraphStorage) *FullTextIndex {
 		nodeContent: make(map[uint64]string),
 	}
 }
+
+// NodeContent returns the concatenated indexed text for the given NodeID,
+// or ("", false) if the node is not currently indexed. Read-locks the
+// index so callers can safely read during concurrent updates. Exposed for
+// snippet generation at query time (handlers reach into the index rather
+// than hitting storage for every result).
+func (fti *FullTextIndex) NodeContent(id uint64) (string, bool) {
+	fti.indexMu.RLock()
+	defer fti.indexMu.RUnlock()
+	content, ok := fti.nodeContent[id]
+	return content, ok
+}
