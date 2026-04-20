@@ -56,7 +56,7 @@ type VectorSearchResult struct {
 type VectorSearchResponse struct {
 	Results []VectorSearchResult `json:"results"`
 	Count   int                  `json:"count"`
-	Time    string               `json:"time"`
+	TookMs  int64                `json:"took_ms"`
 }
 
 // Default HNSW parameters
@@ -324,7 +324,7 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, VectorSearchResponse{
 		Results: results,
 		Count:   len(results),
-		Time:    elapsed.String(),
+		TookMs:  elapsed.Milliseconds(),
 	})
 }
 

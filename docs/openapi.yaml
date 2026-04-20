@@ -1733,10 +1733,11 @@ components:
           type: integer
           description: Number of results returned
           example: 10
-        time:
-          type: string
-          description: Search execution time
-          example: "1.234ms"
+        took_ms:
+          type: integer
+          format: int64
+          description: Search execution time in milliseconds
+          example: 3
 
   responses:
     BadRequest:

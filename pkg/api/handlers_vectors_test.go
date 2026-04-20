@@ -454,8 +454,8 @@ func TestVectorSearch(t *testing.T) {
 					}
 				}
 
-				t.Logf("✓ Vector search returned %d results in %s",
-					response.Count, response.Time)
+				t.Logf("✓ Vector search returned %d results in %dms",
+					response.Count, response.TookMs)
 			}
 		})
 	}
