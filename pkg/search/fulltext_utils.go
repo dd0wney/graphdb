@@ -6,30 +6,41 @@ import (
 	"strings"
 )
 
-// scoreResults calculates TF-IDF scores and returns sorted results
-func (fti *FullTextIndex) scoreResults(nodeIDs map[uint64]bool, queryTokens []string) []SearchResult {
-	results := make([]SearchResult, 0, len(nodeIDs))
-
+// scoreResults calculates TF-IDF scores, sorts by score descending, then
+// hydrates the (up to `limit`) top results via GetNode. Passing limit <= 0
+// hydrates every candidate (legacy behavior).
+//
+// The split matters because hydration is the expensive part: scoring uses
+// only in-memory posting data, but GetNode is an LSM read. Sorting scores
+// before hydration lets a caller with a small K avoid storage round-trips
+// for candidates that could not make the top-K.
+func (fti *FullTextIndex) scoreResults(nodeIDs map[uint64]bool, queryTokens []string, limit int) []SearchResult {
+	type scored struct {
+		id    uint64
+		score float64
+	}
+	cands := make([]scored, 0, len(nodeIDs))
 	for nodeID := range nodeIDs {
-		score := fti.calculateScore(nodeID, queryTokens)
+		cands = append(cands, scored{nodeID, fti.calculateScore(nodeID, queryTokens)})
+	}
+	sort.Slice(cands, func(i, j int) bool { return cands[i].score > cands[j].score })
 
-		node, err := fti.gs.GetNode(nodeID)
+	if limit > 0 && limit < len(cands) {
+		cands = cands[:limit]
+	}
+
+	results := make([]SearchResult, 0, len(cands))
+	for _, c := range cands {
+		node, err := fti.gs.GetNode(c.id)
 		if err != nil {
 			continue
 		}
-
 		results = append(results, SearchResult{
-			NodeID: nodeID,
-			Score:  score,
+			NodeID: c.id,
+			Score:  c.score,
 			Node:   node,
 		})
 	}
-
-	// Sort by score (descending)
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
-
 	return results
 }
 

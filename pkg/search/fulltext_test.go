@@ -1,6 +1,7 @@
 package search
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -542,4 +543,105 @@ func TestNodeContent(t *testing.T) {
 	if missing != "" {
 		t.Errorf("expected empty content for unindexed node, got %q", missing)
 	}
+}
+
+// TestSearchTopK asserts that only the requested K results are returned,
+// and that k <= 0 preserves the all-results behavior of Search.
+func TestSearchTopK(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := storage.StorageConfig{
+		DataDir:        tmpDir,
+		BulkImportMode: true,
+	}
+	gs, err := storage.NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer gs.Close()
+
+	for i := 0; i < 5; i++ {
+		if _, err := gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+			"body": storage.StringValue(fmt.Sprintf("common uniquetoken%d filler", i)),
+		}); err != nil {
+			t.Fatalf("CreateNode %d: %v", i, err)
+		}
+	}
+
+	index := NewFullTextIndex(gs)
+	if err := index.IndexNodes([]string{"Article"}, []string{"body"}); err != nil {
+		t.Fatalf("IndexNodes: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		k       int
+		wantLen int
+	}{
+		{"k=3 returns top 3", 3, 3},
+		{"k=0 returns all", 0, 5},
+		{"k=-1 returns all", -1, 5},
+		{"k larger than corpus returns all", 100, 5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			results, err := index.SearchTopK("common", tc.k)
+			if err != nil {
+				t.Fatalf("SearchTopK: %v", err)
+			}
+			if len(results) != tc.wantLen {
+				t.Errorf("k=%d: got %d results, want %d", tc.k, len(results), tc.wantLen)
+			}
+		})
+	}
+}
+
+// BenchmarkSearchVsSearchTopK measures the hydration delta between Search
+// (hydrates every candidate) and SearchTopK (hydrates only top k). The
+// per-candidate GetNode cost is small with BulkImportMode storage, so the
+// absolute delta is modest — but it scales linearly with corpus size and
+// LSM read latency, which is what the perf fix targets in production.
+func BenchmarkSearchVsSearchTopK(b *testing.B) {
+	tmpDir := b.TempDir()
+	config := storage.StorageConfig{
+		DataDir:        tmpDir,
+		BulkImportMode: true,
+	}
+	gs, err := storage.NewGraphStorageWithConfig(config)
+	if err != nil {
+		b.Fatalf("storage: %v", err)
+	}
+	defer gs.Close()
+
+	const corpusSize = 1000
+	for i := 0; i < corpusSize; i++ {
+		if _, err := gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+			"body": storage.StringValue(fmt.Sprintf("common uniquetoken%d lorem ipsum dolor sit amet", i)),
+		}); err != nil {
+			b.Fatalf("CreateNode %d: %v", i, err)
+		}
+	}
+	index := NewFullTextIndex(gs)
+	if err := index.IndexNodes([]string{"Article"}, []string{"body"}); err != nil {
+		b.Fatalf("IndexNodes: %v", err)
+	}
+
+	b.Run("Search_hydrate_1000", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			r, err := index.Search("common")
+			if err != nil || len(r) != corpusSize {
+				b.Fatalf("want %d results, got err=%v len=%d", corpusSize, err, len(r))
+			}
+		}
+	})
+
+	b.Run("SearchTopK_10", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			r, err := index.SearchTopK("common", 10)
+			if err != nil || len(r) != 10 {
+				b.Fatalf("want 10 results, got err=%v len=%d", err, len(r))
+			}
+		}
+	})
 }

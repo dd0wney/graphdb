@@ -50,8 +50,54 @@ func (fti *FullTextIndex) Search(query string) ([]SearchResult, error) {
 	}
 
 	// Score and rank results
-	results := fti.scoreResults(candidateNodes, tokens)
+	results := fti.scoreResults(candidateNodes, tokens, 0)
 	return results, nil
+}
+
+// SearchTopK returns the top k results for query, ranked by TF-IDF score.
+// Unlike Search, only the top-k candidates are hydrated via GetNode —
+// scoring uses only in-memory posting data, so queries that hit many
+// candidates don't pay an LSM round-trip per hit. Pass k <= 0 for the
+// all-results behavior (equivalent to Search).
+func (fti *FullTextIndex) SearchTopK(query string, k int) ([]SearchResult, error) {
+	if query == "" {
+		return []SearchResult{}, nil
+	}
+
+	fti.indexMu.RLock()
+	defer fti.indexMu.RUnlock()
+
+	tokens := tokenize(query)
+	if len(tokens) == 0 {
+		return []SearchResult{}, nil
+	}
+
+	var candidateNodes map[uint64]bool
+	for i, token := range tokens {
+		term := normalize(token)
+		if term == "" {
+			continue
+		}
+		termNodes := make(map[uint64]bool)
+		if postings, ok := fti.index[term]; ok {
+			for nodeID := range postings {
+				termNodes[nodeID] = true
+			}
+		}
+		if i == 0 {
+			candidateNodes = termNodes
+		} else {
+			newCandidates := make(map[uint64]bool)
+			for nodeID := range candidateNodes {
+				if termNodes[nodeID] {
+					newCandidates[nodeID] = true
+				}
+			}
+			candidateNodes = newCandidates
+		}
+	}
+
+	return fti.scoreResults(candidateNodes, tokens, k), nil
 }
 
 // SearchPhrase searches for an exact phrase
@@ -90,7 +136,7 @@ func (fti *FullTextIndex) SearchPhrase(phrase string) ([]SearchResult, error) {
 		}
 	}
 
-	results := fti.scoreResults(matchingNodes, tokens)
+	results := fti.scoreResults(matchingNodes, tokens, 0)
 	return results, nil
 }
 
@@ -177,7 +223,7 @@ func (fti *FullTextIndex) SearchBoolean(query string) ([]SearchResult, error) {
 		results = fti.searchNOT(strings.Split(query, " NOT "))
 	}
 
-	return fti.scoreResults(results, tokenize(query)), nil
+	return fti.scoreResults(results, tokenize(query), 0), nil
 }
 
 func (fti *FullTextIndex) searchAND(terms []string) map[uint64]bool {
@@ -264,7 +310,7 @@ func (fti *FullTextIndex) SearchFuzzy(query string, maxDistance int) ([]SearchRe
 		}
 	}
 
-	results := fti.scoreResults(matches, []string{query})
+	results := fti.scoreResults(matches, []string{query}, 0)
 	return results, nil
 }
 
@@ -298,6 +344,6 @@ func (fti *FullTextIndex) SearchInProperty(property string, query string) ([]Sea
 		}
 	}
 
-	results := fti.scoreResults(matches, []string{query})
+	results := fti.scoreResults(matches, []string{query}, 0)
 	return results, nil
 }
