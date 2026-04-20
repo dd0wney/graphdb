@@ -19,18 +19,18 @@ func TestSortNodesByPropertyAscending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create Person nodes with different ages
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Charlie"),
 		"age":  storage.IntValue(25),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(30),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 		"age":  storage.IntValue(20),
 	})
@@ -88,16 +88,16 @@ func TestSortNodesByPropertyDescending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create Person nodes with different names
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Charlie"),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 	})
 
@@ -154,11 +154,11 @@ func TestSortWithPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 5 Person nodes with different scores
 	for i := 1; i <= 5; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name":  storage.StringValue("Person" + string(rune('0'+i))),
 			"score": storage.IntValue(int64(i * 10)),
 		})
@@ -213,11 +213,11 @@ func TestSortWithCursorPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 10 Person nodes with different scores
 	for i := 1; i <= 10; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name":  storage.StringValue("Person" + string(rune('0'+i))),
 			"score": storage.IntValue(int64(i * 10)),
 		})
@@ -279,7 +279,7 @@ func TestSortEdgesByWeight(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -290,9 +290,9 @@ func TestSortEdgesByWeight(t *testing.T) {
 	})
 
 	// Create edges with different weights
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 3.0)
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 2.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 3.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 2.0)
 
 	schema, err := GenerateSchemaWithSorting(gs)
 	if err != nil {
@@ -347,13 +347,13 @@ func TestSortWithoutOrderBy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 	})
 

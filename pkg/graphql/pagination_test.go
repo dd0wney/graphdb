@@ -19,11 +19,11 @@ func TestNodeQueryPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 10 Person nodes
 	for i := 1; i <= 10; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person" + string(rune('0'+i))),
 			"id":   storage.IntValue(int64(i)),
 		})
@@ -73,11 +73,11 @@ func TestNodeQueryPaginationWithOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 10 Person nodes
 	for i := 1; i <= 10; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person" + string(rune('0'+i))),
 			"id":   storage.IntValue(int64(i)),
 		})
@@ -127,11 +127,11 @@ func TestNodeQueryPaginationDefaultBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 5 Person nodes
 	for i := 1; i <= 5; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person" + string(rune('0'+i))),
 		})
 	}
@@ -180,7 +180,7 @@ func TestEdgeQueryPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -192,7 +192,7 @@ func TestEdgeQueryPagination(t *testing.T) {
 
 	// Create 10 edges
 	for i := 1; i <= 10; i++ {
-		gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
 			"strength": storage.IntValue(int64(i)),
 		}, float64(i))
 	}
@@ -242,7 +242,7 @@ func TestEdgeQueryPaginationWithOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -254,7 +254,7 @@ func TestEdgeQueryPaginationWithOffset(t *testing.T) {
 
 	// Create 10 edges
 	for i := 1; i <= 10; i++ {
-		gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
 			"strength": storage.IntValue(int64(i)),
 		}, float64(i))
 	}
@@ -305,11 +305,11 @@ func TestPaginationEdgeCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 5 Person nodes
 	for i := 1; i <= 5; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person" + string(rune('0'+i))),
 		})
 	}

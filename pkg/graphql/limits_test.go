@@ -20,11 +20,11 @@ func TestDefaultLimitApplied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 200 nodes (more than default limit of 100)
 	for i := 0; i < 200; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person"),
 			"id":   storage.IntValue(int64(i)),
 		})
@@ -77,11 +77,11 @@ func TestMaxLimitEnforced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 100 nodes
 	for i := 0; i < 100; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person"),
 		})
 	}
@@ -136,11 +136,11 @@ func TestExplicitLimitWithinMax(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 100 nodes
 	for i := 0; i < 100; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person"),
 		})
 	}
@@ -195,7 +195,7 @@ func TestLimitsOnEdgeQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and 150 edges
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -206,7 +206,7 @@ func TestLimitsOnEdgeQueries(t *testing.T) {
 	})
 
 	for i := 0; i < 150; i++ {
-		gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{}, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{}, 1.0)
 	}
 
 	schema, err := GenerateSchemaWithLimits(gs, &LimitConfig{
@@ -256,7 +256,7 @@ func TestLimitsWithFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 200 nodes, 100 with age > 30
 	for i := 0; i < 200; i++ {
@@ -264,7 +264,7 @@ func TestLimitsWithFiltering(t *testing.T) {
 		if i >= 100 {
 			age = 35
 		}
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person"),
 			"age":  storage.IntValue(age),
 		})
@@ -324,11 +324,11 @@ func TestZeroLimitReturnsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create some nodes
 	for i := 0; i < 50; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person"),
 		})
 	}
@@ -383,11 +383,11 @@ func TestNegativeLimitTreatedAsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 150 nodes
 	for i := 0; i < 150; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person"),
 		})
 	}
@@ -442,7 +442,7 @@ func TestLimitConfigValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Test: default limit > max limit (invalid)
 	_, err = GenerateSchemaWithLimits(gs, &LimitConfig{

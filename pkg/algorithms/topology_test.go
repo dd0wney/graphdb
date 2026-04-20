@@ -9,7 +9,7 @@ import (
 // TestIsDAG_EmptyGraph tests DAG check on empty graph
 func TestIsDAG_EmptyGraph(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	isDAG, err := IsDAG(graph)
 	if err != nil {
@@ -24,9 +24,9 @@ func TestIsDAG_EmptyGraph(t *testing.T) {
 // TestIsDAG_SingleNode tests DAG check on single node
 func TestIsDAG_SingleNode(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
-	graph.CreateNode([]string{"Node"}, nil)
+	_, _ = graph.CreateNode([]string{"Node"}, nil)
 
 	isDAG, err := IsDAG(graph)
 	if err != nil {
@@ -41,15 +41,15 @@ func TestIsDAG_SingleNode(t *testing.T) {
 // TestIsDAG_LinearChain tests DAG check on linear directed chain
 func TestIsDAG_LinearChain(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// A -> B -> C (DAG)
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
 
 	isDAG, err := IsDAG(graph)
 	if err != nil {
@@ -64,14 +64,14 @@ func TestIsDAG_LinearChain(t *testing.T) {
 // TestIsDAG_SimpleCycle tests DAG check with simple cycle
 func TestIsDAG_SimpleCycle(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// A -> B -> A (cycle, not a DAG)
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
 
 	isDAG, err := IsDAG(graph)
 	if err != nil {
@@ -86,11 +86,11 @@ func TestIsDAG_SimpleCycle(t *testing.T) {
 // TestIsDAG_SelfLoop tests DAG check with self-loop
 func TestIsDAG_SelfLoop(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// A -> A (self-loop, not a DAG)
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
-	graph.CreateEdge(nodeA.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeA.ID, "E", nil, 1.0)
 
 	isDAG, err := IsDAG(graph)
 	if err != nil {
@@ -105,7 +105,7 @@ func TestIsDAG_SelfLoop(t *testing.T) {
 // TestIsDAG_Diamond tests DAG check on diamond shape
 func TestIsDAG_Diamond(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	//     A
 	//    / \
@@ -117,10 +117,10 @@ func TestIsDAG_Diamond(t *testing.T) {
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeA.ID, nodeC.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeD.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
 
 	isDAG, err := IsDAG(graph)
 	if err != nil {
@@ -135,7 +135,7 @@ func TestIsDAG_Diamond(t *testing.T) {
 // TestIsDAG_ComplexDAG tests DAG check on complex acyclic graph
 func TestIsDAG_ComplexDAG(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create a complex DAG (dependency graph style)
 	nodes := make([]*storage.Node, 6)
@@ -144,12 +144,12 @@ func TestIsDAG_ComplexDAG(t *testing.T) {
 	}
 
 	// Dependencies: 0->1, 0->2, 1->3, 2->3, 3->4, 2->5
-	graph.CreateEdge(nodes[0].ID, nodes[1].ID, "DEPENDS_ON", nil, 1.0)
-	graph.CreateEdge(nodes[0].ID, nodes[2].ID, "DEPENDS_ON", nil, 1.0)
-	graph.CreateEdge(nodes[1].ID, nodes[3].ID, "DEPENDS_ON", nil, 1.0)
-	graph.CreateEdge(nodes[2].ID, nodes[3].ID, "DEPENDS_ON", nil, 1.0)
-	graph.CreateEdge(nodes[3].ID, nodes[4].ID, "DEPENDS_ON", nil, 1.0)
-	graph.CreateEdge(nodes[2].ID, nodes[5].ID, "DEPENDS_ON", nil, 1.0)
+	_, _ = graph.CreateEdge(nodes[0].ID, nodes[1].ID, "DEPENDS_ON", nil, 1.0)
+	_, _ = graph.CreateEdge(nodes[0].ID, nodes[2].ID, "DEPENDS_ON", nil, 1.0)
+	_, _ = graph.CreateEdge(nodes[1].ID, nodes[3].ID, "DEPENDS_ON", nil, 1.0)
+	_, _ = graph.CreateEdge(nodes[2].ID, nodes[3].ID, "DEPENDS_ON", nil, 1.0)
+	_, _ = graph.CreateEdge(nodes[3].ID, nodes[4].ID, "DEPENDS_ON", nil, 1.0)
+	_, _ = graph.CreateEdge(nodes[2].ID, nodes[5].ID, "DEPENDS_ON", nil, 1.0)
 
 	isDAG, err := IsDAG(graph)
 	if err != nil {
@@ -164,15 +164,15 @@ func TestIsDAG_ComplexDAG(t *testing.T) {
 // TestTopologicalSort_LinearChain tests topological sort on linear chain
 func TestTopologicalSort_LinearChain(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// A -> B -> C
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
 
 	sorted, err := TopologicalSort(graph)
 	if err != nil {
@@ -203,7 +203,7 @@ func TestTopologicalSort_LinearChain(t *testing.T) {
 // TestTopologicalSort_Diamond tests topological sort on diamond
 func TestTopologicalSort_Diamond(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	//     A
 	//    / \
@@ -215,10 +215,10 @@ func TestTopologicalSort_Diamond(t *testing.T) {
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeA.ID, nodeC.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeD.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
 
 	sorted, err := TopologicalSort(graph)
 	if err != nil {
@@ -255,14 +255,14 @@ func TestTopologicalSort_Diamond(t *testing.T) {
 // TestTopologicalSort_WithCycle tests topological sort on graph with cycle
 func TestTopologicalSort_WithCycle(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// A -> B -> A (cycle)
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
 
 	_, err := TopologicalSort(graph)
 	if err == nil {
@@ -273,7 +273,7 @@ func TestTopologicalSort_WithCycle(t *testing.T) {
 // TestTopologicalSort_EmptyGraph tests topological sort on empty graph
 func TestTopologicalSort_EmptyGraph(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	sorted, err := TopologicalSort(graph)
 	if err != nil {
@@ -288,17 +288,17 @@ func TestTopologicalSort_EmptyGraph(t *testing.T) {
 // TestTopologicalSort_DisconnectedComponents tests sorting with disconnected parts
 func TestTopologicalSort_DisconnectedComponents(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Component 1: A -> B
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := graph.CreateNode([]string{"Node"}, nil)
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
 
 	// Component 2: C -> D
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := graph.CreateNode([]string{"Node"}, nil)
-	graph.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
 
 	sorted, err := TopologicalSort(graph)
 	if err != nil {
@@ -326,9 +326,9 @@ func TestTopologicalSort_DisconnectedComponents(t *testing.T) {
 // TestIsTree_SingleNode tests tree check on single node
 func TestIsTree_SingleNode(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
-	graph.CreateNode([]string{"Node"}, nil)
+	_, _ = graph.CreateNode([]string{"Node"}, nil)
 
 	isTree, err := IsTree(graph)
 	if err != nil {
@@ -343,7 +343,7 @@ func TestIsTree_SingleNode(t *testing.T) {
 // TestIsTree_ValidTree tests tree check on valid tree
 func TestIsTree_ValidTree(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	//     A (root)
 	//    / \
@@ -355,9 +355,9 @@ func TestIsTree_ValidTree(t *testing.T) {
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "CHILD", nil, 1.0)
-	graph.CreateEdge(nodeA.ID, nodeC.ID, "CHILD", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeD.ID, "CHILD", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "CHILD", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeC.ID, "CHILD", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeD.ID, "CHILD", nil, 1.0)
 
 	isTree, err := IsTree(graph)
 	if err != nil {
@@ -372,15 +372,15 @@ func TestIsTree_ValidTree(t *testing.T) {
 // TestIsTree_WithCycle tests tree check on graph with cycle
 func TestIsTree_WithCycle(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeC.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeC.ID, nodeA.ID, "E", nil, 1.0)
 
 	isTree, err := IsTree(graph)
 	if err != nil {
@@ -395,14 +395,14 @@ func TestIsTree_WithCycle(t *testing.T) {
 // TestIsConnected_ConnectedGraph tests connected graph
 func TestIsConnected_ConnectedGraph(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
 
 	isConnected, err := IsConnected(graph)
 	if err != nil {
@@ -417,15 +417,15 @@ func TestIsConnected_ConnectedGraph(t *testing.T) {
 // TestIsConnected_DisconnectedGraph tests disconnected graph
 func TestIsConnected_DisconnectedGraph(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
 
 	isConnected, err := IsConnected(graph)
 	if err != nil {
@@ -440,17 +440,17 @@ func TestIsConnected_DisconnectedGraph(t *testing.T) {
 // TestIsBipartite_ValidBipartite tests valid bipartite graph
 func TestIsBipartite_ValidBipartite(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeA.ID, nodeC.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeD.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
 
 	isBipartite, p1, p2, err := IsBipartite(graph)
 	if err != nil {
@@ -469,15 +469,15 @@ func TestIsBipartite_ValidBipartite(t *testing.T) {
 // TestIsBipartite_Triangle tests triangle (not bipartite)
 func TestIsBipartite_Triangle(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	nodeA, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := graph.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := graph.CreateNode([]string{"Node"}, nil)
 
-	graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
-	graph.CreateEdge(nodeC.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = graph.CreateEdge(nodeC.ID, nodeA.ID, "E", nil, 1.0)
 
 	isBipartite, _, _, err := IsBipartite(graph)
 	if err != nil {

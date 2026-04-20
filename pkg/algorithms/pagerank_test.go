@@ -17,14 +17,14 @@ func setupPageRankTestGraph(t *testing.T) *storage.GraphStorage {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 	// Create graph storage
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	t.Cleanup(func() { gs.Close() })
+	t.Cleanup(func() { _ = gs.Close() })
 
 	return gs
 }
@@ -86,8 +86,8 @@ func TestPageRank_LinearChain(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultPageRankOptions()
 	result, err := PageRank(gs, opts)
@@ -130,9 +130,9 @@ func TestPageRank_Star(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Spoke"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Spoke"}, nil)
 
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeD.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeA.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultPageRankOptions()
 	result, err := PageRank(gs, opts)
@@ -166,9 +166,9 @@ func TestPageRank_Cycle(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultPageRankOptions()
 	result, err := PageRank(gs, opts)
@@ -205,13 +205,13 @@ func TestPageRank_ComplexGraph(t *testing.T) {
 
 	// Create edges forming a complex topology
 	// Node 4 is most "important" (most incoming edges)
-	gs.CreateEdge(nodes[0].ID, nodes[1].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[0].ID, nodes[4].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[1].ID, nodes[2].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[1].ID, nodes[4].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[2].ID, nodes[3].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[2].ID, nodes[4].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[3].ID, nodes[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[0].ID, nodes[1].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[0].ID, nodes[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[1].ID, nodes[2].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[1].ID, nodes[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[2].ID, nodes[3].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[2].ID, nodes[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[3].ID, nodes[4].ID, "LINKS", nil, 1.0)
 
 	opts := DefaultPageRankOptions()
 	result, err := PageRank(gs, opts)
@@ -248,8 +248,8 @@ func TestPageRank_Convergence(t *testing.T) {
 	// Create simple graph that should converge quickly
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultPageRankOptions()
 	opts.Tolerance = 1e-6
@@ -277,7 +277,7 @@ func TestPageRank_MaxIterations(t *testing.T) {
 	// Create graph
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultPageRankOptions()
 	opts.MaxIterations = 5 // Very low limit
@@ -315,7 +315,7 @@ func TestPageRank_DampingFactor(t *testing.T) {
 	// Create simple chain A -> B
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
 
 	// Test with damping factor 0.5
 	opts1 := DefaultPageRankOptions()
@@ -354,10 +354,10 @@ func TestPageRank_GetTopNodesByPageRank(t *testing.T) {
 	}
 
 	// Create edges to make node 2 most important
-	gs.CreateEdge(nodes[0].ID, nodes[2].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[1].ID, nodes[2].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[3].ID, nodes[2].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[4].ID, nodes[2].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[0].ID, nodes[2].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[1].ID, nodes[2].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[3].ID, nodes[2].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[4].ID, nodes[2].ID, "LINKS", nil, 1.0)
 
 	opts := DefaultPageRankOptions()
 	result, err := PageRank(gs, opts)
@@ -392,7 +392,7 @@ func TestPageRank_GetTopNodesByPageRank_ExceedsLimit(t *testing.T) {
 	// Create only 2 nodes
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultPageRankOptions()
 	result, err := PageRank(gs, opts)

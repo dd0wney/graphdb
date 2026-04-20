@@ -13,13 +13,13 @@ func setupKHopTestGraph(t *testing.T) *storage.GraphStorage {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	t.Cleanup(func() { gs.Close() })
+	t.Cleanup(func() { _ = gs.Close() })
 	return gs
 }
 
@@ -46,9 +46,9 @@ func TestKHop_LinearChain(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultKHopOptions()
 	opts.MaxHops = 2
@@ -87,8 +87,8 @@ func TestKHop_DirectionIn(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, b.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultKHopOptions()
 	opts.MaxHops = 2
@@ -118,8 +118,8 @@ func TestKHop_DirectionBoth(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultKHopOptions()
 	opts.MaxHops = 1
@@ -140,13 +140,13 @@ func TestKHop_MaxResults(t *testing.T) {
 
 	// Star: A -> B, A -> C, A -> D, A -> E
 	a, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateNode([]string{"Node"}, nil) // B
-	gs.CreateNode([]string{"Node"}, nil) // C
-	gs.CreateNode([]string{"Node"}, nil) // D
-	gs.CreateNode([]string{"Node"}, nil) // E
+	_, _ = gs.CreateNode([]string{"Node"}, nil) // B
+	_, _ = gs.CreateNode([]string{"Node"}, nil) // C
+	_, _ = gs.CreateNode([]string{"Node"}, nil) // D
+	_, _ = gs.CreateNode([]string{"Node"}, nil) // E
 
 	for i := uint64(2); i <= 5; i++ {
-		gs.CreateEdge(a.ID, i, "LINKS", nil, 1.0)
+		_, _ = gs.CreateEdge(a.ID, i, "LINKS", nil, 1.0)
 	}
 
 	opts := DefaultKHopOptions()
@@ -171,8 +171,8 @@ func TestKHop_EdgeTypeFilter(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "FRIEND", nil, 1.0)
-	gs.CreateEdge(a.ID, c.ID, "ENEMY", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "FRIEND", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "ENEMY", nil, 1.0)
 
 	opts := DefaultKHopOptions()
 	opts.MaxHops = 1
@@ -202,8 +202,8 @@ func TestKHop_SourceNotIncluded(t *testing.T) {
 	a, _ := gs.CreateNode([]string{"Node"}, nil)
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultKHopOptions()
 	opts.MaxHops = 3
@@ -247,12 +247,12 @@ func TestKHop_LargerBFS(t *testing.T) {
 	f, _ := gs.CreateNode([]string{"Node"}, nil)
 	g, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, f.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, g.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, f.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, g.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultKHopOptions()
 	opts.MaxHops = 3

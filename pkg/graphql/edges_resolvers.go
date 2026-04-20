@@ -17,7 +17,9 @@ func createEdgeResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 		}
 
 		var id uint64
-		fmt.Sscanf(idStr, "%d", &id)
+		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+			return nil, fmt.Errorf("invalid edge id %q: %w", idStr, err)
+		}
 
 		edge, err := gs.GetEdge(id)
 		if err != nil {
@@ -86,8 +88,12 @@ func createEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 
 		// Parse node IDs
 		var fromNodeID, toNodeID uint64
-		fmt.Sscanf(fromNodeIDStr, "%d", &fromNodeID)
-		fmt.Sscanf(toNodeIDStr, "%d", &toNodeID)
+		if _, err := fmt.Sscanf(fromNodeIDStr, "%d", &fromNodeID); err != nil {
+			return nil, fmt.Errorf("invalid fromNodeId %q: %w", fromNodeIDStr, err)
+		}
+		if _, err := fmt.Sscanf(toNodeIDStr, "%d", &toNodeID); err != nil {
+			return nil, fmt.Errorf("invalid toNodeId %q: %w", toNodeIDStr, err)
+		}
 
 		// Get optional weight (default to 1.0)
 		weight := 1.0
@@ -128,7 +134,9 @@ func updateEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		}
 
 		var id uint64
-		fmt.Sscanf(idStr, "%d", &id)
+		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+			return nil, fmt.Errorf("invalid edge id %q: %w", idStr, err)
+		}
 
 		// Parse properties if provided
 		var properties map[string]storage.Value
@@ -174,7 +182,9 @@ func deleteEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		}
 
 		var id uint64
-		fmt.Sscanf(idStr, "%d", &id)
+		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+			return nil, fmt.Errorf("invalid edge id %q: %w", idStr, err)
+		}
 
 		if err := gs.DeleteEdge(id); err != nil {
 			return nil, fmt.Errorf("edge not found: %w", err)

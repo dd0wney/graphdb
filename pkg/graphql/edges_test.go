@@ -19,7 +19,7 @@ func TestEdgeSchemaGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edge
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -28,7 +28,7 @@ func TestEdgeSchemaGeneration(t *testing.T) {
 	node2, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 	})
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
 		"since": storage.IntValue(2020),
 	}, 1.0)
 
@@ -56,7 +56,7 @@ func TestQueryEdgeByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edge
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -135,7 +135,7 @@ func TestQueryAllEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and multiple edges
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -148,8 +148,8 @@ func TestQueryAllEdges(t *testing.T) {
 		"name": storage.StringValue("TechCorp"),
 	})
 
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
-	gs.CreateEdge(node1.ID, node3.ID, "WORKS_AT", nil, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node3.ID, "WORKS_AT", nil, 1.0)
 
 	schema, err := GenerateSchemaWithEdges(gs)
 	if err != nil {
@@ -198,13 +198,13 @@ func TestCreateEdgeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes first
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 	})
 
@@ -273,7 +273,7 @@ func TestDeleteEdgeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edge
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -335,7 +335,7 @@ func TestUpdateEdgeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edge
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -424,7 +424,7 @@ func TestUpdateEdgePropertiesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edge
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -492,7 +492,7 @@ func TestUpdateEdgeWeightOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edge
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -560,7 +560,7 @@ func TestEdgeMutationErrorHandling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	schema, err := GenerateSchemaWithEdges(gs)
 	if err != nil {
@@ -659,7 +659,7 @@ func TestNodeEdgeTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edges
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -672,8 +672,8 @@ func TestNodeEdgeTraversal(t *testing.T) {
 		"name": storage.StringValue("TechCorp"),
 	})
 
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
-	gs.CreateEdge(node1.ID, node3.ID, "WORKS_AT", nil, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node3.ID, "WORKS_AT", nil, 1.0)
 
 	schema, err := GenerateSchemaWithEdges(gs)
 	if err != nil {

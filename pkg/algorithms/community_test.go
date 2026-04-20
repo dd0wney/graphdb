@@ -17,14 +17,14 @@ func setupCommunityTestGraph(t *testing.T) *storage.GraphStorage {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 	// Create graph storage
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	t.Cleanup(func() { gs.Close() })
+	t.Cleanup(func() { _ = gs.Close() })
 
 	return gs
 }
@@ -78,8 +78,8 @@ func TestConnectedComponents_SingleComponent(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	result, err := ConnectedComponents(gs)
 
@@ -107,12 +107,12 @@ func TestConnectedComponents_MultipleComponents(t *testing.T) {
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 
 	// Component 1: A <-> B
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
 
 	// Component 2: C <-> D
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeD.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	result, err := ConnectedComponents(gs)
 
@@ -227,8 +227,8 @@ func TestLabelPropagation_FullyConnected(t *testing.T) {
 	// Connect all pairs bidirectionally
 	for i := 0; i < 4; i++ {
 		for j := i + 1; j < 4; j++ {
-			gs.CreateEdge(nodes[i].ID, nodes[j].ID, "LINKS", nil, 1.0)
-			gs.CreateEdge(nodes[j].ID, nodes[i].ID, "LINKS", nil, 1.0)
+			_, _ = gs.CreateEdge(nodes[i].ID, nodes[j].ID, "LINKS", nil, 1.0)
+			_, _ = gs.CreateEdge(nodes[j].ID, nodes[i].ID, "LINKS", nil, 1.0)
 		}
 	}
 
@@ -261,23 +261,23 @@ func TestLabelPropagation_TwoClusters(t *testing.T) {
 	nodeF, _ := gs.CreateNode([]string{"Node"}, nil)
 
 	// Cluster 1: A-B-C (bidirectional)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
 
 	// Cluster 2: D-E-F (bidirectional)
-	gs.CreateEdge(nodeD.ID, nodeE.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeE.ID, nodeD.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeE.ID, nodeF.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeF.ID, nodeE.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeD.ID, nodeF.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeF.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeE.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeE.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeE.ID, nodeF.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeF.ID, nodeE.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeF.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeF.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	// Weak link between clusters (B -> E only)
-	gs.CreateEdge(nodeB.ID, nodeE.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeE.ID, "LINKS", nil, 1.0)
 
 	result, err := LabelPropagation(gs, 20)
 
@@ -337,22 +337,22 @@ func TestClusteringCoefficient_Triangle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	t.Cleanup(func() { gs.Close() })
+	t.Cleanup(func() { _ = gs.Close() })
 
 	// Create complete triangle: A -> B, B -> C, C -> A, and reverse
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	result, err := ClusteringCoefficient(gs)
 	if err != nil {
@@ -381,9 +381,9 @@ func TestClusteringCoefficient_Star(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Spoke"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Spoke"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	result, err := ClusteringCoefficient(gs)
 
@@ -414,8 +414,8 @@ func TestClusteringCoefficient_PartialTriangle(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	result, err := ClusteringCoefficient(gs)
 
@@ -442,12 +442,12 @@ func TestAverageClusteringCoefficient(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
 	// Create bidirectional edges to form proper triangles
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
 
 	result, err := AverageClusteringCoefficient(gs)
 
@@ -495,14 +495,14 @@ func TestModularity_TwoCommunities(t *testing.T) {
 	nodeF, _ := gs.CreateNode([]string{"Node"}, nil)
 
 	// Community 1: fully connected A-B-C
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
 
 	// Community 2: fully connected D-E-F
-	gs.CreateEdge(nodeD.ID, nodeE.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeE.ID, nodeF.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeF.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeE.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeE.ID, nodeF.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeF.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	// Perfect community assignment
 	nodeCommunity := map[uint64]int{
@@ -536,8 +536,8 @@ func TestModularity_SingleCommunity(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	// All nodes in single community
 	nodeCommunity := map[uint64]int{
@@ -577,8 +577,8 @@ func TestModularity_ConnectedComponentsIntegration(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	result, err := ConnectedComponents(gs)
 	if err != nil {
@@ -604,10 +604,10 @@ func TestModularity_LabelPropagationIntegration(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
 
 	result, err := LabelPropagation(gs, 10)
 	if err != nil {
@@ -628,8 +628,8 @@ func TestConnectedComponents_BidirectionalEdges(t *testing.T) {
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
 
 	result, err := ConnectedComponents(gs)
 

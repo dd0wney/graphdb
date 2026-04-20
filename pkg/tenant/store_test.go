@@ -176,7 +176,7 @@ func TestTenantStore_Get(t *testing.T) {
 		ID:   "tenant-get",
 		Name: "Get Test Tenant",
 	}
-	store.Create(tenant)
+	_ = store.Create(tenant)
 
 	tests := []struct {
 		name     string
@@ -237,17 +237,17 @@ func TestTenantStore_GetActive(t *testing.T) {
 
 	// Create active tenant
 	active := &Tenant{ID: "active", Name: "Active Tenant"}
-	store.Create(active)
+	_ = store.Create(active)
 
 	// Create and suspend tenant
 	suspended := &Tenant{ID: "suspended", Name: "Suspended Tenant"}
-	store.Create(suspended)
-	store.Suspend("suspended")
+	_ = store.Create(suspended)
+	_ = store.Suspend("suspended")
 
 	// Create and delete tenant
 	deleted := &Tenant{ID: "deleted", Name: "Deleted Tenant"}
-	store.Create(deleted)
-	store.Delete("deleted")
+	_ = store.Create(deleted)
+	_ = store.Delete("deleted")
 
 	tests := []struct {
 		name     string
@@ -300,7 +300,7 @@ func TestTenantStore_Update(t *testing.T) {
 		ID:   "tenant-update",
 		Name: "Original Name",
 	}
-	store.Create(tenant)
+	_ = store.Create(tenant)
 
 	// Update the tenant
 	updated := &Tenant{
@@ -331,7 +331,7 @@ func TestTenantStore_Delete(t *testing.T) {
 		ID:   "tenant-delete",
 		Name: "Delete Test Tenant",
 	}
-	store.Create(tenant)
+	_ = store.Create(tenant)
 
 	err := store.Delete("tenant-delete")
 	if err != nil {
@@ -370,10 +370,10 @@ func TestTenantStore_List(t *testing.T) {
 	store := NewTenantStore()
 
 	// Create some tenants
-	store.Create(&Tenant{ID: "tenant-a", Name: "Tenant A"})
-	store.Create(&Tenant{ID: "tenant-b", Name: "Tenant B"})
-	store.Create(&Tenant{ID: "tenant-c", Name: "Tenant C"})
-	store.Delete("tenant-c") // Delete one
+	_ = store.Create(&Tenant{ID: "tenant-a", Name: "Tenant A"})
+	_ = store.Create(&Tenant{ID: "tenant-b", Name: "Tenant B"})
+	_ = store.Create(&Tenant{ID: "tenant-c", Name: "Tenant C"})
+	_ = store.Delete("tenant-c") // Delete one
 
 	list := store.List()
 
@@ -397,7 +397,7 @@ func TestTenantStore_Suspend_Activate(t *testing.T) {
 		ID:   "tenant-suspend",
 		Name: "Suspend Test Tenant",
 	}
-	store.Create(tenant)
+	_ = store.Create(tenant)
 
 	// Suspend
 	err := store.Suspend("tenant-suspend")
@@ -429,16 +429,16 @@ func TestTenantStore_Usage(t *testing.T) {
 		ID:   "tenant-usage",
 		Name: "Usage Test Tenant",
 	}
-	store.Create(tenant)
+	_ = store.Create(tenant)
 
 	// Increment node count
 	for i := 0; i < 5; i++ {
-		store.IncrementNodeCount("tenant-usage")
+		_ = store.IncrementNodeCount("tenant-usage")
 	}
 
 	// Increment edge count
 	for i := 0; i < 10; i++ {
-		store.IncrementEdgeCount("tenant-usage")
+		_ = store.IncrementEdgeCount("tenant-usage")
 	}
 
 	usage, err := store.GetUsage("tenant-usage")
@@ -455,8 +455,8 @@ func TestTenantStore_Usage(t *testing.T) {
 	}
 
 	// Decrement
-	store.DecrementNodeCount("tenant-usage")
-	store.DecrementEdgeCount("tenant-usage")
+	_ = store.DecrementNodeCount("tenant-usage")
+	_ = store.DecrementEdgeCount("tenant-usage")
 
 	usage, _ = store.GetUsage("tenant-usage")
 	if usage.NodeCount != 4 {
@@ -478,7 +478,7 @@ func TestTenantStore_Quota(t *testing.T) {
 			MaxEdges: 5,
 		},
 	}
-	store.Create(tenant)
+	_ = store.Create(tenant)
 
 	// Should be able to create nodes up to limit
 	for i := 0; i < 3; i++ {
@@ -486,7 +486,7 @@ func TestTenantStore_Quota(t *testing.T) {
 		if err != nil {
 			t.Errorf("Unexpected quota error at node %d: %v", i, err)
 		}
-		store.IncrementNodeCount("tenant-quota")
+		_ = store.IncrementNodeCount("tenant-quota")
 	}
 
 	// Should fail quota check now
@@ -510,11 +510,11 @@ func TestTenantStore_UnlimitedQuota(t *testing.T) {
 			MaxEdges: -1,
 		},
 	}
-	store.Create(tenant)
+	_ = store.Create(tenant)
 
 	// Add many nodes
 	for i := 0; i < 100; i++ {
-		store.IncrementNodeCount("tenant-unlimited")
+		_ = store.IncrementNodeCount("tenant-unlimited")
 	}
 
 	// Should not fail quota check
@@ -527,7 +527,7 @@ func TestTenantStore_UnlimitedQuota(t *testing.T) {
 func TestTenantStore_Exists(t *testing.T) {
 	store := NewTenantStore()
 
-	store.Create(&Tenant{ID: "exists", Name: "Exists Tenant"})
+	_ = store.Create(&Tenant{ID: "exists", Name: "Exists Tenant"})
 
 	if !store.Exists("exists") {
 		t.Error("Expected tenant 'exists' to exist")
@@ -550,15 +550,15 @@ func TestTenantStore_Count(t *testing.T) {
 		t.Errorf("Expected count 1, got %d", store.Count())
 	}
 
-	store.Create(&Tenant{ID: "count-1", Name: "Count 1"})
-	store.Create(&Tenant{ID: "count-2", Name: "Count 2"})
+	_ = store.Create(&Tenant{ID: "count-1", Name: "Count 1"})
+	_ = store.Create(&Tenant{ID: "count-2", Name: "Count 2"})
 
 	if store.Count() != 3 {
 		t.Errorf("Expected count 3, got %d", store.Count())
 	}
 
 	// Delete one - count should decrease
-	store.Delete("count-1")
+	_ = store.Delete("count-1")
 
 	if store.Count() != 2 {
 		t.Errorf("Expected count 2 after delete, got %d", store.Count())
@@ -576,14 +576,14 @@ func TestTenantStore_GetTenantInfo(t *testing.T) {
 			MaxEdges: 500,
 		},
 	}
-	store.Create(tenant)
+	_ = store.Create(tenant)
 
 	// Add some usage
 	for i := 0; i < 25; i++ {
-		store.IncrementNodeCount("tenant-info")
+		_ = store.IncrementNodeCount("tenant-info")
 	}
 	for i := 0; i < 100; i++ {
-		store.IncrementEdgeCount("tenant-info")
+		_ = store.IncrementEdgeCount("tenant-info")
 	}
 
 	info, err := store.GetTenantInfo("tenant-info")

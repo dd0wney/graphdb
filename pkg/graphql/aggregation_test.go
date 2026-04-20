@@ -19,11 +19,11 @@ func TestAggregateCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 5 Person nodes
 	for i := 1; i <= 5; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person" + string(rune('0'+i))),
 			"age":  storage.IntValue(int64(i * 10)),
 		})
@@ -72,18 +72,18 @@ func TestAggregateMinMax(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create Person nodes with different ages
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(25),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 		"age":  storage.IntValue(40),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Charlie"),
 		"age":  storage.IntValue(30),
 	})
@@ -143,18 +143,18 @@ func TestAggregateAverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create Person nodes with scores: 10, 20, 30 (average = 20)
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":  storage.StringValue("Alice"),
 		"score": storage.IntValue(10),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":  storage.StringValue("Bob"),
 		"score": storage.IntValue(20),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":  storage.StringValue("Charlie"),
 		"score": storage.IntValue(30),
 	})
@@ -206,18 +206,18 @@ func TestAggregateSum(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create Person nodes with scores: 10, 20, 30 (sum = 60)
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":  storage.StringValue("Alice"),
 		"score": storage.IntValue(10),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":  storage.StringValue("Bob"),
 		"score": storage.IntValue(20),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":  storage.StringValue("Charlie"),
 		"score": storage.IntValue(30),
 	})
@@ -269,15 +269,15 @@ func TestAggregateMultipleFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create Person nodes
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":  storage.StringValue("Alice"),
 		"age":   storage.IntValue(25),
 		"score": storage.IntValue(85),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":  storage.StringValue("Bob"),
 		"age":   storage.IntValue(30),
 		"score": storage.IntValue(90),
@@ -341,7 +341,7 @@ func TestAggregateEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edges
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -351,9 +351,9 @@ func TestAggregateEdges(t *testing.T) {
 		"name": storage.StringValue("Bob"),
 	})
 
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.5)
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 2.5)
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 3.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.5)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 2.5)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 3.0)
 
 	schema, err := GenerateSchemaWithAggregation(gs)
 	if err != nil {
@@ -426,13 +426,13 @@ func TestAggregateEmptyResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a Person node to register the label, then delete it
 	node, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Temp"),
 	})
-	gs.DeleteNode(node.ID)
+	_ = gs.DeleteNode(node.ID)
 
 	schema, err := GenerateSchemaWithAggregation(gs)
 	if err != nil {

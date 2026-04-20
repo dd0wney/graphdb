@@ -20,18 +20,18 @@ func TestGraphQLSearchIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test data
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title":   storage.StringValue("Introduction to GraphQL"),
 		"content": storage.StringValue("GraphQL is a query language for APIs"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title":   storage.StringValue("Advanced GraphQL Patterns"),
 		"content": storage.StringValue("Learn advanced techniques for GraphQL"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title":   storage.StringValue("REST vs GraphQL"),
 		"content": storage.StringValue("Comparing REST and GraphQL APIs"),
 	})
@@ -101,17 +101,17 @@ func TestGraphQLPhraseSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Document"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Document"}, map[string]storage.Value{
 		"content": storage.StringValue("New York City is a great place"),
 	})
-	gs.CreateNode([]string{"Document"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Document"}, map[string]storage.Value{
 		"content": storage.StringValue("York is a city in England"),
 	})
 
 	searchIndex := search.NewFullTextIndex(gs)
-	searchIndex.IndexNodes([]string{"Document"}, []string{"content"})
+	_ = searchIndex.IndexNodes([]string{"Document"}, []string{"content"})
 
 	schema, err := GenerateSchemaWithSearch(gs, searchIndex)
 	if err != nil {
@@ -159,20 +159,20 @@ func TestGraphQLBooleanSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Python programming tutorial"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Java programming guide"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Python data analysis"),
 	})
 
 	searchIndex := search.NewFullTextIndex(gs)
-	searchIndex.IndexNodes([]string{"Article"}, []string{"title"})
+	_ = searchIndex.IndexNodes([]string{"Article"}, []string{"title"})
 
 	schema, err := GenerateSchemaWithSearch(gs, searchIndex)
 	if err != nil {

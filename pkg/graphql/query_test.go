@@ -20,7 +20,7 @@ func TestExecuteQuerySingleNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test node
 	node, _ := gs.CreateNode(
@@ -84,20 +84,20 @@ func TestExecuteQueryMultipleNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create multiple nodes
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Person"},
 		map[string]storage.Value{"name": storage.StringValue("Alice")},
 	)
 
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Person"},
 		map[string]storage.Value{"name": storage.StringValue("Bob")},
 	)
 
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Company"},
 		map[string]storage.Value{"name": storage.StringValue("TechCorp")},
 	)
@@ -146,10 +146,10 @@ func TestExecuteQueryWithProperties(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create node with properties
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Person"},
 		map[string]storage.Value{
 			"name":  storage.StringValue("Alice"),
@@ -211,10 +211,10 @@ func TestExecuteQueryNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create one node
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Person"},
 		map[string]storage.Value{"name": storage.StringValue("Alice")},
 	)
@@ -259,7 +259,7 @@ func TestExecuteQueryInvalidSyntax(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	schema, err := GenerateSchema(gs)
 	if err != nil {
@@ -291,7 +291,7 @@ func TestExecuteQueryEmptyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Generate schema with no data
 	schema, err := GenerateSchema(gs)

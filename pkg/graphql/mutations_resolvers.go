@@ -62,7 +62,9 @@ func updateNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 
 		// Convert string ID to uint64
 		var id uint64
-		fmt.Sscanf(idStr, "%d", &id)
+		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+			return nil, fmt.Errorf("invalid id %q: %w", idStr, err)
+		}
 
 		// Get properties argument
 		propertiesJSON, ok := p.Args["properties"].(string)
@@ -108,7 +110,9 @@ func deleteNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 
 		// Convert string ID to uint64
 		var id uint64
-		fmt.Sscanf(idStr, "%d", &id)
+		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+			return nil, fmt.Errorf("invalid id %q: %w", idStr, err)
+		}
 
 		// Delete node from storage
 		if err := gs.DeleteNode(id); err != nil {

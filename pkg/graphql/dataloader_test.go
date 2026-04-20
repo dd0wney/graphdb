@@ -200,7 +200,7 @@ func TestDataLoaderWithGraphStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test nodes
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -214,8 +214,8 @@ func TestDataLoaderWithGraphStorage(t *testing.T) {
 	})
 
 	// Create edges
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{}, 1.0)
-	gs.CreateEdge(node1.ID, node3.ID, "KNOWS", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node3.ID, "KNOWS", map[string]storage.Value{}, 1.0)
 
 	// Create a node loader
 	nodeLoader := NewNodeDataLoader(gs)
@@ -261,7 +261,7 @@ func TestDataLoaderWithEdgeTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 10 person nodes
 	personIDs := make([]uint64, 10)
@@ -274,7 +274,7 @@ func TestDataLoaderWithEdgeTraversal(t *testing.T) {
 
 	// Create edges from person 0 to all others
 	for i := 1; i < 10; i++ {
-		gs.CreateEdge(personIDs[0], personIDs[i], "KNOWS", map[string]storage.Value{}, 1.0)
+		_, _ = gs.CreateEdge(personIDs[0], personIDs[i], "KNOWS", map[string]storage.Value{}, 1.0)
 	}
 
 	// Create edge loader with batching
@@ -342,7 +342,7 @@ func TestDataLoaderBatchSizeLimit(t *testing.T) {
 	// Load 20 keys
 	for i := 0; i < 20; i++ {
 		go func(idx int) {
-			loader.Load(ctx, fmt.Sprintf("key%d", idx))
+			_, _ = loader.Load(ctx, fmt.Sprintf("key%d", idx))
 		}(i)
 	}
 

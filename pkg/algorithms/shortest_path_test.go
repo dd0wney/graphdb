@@ -18,7 +18,7 @@ func setupTestGraph(t *testing.T) *storage.GraphStorage {
 // TestShortestPath_SameNode tests path from node to itself
 func TestShortestPath_SameNode(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node, _ := gs.CreateNode([]string{"Test"}, nil)
 
@@ -38,11 +38,11 @@ func TestShortestPath_SameNode(t *testing.T) {
 // TestShortestPath_DirectConnection tests a simple A->B path
 func TestShortestPath_DirectConnection(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "CONNECTS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "CONNECTS", nil, 1.0)
 
 	path, err := ShortestPath(gs, nodeA.ID, nodeB.ID)
 	if err != nil {
@@ -60,14 +60,14 @@ func TestShortestPath_DirectConnection(t *testing.T) {
 // TestShortestPath_LinearPath tests A->B->C path
 func TestShortestPath_LinearPath(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "CONNECTS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "CONNECTS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "CONNECTS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "CONNECTS", nil, 1.0)
 
 	path, err := ShortestPath(gs, nodeA.ID, nodeC.ID)
 	if err != nil {
@@ -85,7 +85,7 @@ func TestShortestPath_LinearPath(t *testing.T) {
 // TestShortestPath_MultiplePaths tests finding shortest among multiple paths
 func TestShortestPath_MultiplePaths(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create graph:
 	//   A -> B -> D
@@ -96,10 +96,10 @@ func TestShortestPath_MultiplePaths(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "CONNECTS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeD.ID, "CONNECTS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "CONNECTS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "CONNECTS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "CONNECTS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeD.ID, "CONNECTS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "CONNECTS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "CONNECTS", nil, 1.0)
 
 	path, err := ShortestPath(gs, nodeA.ID, nodeD.ID)
 	if err != nil {
@@ -121,7 +121,7 @@ func TestShortestPath_MultiplePaths(t *testing.T) {
 // TestShortestPath_NoPath tests when no path exists
 func TestShortestPath_NoPath(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -140,7 +140,7 @@ func TestShortestPath_NoPath(t *testing.T) {
 // TestShortestPath_ComplexGraph tests a more complex graph
 func TestShortestPath_ComplexGraph(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create graph:
 	//     1 -> 2 -> 4
@@ -153,12 +153,12 @@ func TestShortestPath_ComplexGraph(t *testing.T) {
 	node4, _ := gs.CreateNode([]string{"Node"}, nil)
 	node5, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(node1.ID, node2.ID, "E", nil, 1.0)
-	gs.CreateEdge(node1.ID, node3.ID, "E", nil, 1.0)
-	gs.CreateEdge(node2.ID, node4.ID, "E", nil, 1.0)
-	gs.CreateEdge(node2.ID, node5.ID, "E", nil, 1.0)
-	gs.CreateEdge(node3.ID, node5.ID, "E", nil, 1.0)
-	gs.CreateEdge(node5.ID, node4.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node3.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(node2.ID, node4.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(node2.ID, node5.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(node3.ID, node5.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(node5.ID, node4.ID, "E", nil, 1.0)
 
 	// Shortest path from 1 to 4: 1 -> 2 -> 4 (length 3)
 	path, err := ShortestPath(gs, node1.ID, node4.ID)
@@ -180,7 +180,7 @@ func TestShortestPath_ComplexGraph(t *testing.T) {
 // TestAllShortestPaths_SingleSource tests BFS from single source
 func TestAllShortestPaths_SingleSource(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create graph: A -> B -> C
 	//                A -> D
@@ -189,9 +189,9 @@ func TestAllShortestPaths_SingleSource(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeD.ID, "E", nil, 1.0)
 
 	distances, err := AllShortestPaths(gs, nodeA.ID)
 	if err != nil {
@@ -216,13 +216,13 @@ func TestAllShortestPaths_SingleSource(t *testing.T) {
 // TestAllShortestPaths_DisconnectedNodes tests handling disconnected nodes
 func TestAllShortestPaths_DisconnectedNodes(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
 	// nodeC is disconnected
 
 	distances, err := AllShortestPaths(gs, nodeA.ID)
@@ -247,7 +247,7 @@ func TestAllShortestPaths_DisconnectedNodes(t *testing.T) {
 // TestWeightedShortestPath_SimpleCase tests Dijkstra on simple weighted graph
 func TestWeightedShortestPath_SimpleCase(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -255,9 +255,9 @@ func TestWeightedShortestPath_SimpleCase(t *testing.T) {
 
 	// A -> B (weight 5)
 	// A -> C -> B (weights 2 + 1 = 3) - shorter weighted path
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 5.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "E", nil, 2.0)
-	gs.CreateEdge(nodeC.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 5.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "E", nil, 2.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeB.ID, "E", nil, 1.0)
 
 	path, distance, err := WeightedShortestPath(gs, nodeA.ID, nodeB.ID)
 	if err != nil {
@@ -280,7 +280,7 @@ func TestWeightedShortestPath_SimpleCase(t *testing.T) {
 // TestWeightedShortestPath_NoPath tests when no weighted path exists
 func TestWeightedShortestPath_NoPath(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -301,7 +301,7 @@ func TestWeightedShortestPath_NoPath(t *testing.T) {
 // TestWeightedShortestPath_ComplexWeights tests complex weighted graph
 func TestWeightedShortestPath_ComplexWeights(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create graph with multiple weighted paths
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -311,10 +311,10 @@ func TestWeightedShortestPath_ComplexWeights(t *testing.T) {
 
 	// 1 -> 2 -> 4 (weights 1 + 10 = 11)
 	// 1 -> 3 -> 4 (weights 5 + 2 = 7) - shorter
-	gs.CreateEdge(node1.ID, node2.ID, "E", nil, 1.0)
-	gs.CreateEdge(node2.ID, node4.ID, "E", nil, 10.0)
-	gs.CreateEdge(node1.ID, node3.ID, "E", nil, 5.0)
-	gs.CreateEdge(node3.ID, node4.ID, "E", nil, 2.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(node2.ID, node4.ID, "E", nil, 10.0)
+	_, _ = gs.CreateEdge(node1.ID, node3.ID, "E", nil, 5.0)
+	_, _ = gs.CreateEdge(node3.ID, node4.ID, "E", nil, 2.0)
 
 	path, distance, err := WeightedShortestPath(gs, node1.ID, node4.ID)
 	if err != nil {
@@ -337,7 +337,7 @@ func TestWeightedShortestPath_ComplexWeights(t *testing.T) {
 // TestWeightedShortestPath_SameNode tests weighted path from node to itself
 func TestWeightedShortestPath_SameNode(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node, _ := gs.CreateNode([]string{"Node"}, nil)
 
@@ -360,14 +360,14 @@ func TestWeightedShortestPath_SameNode(t *testing.T) {
 // TestShortestPath_BidirectionalEfficiency tests that bidirectional search works
 func TestShortestPath_BidirectionalEfficiency(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a long chain to test bidirectional search meets in middle
 	nodes := make([]*storage.Node, 10)
 	for i := 0; i < 10; i++ {
 		nodes[i], _ = gs.CreateNode([]string{"Node"}, nil)
 		if i > 0 {
-			gs.CreateEdge(nodes[i-1].ID, nodes[i].ID, "E", nil, 1.0)
+			_, _ = gs.CreateEdge(nodes[i-1].ID, nodes[i].ID, "E", nil, 1.0)
 		}
 	}
 
@@ -390,7 +390,7 @@ func TestShortestPath_BidirectionalEfficiency(t *testing.T) {
 // TestAllShortestPaths_EmptyGraph tests handling of isolated node
 func TestAllShortestPaths_EmptyGraph(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node, _ := gs.CreateNode([]string{"Node"}, nil)
 

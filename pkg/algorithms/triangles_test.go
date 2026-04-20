@@ -14,13 +14,13 @@ func setupTriangleTestGraph(t *testing.T) *storage.GraphStorage {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	t.Cleanup(func() { gs.Close() })
+	t.Cleanup(func() { _ = gs.Close() })
 	return gs
 }
 
@@ -48,9 +48,9 @@ func TestCountTriangles_SingleTriangle(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
 
 	result, err := CountTriangles(gs)
 	if err != nil {
@@ -87,13 +87,13 @@ func TestCountTriangles_TwoTrianglesSharedEdge(t *testing.T) {
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
 	// Triangle 1: A-B-C
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
 
 	// Triangle 2: A-B-D
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(d.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(d.ID, a.ID, "LINKS", nil, 1.0)
 
 	result, err := CountTriangles(gs)
 	if err != nil {
@@ -128,9 +128,9 @@ func TestCountTriangles_StarNoTriangles(t *testing.T) {
 	s2, _ := gs.CreateNode([]string{"Spoke"}, nil)
 	s3, _ := gs.CreateNode([]string{"Spoke"}, nil)
 
-	gs.CreateEdge(hub.ID, s1.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(hub.ID, s2.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(hub.ID, s3.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(hub.ID, s1.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(hub.ID, s2.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(hub.ID, s3.ID, "LINKS", nil, 1.0)
 
 	result, err := CountTriangles(gs)
 	if err != nil {
@@ -157,8 +157,8 @@ func TestCountTriangles_CompleteGraph4(t *testing.T) {
 	}
 	for i := 0; i < 4; i++ {
 		for j := i + 1; j < 4; j++ {
-			gs.CreateEdge(nodes[i].ID, nodes[j].ID, "LINKS", nil, 1.0)
-			gs.CreateEdge(nodes[j].ID, nodes[i].ID, "LINKS", nil, 1.0)
+			_, _ = gs.CreateEdge(nodes[i].ID, nodes[j].ID, "LINKS", nil, 1.0)
+			_, _ = gs.CreateEdge(nodes[j].ID, nodes[i].ID, "LINKS", nil, 1.0)
 		}
 	}
 
@@ -198,13 +198,13 @@ func TestCountTriangles_TopNodes(t *testing.T) {
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
 	// Triangle A-B-C
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
 
 	// Triangle A-B-D
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(d.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(d.ID, a.ID, "LINKS", nil, 1.0)
 
 	result, err := CountTriangles(gs)
 	if err != nil {
@@ -225,8 +225,8 @@ func TestCountTriangles_TopNodes(t *testing.T) {
 func TestCountTriangles_IsolatedNodes(t *testing.T) {
 	gs := setupTriangleTestGraph(t)
 
-	gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateNode([]string{"Node"}, nil)
+	_, _ = gs.CreateNode([]string{"Node"}, nil)
+	_, _ = gs.CreateNode([]string{"Node"}, nil)
 
 	result, err := CountTriangles(gs)
 	if err != nil {
@@ -247,9 +247,9 @@ func TestCountTriangles_DirectedOnlyTriangle(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
 
 	result, err := CountTriangles(gs)
 	if err != nil {

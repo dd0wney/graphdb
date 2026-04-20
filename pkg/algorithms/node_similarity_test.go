@@ -14,13 +14,13 @@ func setupSimilarityTestGraph(t *testing.T) *storage.GraphStorage {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	t.Cleanup(func() { gs.Close() })
+	t.Cleanup(func() { _ = gs.Close() })
 	return gs
 }
 
@@ -31,9 +31,9 @@ func TestGetNeighborSet_DirectionOut(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0) // incoming, should be excluded
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0) // incoming, should be excluded
 
 	neighbors := getNeighborSet(gs, a.ID, DirectionOut, nil)
 	if len(neighbors) != 2 {
@@ -51,9 +51,9 @@ func TestGetNeighborSet_DirectionIn(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0) // outgoing, should be excluded
+	_, _ = gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0) // outgoing, should be excluded
 
 	neighbors := getNeighborSet(gs, a.ID, DirectionIn, nil)
 	if len(neighbors) != 2 {
@@ -68,8 +68,8 @@ func TestGetNeighborSet_DirectionBoth(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
 
 	neighbors := getNeighborSet(gs, a.ID, DirectionBoth, nil)
 	if len(neighbors) != 2 {
@@ -84,8 +84,8 @@ func TestGetNeighborSet_EdgeTypeFilter(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "FRIEND", nil, 1.0)
-	gs.CreateEdge(a.ID, c.ID, "ENEMY", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "FRIEND", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "ENEMY", nil, 1.0)
 
 	neighbors := getNeighborSet(gs, a.ID, DirectionOut, []string{"FRIEND"})
 	if len(neighbors) != 1 {
@@ -108,11 +108,11 @@ func TestNodeSimilarityPair_Jaccard(t *testing.T) {
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 	e, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultNodeSimilarityOptions()
 	opts.Metric = SimilarityJaccard
@@ -145,11 +145,11 @@ func TestNodeSimilarityPair_Overlap(t *testing.T) {
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 	e, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultNodeSimilarityOptions()
 	opts.Metric = SimilarityOverlap
@@ -181,11 +181,11 @@ func TestNodeSimilarityPair_Cosine(t *testing.T) {
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 	e, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultNodeSimilarityOptions()
 	opts.Metric = SimilarityCosine
@@ -214,8 +214,8 @@ func TestNodeSimilarityPair_NoOverlap(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultNodeSimilarityOptions()
 	score, err := NodeSimilarityPair(gs, a.ID, b.ID, opts)
@@ -256,12 +256,12 @@ func TestNodeSimilarityFor(t *testing.T) {
 	e, _ := gs.CreateNode([]string{"Node"}, nil)
 	f, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(f.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(f.ID, c.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultNodeSimilarityOptions()
 	opts.Direction = DirectionOut
@@ -305,8 +305,8 @@ func TestNodeSimilarityAll(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultNodeSimilarityOptions()
 	opts.Direction = DirectionOut
@@ -332,10 +332,10 @@ func TestNodeSimilarityPair_IdenticalNeighbors(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
 
 	for _, metric := range []SimilarityMetric{SimilarityJaccard, SimilarityOverlap, SimilarityCosine} {
 		opts := DefaultNodeSimilarityOptions()

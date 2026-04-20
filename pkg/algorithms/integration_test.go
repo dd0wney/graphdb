@@ -14,13 +14,13 @@ func setupIntegrationTestGraph(t *testing.T) *storage.GraphStorage {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	t.Cleanup(func() { gs.Close() })
+	t.Cleanup(func() { _ = gs.Close() })
 	return gs
 }
 
@@ -35,11 +35,11 @@ func TestIntegration_SCCFeedsLinkPrediction(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(d.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(d.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
 
 	// Step 1: Find SCCs
 	sccResult, err := StronglyConnectedComponents(gs)
@@ -94,12 +94,12 @@ func TestIntegration_TrianglesMatchClusteringCoefficient(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
 	// D is isolated
 	_ = d
 
@@ -138,11 +138,11 @@ func TestIntegration_KHopFeedsSimilarity(t *testing.T) {
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 	e, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, e.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(e.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, e.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(e.ID, d.ID, "LINKS", nil, 1.0)
 
 	// Step 1: Find 2-hop neighbourhood of A
 	khopOpts := DefaultKHopOptions()
@@ -190,17 +190,17 @@ func TestIntegration_CondensationValidatesTopology(t *testing.T) {
 	}
 
 	// SCC1
-	gs.CreateEdge(n[1].ID, n[2].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(n[2].ID, n[3].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(n[3].ID, n[1].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[1].ID, n[2].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[2].ID, n[3].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[3].ID, n[1].ID, "LINKS", nil, 1.0)
 
 	// SCC2
-	gs.CreateEdge(n[4].ID, n[5].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(n[5].ID, n[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[4].ID, n[5].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[5].ID, n[4].ID, "LINKS", nil, 1.0)
 
 	// Bridges
-	gs.CreateEdge(n[3].ID, n[4].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(n[5].ID, n[6].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[3].ID, n[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[5].ID, n[6].ID, "LINKS", nil, 1.0)
 
 	sccResult, err := StronglyConnectedComponents(gs)
 	if err != nil {
@@ -261,13 +261,13 @@ func TestIntegration_SimilarityAndLinkPredictionAgree(t *testing.T) {
 	e, _ := gs.CreateNode([]string{"Node"}, nil)
 	f, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, e.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(f.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, e.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(f.ID, c.ID, "LINKS", nil, 1.0)
 
 	// Similarity: A-B should be higher than A-F
 	simOpts := DefaultNodeSimilarityOptions()
@@ -308,16 +308,16 @@ func TestIntegration_AllAlgorithmsOnSameGraph(t *testing.T) {
 	}
 
 	// Triangle: 0-1-2
-	gs.CreateEdge(nodes[0].ID, nodes[1].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[1].ID, nodes[2].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[2].ID, nodes[0].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[0].ID, nodes[1].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[1].ID, nodes[2].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[2].ID, nodes[0].ID, "LINKS", nil, 1.0)
 
 	// Chain: 3->4->5
-	gs.CreateEdge(nodes[3].ID, nodes[4].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[4].ID, nodes[5].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[3].ID, nodes[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[4].ID, nodes[5].ID, "LINKS", nil, 1.0)
 
 	// Bridge: 2->3
-	gs.CreateEdge(nodes[2].ID, nodes[3].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[2].ID, nodes[3].ID, "LINKS", nil, 1.0)
 
 	// 1. Triangle counting
 	triResult, err := CountTriangles(gs)

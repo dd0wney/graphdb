@@ -14,13 +14,13 @@ func setupSCCTestGraph(t *testing.T) *storage.GraphStorage {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	t.Cleanup(func() { gs.Close() })
+	t.Cleanup(func() { _ = gs.Close() })
 	return gs
 }
 
@@ -42,7 +42,7 @@ func TestSCC_EmptyGraph(t *testing.T) {
 
 func TestSCC_SingleNode(t *testing.T) {
 	gs := setupSCCTestGraph(t)
-	gs.CreateNode([]string{"Node"}, nil)
+	_, _ = gs.CreateNode([]string{"Node"}, nil)
 
 	result, err := StronglyConnectedComponents(gs)
 	if err != nil {
@@ -65,9 +65,9 @@ func TestSCC_SimpleCycle(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
 
 	result, err := StronglyConnectedComponents(gs)
 	if err != nil {
@@ -96,8 +96,8 @@ func TestSCC_Chain(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
 
 	result, err := StronglyConnectedComponents(gs)
 	if err != nil {
@@ -128,11 +128,11 @@ func TestSCC_TwoComponentsWithBridge(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(d.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(d.ID, c.ID, "LINKS", nil, 1.0)
 
 	result, err := StronglyConnectedComponents(gs)
 	if err != nil {
@@ -165,7 +165,7 @@ func TestSCC_TwoComponentsWithBridge(t *testing.T) {
 
 func TestSCC_Modularity(t *testing.T) {
 	gs := setupSCCTestGraph(t)
-	gs.CreateNode([]string{"Node"}, nil)
+	_, _ = gs.CreateNode([]string{"Node"}, nil)
 
 	result, err := StronglyConnectedComponents(gs)
 	if err != nil {
@@ -187,11 +187,11 @@ func TestCondensation_TwoSCCs(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(d.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(d.ID, c.ID, "LINKS", nil, 1.0)
 
 	sccResult, err := StronglyConnectedComponents(gs)
 	if err != nil {
@@ -231,10 +231,10 @@ func TestCondensation_NoInterSCCEdges(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(d.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, a.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(d.ID, c.ID, "LINKS", nil, 1.0)
 
 	sccResult, _ := StronglyConnectedComponents(gs)
 	edges, err := Condensation(gs, sccResult)
@@ -261,17 +261,17 @@ func TestSCC_ClassicExample(t *testing.T) {
 	}
 
 	// SCC1
-	gs.CreateEdge(n[1].ID, n[2].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(n[2].ID, n[3].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(n[3].ID, n[1].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[1].ID, n[2].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[2].ID, n[3].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[3].ID, n[1].ID, "LINKS", nil, 1.0)
 
 	// SCC2
-	gs.CreateEdge(n[4].ID, n[5].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(n[5].ID, n[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[4].ID, n[5].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[5].ID, n[4].ID, "LINKS", nil, 1.0)
 
 	// Bridges
-	gs.CreateEdge(n[3].ID, n[4].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(n[5].ID, n[6].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[3].ID, n[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(n[5].ID, n[6].ID, "LINKS", nil, 1.0)
 
 	result, err := StronglyConnectedComponents(gs)
 	if err != nil {

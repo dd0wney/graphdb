@@ -20,10 +20,10 @@ func TestMutationSchemaGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Add a node so schema generation has labels
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Person"},
 		map[string]storage.Value{"name": storage.StringValue("Test")},
 	)
@@ -52,7 +52,7 @@ func TestCreateNodeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	schema, err := GenerateSchemaWithMutations(gs)
 	if err != nil {
@@ -95,7 +95,7 @@ func TestCreateNodeMutation(t *testing.T) {
 	// Verify node was actually created in storage
 	nodeID, _ := createNodeData["id"].(string)
 	var id uint64
-	json.Unmarshal([]byte(nodeID), &id)
+	_ = json.Unmarshal([]byte(nodeID), &id)
 
 	node, err := gs.GetNode(id)
 	if err != nil {
@@ -119,7 +119,7 @@ func TestUpdateNodeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create initial node
 	node, _ := gs.CreateNode(
@@ -192,7 +192,7 @@ func TestDeleteNodeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create node to delete
 	node, _ := gs.CreateNode(
@@ -251,7 +251,7 @@ func TestCreateNodeMutationWithVariables(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	schema, err := GenerateSchemaWithMutations(gs)
 	if err != nil {
@@ -310,7 +310,7 @@ func TestMutationErrorHandling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	schema, err := GenerateSchemaWithMutations(gs)
 	if err != nil {

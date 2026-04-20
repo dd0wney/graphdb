@@ -21,7 +21,7 @@ func TestNodeCreatedSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	ps := pubsub.NewPubSub()
 	defer ps.Shutdown()
@@ -81,7 +81,7 @@ func TestNodeUpdatedSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	ps := pubsub.NewPubSub()
 	defer ps.Shutdown()
@@ -144,7 +144,7 @@ func TestNodeDeletedSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	ps := pubsub.NewPubSub()
 	defer ps.Shutdown()
@@ -172,7 +172,7 @@ func TestNodeDeletedSubscription(t *testing.T) {
 	}()
 
 	// Delete the node
-	gs.DeleteNode(node.ID)
+	_ = gs.DeleteNode(node.ID)
 
 	// Trigger the event
 	PublishNodeDeleted(ps, node)
@@ -200,7 +200,7 @@ func TestEdgeCreatedSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	ps := pubsub.NewPubSub()
 	defer ps.Shutdown()
@@ -259,7 +259,7 @@ func TestMultipleSubscribers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	ps := pubsub.NewPubSub()
 	defer ps.Shutdown()
@@ -319,7 +319,7 @@ func TestLabelSpecificSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	ps := pubsub.NewPubSub()
 	defer ps.Shutdown()

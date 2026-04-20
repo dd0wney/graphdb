@@ -17,14 +17,14 @@ func setupCentralityTestGraph(t *testing.T) *storage.GraphStorage {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 	// Create graph storage
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	t.Cleanup(func() { gs.Close() })
+	t.Cleanup(func() { _ = gs.Close() })
 
 	return gs
 }
@@ -75,8 +75,8 @@ func TestDegreeCentrality_LinearChain(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	result, err := DegreeCentrality(gs)
 
@@ -105,9 +105,9 @@ func TestDegreeCentrality_Star(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Spoke"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Spoke"}, nil)
 
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeD.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeA.ID, "LINKS", nil, 1.0)
 
 	result, err := DegreeCentrality(gs)
 
@@ -132,8 +132,8 @@ func TestClosenessCentrality_LinearChain(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	result, err := ClosenessCentrality(gs)
 
@@ -163,12 +163,12 @@ func TestClosenessCentrality_Star(t *testing.T) {
 	nodeD, _ := gs.CreateNode([]string{"Spoke"}, nil)
 
 	// Bidirectional edges
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeD.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	result, err := ClosenessCentrality(gs)
 
@@ -216,8 +216,8 @@ func TestBetweennessCentrality_LinearChain(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	result, err := BetweennessCentrality(gs)
 
@@ -247,12 +247,12 @@ func TestBetweennessCentrality_Star(t *testing.T) {
 	nodeD, _ := gs.CreateNode([]string{"Spoke"}, nil)
 
 	// Bidirectional edges so paths go through hub
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeD.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	result, err := BetweennessCentrality(gs)
 
@@ -279,10 +279,10 @@ func TestBetweennessCentrality_Diamond(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeD.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	result, err := BetweennessCentrality(gs)
 
@@ -323,8 +323,8 @@ func TestComputeAllCentrality(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	result, err := ComputeAllCentrality(gs)
 
@@ -371,14 +371,14 @@ func TestComputeAllCentrality_ComplexGraph(t *testing.T) {
 	}
 
 	// Create edges forming interesting topology
-	gs.CreateEdge(nodes[0].ID, nodes[1].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[1].ID, nodes[2].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[2].ID, nodes[3].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[3].ID, nodes[4].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[4].ID, nodes[5].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[0].ID, nodes[1].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[1].ID, nodes[2].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[2].ID, nodes[3].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[3].ID, nodes[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[4].ID, nodes[5].ID, "LINKS", nil, 1.0)
 	// Add shortcuts
-	gs.CreateEdge(nodes[0].ID, nodes[2].ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodes[2].ID, nodes[4].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[0].ID, nodes[2].ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[2].ID, nodes[4].ID, "LINKS", nil, 1.0)
 
 	result, err := ComputeAllCentrality(gs)
 
@@ -423,12 +423,12 @@ func TestDegreeCentrality_Normalization(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
 
 	result, err := DegreeCentrality(gs)
 
@@ -815,7 +815,7 @@ func TestEdgeBetweennessCentrality_EmptyGraph(t *testing.T) {
 // with no edges.
 func TestEdgeBetweennessCentrality_SingleNode(t *testing.T) {
 	gs := setupCentralityTestGraph(t)
-	gs.CreateNode([]string{"Node"}, nil)
+	_, _ = gs.CreateNode([]string{"Node"}, nil)
 
 	result, err := EdgeBetweennessCentrality(gs)
 	if err != nil {
@@ -959,8 +959,8 @@ func TestEdgeBetweennessCentrality_TopEdgesOrdering(t *testing.T) {
 		nodes[i] = n.ID
 	}
 	for i := 0; i < 4; i++ {
-		gs.CreateEdge(nodes[i], nodes[i+1], "LINKS", nil, 1.0)
-		gs.CreateEdge(nodes[i+1], nodes[i], "LINKS", nil, 1.0)
+		_, _ = gs.CreateEdge(nodes[i], nodes[i+1], "LINKS", nil, 1.0)
+		_, _ = gs.CreateEdge(nodes[i+1], nodes[i], "LINKS", nil, 1.0)
 	}
 
 	result, err := EdgeBetweennessCentrality(gs)
@@ -1199,10 +1199,10 @@ func TestComputeAllCentrality_IncludesEdgeBetweenness(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeB.ID, "LINKS", nil, 1.0)
 
 	result, err := ComputeAllCentrality(gs)
 	if err != nil {

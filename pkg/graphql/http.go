@@ -2,6 +2,7 @@ package graphql
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/graphql-go/graphql"
@@ -87,7 +88,10 @@ func (h *GraphQLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Send response
+	// Send response. Headers are committed by WriteHeader; an encode
+	// failure here cannot be recovered via respondError, so log.
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("graphql http: encode response failed: %v", err)
+	}
 }

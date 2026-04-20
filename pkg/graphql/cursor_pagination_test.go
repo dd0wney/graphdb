@@ -19,11 +19,11 @@ func TestCursorPaginationForward(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 10 Person nodes
 	for i := 1; i <= 10; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person" + string(rune('0'+i))),
 			"id":   storage.IntValue(int64(i)),
 		})
@@ -100,11 +100,11 @@ func TestCursorPaginationAfter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 10 Person nodes
 	for i := 1; i <= 10; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person" + string(rune('0'+i))),
 			"id":   storage.IntValue(int64(i)),
 		})
@@ -196,11 +196,11 @@ func TestCursorPaginationBackward(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 10 Person nodes
 	for i := 1; i <= 10; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person" + string(rune('0'+i))),
 			"id":   storage.IntValue(int64(i)),
 		})
@@ -268,11 +268,11 @@ func TestCursorPaginationEdgeCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 5 Person nodes
 	for i := 1; i <= 5; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person" + string(rune('0'+i))),
 		})
 	}
@@ -376,7 +376,7 @@ func TestEdgeCursorPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -388,7 +388,7 @@ func TestEdgeCursorPagination(t *testing.T) {
 
 	// Create 10 edges
 	for i := 1; i <= 10; i++ {
-		gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{
 			"strength": storage.IntValue(int64(i)),
 		}, float64(i))
 	}
@@ -457,11 +457,11 @@ func TestInvalidCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create some nodes
 	for i := 1; i <= 5; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person" + string(rune('0'+i))),
 		})
 	}

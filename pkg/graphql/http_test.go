@@ -23,10 +23,10 @@ func TestGraphQLHTTPHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test node
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Person"},
 		map[string]storage.Value{
 			"name": storage.StringValue("Alice"),
@@ -95,9 +95,9 @@ func TestGraphQLHTTPHandlerWithVariables(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Person"},
 		map[string]storage.Value{"name": storage.StringValue("Bob")},
 	)
@@ -155,7 +155,7 @@ func TestGraphQLHTTPHandlerInvalidJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	schema, err := GenerateSchema(gs)
 	if err != nil {
@@ -189,7 +189,7 @@ func TestGraphQLHTTPHandlerMethodNotAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	schema, err := GenerateSchema(gs)
 	if err != nil {
@@ -221,7 +221,7 @@ func TestGraphQLHTTPHandlerCORS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	schema, err := GenerateSchema(gs)
 	if err != nil {
@@ -263,7 +263,7 @@ func TestGraphQLHTTPHandlerQueryErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	schema, err := GenerateSchema(gs)
 	if err != nil {

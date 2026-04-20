@@ -9,14 +9,14 @@ import (
 // TestDetectCycles_NoCycles tests a graph with no cycles (linear path)
 func TestDetectCycles_NoCycles(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// A -> B -> C (linear, no cycle)
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
 
 	cycles, err := DetectCycles(gs)
 	if err != nil {
@@ -30,13 +30,13 @@ func TestDetectCycles_NoCycles(t *testing.T) {
 // TestDetectCycles_SimpleCycle tests a simple 2-node cycle
 func TestDetectCycles_SimpleCycle(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// A -> B -> A (simple 2-node cycle)
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
 
 	cycles, err := DetectCycles(gs)
 	if err != nil {
@@ -53,11 +53,11 @@ func TestDetectCycles_SimpleCycle(t *testing.T) {
 // TestDetectCycles_SelfLoop tests a self-referencing node
 func TestDetectCycles_SelfLoop(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// A -> A (self loop)
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeA.ID, "E", nil, 1.0)
 
 	cycles, err := DetectCycles(gs)
 	if err != nil {
@@ -74,15 +74,15 @@ func TestDetectCycles_SelfLoop(t *testing.T) {
 // TestDetectCycles_TriangleCycle tests a 3-node cycle
 func TestDetectCycles_TriangleCycle(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// A -> B -> C -> A
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "E", nil, 1.0)
 
 	cycles, err := DetectCycles(gs)
 	if err != nil {
@@ -99,7 +99,7 @@ func TestDetectCycles_TriangleCycle(t *testing.T) {
 // TestDetectCycles_MultipleCycles tests detection of multiple independent cycles
 func TestDetectCycles_MultipleCycles(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Cycle 1: A -> B -> A
 	// Cycle 2: C -> D -> E -> C
@@ -109,11 +109,11 @@ func TestDetectCycles_MultipleCycles(t *testing.T) {
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeE, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeD.ID, nodeE.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeE.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeE.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeE.ID, nodeC.ID, "E", nil, 1.0)
 
 	cycles, err := DetectCycles(gs)
 	if err != nil {
@@ -127,7 +127,7 @@ func TestDetectCycles_MultipleCycles(t *testing.T) {
 // TestDetectCycles_ComplexGraph tests cycle detection in a complex graph
 func TestDetectCycles_ComplexGraph(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Mixed: some cycles, some acyclic paths
 	//     1 -> 2 -> 3
@@ -139,13 +139,13 @@ func TestDetectCycles_ComplexGraph(t *testing.T) {
 		nodes[i], _ = gs.CreateNode([]string{"Node"}, nil)
 	}
 
-	gs.CreateEdge(nodes[1].ID, nodes[2].ID, "E", nil, 1.0)
-	gs.CreateEdge(nodes[2].ID, nodes[3].ID, "E", nil, 1.0)
-	gs.CreateEdge(nodes[2].ID, nodes[4].ID, "E", nil, 1.0)
-	gs.CreateEdge(nodes[3].ID, nodes[6].ID, "E", nil, 1.0)
-	gs.CreateEdge(nodes[4].ID, nodes[5].ID, "E", nil, 1.0)
-	gs.CreateEdge(nodes[5].ID, nodes[1].ID, "E", nil, 1.0) // Creates cycle: 1->2->4->5->1
-	gs.CreateEdge(nodes[6].ID, nodes[4].ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[1].ID, nodes[2].ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[2].ID, nodes[3].ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[2].ID, nodes[4].ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[3].ID, nodes[6].ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[4].ID, nodes[5].ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[5].ID, nodes[1].ID, "E", nil, 1.0) // Creates cycle: 1->2->4->5->1
+	_, _ = gs.CreateEdge(nodes[6].ID, nodes[4].ID, "E", nil, 1.0)
 
 	cycles, err := DetectCycles(gs)
 	if err != nil {
@@ -159,7 +159,7 @@ func TestDetectCycles_ComplexGraph(t *testing.T) {
 // TestDetectCycles_EmptyGraph tests an empty graph
 func TestDetectCycles_EmptyGraph(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	cycles, err := DetectCycles(gs)
 	if err != nil {
@@ -173,9 +173,9 @@ func TestDetectCycles_EmptyGraph(t *testing.T) {
 // TestDetectCycles_SingleNode tests a graph with a single node and no edges
 func TestDetectCycles_SingleNode(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Node"}, nil)
+	_, _ = gs.CreateNode([]string{"Node"}, nil)
 
 	cycles, err := DetectCycles(gs)
 	if err != nil {
@@ -189,19 +189,19 @@ func TestDetectCycles_SingleNode(t *testing.T) {
 // TestDetectCyclesWithOptions_MinLength tests filtering by minimum cycle length
 func TestDetectCyclesWithOptions_MinLength(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create self-loop (length 1)
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeA.ID, "E", nil, 1.0)
 
 	// Create triangle (length 3)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeD.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeB.ID, "E", nil, 1.0)
 
 	opts := CycleDetectionOptions{MinCycleLength: 3}
 	cycles, err := DetectCyclesWithOptions(gs, opts)
@@ -221,23 +221,23 @@ func TestDetectCyclesWithOptions_MinLength(t *testing.T) {
 // TestDetectCyclesWithOptions_MaxLength tests filtering by maximum cycle length
 func TestDetectCyclesWithOptions_MaxLength(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 2-node cycle
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
 
 	// Create 4-node cycle
 	nodes := make([]*storage.Node, 4)
 	for i := 0; i < 4; i++ {
 		nodes[i], _ = gs.CreateNode([]string{"Node"}, nil)
 	}
-	gs.CreateEdge(nodes[0].ID, nodes[1].ID, "E", nil, 1.0)
-	gs.CreateEdge(nodes[1].ID, nodes[2].ID, "E", nil, 1.0)
-	gs.CreateEdge(nodes[2].ID, nodes[3].ID, "E", nil, 1.0)
-	gs.CreateEdge(nodes[3].ID, nodes[0].ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[0].ID, nodes[1].ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[1].ID, nodes[2].ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[2].ID, nodes[3].ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[3].ID, nodes[0].ID, "E", nil, 1.0)
 
 	opts := CycleDetectionOptions{MaxCycleLength: 2}
 	cycles, err := DetectCyclesWithOptions(gs, opts)
@@ -257,7 +257,7 @@ func TestDetectCyclesWithOptions_MaxLength(t *testing.T) {
 // TestDetectCyclesWithOptions_NodePredicate tests filtering by node properties
 func TestDetectCyclesWithOptions_NodePredicate(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create cycle with Router nodes
 	router1, _ := gs.CreateNode([]string{"Router"}, map[string]storage.Value{
@@ -266,14 +266,14 @@ func TestDetectCyclesWithOptions_NodePredicate(t *testing.T) {
 	router2, _ := gs.CreateNode([]string{"Router"}, map[string]storage.Value{
 		"priority": storage.IntValue(1),
 	})
-	gs.CreateEdge(router1.ID, router2.ID, "E", nil, 1.0)
-	gs.CreateEdge(router2.ID, router1.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(router1.ID, router2.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(router2.ID, router1.ID, "E", nil, 1.0)
 
 	// Create cycle with Server nodes
 	server1, _ := gs.CreateNode([]string{"Server"}, nil)
 	server2, _ := gs.CreateNode([]string{"Server"}, nil)
-	gs.CreateEdge(server1.ID, server2.ID, "E", nil, 1.0)
-	gs.CreateEdge(server2.ID, server1.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(server1.ID, server2.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(server2.ID, server1.ID, "E", nil, 1.0)
 
 	// Filter for only Router nodes
 	opts := CycleDetectionOptions{
@@ -295,26 +295,26 @@ func TestDetectCyclesWithOptions_NodePredicate(t *testing.T) {
 // TestAnalyzeCycles tests cycle statistics computation
 func TestAnalyzeCycles(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create various cycles
 	// Self-loop
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeA.ID, "E", nil, 1.0)
 
 	// 2-node cycle
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeB.ID, "E", nil, 1.0)
 
 	// 3-node cycle
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeE, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeF, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeD.ID, nodeE.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeE.ID, nodeF.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeF.ID, nodeD.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeD.ID, nodeE.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeE.ID, nodeF.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeF.ID, nodeD.ID, "E", nil, 1.0)
 
 	cycles, err := DetectCycles(gs)
 	if err != nil {
@@ -357,12 +357,12 @@ func TestAnalyzeCycles_Empty(t *testing.T) {
 // TestHasCycle_True tests detection of cycle existence
 func TestHasCycle_True(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeA.ID, "E", nil, 1.0)
 
 	hasCycle, err := HasCycle(gs)
 	if err != nil {
@@ -376,11 +376,11 @@ func TestHasCycle_True(t *testing.T) {
 // TestHasCycle_False tests when no cycles exist
 func TestHasCycle_False(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "E", nil, 1.0)
 
 	hasCycle, err := HasCycle(gs)
 	if err != nil {
@@ -394,7 +394,7 @@ func TestHasCycle_False(t *testing.T) {
 // TestHasCycle_EmptyGraph tests empty graph
 func TestHasCycle_EmptyGraph(t *testing.T) {
 	gs := setupTestGraph(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	hasCycle, err := HasCycle(gs)
 	if err != nil {
@@ -410,7 +410,7 @@ func TestHasCycle_EmptyGraph(t *testing.T) {
 // BenchmarkDetectCycles benchmarks cycle detection
 func BenchmarkDetectCycles(b *testing.B) {
 	gs, _ := storage.NewGraphStorage(b.TempDir())
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create graph with 100 nodes and some cycles
 	nodes := make([]*storage.Node, 100)
@@ -420,22 +420,22 @@ func BenchmarkDetectCycles(b *testing.B) {
 
 	// Create cycles every 10 nodes
 	for i := 0; i < 90; i++ {
-		gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "E", nil, 1.0)
+		_, _ = gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "E", nil, 1.0)
 		if i%10 == 9 {
-			gs.CreateEdge(nodes[i+1].ID, nodes[i-9].ID, "E", nil, 1.0)
+			_, _ = gs.CreateEdge(nodes[i+1].ID, nodes[i-9].ID, "E", nil, 1.0)
 		}
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		DetectCycles(gs)
+		_, _ = DetectCycles(gs)
 	}
 }
 
 // BenchmarkHasCycle benchmarks cycle existence check
 func BenchmarkHasCycle(b *testing.B) {
 	gs, _ := storage.NewGraphStorage(b.TempDir())
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create graph with 100 nodes and a cycle
 	nodes := make([]*storage.Node, 100)
@@ -445,20 +445,20 @@ func BenchmarkHasCycle(b *testing.B) {
 
 	// Create linear chain with one cycle at the end
 	for i := 0; i < 99; i++ {
-		gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "E", nil, 1.0)
+		_, _ = gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "E", nil, 1.0)
 	}
-	gs.CreateEdge(nodes[99].ID, nodes[90].ID, "E", nil, 1.0) // Create cycle
+	_, _ = gs.CreateEdge(nodes[99].ID, nodes[90].ID, "E", nil, 1.0) // Create cycle
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		HasCycle(gs)
+		_, _ = HasCycle(gs)
 	}
 }
 
 // BenchmarkDetectCycles_LargeGraph benchmarks on a larger graph
 func BenchmarkDetectCycles_LargeGraph(b *testing.B) {
 	gs, _ := storage.NewGraphStorage(b.TempDir())
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create graph with 1000 nodes
 	nodes := make([]*storage.Node, 1000)
@@ -468,14 +468,14 @@ func BenchmarkDetectCycles_LargeGraph(b *testing.B) {
 
 	// Create cycles every 50 nodes
 	for i := 0; i < 950; i++ {
-		gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "E", nil, 1.0)
+		_, _ = gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "E", nil, 1.0)
 		if i%50 == 49 {
-			gs.CreateEdge(nodes[i+1].ID, nodes[i-49].ID, "E", nil, 1.0)
+			_, _ = gs.CreateEdge(nodes[i+1].ID, nodes[i-49].ID, "E", nil, 1.0)
 		}
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		DetectCycles(gs)
+		_, _ = DetectCycles(gs)
 	}
 }

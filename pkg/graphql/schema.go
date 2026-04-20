@@ -151,7 +151,9 @@ func createNodeResolver(gs *storage.GraphStorage, label string) graphql.FieldRes
 
 		// Convert string ID to uint64
 		var id uint64
-		fmt.Sscanf(idStr, "%d", &id)
+		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+			return nil, fmt.Errorf("invalid id %q: %w", idStr, err)
+		}
 
 		// Fetch node from storage
 		node, err := gs.GetNode(id)

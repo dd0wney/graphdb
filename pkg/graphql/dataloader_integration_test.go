@@ -23,7 +23,7 @@ func TestDataLoaderIntegrationN1Problem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 20 person nodes
 	personIDs := make([]uint64, 20)
@@ -38,7 +38,7 @@ func TestDataLoaderIntegrationN1Problem(t *testing.T) {
 	// Create edges - each person knows the next 3 people
 	for i := 0; i < 17; i++ {
 		for j := 1; j <= 3; j++ {
-			gs.CreateEdge(personIDs[i], personIDs[i+j], "KNOWS", map[string]storage.Value{}, 1.0)
+			_, _ = gs.CreateEdge(personIDs[i], personIDs[i+j], "KNOWS", map[string]storage.Value{}, 1.0)
 		}
 	}
 
@@ -92,7 +92,7 @@ func TestDataLoaderWithNestedRelationships(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a small social network
 	alice, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -109,10 +109,10 @@ func TestDataLoaderWithNestedRelationships(t *testing.T) {
 	})
 
 	// Create relationships
-	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{}, 1.0)
-	gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", map[string]storage.Value{}, 1.0)
-	gs.CreateEdge(bob.ID, diana.ID, "KNOWS", map[string]storage.Value{}, 1.0)
-	gs.CreateEdge(charlie.ID, diana.ID, "KNOWS", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(bob.ID, diana.ID, "KNOWS", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(charlie.ID, diana.ID, "KNOWS", map[string]storage.Value{}, 1.0)
 
 	// Track number of GetOutgoingEdges calls
 	var edgeCallCount int32
@@ -163,7 +163,7 @@ func TestDataLoaderCacheInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a node
 	node, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -185,7 +185,7 @@ func TestDataLoaderCacheInvalidation(t *testing.T) {
 	}
 
 	// Update the node
-	gs.UpdateNode(node.ID, map[string]storage.Value{
+	_ = gs.UpdateNode(node.ID, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(31), // Changed age
 	})

@@ -19,7 +19,7 @@ func TestSchemaGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Add test nodes with different labels
 	node1, _ := gs.CreateNode(
@@ -41,7 +41,7 @@ func TestSchemaGeneration(t *testing.T) {
 	)
 
 	// Add test edge
-	gs.CreateEdge(node1.ID, node2.ID, "WORKS_AT", map[string]storage.Value{
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "WORKS_AT", map[string]storage.Value{
 		"since": storage.IntValue(2020),
 	}, 1.0)
 
@@ -70,10 +70,10 @@ func TestSchemaNodeTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Add node with Person label
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Person"},
 		map[string]storage.Value{
 			"name": storage.StringValue("Alice"),
@@ -105,15 +105,15 @@ func TestSchemaQueryFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Add nodes with different labels
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Person"},
 		map[string]storage.Value{"name": storage.StringValue("Alice")},
 	)
 
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"Company"},
 		map[string]storage.Value{"name": storage.StringValue("TechCorp")},
 	)
@@ -153,7 +153,7 @@ func TestSchemaEdgeTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Add nodes and edge
 	node1, _ := gs.CreateNode(
@@ -166,7 +166,7 @@ func TestSchemaEdgeTypes(t *testing.T) {
 		map[string]storage.Value{"name": storage.StringValue("TechCorp")},
 	)
 
-	gs.CreateEdge(node1.ID, node2.ID, "WORKS_AT", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "WORKS_AT", map[string]storage.Value{}, 1.0)
 
 	schema, err := GenerateSchema(gs)
 	if err != nil {

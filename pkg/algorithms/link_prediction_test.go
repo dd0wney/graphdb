@@ -14,13 +14,13 @@ func setupLinkPredictionTestGraph(t *testing.T) *storage.GraphStorage {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	t.Cleanup(func() { gs.Close() })
+	t.Cleanup(func() { _ = gs.Close() })
 	return gs
 }
 
@@ -35,11 +35,11 @@ func TestPredictLinkScore_CommonNeighbours(t *testing.T) {
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 	e, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultLinkPredictionOptions()
 	opts.Method = LinkPredCommonNeighbours
@@ -73,10 +73,10 @@ func TestPredictLinkScore_AdamicAdar(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultLinkPredictionOptions()
 	opts.Method = LinkPredAdamicAdar
@@ -106,11 +106,11 @@ func TestPredictLinkScore_PreferentialAttachment(t *testing.T) {
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 	e, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, e.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultLinkPredictionOptions()
 	opts.Method = LinkPredPreferentialAttachment
@@ -138,8 +138,8 @@ func TestPredictLinkScore_NoCommonNeighbours(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultLinkPredictionOptions()
 	opts.Method = LinkPredCommonNeighbours
@@ -163,9 +163,9 @@ func TestPredictLinksFor_ExcludeExisting(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultLinkPredictionOptions()
 	opts.ExcludeExisting = true
@@ -191,8 +191,8 @@ func TestPredictLinksFor_IncludeExisting(t *testing.T) {
 	b, _ := gs.CreateNode([]string{"Node"}, nil)
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultLinkPredictionOptions()
 	opts.ExcludeExisting = false
@@ -226,11 +226,11 @@ func TestPredictLinksFor_Sorted(t *testing.T) {
 	e, _ := gs.CreateNode([]string{"Node"}, nil)
 
 	// A and B share 2 common neighbors (C,D); A and E share 1 (C)
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(e.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, d.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(e.ID, c.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultLinkPredictionOptions()
 	opts.ExcludeExisting = false
@@ -257,9 +257,9 @@ func TestPredictLinksFor_TopK(t *testing.T) {
 	c, _ := gs.CreateNode([]string{"Node"}, nil)
 	d, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(d.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(d.ID, c.ID, "LINKS", nil, 1.0)
 
 	opts := DefaultLinkPredictionOptions()
 	opts.ExcludeExisting = false
