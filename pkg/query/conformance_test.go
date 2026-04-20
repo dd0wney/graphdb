@@ -36,10 +36,10 @@ func setupConformanceGraph(t *testing.T) (*storage.GraphStorage, *Executor, func
 		"salary":     storage.IntValue(90000),
 	})
 
-	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{
+	_, _ = gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{
 		"since": storage.IntValue(2020),
 	}, 1.0)
-	gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", map[string]storage.Value{
+	_, _ = gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", map[string]storage.Value{
 		"since": storage.IntValue(2019),
 	}, 1.0)
 
@@ -221,10 +221,10 @@ func TestConformance_SearchFunction(t *testing.T) {
 	gs, cleanup := setupExecutorTestGraph(t)
 	defer cleanup()
 
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Quantum Computing Revolution"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Classical Music Guide"),
 	})
 
@@ -446,7 +446,7 @@ func TestConformance_Union(t *testing.T) {
 	gs, executor, cleanup := setupConformanceGraph(t)
 	defer cleanup()
 
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Graph Databases"),
 	})
 
@@ -536,30 +536,30 @@ func setupVectorConformanceGraph(t *testing.T) (*storage.GraphStorage, *Executor
 		"name":      storage.StringValue("Quantum Mechanics"),
 		"embedding": storage.VectorValue([]float32{0.9, 0.1, 0.0}),
 	})
-	gs.UpdateNodeVectorIndexes(qm)
+	_ = gs.UpdateNodeVectorIndexes(qm)
 
 	gr, _ := gs.CreateNode([]string{"Concept"}, map[string]storage.Value{
 		"name":      storage.StringValue("General Relativity"),
 		"embedding": storage.VectorValue([]float32{0.7, 0.7, 0.0}),
 	})
-	gs.UpdateNodeVectorIndexes(gr)
+	_ = gs.UpdateNodeVectorIndexes(gr)
 
 	bh, _ := gs.CreateNode([]string{"Concept"}, map[string]storage.Value{
 		"name":      storage.StringValue("Black Holes"),
 		"embedding": storage.VectorValue([]float32{0.1, 0.9, 0.1}),
 	})
-	gs.UpdateNodeVectorIndexes(bh)
+	_ = gs.UpdateNodeVectorIndexes(bh)
 
 	hr, _ := gs.CreateNode([]string{"Concept"}, map[string]storage.Value{
 		"name":      storage.StringValue("Hawking Radiation"),
 		"embedding": storage.VectorValue([]float32{0.0, 0.0, 1.0}),
 	})
-	gs.UpdateNodeVectorIndexes(hr)
+	_ = gs.UpdateNodeVectorIndexes(hr)
 
 	// Create prerequisite chain: QM -> GR -> BH -> HR
-	gs.CreateEdge(qm.ID, gr.ID, "PREREQUISITE_OF", nil, 1.0)
-	gs.CreateEdge(gr.ID, bh.ID, "PREREQUISITE_OF", nil, 1.0)
-	gs.CreateEdge(bh.ID, hr.ID, "PREREQUISITE_OF", nil, 1.0)
+	_, _ = gs.CreateEdge(qm.ID, gr.ID, "PREREQUISITE_OF", nil, 1.0)
+	_, _ = gs.CreateEdge(gr.ID, bh.ID, "PREREQUISITE_OF", nil, 1.0)
+	_, _ = gs.CreateEdge(bh.ID, hr.ID, "PREREQUISITE_OF", nil, 1.0)
 
 	executor := NewExecutor(gs)
 	wireVectorSearch(t, gs, executor)
@@ -689,11 +689,11 @@ func TestConformance_VectorBruteForceWithoutIndex(t *testing.T) {
 	defer cleanup()
 
 	// Create nodes WITH embeddings but WITHOUT vector index
-	gs.CreateNode([]string{"Item"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Item"}, map[string]storage.Value{
 		"name":      storage.StringValue("Similar"),
 		"embedding": storage.VectorValue([]float32{0.9, 0.1, 0.0}),
 	})
-	gs.CreateNode([]string{"Item"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Item"}, map[string]storage.Value{
 		"name":      storage.StringValue("Different"),
 		"embedding": storage.VectorValue([]float32{0.0, 0.0, 1.0}),
 	})
@@ -838,15 +838,15 @@ func setupPhase3ConformanceGraph(t *testing.T) (*storage.GraphStorage, *Executor
 		"role": storage.StringValue("Engineer"),
 	})
 	// Eve: no role, no edges
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Eve"),
 		"age":  storage.IntValue(22),
 	})
 
-	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
-	gs.CreateEdge(bob.ID, charlie.ID, "KNOWS", nil, 1.0)
-	gs.CreateEdge(charlie.ID, diana.ID, "KNOWS", nil, 1.0)
-	gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(bob.ID, charlie.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(charlie.ID, diana.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", nil, 1.0)
 
 	executor := NewExecutor(gs)
 	return gs, executor, cleanup
@@ -1242,14 +1242,14 @@ func setupPhase5ConformanceGraph(t *testing.T) (*storage.GraphStorage, *Executor
 		"salary":     storage.IntValue(90000),
 	})
 
-	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{
+	_, _ = gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{
 		"since": storage.IntValue(2020),
 		"trust": storage.FloatValue(0.9),
 	}, 1.0)
-	gs.CreateEdge(alice.ID, charlie.ID, "MANAGES", map[string]storage.Value{
+	_, _ = gs.CreateEdge(alice.ID, charlie.ID, "MANAGES", map[string]storage.Value{
 		"since": storage.IntValue(2018),
 	}, 1.0)
-	gs.CreateEdge(charlie.ID, bob.ID, "MENTORS", map[string]storage.Value{
+	_, _ = gs.CreateEdge(charlie.ID, bob.ID, "MENTORS", map[string]storage.Value{
 		"since":   storage.IntValue(2021),
 		"project": storage.StringValue("Atlas"),
 	}, 1.0)

@@ -174,7 +174,9 @@ func (p *Parser) parseRelationship(fromNode *NodePattern) (*RelationshipPattern,
 			rel.Properties = props
 		}
 
-		p.expect(TokenRightBracket)
+		if _, err := p.expect(TokenRightBracket); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	// Check for trailing arrow to determine final direction

@@ -36,7 +36,7 @@ func setupTestGraph(t *testing.T) (*storage.GraphStorage, func()) {
 	if err != nil {
 		t.Fatalf("Failed to create test graph: %v", err)
 	}
-	return gs, func() { gs.Close() }
+	return gs, func() { _ = gs.Close() }
 }
 
 // TestNewWorkerPool tests creating a worker pool
@@ -158,7 +158,7 @@ func TestWorkerPool_ErrorHandling(t *testing.T) {
 		err:    fmt.Errorf("test error"),
 	}
 
-	wp.Submit(task)
+	_ = wp.Submit(task)
 
 	// Get result and verify error
 	select {
@@ -188,7 +188,7 @@ func TestWorkerPool_Stop(t *testing.T) {
 			id:     fmt.Sprintf("task%d", i),
 			result: i,
 		}
-		wp.Submit(task)
+		_ = wp.Submit(task)
 	}
 
 	// Stop the pool
@@ -214,7 +214,7 @@ func TestWorkerPool_Stats(t *testing.T) {
 			result: i,
 			delay:  10 * time.Millisecond,
 		}
-		wp.Submit(task)
+		_ = wp.Submit(task)
 	}
 
 	// Wait for tasks to complete
@@ -300,7 +300,7 @@ func TestWorkerPool_LongRunningTask(t *testing.T) {
 	}
 
 	for _, task := range tasks {
-		wp.Submit(task)
+		_ = wp.Submit(task)
 	}
 
 	// Collect results - fast tasks should finish first
@@ -341,7 +341,7 @@ func TestWorkerPool_ResultsChannel(t *testing.T) {
 
 	// Submit and verify we can receive on the channel
 	task := &mockTask{id: "test", result: "data"}
-	wp.Submit(task)
+	_ = wp.Submit(task)
 
 	select {
 	case result := <-ch1:

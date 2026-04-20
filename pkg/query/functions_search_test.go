@@ -38,15 +38,15 @@ func TestSearch_InWhere(t *testing.T) {
 	gs, cleanup := setupExecutorTestGraph(t)
 	defer cleanup()
 
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title":   storage.StringValue("Quantum Entanglement Explained"),
 		"content": storage.StringValue("This article explains quantum entanglement in detail"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title":   storage.StringValue("Classical Physics"),
 		"content": storage.StringValue("Newton's laws of motion and gravity"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title":   storage.StringValue("Quantum Computing"),
 		"content": storage.StringValue("Using quantum mechanics for computation"),
 	})

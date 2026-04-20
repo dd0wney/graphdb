@@ -118,7 +118,7 @@ func TestMerge_MatchWhenExists(t *testing.T) {
 	defer cleanup()
 
 	// Pre-create Alice
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(30),
 	})
@@ -210,7 +210,7 @@ func TestMerge_OnMatchSet(t *testing.T) {
 	defer cleanup()
 
 	// Pre-create Alice
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 	})
 

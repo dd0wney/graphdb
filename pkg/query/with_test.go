@@ -67,11 +67,11 @@ func TestWith_BasicProjection(t *testing.T) {
 	gs, cleanup := setupExecutorTestGraph(t)
 	defer cleanup()
 
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(30),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 		"age":  storage.IntValue(25),
 	})
@@ -134,15 +134,15 @@ func TestWith_FilterAfterWith(t *testing.T) {
 	gs, cleanup := setupExecutorTestGraph(t)
 	defer cleanup()
 
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(30),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 		"age":  storage.IntValue(25),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Charlie"),
 		"age":  storage.IntValue(35),
 	})
@@ -203,7 +203,7 @@ func TestWith_PassWholeNode(t *testing.T) {
 	gs, cleanup := setupExecutorTestGraph(t)
 	defer cleanup()
 
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(30),
 	})

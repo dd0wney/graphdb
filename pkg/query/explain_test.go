@@ -56,7 +56,7 @@ func TestExplain_ReturnsStepDescriptions(t *testing.T) {
 	gs, cleanup := setupExecutorTestGraph(t)
 	defer cleanup()
 
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(30),
 	})
@@ -127,7 +127,7 @@ func TestProfile_ReturnsTiming(t *testing.T) {
 	defer cleanup()
 
 	for i := 0; i < 10; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Alice"),
 		})
 	}

@@ -14,15 +14,15 @@ func TestTypeAssertionSafety(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edges with default weight
 	node1, _ := gs.CreateNode([]string{"Test"}, map[string]storage.Value{})
 	node2, _ := gs.CreateNode([]string{"Test"}, map[string]storage.Value{})
 	node3, _ := gs.CreateNode([]string{"Test"}, map[string]storage.Value{})
 
-	gs.CreateEdge(node1.ID, node2.ID, "REL", map[string]storage.Value{}, 1.0)
-	gs.CreateEdge(node2.ID, node3.ID, "REL", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "REL", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(node2.ID, node3.ID, "REL", map[string]storage.Value{}, 1.0)
 
 	// Test that edges can be retrieved without panic
 	// This exercises the type assertion code paths in parallel/traverse.go
@@ -41,7 +41,7 @@ func TestTypeAssertionSafety(t *testing.T) {
 // TestOverflowProtection verifies overflow fixes from previous work
 func TestOverflowProtection(t *testing.T) {
 	tmpDir := t.TempDir()
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// This test verifies that the defensive programming fixes are in place
 	// The actual overflow fixes were tested in overflow_test.go in storage and parallel packages
@@ -51,7 +51,7 @@ func TestOverflowProtection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a node
 	node, err := gs.CreateNode([]string{"Test"}, map[string]storage.Value{

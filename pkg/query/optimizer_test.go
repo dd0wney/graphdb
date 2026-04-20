@@ -12,7 +12,7 @@ func TestOptimizerCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	optimizer := NewOptimizer(graph)
 	if optimizer == nil {
@@ -29,7 +29,7 @@ func TestCostEstimation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create test data
 	// Small dataset: 10 nodes with label "Person"
@@ -128,7 +128,7 @@ func TestIndexSelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create test data with indexed properties
 	for i := 0; i < 100; i++ {
@@ -198,7 +198,7 @@ func TestFilterPushdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	optimizer := NewOptimizer(graph)
 
@@ -273,7 +273,7 @@ func TestJoinOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create unbalanced data: 10 Admins, 1000 Users
 	for i := 0; i < 10; i++ {
@@ -433,7 +433,7 @@ func TestIndexLookupOptimization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create an index on "name" property
 	err = graph.CreatePropertyIndex("name", storage.TypeString)
@@ -508,7 +508,7 @@ func TestIndexLookupOptimization_NoIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// NO index created
 
@@ -561,7 +561,7 @@ func TestIndexLookupExecution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create an index on "email" property
 	err = graph.CreatePropertyIndex("email", storage.TypeString)
@@ -635,7 +635,7 @@ func TestCardinalityEstimation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create 50 Person nodes
 	for i := 0; i < 50; i++ {
@@ -678,7 +678,7 @@ func TestExtractVectorCondition_Simple(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 	optimizer := NewOptimizer(graph)
 
 	// vector.similarity(c.embedding, $query_embedding) > 0.8
@@ -718,7 +718,7 @@ func TestExtractVectorCondition_WithAND(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 	optimizer := NewOptimizer(graph)
 
 	// name = "X" AND vector.similarity(c.embedding, $q) > 0.8
@@ -757,7 +757,7 @@ func TestExtractVectorCondition_NonVector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 	optimizer := NewOptimizer(graph)
 
 	// n.age > 30 — should return nil
@@ -778,7 +778,7 @@ func TestOptimizer_InsertVectorSearchStep(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 	optimizer := NewOptimizer(graph)
 
 	// Wire up mock vector functions
@@ -845,7 +845,7 @@ func TestOptimizer_NoVectorIndex_NoOptimization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 	optimizer := NewOptimizer(graph)
 
 	// No vector index configured

@@ -309,7 +309,7 @@ func TestSyntheticProperty_SimilarityScore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 	executor := NewExecutor(graph)
 
 	expr := &PropertyExpression{Variable: "c", Property: "similarity_score"}
@@ -345,7 +345,7 @@ func TestSyntheticProperty_RealPropertyTakesPrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 	executor := NewExecutor(graph)
 
 	expr := &PropertyExpression{Variable: "c", Property: "similarity_score"}
@@ -380,7 +380,7 @@ func TestSyntheticProperty_NilWhenNoVectorSearchRan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 	executor := NewExecutor(graph)
 
 	expr := &PropertyExpression{Variable: "c", Property: "similarity_score"}

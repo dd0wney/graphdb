@@ -35,7 +35,7 @@ func setupPhase4Graph(t *testing.T) (*storage.GraphStorage, *Executor, func()) {
 		"last_name":  storage.StringValue("Jones"),
 		"active":     storage.BoolValue(false),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":       storage.StringValue("Charlie"),
 		"age":        storage.IntValue(35),
 		"role":       storage.StringValue("Manager"),
@@ -44,7 +44,7 @@ func setupPhase4Graph(t *testing.T) (*storage.GraphStorage, *Executor, func()) {
 		"last_name":  storage.StringValue("Brown"),
 		"active":     storage.BoolValue(true),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":       storage.StringValue("Diana"),
 		"age":        storage.IntValue(28),
 		"role":       storage.StringValue("Engineer"),
@@ -54,7 +54,7 @@ func setupPhase4Graph(t *testing.T) (*storage.GraphStorage, *Executor, func()) {
 		"active":     storage.BoolValue(true),
 	})
 
-	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
 
 	executor := NewExecutor(gs)
 	return gs, executor, cleanup

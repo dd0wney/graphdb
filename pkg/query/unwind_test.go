@@ -38,7 +38,7 @@ func TestUnwind_BasicList(t *testing.T) {
 	// Since storage doesn't support native lists, we test with COLLECT first then UNWIND
 	names := []string{"Alice", "Bob", "Charlie"}
 	for _, name := range names {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue(name),
 			"team": storage.StringValue("Alpha"),
 		})

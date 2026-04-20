@@ -337,7 +337,9 @@ func (p *Parser) parsePrimaryExpression() (Expression, error) {
 		if err != nil {
 			return nil, err
 		}
-		p.expect(TokenRightParen)
+		if _, err := p.expect(TokenRightParen); err != nil {
+			return nil, err
+		}
 		return expr, nil
 
 	case TokenLeftBracket:

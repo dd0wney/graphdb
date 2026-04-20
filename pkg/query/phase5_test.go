@@ -36,10 +36,10 @@ func setupPhase5Graph(t *testing.T) (*storage.GraphStorage, *Executor, func()) {
 		"active": storage.BoolValue(true),
 	})
 
-	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{
+	_, _ = gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{
 		"since": storage.IntValue(2020),
 	}, 1.0)
-	gs.CreateEdge(alice.ID, charlie.ID, "WORKS_WITH", map[string]storage.Value{
+	_, _ = gs.CreateEdge(alice.ID, charlie.ID, "WORKS_WITH", map[string]storage.Value{
 		"since":   storage.IntValue(2019),
 		"project": storage.StringValue("Alpha"),
 	}, 1.0)

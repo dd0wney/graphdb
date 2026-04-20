@@ -107,7 +107,7 @@ func TestExecutor_OptionalMatch_WithMatches(t *testing.T) {
 	bob, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 	})
-	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
 
 	executor := NewExecutor(gs)
 
@@ -145,7 +145,7 @@ func TestExecutor_OptionalMatch_NullPropagation(t *testing.T) {
 	gs, cleanup := setupExecutorTestGraph(t)
 	defer cleanup()
 
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Loner"),
 	})
 
@@ -182,8 +182,8 @@ func TestExecutor_OptionalMatch_WithWhereFilter(t *testing.T) {
 		"name": storage.StringValue("Charlie"),
 		"age":  storage.IntValue(35),
 	})
-	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
-	gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", nil, 1.0)
 
 	executor := NewExecutor(gs)
 
@@ -209,7 +209,7 @@ func TestExecutor_OptionalMatch_StandaloneOptional(t *testing.T) {
 	gs, cleanup := setupExecutorTestGraph(t)
 	defer cleanup()
 
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 	})
 

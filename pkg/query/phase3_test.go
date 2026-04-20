@@ -35,23 +35,23 @@ func setupPhase3Graph(t *testing.T) (*storage.GraphStorage, *Executor, func()) {
 		"role": storage.StringValue("Engineer"),
 	})
 	// Eve has no "role" property — useful for IS NULL tests
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Eve"),
 		"age":  storage.IntValue(22),
 	})
 
 	// Chain: Alice -> Bob -> Charlie -> Diana
-	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{
+	_, _ = gs.CreateEdge(alice.ID, bob.ID, "KNOWS", map[string]storage.Value{
 		"since": storage.IntValue(2020),
 	}, 1.0)
-	gs.CreateEdge(bob.ID, charlie.ID, "KNOWS", map[string]storage.Value{
+	_, _ = gs.CreateEdge(bob.ID, charlie.ID, "KNOWS", map[string]storage.Value{
 		"since": storage.IntValue(2019),
 	}, 1.0)
-	gs.CreateEdge(charlie.ID, diana.ID, "KNOWS", map[string]storage.Value{
+	_, _ = gs.CreateEdge(charlie.ID, diana.ID, "KNOWS", map[string]storage.Value{
 		"since": storage.IntValue(2021),
 	}, 1.0)
 	// Shortcut: Alice -> Charlie
-	gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", map[string]storage.Value{
+	_, _ = gs.CreateEdge(alice.ID, charlie.ID, "KNOWS", map[string]storage.Value{
 		"since": storage.IntValue(2018),
 	}, 1.0)
 

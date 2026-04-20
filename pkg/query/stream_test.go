@@ -138,7 +138,7 @@ func TestNewStreamingQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	sq := NewStreamingQuery(graph)
 
@@ -157,7 +157,7 @@ func TestStreamingQuery_StreamNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create test nodes
 	_, err = graph.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -208,7 +208,7 @@ func TestStreamingQuery_StreamNodesWithFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create test nodes
 	_, err = graph.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -269,7 +269,7 @@ func TestStreamingQuery_StreamTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create a simple graph: 1 -> 2 -> 3
 	node1, _ := graph.CreateNode([]string{"Node"}, map[string]storage.Value{

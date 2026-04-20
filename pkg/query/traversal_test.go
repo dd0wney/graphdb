@@ -41,19 +41,19 @@ func setupTraversalTestGraph(t *testing.T) (*storage.GraphStorage, func()) {
 
 	// Create edges
 	// 1 -> 2 (type: KNOWS)
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
 	// 1 -> 3 (type: KNOWS)
-	gs.CreateEdge(node1.ID, node3.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node3.ID, "KNOWS", nil, 1.0)
 	// 2 -> 4 (type: KNOWS)
-	gs.CreateEdge(node2.ID, node4.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(node2.ID, node4.ID, "KNOWS", nil, 1.0)
 	// 2 -> 5 (type: WORKS_AT)
-	gs.CreateEdge(node2.ID, node5.ID, "WORKS_AT", nil, 1.0)
+	_, _ = gs.CreateEdge(node2.ID, node5.ID, "WORKS_AT", nil, 1.0)
 	// 3 -> 5 (type: WORKS_AT)
-	gs.CreateEdge(node3.ID, node5.ID, "WORKS_AT", nil, 1.0)
+	_, _ = gs.CreateEdge(node3.ID, node5.ID, "WORKS_AT", nil, 1.0)
 
 	cleanup := func() {
-		gs.Close()
-		os.RemoveAll(tempDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tempDir)
 	}
 
 	return gs, cleanup
@@ -62,9 +62,9 @@ func setupTraversalTestGraph(t *testing.T) (*storage.GraphStorage, func()) {
 // TestNewTraverser tests traverser creation
 func TestNewTraverser(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "traverser_test_new")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	gs, _ := storage.NewGraphStorage(tempDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	traverser := NewTraverser(gs)
 
@@ -488,9 +488,9 @@ func TestGetNeighborhood_Both(t *testing.T) {
 // TestBFS_IsolatedNode tests BFS on node with no edges
 func TestBFS_IsolatedNode(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "traversal_test_isolated")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	gs, _ := storage.NewGraphStorage(tempDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node, _ := gs.CreateNode([]string{"Isolated"}, nil)
 
@@ -516,9 +516,9 @@ func TestBFS_IsolatedNode(t *testing.T) {
 // TestFindShortestPath_NonExistent tests path between disconnected nodes
 func TestFindShortestPath_NonExistent(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "traversal_test_disconnected")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	gs, _ := storage.NewGraphStorage(tempDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"A"}, nil)
 	node2, _ := gs.CreateNode([]string{"B"}, nil)
@@ -624,13 +624,13 @@ func setupBenchmarkGraph(b *testing.B) (*storage.GraphStorage, func()) {
 		// Connect to next 3 nodes (circular)
 		for j := 1; j <= 3; j++ {
 			target := (i + j) % 100
-			gs.CreateEdge(nodeIDs[i], nodeIDs[target], "CONNECTS", map[string]storage.Value{}, 1.0)
+			_, _ = gs.CreateEdge(nodeIDs[i], nodeIDs[target], "CONNECTS", map[string]storage.Value{}, 1.0)
 		}
 	}
 
 	cleanup := func() {
-		gs.Close()
-		os.RemoveAll(tempDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tempDir)
 	}
 
 	return gs, cleanup
@@ -645,7 +645,7 @@ func BenchmarkBFS(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		traverser.BFS(TraversalOptions{
+		_, _ = traverser.BFS(TraversalOptions{
 			StartNodeID: 1,
 			Direction:   DirectionOutgoing,
 			MaxDepth:    5,
@@ -663,7 +663,7 @@ func BenchmarkDFS(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		traverser.DFS(TraversalOptions{
+		_, _ = traverser.DFS(TraversalOptions{
 			StartNodeID: 1,
 			Direction:   DirectionOutgoing,
 			MaxDepth:    5,
@@ -681,7 +681,7 @@ func BenchmarkFindShortestPath(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		traverser.FindShortestPath(1, 50, []string{})
+		_, _ = traverser.FindShortestPath(1, 50, []string{})
 	}
 }
 
@@ -694,7 +694,7 @@ func BenchmarkFindAllPaths(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		traverser.FindAllPaths(1, 10, 4, []string{})
+		_, _ = traverser.FindAllPaths(1, 10, 4, []string{})
 	}
 }
 
@@ -707,6 +707,6 @@ func BenchmarkGetNeighborhood(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		traverser.GetNeighborhood(1, 2, DirectionOutgoing)
+		_, _ = traverser.GetNeighborhood(1, 2, DirectionOutgoing)
 	}
 }

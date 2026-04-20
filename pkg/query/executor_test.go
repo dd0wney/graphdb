@@ -18,13 +18,13 @@ func setupExecutorTestGraph(t *testing.T) (*storage.GraphStorage, func()) {
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
 
 	cleanup := func() {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return gs, cleanup
@@ -125,11 +125,11 @@ func TestExecutor_MatchWithProperties(t *testing.T) {
 	defer cleanup()
 
 	// Create multiple nodes
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(30),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 		"age":  storage.IntValue(25),
 	})
@@ -194,7 +194,7 @@ func TestExecutor_MatchPath(t *testing.T) {
 	})
 
 	// Create relationship
-	gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
+	_, _ = gs.CreateEdge(alice.ID, bob.ID, "KNOWS", nil, 1.0)
 
 	executor := NewExecutor(gs)
 
@@ -292,7 +292,7 @@ func TestExecutor_SetProperty(t *testing.T) {
 	defer cleanup()
 
 	// Create initial node
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(30),
 	})
@@ -347,7 +347,7 @@ func TestExecutor_DeleteNode(t *testing.T) {
 	defer cleanup()
 
 	// Create node
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 	})
 
@@ -395,7 +395,7 @@ func TestExecutor_Limit(t *testing.T) {
 
 	// Create multiple nodes
 	for i := 0; i < 5; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person"),
 		})
 	}
@@ -439,7 +439,7 @@ func TestExecutor_Skip(t *testing.T) {
 
 	// Create multiple nodes
 	for i := 0; i < 5; i++ {
-		gs.CreateNode([]string{"Person"}, nil)
+		_, _ = gs.CreateNode([]string{"Person"}, nil)
 	}
 
 	executor := NewExecutor(gs)
@@ -480,8 +480,8 @@ func TestExecutor_SkipExceedsResults(t *testing.T) {
 	defer cleanup()
 
 	// Create 2 nodes
-	gs.CreateNode([]string{"Person"}, nil)
-	gs.CreateNode([]string{"Person"}, nil)
+	_, _ = gs.CreateNode([]string{"Person"}, nil)
+	_, _ = gs.CreateNode([]string{"Person"}, nil)
 
 	executor := NewExecutor(gs)
 
@@ -521,13 +521,13 @@ func TestExecutor_Distinct(t *testing.T) {
 	defer cleanup()
 
 	// Create nodes with duplicate names
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 	})
 
@@ -606,7 +606,7 @@ func TestExecutor_ExecuteWithText(t *testing.T) {
 	defer cleanup()
 
 	// Create node
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 	})
 
@@ -802,15 +802,15 @@ func TestExecutor_WhereClause(t *testing.T) {
 	defer cleanup()
 
 	// Create test nodes with different ages
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(25),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 		"age":  storage.IntValue(30),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Charlie"),
 		"age":  storage.IntValue(35),
 	})
@@ -867,15 +867,15 @@ func TestExecutor_WhereClause_Equals(t *testing.T) {
 	defer cleanup()
 
 	// Create test nodes
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"age":  storage.IntValue(25),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 		"age":  storage.IntValue(25),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Charlie"),
 		"age":  storage.IntValue(30),
 	})
@@ -1156,7 +1156,7 @@ func TestExecutor_Aggregation_COUNT(t *testing.T) {
 
 	// Create test nodes
 	for i := 0; i < 5; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"age": storage.IntValue(int64(25 + i*5)),
 		})
 	}
@@ -1212,7 +1212,7 @@ func TestExecutor_Aggregation_SUM(t *testing.T) {
 	// Create test nodes with salaries
 	salaries := []int64{50000, 60000, 70000}
 	for _, sal := range salaries {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"salary": storage.IntValue(sal),
 		})
 	}
@@ -1263,7 +1263,7 @@ func TestExecutor_Aggregation_AVG(t *testing.T) {
 	// Create test nodes with ages
 	ages := []int64{20, 30, 40}
 	for _, age := range ages {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"age": storage.IntValue(age),
 		})
 	}
@@ -1314,7 +1314,7 @@ func TestExecutor_Aggregation_MIN_MAX(t *testing.T) {
 	// Create test nodes with ages
 	ages := []int64{25, 30, 35, 28, 32}
 	for _, age := range ages {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"age": storage.IntValue(age),
 		})
 	}
@@ -1398,7 +1398,7 @@ func TestExecutor_GroupBy_Single(t *testing.T) {
 
 	for dept, salaries := range departments {
 		for _, sal := range salaries {
-			gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 				"department": storage.StringValue(dept),
 				"salary":     storage.IntValue(sal),
 			})
@@ -1491,7 +1491,7 @@ func TestExecutor_GroupBy_Multiple(t *testing.T) {
 	}
 
 	for _, n := range nodes {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"department": storage.StringValue(n.dept),
 			"location":   storage.StringValue(n.location),
 			"salary":     storage.IntValue(n.salary),
@@ -1560,7 +1560,7 @@ func TestExecutor_GroupBy_WithOrderBy(t *testing.T) {
 
 	// Create test nodes
 	for _, dept := range []string{"Zebra", "Alpha", "Beta"} {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"department": storage.StringValue(dept),
 			"salary":     storage.IntValue(50000),
 		})
@@ -1662,13 +1662,13 @@ func TestExecutor_Aggregation_MixedTypes(t *testing.T) {
 	defer cleanup()
 
 	// Create nodes with mixed integer and float salaries
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"salary": storage.IntValue(50000),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"salary": storage.FloatValue(55000.50),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"salary": storage.IntValue(60000),
 	})
 
@@ -1715,15 +1715,15 @@ func TestExecutor_Aggregation_NullValues(t *testing.T) {
 	defer cleanup()
 
 	// Create nodes where some have salary and some don't
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":   storage.StringValue("Alice"),
 		"salary": storage.IntValue(50000),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 		// No salary property
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":   storage.StringValue("Charlie"),
 		"salary": storage.IntValue(60000),
 	})
@@ -1766,7 +1766,7 @@ func TestExecutor_GroupBy_LIMIT_SKIP(t *testing.T) {
 
 	// Create multiple departments
 	for i, dept := range []string{"A", "B", "C", "D", "E"} {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"department": storage.StringValue(dept),
 			"salary":     storage.IntValue(int64(50000 + i*5000)),
 		})
@@ -1837,7 +1837,7 @@ func TestExecutor_ComplexQuery(t *testing.T) {
 	}
 
 	for _, person := range testData {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name":       storage.StringValue(person.name),
 			"department": storage.StringValue(person.dept),
 			"age":        storage.IntValue(person.age),
@@ -1905,7 +1905,7 @@ func TestExecutor_Aggregation_StringMinMax(t *testing.T) {
 
 	names := []string{"Zebra", "Alice", "Mike", "Bob"}
 	for _, name := range names {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue(name),
 		})
 	}
@@ -1976,7 +1976,7 @@ func TestExecutor_DISTINCT_With_Aggregation(t *testing.T) {
 
 	// Create duplicate department data
 	for i := 0; i < 3; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"department": storage.StringValue("Engineering"),
 		})
 	}
@@ -2066,31 +2066,31 @@ func TestExecutor_Integration_WHERE_GroupBy_Aggregation(t *testing.T) {
 	defer cleanup()
 
 	// Create test data: employees with varying salaries
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":       storage.StringValue("Alice"),
 		"department": storage.StringValue("Engineering"),
 		"salary":     storage.IntValue(80000),
 		"level":      storage.StringValue("Senior"),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":       storage.StringValue("Bob"),
 		"department": storage.StringValue("Engineering"),
 		"salary":     storage.IntValue(60000),
 		"level":      storage.StringValue("Junior"),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":       storage.StringValue("Charlie"),
 		"department": storage.StringValue("Sales"),
 		"salary":     storage.IntValue(70000),
 		"level":      storage.StringValue("Senior"),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":       storage.StringValue("Diana"),
 		"department": storage.StringValue("Sales"),
 		"salary":     storage.IntValue(50000),
 		"level":      storage.StringValue("Junior"),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":       storage.StringValue("Eve"),
 		"department": storage.StringValue("Engineering"),
 		"salary":     storage.IntValue(90000),
@@ -2204,19 +2204,19 @@ func TestExecutor_Integration_MultipleAggregations(t *testing.T) {
 	defer cleanup()
 
 	// Create test data
-	gs.CreateNode([]string{"Product"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Product"}, map[string]storage.Value{
 		"name":     storage.StringValue("Laptop"),
 		"price":    storage.FloatValue(999.99),
 		"quantity": storage.IntValue(10),
 		"rating":   storage.FloatValue(4.5),
 	})
-	gs.CreateNode([]string{"Product"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Product"}, map[string]storage.Value{
 		"name":     storage.StringValue("Mouse"),
 		"price":    storage.FloatValue(29.99),
 		"quantity": storage.IntValue(100),
 		"rating":   storage.FloatValue(4.2),
 	})
-	gs.CreateNode([]string{"Product"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Product"}, map[string]storage.Value{
 		"name":     storage.StringValue("Keyboard"),
 		"price":    storage.FloatValue(79.99),
 		"quantity": storage.IntValue(50),
@@ -2333,27 +2333,27 @@ func TestExecutor_Integration_ComplexWHERE_Aggregation(t *testing.T) {
 	defer cleanup()
 
 	// Create test data
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":   storage.StringValue("Alice"),
 		"age":    storage.IntValue(30),
 		"salary": storage.IntValue(80000),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":   storage.StringValue("Bob"),
 		"age":    storage.IntValue(25),
 		"salary": storage.IntValue(50000),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":   storage.StringValue("Charlie"),
 		"age":    storage.IntValue(35),
 		"salary": storage.IntValue(90000),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":   storage.StringValue("Diana"),
 		"age":    storage.IntValue(28),
 		"salary": storage.IntValue(75000),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":   storage.StringValue("Eve"),
 		"age":    storage.IntValue(40),
 		"salary": storage.IntValue(95000),
@@ -2476,32 +2476,32 @@ func TestExecutor_Integration_DISTINCT_WHERE_OrderBy(t *testing.T) {
 	defer cleanup()
 
 	// Create test data with duplicate cities
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 		"city": storage.StringValue("NYC"),
 		"age":  storage.IntValue(30),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 		"city": storage.StringValue("LA"),
 		"age":  storage.IntValue(25),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Charlie"),
 		"city": storage.StringValue("NYC"),
 		"age":  storage.IntValue(35),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Diana"),
 		"city": storage.StringValue("Chicago"),
 		"age":  storage.IntValue(28),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Eve"),
 		"city": storage.StringValue("LA"),
 		"age":  storage.IntValue(32),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Frank"),
 		"city": storage.StringValue("Seattle"),
 		"age":  storage.IntValue(22),
@@ -2590,7 +2590,7 @@ func TestExecutor_Aggregation_COLLECT(t *testing.T) {
 
 	names := []string{"Alice", "Bob", "Charlie"}
 	for _, name := range names {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue(name),
 		})
 	}
@@ -2704,7 +2704,7 @@ func TestExecutor_Aggregation_COLLECT_WithGroupBy(t *testing.T) {
 		{"Sales", "Charlie"},
 	}
 	for _, d := range data {
-		gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"department": storage.StringValue(d.dept),
 			"name":       storage.StringValue(d.name),
 		})
