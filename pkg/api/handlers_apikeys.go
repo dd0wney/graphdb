@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -150,10 +151,12 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request, user
 		return
 	}
 
-	// Persist to disk
+	// Persist to disk. Don't fail the request — the key was created
+	// successfully in memory and will be persisted on next successful
+	// save or shutdown. Surface via logs so operators can diagnose
+	// persistent-save failures (disk full, permission issues, etc.).
 	if err := s.SaveAuthData(); err != nil {
-		// Log but don't fail - key was created successfully
-		// It will be persisted on next successful save or shutdown
+		log.Printf("api key create: persist auth data failed: %v", err)
 	}
 
 	// Build response
@@ -186,9 +189,10 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request, keyI
 		return
 	}
 
-	// Persist to disk
+	// Persist to disk. Same trade-off as CreateAPIKey above — don't
+	// fail the request, but surface the error so operators can see it.
 	if err := s.SaveAuthData(); err != nil {
-		// Log but don't fail - key was revoked successfully
+		log.Printf("api key revoke: persist auth data failed: %v", err)
 	}
 
 	s.respondJSON(w, http.StatusOK, map[string]any{

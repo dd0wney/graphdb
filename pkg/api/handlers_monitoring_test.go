@@ -111,11 +111,9 @@ func TestHandleMetrics(t *testing.T) {
 		t.Error("Expected non-empty uptime")
 	}
 
-	// These might be 0 in a fresh test server
-	if response.TotalQueries < 0 {
-		t.Error("Total queries should be non-negative")
-	}
-
+	// TotalQueries is uint64 — its non-negativity is type-enforced, no
+	// runtime check needed. AvgQueryTime is float64 and can legitimately
+	// be negative in pathological cases; assert the sanity invariant.
 	if response.AvgQueryTime < 0 {
 		t.Error("Avg query time should be non-negative")
 	}
