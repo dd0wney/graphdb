@@ -55,9 +55,11 @@ func (fti *FullTextIndex) indexNode(node *storage.Node, properties []string) {
 	content := strings.Join(textParts, " ")
 	fti.nodeContent[node.ID] = content
 
-	// Tokenize and index
+	// Tokenize and index. termSet is the per-node reverse posting —
+	// saved at the end so UpdateNode / RemoveNode can iterate only
+	// the terms this node contains, not the full vocabulary.
 	tokens := tokenize(content)
-	seenTerms := make(map[string]bool)
+	termSet := make(map[string]struct{})
 
 	for pos, token := range tokens {
 		term := normalize(token)
@@ -72,13 +74,37 @@ func (fti *FullTextIndex) indexNode(node *storage.Node, properties []string) {
 		fti.index[term][node.ID] = append(fti.index[term][node.ID], pos)
 
 		// Update document frequency (once per term per document)
-		if !seenTerms[term] {
+		if _, seen := termSet[term]; !seen {
 			fti.docFreq[term]++
-			seenTerms[term] = true
+			termSet[term] = struct{}{}
 		}
 	}
 
+	if len(termSet) > 0 {
+		fti.nodeTerms[node.ID] = termSet
+	}
 	fti.totalDocs++
+}
+
+// removeNodeLocked removes all index entries for nodeID. Must be called
+// with the write lock held. O(terms-in-document) instead of O(vocabulary)
+// because it iterates only the reverse posting for this node.
+func (fti *FullTextIndex) removeNodeLocked(nodeID uint64) {
+	for term := range fti.nodeTerms[nodeID] {
+		if postings, ok := fti.index[term]; ok {
+			delete(postings, nodeID)
+			if len(postings) == 0 {
+				delete(fti.index, term)
+			}
+		}
+		fti.docFreq[term]--
+		if fti.docFreq[term] <= 0 {
+			delete(fti.docFreq, term)
+		}
+	}
+	delete(fti.nodeTerms, nodeID)
+	delete(fti.nodeContent, nodeID)
+	fti.totalDocs--
 }
 
 // UpdateNode updates the index for a specific node
@@ -86,23 +112,7 @@ func (fti *FullTextIndex) UpdateNode(nodeID uint64) error {
 	fti.indexMu.Lock()
 	defer fti.indexMu.Unlock()
 
-	// Remove old index entries for this node
-	for term := range fti.index {
-		if _, exists := fti.index[term][nodeID]; exists {
-			delete(fti.index[term], nodeID)
-			fti.docFreq[term]--
-			if fti.docFreq[term] == 0 {
-				delete(fti.docFreq, term)
-			}
-			if len(fti.index[term]) == 0 {
-				delete(fti.index, term)
-			}
-		}
-	}
-
-	// Remove from node content
-	delete(fti.nodeContent, nodeID)
-	fti.totalDocs--
+	fti.removeNodeLocked(nodeID)
 
 	// Reindex the node
 	node, err := fti.gs.GetNode(nodeID)

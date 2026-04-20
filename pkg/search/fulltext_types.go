@@ -20,6 +20,11 @@ type FullTextIndex struct {
 	// Node content: nodeID -> concatenated text content
 	nodeContent map[uint64]string
 
+	// Reverse posting: nodeID -> set of terms the node contains. Lets
+	// UpdateNode / RemoveNode touch only the terms that actually matter
+	// instead of scanning the entire vocabulary under WLock.
+	nodeTerms map[uint64]map[string]struct{}
+
 	// Total documents indexed
 	totalDocs int
 
@@ -42,6 +47,7 @@ func NewFullTextIndex(gs *storage.GraphStorage) *FullTextIndex {
 		index:       make(map[string]map[uint64][]int),
 		docFreq:     make(map[string]int),
 		nodeContent: make(map[uint64]string),
+		nodeTerms:   make(map[uint64]map[string]struct{}),
 	}
 }
 

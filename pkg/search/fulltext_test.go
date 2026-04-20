@@ -645,3 +645,49 @@ func BenchmarkSearchVsSearchTopK(b *testing.B) {
 		}
 	})
 }
+
+// BenchmarkUpdateNodeLargeVocab measures UpdateNode cost when the corpus
+// has a large vocabulary but each individual node contains only a few
+// terms. Before the nodeTerms reverse posting, this loop was
+// O(vocabulary) because UpdateNode scanned every term in the index to
+// find ones that referenced the node. After, it is O(terms-in-document).
+func BenchmarkUpdateNodeLargeVocab(b *testing.B) {
+	tmpDir := b.TempDir()
+	config := storage.StorageConfig{
+		DataDir:        tmpDir,
+		BulkImportMode: true,
+	}
+	gs, err := storage.NewGraphStorageWithConfig(config)
+	if err != nil {
+		b.Fatalf("storage: %v", err)
+	}
+	defer gs.Close()
+
+	// 2000 docs × ~6 unique tokens each gives vocab ≈ 12000, doc-terms ≈ 6.
+	// Theoretical ratio vocab/doc-terms = 2000×, so post-fix UpdateNode
+	// should be dramatically faster than the pre-fix linear-scan version.
+	const corpusSize = 2000
+	var target uint64
+	for i := 0; i < corpusSize; i++ {
+		node, err := gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+			"body": storage.StringValue(fmt.Sprintf("uniqueA%d uniqueB%d uniqueC%d uniqueD%d uniqueE%d common", i, i, i, i, i)),
+		})
+		if err != nil {
+			b.Fatalf("CreateNode %d: %v", i, err)
+		}
+		if i == corpusSize/2 {
+			target = node.ID
+		}
+	}
+	index := NewFullTextIndex(gs)
+	if err := index.IndexNodes([]string{"Article"}, []string{"body"}); err != nil {
+		b.Fatalf("IndexNodes: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := index.UpdateNode(target); err != nil {
+			b.Fatalf("UpdateNode: %v", err)
+		}
+	}
+}
