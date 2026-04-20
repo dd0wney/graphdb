@@ -66,6 +66,10 @@ func (s *Server) Start() error {
 	// Hybrid (FTS + LSA) search (protected, tenant-scoped)
 	mux.HandleFunc("/hybrid-search", s.requireAuth(s.withTenant(s.handleHybridSearch)))
 
+	// Search index population (admin, protected, tenant-scoped)
+	mux.HandleFunc("/search/index", s.requireAuth(s.withTenant(s.handleSearchIndex)))
+	mux.HandleFunc("/hybrid-search/lsa-index", s.requireAuth(s.withTenant(s.handleLSAIndex)))
+
 	// User management endpoints (admin only) - handler does its own auth check
 	mux.Handle("/api/users", s.userHandler)
 	mux.Handle("/api/users/", s.userHandler)
