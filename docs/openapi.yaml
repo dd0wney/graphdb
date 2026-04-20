@@ -1255,6 +1255,68 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /hybrid-search:
+    post:
+      tags:
+        - Full-Text Search
+      summary: RRF-merged full-text + LSA semantic search
+      description: |
+        Combines TF-IDF full-text match (same path as `/search`) with
+        LSA semantic match (latent space of the tenant's LSA index)
+        and merges both rankings via Reciprocal Rank Fusion (Cormack
+        et al. 2009).
+
+        **Weighting.** `alpha ∈ [0, 1]` (default 0.5) controls the
+        relative weight of the two stages: 1.0 is pure full-text,
+        0.0 is pure semantic. RRF's `k=60` constant is not tunable;
+        the curve is deliberately flat, so `alpha` has less dramatic
+        effect than users initially expect — rank 1 contributes
+        `alpha/61`, rank 20 contributes `alpha/80`.
+
+        **Per-result rank.** Each result includes `fts_rank` and
+        `lsa_rank`, both 0-based, with -1 indicating the stage did
+        not return this document. Useful for understanding why a
+        result ranked where it did.
+
+        **Graceful degradation.** If the tenant has no LSA index
+        registered, or the query is out of LSA vocabulary, the
+        response falls back to pure FTS. The `X-GraphDB-Hybrid-Degraded`
+        response header (and the `degraded` body field) signal this;
+        values: `no-lsa-index`, `query-out-of-vocabulary`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HybridSearchRequest'
+      responses:
+        '200':
+          description: Merged hybrid search results
+          headers:
+            X-GraphDB-Hybrid-Degraded:
+              schema:
+                type: string
+                enum: [no-lsa-index, query-out-of-vocabulary]
+              description: Set when the hybrid pipeline falls back to a single stage.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HybridSearchResponse'
+        '400':
+          description: Missing or empty query, or malformed body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '405':
+          description: Method not allowed (POST only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # Security Management endpoints
   /api/v1/security/keys/rotate:
     post:
@@ -1856,6 +1918,89 @@ components:
           format: int64
           description: Search execution time in milliseconds.
           example: 3
+
+    HybridSearchRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: Free-text query.
+          example: attention as mental discipline
+        limit:
+          type: integer
+          description: Max results. Default 20, clamped at 100.
+          minimum: 1
+          maximum: 100
+          example: 20
+        offset:
+          type: integer
+          description: Number of results to skip for pagination.
+          minimum: 0
+          example: 0
+        labels:
+          type: array
+          description: Optional label post-filter; applied on FTS-hydrated nodes only.
+          items:
+            type: string
+          example: ["Book", "Note"]
+        alpha:
+          type: number
+          format: double
+          description: FTS weight in [0, 1]; LSA weight is (1 - alpha). Default 0.5.
+          minimum: 0
+          maximum: 1
+          example: 0.5
+        include_content:
+          type: boolean
+          example: false
+        include_nodes:
+          type: boolean
+          example: false
+
+    HybridSearchResultItem:
+      type: object
+      properties:
+        node_id:
+          type: integer
+          format: int64
+        score:
+          type: number
+          format: double
+          description: Merged RRF score (higher = more relevant).
+        fts_rank:
+          type: integer
+          description: 0-based rank in the FTS stage; -1 if absent.
+          example: 3
+        lsa_rank:
+          type: integer
+          description: 0-based rank in the LSA stage; -1 if absent.
+          example: 1
+        snippet:
+          type: string
+        node:
+          $ref: '#/components/schemas/Node'
+
+    HybridSearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/HybridSearchResultItem'
+        count:
+          type: integer
+          example: 17
+        took_ms:
+          type: integer
+          format: int64
+          example: 4
+        degraded:
+          type: string
+          description: Set when the hybrid pipeline fell back to a single stage.
+          enum: [no-lsa-index, query-out-of-vocabulary, ""]
+          example: ""
 
   responses:
     BadRequest:
