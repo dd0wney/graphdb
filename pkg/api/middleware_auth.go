@@ -91,8 +91,12 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 
-			// Update last used timestamp
-			s.apiKeyStore.UpdateLastUsed(key.ID)
+			// Update last used timestamp — best-effort; auth proceeds
+			// even if the timestamp update fails, but we log so operators
+			// can diagnose persistent-store issues.
+			if err := s.apiKeyStore.UpdateLastUsed(key.ID); err != nil {
+				log.Printf("API key UpdateLastUsed failed for key %s: %v", key.ID, err)
+			}
 
 			// Get user for the API key
 			user, err := s.userStore.GetUserByID(key.UserID)

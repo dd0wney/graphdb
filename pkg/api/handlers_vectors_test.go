@@ -680,10 +680,10 @@ func TestVectorIndexes_MethodNotAllowed(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			rr := httptest.NewRecorder()
 
-			switch {
-			case tt.path == "/vector-indexes":
+			switch tt.path {
+			case "/vector-indexes":
 				server.handleVectorIndexes(rr, req)
-			case tt.path == "/vector-search":
+			case "/vector-search":
 				server.handleVectorSearch(rr, req)
 			default:
 				server.handleVectorIndex(rr, req)
@@ -733,7 +733,7 @@ func TestVectorIndex_CRUD_Integration(t *testing.T) {
 	}
 
 	var listResp VectorIndexListResponse
-	json.Unmarshal(rr.Body.Bytes(), &listResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &listResp)
 
 	found := false
 	for _, idx := range listResp.Indexes {
@@ -784,7 +784,7 @@ func TestVectorIndex_CRUD_Integration(t *testing.T) {
 	}
 
 	var searchResp VectorSearchResponse
-	json.Unmarshal(rr.Body.Bytes(), &searchResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &searchResp)
 
 	if searchResp.Count != 1 {
 		t.Errorf("Expected 1 result, got %d", searchResp.Count)

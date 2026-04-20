@@ -15,7 +15,7 @@ import (
 func TestBodySizeLimit_AllowsSmallRequest(t *testing.T) {
 	handler := BodySizeLimit(1024)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 
 	req := httptest.NewRequest("POST", "/", strings.NewReader("small body"))
@@ -73,7 +73,7 @@ func TestBodySizeLimit_LimitsActualBody(t *testing.T) {
 
 func TestPanicRecovery_HandlesNormalRequest(t *testing.T) {
 	handler := PanicRecovery()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}))
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -487,7 +487,7 @@ func TestMetrics_RecordsRequest(t *testing.T) {
 	recorder := &mockMetricsRecorder{}
 
 	handler := Metrics(recorder)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello"))
+		_, _ = w.Write([]byte("Hello"))
 	}))
 
 	req := httptest.NewRequest("GET", "/test", nil)
@@ -507,7 +507,7 @@ func TestMetrics_RecordsResponseSize(t *testing.T) {
 	recorder := &mockMetricsRecorder{}
 
 	handler := Metrics(recorder)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello"))
+		_, _ = w.Write([]byte("Hello"))
 	}))
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -544,7 +544,7 @@ func TestMetrics_TracksInFlight(t *testing.T) {
 
 func TestMetrics_NilRecorder(t *testing.T) {
 	handler := Metrics(nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}))
 
 	req := httptest.NewRequest("GET", "/", nil)

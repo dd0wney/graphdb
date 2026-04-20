@@ -74,14 +74,14 @@ func TestHandleMetrics(t *testing.T) {
 
 	// Create some test data for metrics
 	for i := 0; i < 5; i++ {
-		server.graph.CreateNode([]string{"Node"}, map[string]storage.Value{
+		_, _ = server.graph.CreateNode([]string{"Node"}, map[string]storage.Value{
 			"id": storage.IntValue(int64(i)),
 		})
 	}
 
 	// Create some edges
-	server.graph.CreateEdge(1, 2, "LINK", map[string]storage.Value{}, 1.0)
-	server.graph.CreateEdge(2, 3, "LINK", map[string]storage.Value{}, 1.0)
+	_, _ = server.graph.CreateEdge(1, 2, "LINK", map[string]storage.Value{}, 1.0)
+	_, _ = server.graph.CreateEdge(2, 3, "LINK", map[string]storage.Value{}, 1.0)
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	rr := httptest.NewRecorder()
@@ -189,7 +189,7 @@ func TestMonitoring_ConcurrentAccess(t *testing.T) {
 
 	// Add some data
 	for i := 0; i < 10; i++ {
-		server.graph.CreateNode([]string{"Node"}, map[string]storage.Value{
+		_, _ = server.graph.CreateNode([]string{"Node"}, map[string]storage.Value{
 			"id": storage.IntValue(int64(i)),
 		})
 	}
@@ -237,7 +237,7 @@ func TestHandleHealth_EditionInfo(t *testing.T) {
 	server.handleHealth(rr, req)
 
 	var response HealthResponse
-	json.Unmarshal(rr.Body.Bytes(), &response)
+	_ = json.Unmarshal(rr.Body.Bytes(), &response)
 
 	// Check that edition is valid
 	validEditions := map[string]bool{
@@ -273,7 +273,7 @@ func TestHandleMetrics_EmptyDatabase(t *testing.T) {
 	}
 
 	var response MetricsResponse
-	json.Unmarshal(rr.Body.Bytes(), &response)
+	_ = json.Unmarshal(rr.Body.Bytes(), &response)
 
 	// Empty database should have 0 nodes and edges
 	if response.NodeCount != 0 {
@@ -299,7 +299,7 @@ func TestMonitoring_Integration(t *testing.T) {
 	server.handleHealth(healthRR, healthReq)
 
 	var healthResp HealthResponse
-	json.Unmarshal(healthRR.Body.Bytes(), &healthResp)
+	_ = json.Unmarshal(healthRR.Body.Bytes(), &healthResp)
 
 	if healthResp.Status != "healthy" {
 		t.Fatalf("Server not healthy: %s", healthResp.Status)
@@ -313,19 +313,19 @@ func TestMonitoring_Integration(t *testing.T) {
 	server.handleMetrics(metricsRR, metricsReq)
 
 	var metrics1 MetricsResponse
-	json.Unmarshal(metricsRR.Body.Bytes(), &metrics1)
+	_ = json.Unmarshal(metricsRR.Body.Bytes(), &metrics1)
 
 	t.Logf("✓ Initial metrics: nodes=%d, edges=%d", metrics1.NodeCount, metrics1.EdgeCount)
 
 	// 3. Add data
 	for i := 0; i < 100; i++ {
-		server.graph.CreateNode([]string{"Node"}, map[string]storage.Value{
+		_, _ = server.graph.CreateNode([]string{"Node"}, map[string]storage.Value{
 			"id": storage.IntValue(int64(i)),
 		})
 	}
 
 	for i := 0; i < 50; i++ {
-		server.graph.CreateEdge(uint64(i+1), uint64(i+2), "LINK", map[string]storage.Value{}, 1.0)
+		_, _ = server.graph.CreateEdge(uint64(i+1), uint64(i+2), "LINK", map[string]storage.Value{}, 1.0)
 	}
 
 	// 4. Check metrics after data addition
@@ -334,7 +334,7 @@ func TestMonitoring_Integration(t *testing.T) {
 	server.handleMetrics(metricsRR2, metricsReq2)
 
 	var metrics2 MetricsResponse
-	json.Unmarshal(metricsRR2.Body.Bytes(), &metrics2)
+	_ = json.Unmarshal(metricsRR2.Body.Bytes(), &metrics2)
 
 	if metrics2.NodeCount < 100 {
 		t.Errorf("Expected at least 100 nodes after insertion, got %d", metrics2.NodeCount)
@@ -352,7 +352,7 @@ func TestMonitoring_Integration(t *testing.T) {
 	server.handleHealth(healthRR2, healthReq2)
 
 	var healthResp2 HealthResponse
-	json.Unmarshal(healthRR2.Body.Bytes(), &healthResp2)
+	_ = json.Unmarshal(healthRR2.Body.Bytes(), &healthResp2)
 
 	if healthResp2.Status != "healthy" {
 		t.Errorf("Server should still be healthy after data insertion")

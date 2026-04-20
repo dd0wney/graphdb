@@ -18,7 +18,7 @@ func TestListNodes(t *testing.T) {
 
 	// Create some test nodes
 	for i := 0; i < 3; i++ {
-		server.graph.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = server.graph.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue(fmt.Sprintf("Person%d", i)),
 			"age":  storage.IntValue(int64(20 + i)),
 		})
@@ -522,7 +522,7 @@ func TestNode_CRUD_Integration(t *testing.T) {
 	}
 
 	var createResp NodeResponse
-	json.Unmarshal(rr.Body.Bytes(), &createResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &createResp)
 	nodeID := createResp.ID
 
 	t.Logf("✓ Created node %d", nodeID)
@@ -537,7 +537,7 @@ func TestNode_CRUD_Integration(t *testing.T) {
 	}
 
 	var readResp NodeResponse
-	json.Unmarshal(rr.Body.Bytes(), &readResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &readResp)
 
 	if readResp.Properties["name"] == nil {
 		t.Error("Expected name property to exist")
@@ -565,7 +565,7 @@ func TestNode_CRUD_Integration(t *testing.T) {
 	}
 
 	var updateResp NodeResponse
-	json.Unmarshal(rr.Body.Bytes(), &updateResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &updateResp)
 
 	if updateResp.ID != nodeID {
 		t.Errorf("Expected node ID %d after update, got %d", nodeID, updateResp.ID)

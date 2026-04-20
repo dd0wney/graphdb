@@ -106,7 +106,12 @@ func matchesTenant(nodeTenantID, requestTenantID string) bool {
 }
 
 // requireTenant middleware ensures a valid tenant is in context.
-// This is a stricter version that fails if no tenant is set.
+// This is a stricter version that fails if no tenant is set. Kept as
+// part of the middleware API surface (symmetric with withTenant) for
+// routes that need hard failure on missing tenant context; not yet
+// applied to any route.
+//
+//nolint:unused // middleware API surface reserved for strict-tenant routes
 func (s *Server) requireTenant(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tenantID, ok := tenant.FromContext(r.Context())

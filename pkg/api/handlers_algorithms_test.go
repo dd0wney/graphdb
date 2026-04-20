@@ -30,9 +30,9 @@ func TestHandleTraversal(t *testing.T) {
 		"name": storage.StringValue("D"),
 	})
 
-	server.graph.CreateEdge(nodeA.ID, nodeB.ID, "LINKED", map[string]storage.Value{}, 1.0)
-	server.graph.CreateEdge(nodeB.ID, nodeC.ID, "LINKED", map[string]storage.Value{}, 1.0)
-	server.graph.CreateEdge(nodeA.ID, nodeD.ID, "LINKED", map[string]storage.Value{}, 1.0)
+	_, _ = server.graph.CreateEdge(nodeA.ID, nodeB.ID, "LINKED", map[string]storage.Value{}, 1.0)
+	_, _ = server.graph.CreateEdge(nodeB.ID, nodeC.ID, "LINKED", map[string]storage.Value{}, 1.0)
+	_, _ = server.graph.CreateEdge(nodeA.ID, nodeD.ID, "LINKED", map[string]storage.Value{}, 1.0)
 
 	tests := []struct {
 		name         string
@@ -126,11 +126,11 @@ func TestHandleShortestPath(t *testing.T) {
 		"name": storage.StringValue("E"),
 	})
 
-	server.graph.CreateEdge(nodeA.ID, nodeB.ID, "LINKED", map[string]storage.Value{}, 1.0)
-	server.graph.CreateEdge(nodeB.ID, nodeC.ID, "LINKED", map[string]storage.Value{}, 1.0)
-	server.graph.CreateEdge(nodeC.ID, nodeD.ID, "LINKED", map[string]storage.Value{}, 1.0)
-	server.graph.CreateEdge(nodeA.ID, nodeE.ID, "LINKED", map[string]storage.Value{}, 1.0)
-	server.graph.CreateEdge(nodeE.ID, nodeD.ID, "LINKED", map[string]storage.Value{}, 1.0)
+	_, _ = server.graph.CreateEdge(nodeA.ID, nodeB.ID, "LINKED", map[string]storage.Value{}, 1.0)
+	_, _ = server.graph.CreateEdge(nodeB.ID, nodeC.ID, "LINKED", map[string]storage.Value{}, 1.0)
+	_, _ = server.graph.CreateEdge(nodeC.ID, nodeD.ID, "LINKED", map[string]storage.Value{}, 1.0)
+	_, _ = server.graph.CreateEdge(nodeA.ID, nodeE.ID, "LINKED", map[string]storage.Value{}, 1.0)
+	_, _ = server.graph.CreateEdge(nodeE.ID, nodeD.ID, "LINKED", map[string]storage.Value{}, 1.0)
 
 	tests := []struct {
 		name         string
@@ -218,7 +218,7 @@ func TestHandleAlgorithm(t *testing.T) {
 	// Create edges in a circle
 	for i := 0; i < 5; i++ {
 		nextIdx := (i + 1) % 5
-		server.graph.CreateEdge(nodes[i].ID, nodes[nextIdx].ID, "LINKED", map[string]storage.Value{}, 1.0)
+		_, _ = server.graph.CreateEdge(nodes[i].ID, nodes[nextIdx].ID, "LINKED", map[string]storage.Value{}, 1.0)
 	}
 
 	tests := []struct {
@@ -325,7 +325,7 @@ func TestHandleAlgorithm_LargeGraph(t *testing.T) {
 	for i := 0; i < 200; i++ {
 		sourceIdx := i % 100
 		targetIdx := (i + 1) % 100
-		server.graph.CreateEdge(nodes[sourceIdx].ID, nodes[targetIdx].ID, "LINKED", map[string]storage.Value{}, 1.0)
+		_, _ = server.graph.CreateEdge(nodes[sourceIdx].ID, nodes[targetIdx].ID, "LINKED", map[string]storage.Value{}, 1.0)
 	}
 
 	request := AlgorithmRequest{

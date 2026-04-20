@@ -22,20 +22,20 @@ func setupTestServer(t *testing.T) (*Server, func()) {
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
 
 	server, err := NewServer(gs, 8080)
 	if err != nil {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create server: %v", err)
 	}
 
 	cleanup := func() {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return server, cleanup
@@ -49,31 +49,31 @@ func setupTestServerWithData(t *testing.T) (*Server, func()) {
 	gs := server.graph
 
 	// Create test employees
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":       storage.StringValue("Alice"),
 		"department": storage.StringValue("Engineering"),
 		"salary":     storage.IntValue(80000),
 		"age":        storage.IntValue(30),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":       storage.StringValue("Bob"),
 		"department": storage.StringValue("Engineering"),
 		"salary":     storage.IntValue(60000),
 		"age":        storage.IntValue(25),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":       storage.StringValue("Charlie"),
 		"department": storage.StringValue("Sales"),
 		"salary":     storage.IntValue(70000),
 		"age":        storage.IntValue(35),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":       storage.StringValue("Diana"),
 		"department": storage.StringValue("Sales"),
 		"salary":     storage.IntValue(50000),
 		"age":        storage.IntValue(28),
 	})
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name":       storage.StringValue("Eve"),
 		"department": storage.StringValue("Engineering"),
 		"salary":     storage.IntValue(90000),
@@ -227,13 +227,14 @@ func TestAPI_Query_GroupBy(t *testing.T) {
 
 		avgSalary := row["avg_salary"].(float64)
 
-		if dept == "Engineering" {
+		switch dept {
+		case "Engineering":
 			// Engineering: (80000 + 60000 + 90000) / 3 = 76666.67
 			expected := float64(230000) / 3.0
 			if avgSalary != expected {
 				t.Errorf("Engineering avg salary: expected %v, got %v", expected, avgSalary)
 			}
-		} else if dept == "Sales" {
+		case "Sales":
 			// Sales: (70000 + 50000) / 2 = 60000
 			expected := float64(60000)
 			if avgSalary != expected {
@@ -426,16 +427,16 @@ func TestAPI_GraphQL_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test data BEFORE generating schema
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name": storage.StringValue("Alice"),
 	})
 
@@ -496,16 +497,16 @@ func TestAPI_GraphQL_VariableSupport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test data BEFORE generating schema
-	gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Employee"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 	})
 

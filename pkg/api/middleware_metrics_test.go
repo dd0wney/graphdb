@@ -23,7 +23,7 @@ func createTestServer(t *testing.T) (*Server, func()) {
 
 	graph, err := storage.NewGraphStorage(filepath.Join(tmpDir, "data"))
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
 
@@ -39,7 +39,7 @@ func createTestServer(t *testing.T) (*Server, func()) {
 	}
 
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return server, cleanup
@@ -97,7 +97,7 @@ func TestServer_StopMetrics_MultipleGoroutines(t *testing.T) {
 			defer func() {
 				// Recover from potential panic on double-close
 				// This tests the nil check in StopMetrics
-				recover()
+				_ = recover()
 			}()
 			server.StopMetrics()
 		}()

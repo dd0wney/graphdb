@@ -93,7 +93,7 @@ func TestBodySizeLimitMiddleware(t *testing.T) {
 				buf := new(bytes.Buffer)
 				_, _ = buf.ReadFrom(r.Body)
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("OK"))
+				_, _ = w.Write([]byte("OK"))
 			})
 
 			// Wrap with the body size limit middleware
@@ -216,7 +216,7 @@ func TestBodySizeLimitMiddleware_ChainedWithOtherMiddleware(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	// Chain: logging -> body limit -> cors -> handler
@@ -262,7 +262,7 @@ func TestLoggingMiddleware(t *testing.T) {
 
 	handler := server.loggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
@@ -961,7 +961,7 @@ func TestMiddleware_Integration(t *testing.T) {
 					}
 
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{"success": true}`))
+					_, _ = w.Write([]byte(`{"success": true}`))
 				})),
 			),
 		),

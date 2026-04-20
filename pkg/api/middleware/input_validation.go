@@ -71,7 +71,7 @@ func InputValidation(config *InputValidationConfig) func(http.Handler) http.Hand
 				http.Error(w, "Failed to read request body", http.StatusBadRequest)
 				return
 			}
-			defer r.Body.Close()
+			defer func() { _ = r.Body.Close() }()
 
 			// Convert to string for validation
 			bodyStr := string(body)

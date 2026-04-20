@@ -27,14 +27,14 @@ func setupSecurityTestServer(t *testing.T) (*Server, func()) {
 
 	gs, err := storage.NewGraphStorage(tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
 
 	server, err := NewServer(gs, 8080)
 	if err != nil {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create server: %v", err)
 	}
 
@@ -42,13 +42,13 @@ func setupSecurityTestServer(t *testing.T) (*Server, func()) {
 	masterKeyHex := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	masterKey := make([]byte, 32)
 	for i := 0; i < 32; i++ {
-		fmt.Sscanf(masterKeyHex[i*2:i*2+2], "%02x", &masterKey[i])
+		_, _ = fmt.Sscanf(masterKeyHex[i*2:i*2+2], "%02x", &masterKey[i])
 	}
 
 	keyDir := tmpDir + "/keys"
 	if err := os.MkdirAll(keyDir, 0700); err != nil {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create key directory: %v", err)
 	}
 
@@ -57,31 +57,31 @@ func setupSecurityTestServer(t *testing.T) (*Server, func()) {
 		MasterKey: masterKey,
 	})
 	if err != nil {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create key manager: %v", err)
 	}
 
 	// Generate an initial encryption key
 	if _, err := keyManager.GenerateKEK(); err != nil {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to generate encryption key: %v", err)
 	}
 
 	// Get the active KEK for creating the encryption engine
 	activeKey, _, err := keyManager.GetActiveKEK()
 	if err != nil {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to get active KEK: %v", err)
 	}
 
 	// Create encryption engine using the active key
 	encryptionEngine, err := encryption.NewEngine(activeKey)
 	if err != nil {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create encryption engine: %v", err)
 	}
 
@@ -99,8 +99,8 @@ func setupSecurityTestServer(t *testing.T) (*Server, func()) {
 	}
 
 	cleanup := func() {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return server, cleanup
@@ -162,10 +162,10 @@ func TestHandleSecurityKeyRotate_MethodNotAllowed(t *testing.T) {
 // TestHandleSecurityKeyRotate_EncryptionDisabled tests behavior when encryption is disabled
 func TestHandleSecurityKeyRotate_EncryptionDisabled(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "security-test-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	gs, _ := storage.NewGraphStorage(tmpDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	server, err := NewServer(gs, 8080)
 	if err != nil {
@@ -236,10 +236,10 @@ func TestHandleSecurityKeyInfo_MethodNotAllowed(t *testing.T) {
 // TestHandleSecurityKeyInfo_EncryptionDisabled tests behavior when encryption is disabled
 func TestHandleSecurityKeyInfo_EncryptionDisabled(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "security-test-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	gs, _ := storage.NewGraphStorage(tmpDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	server, err := NewServer(gs, 8080)
 	if err != nil {
@@ -264,7 +264,7 @@ func TestHandleSecurityAuditLogs(t *testing.T) {
 	defer cleanup()
 
 	// Add some test audit events
-	server.auditLogger.Log(&audit.Event{
+	_ = server.auditLogger.Log(&audit.Event{
 		ID:           "test-1",
 		Timestamp:    time.Now(),
 		UserID:       "user123",
@@ -275,7 +275,7 @@ func TestHandleSecurityAuditLogs(t *testing.T) {
 		Status:       audit.StatusSuccess,
 	})
 
-	server.auditLogger.Log(&audit.Event{
+	_ = server.auditLogger.Log(&audit.Event{
 		ID:           "test-2",
 		Timestamp:    time.Now(),
 		UserID:       "user456",
@@ -328,7 +328,7 @@ func TestHandleSecurityAuditLogs_WithFilters(t *testing.T) {
 	defer cleanup()
 
 	// Add test events
-	server.auditLogger.Log(&audit.Event{
+	_ = server.auditLogger.Log(&audit.Event{
 		ID:           "test-1",
 		Timestamp:    time.Now(),
 		UserID:       "user123",
@@ -338,7 +338,7 @@ func TestHandleSecurityAuditLogs_WithFilters(t *testing.T) {
 		Status:       audit.StatusSuccess,
 	})
 
-	server.auditLogger.Log(&audit.Event{
+	_ = server.auditLogger.Log(&audit.Event{
 		ID:           "test-2",
 		Timestamp:    time.Now(),
 		UserID:       "user456",
@@ -359,7 +359,7 @@ func TestHandleSecurityAuditLogs_WithFilters(t *testing.T) {
 	}
 
 	var response map[string]any
-	json.Unmarshal(rr.Body.Bytes(), &response)
+	_ = json.Unmarshal(rr.Body.Bytes(), &response)
 
 	events := response["events"].([]any)
 	if len(events) != 1 {
@@ -376,7 +376,7 @@ func TestHandleSecurityAuditLogs_WithLimit(t *testing.T) {
 
 	// Add 5 test events
 	for i := 0; i < 5; i++ {
-		server.auditLogger.Log(&audit.Event{
+		_ = server.auditLogger.Log(&audit.Event{
 			ID:           fmt.Sprintf("test-%d", i),
 			Timestamp:    time.Now(),
 			UserID:       fmt.Sprintf("user%d", i),
@@ -397,7 +397,7 @@ func TestHandleSecurityAuditLogs_WithLimit(t *testing.T) {
 	}
 
 	var response map[string]any
-	json.Unmarshal(rr.Body.Bytes(), &response)
+	_ = json.Unmarshal(rr.Body.Bytes(), &response)
 
 	events := response["events"].([]any)
 	if len(events) != 3 {
@@ -430,7 +430,7 @@ func TestHandleSecurityAuditExport(t *testing.T) {
 	defer cleanup()
 
 	// Add test audit events
-	server.auditLogger.Log(&audit.Event{
+	_ = server.auditLogger.Log(&audit.Event{
 		ID:           "export-test-1",
 		Timestamp:    time.Now(),
 		UserID:       "user123",
@@ -594,10 +594,10 @@ func TestHandleSecurityHealth_MethodNotAllowed(t *testing.T) {
 // TestHandleSecurityHealth_PartiallyEnabled tests health when some features are disabled
 func TestHandleSecurityHealth_PartiallyEnabled(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "security-test-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	gs, _ := storage.NewGraphStorage(tmpDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	server, err := NewServer(gs, 8080)
 	if err != nil {
@@ -615,7 +615,7 @@ func TestHandleSecurityHealth_PartiallyEnabled(t *testing.T) {
 	}
 
 	var response map[string]any
-	json.Unmarshal(rr.Body.Bytes(), &response)
+	_ = json.Unmarshal(rr.Body.Bytes(), &response)
 
 	components := response["components"].(map[string]any)
 	encryption := components["encryption"].(map[string]any)
@@ -657,7 +657,7 @@ func TestSecurityHandlers_Integration(t *testing.T) {
 	}
 
 	var keyInfo1 map[string]any
-	json.Unmarshal(rr.Body.Bytes(), &keyInfo1)
+	_ = json.Unmarshal(rr.Body.Bytes(), &keyInfo1)
 	t.Logf("✓ Step 2: Retrieved initial key info")
 
 	// 3. Rotate the key
@@ -670,7 +670,7 @@ func TestSecurityHandlers_Integration(t *testing.T) {
 	}
 
 	var rotateResp map[string]any
-	json.Unmarshal(rr.Body.Bytes(), &rotateResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &rotateResp)
 	newVersion := rotateResp["new_version"]
 	t.Logf("✓ Step 3: Key rotated to version %v", newVersion)
 
@@ -685,7 +685,7 @@ func TestSecurityHandlers_Integration(t *testing.T) {
 	t.Logf("✓ Step 4: Verified key info after rotation")
 
 	// 5. Generate some audit events
-	server.auditLogger.Log(&audit.Event{
+	_ = server.auditLogger.Log(&audit.Event{
 		ID:           "integration-test-1",
 		Timestamp:    time.Now(),
 		UserID:       "test-user",
@@ -704,7 +704,7 @@ func TestSecurityHandlers_Integration(t *testing.T) {
 	}
 
 	var auditResp map[string]any
-	json.Unmarshal(rr.Body.Bytes(), &auditResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &auditResp)
 	count := auditResp["count"].(float64)
 	t.Logf("✓ Step 5: Retrieved %d audit events", int(count))
 
@@ -731,7 +731,7 @@ func TestHandleSecurityAuditLogs_InvalidTimeFormat(t *testing.T) {
 	defer cleanup()
 
 	// Add a test event first
-	server.inMemoryAuditLogger.Log(&audit.Event{
+	_ = server.inMemoryAuditLogger.Log(&audit.Event{
 		ID:           "test-1",
 		Timestamp:    time.Now(),
 		UserID:       "user123",
@@ -801,7 +801,7 @@ func TestHandleSecurityAuditLogs_InvalidLimit(t *testing.T) {
 
 	// Add test events
 	for i := 0; i < 10; i++ {
-		server.inMemoryAuditLogger.Log(&audit.Event{
+		_ = server.inMemoryAuditLogger.Log(&audit.Event{
 			ID:           fmt.Sprintf("test-%d", i),
 			Timestamp:    time.Now(),
 			UserID:       "user123",
@@ -895,7 +895,7 @@ func TestHandleSecurityAuditLogs_InvalidFilterValues(t *testing.T) {
 	defer cleanup()
 
 	// Add a test event
-	server.inMemoryAuditLogger.Log(&audit.Event{
+	_ = server.inMemoryAuditLogger.Log(&audit.Event{
 		ID:           "test-1",
 		Timestamp:    time.Now(),
 		UserID:       "user123",
@@ -1000,10 +1000,10 @@ func TestHandleSecurityKeyRotate_ConcurrentRequests(t *testing.T) {
 // TestSecurityHandlers_EmptyAuditLog tests handlers with no audit events
 func TestSecurityHandlers_EmptyAuditLog(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "security-test-empty-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	gs, _ := storage.NewGraphStorage(tmpDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	server, err := NewServer(gs, 8080)
 	if err != nil {
@@ -1020,7 +1020,7 @@ func TestSecurityHandlers_EmptyAuditLog(t *testing.T) {
 	}
 
 	var response map[string]any
-	json.Unmarshal(rr.Body.Bytes(), &response)
+	_ = json.Unmarshal(rr.Body.Bytes(), &response)
 
 	count := response["count"].(float64)
 	if count != 0 {

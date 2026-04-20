@@ -22,7 +22,9 @@ func (s *Server) logAuditEvent(event *audit.Event) {
 	// Also log to in-memory logger if persistent logging is enabled
 	// This ensures the API can still query recent events
 	if s.persistentAudit != nil {
-		s.inMemoryAuditLogger.Log(event)
+		if err := s.inMemoryAuditLogger.Log(event); err != nil {
+			log.Printf("Failed to write in-memory audit log: %v", err)
+		}
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -198,7 +199,7 @@ func (s *Server) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusBadRequest, "Failed to read request body")
 		return
 	}
-	r.Body.Close()
+	_ = r.Body.Close()
 
 	// Parse the GraphQL request to extract query for complexity validation
 	var gqlReq graphql.GraphQLRequest
@@ -302,11 +303,15 @@ func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(spec)
+		if err := json.NewEncoder(w).Encode(spec); err != nil {
+			// Response is already partially sent (headers committed);
+			// can't respondError cleanly. Log for diagnostics.
+			log.Printf("openapi: json encode failed: %v", err)
+		}
 		return
 	}
 
 	// Serve as YAML
 	w.Header().Set("Content-Type", "application/x-yaml")
-	w.Write(specContent)
+	_, _ = w.Write(specContent)
 }

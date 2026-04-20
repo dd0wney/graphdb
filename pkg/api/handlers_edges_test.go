@@ -557,7 +557,7 @@ func TestEdge_Integration(t *testing.T) {
 	}
 
 	var createResp EdgeResponse
-	json.Unmarshal(rr.Body.Bytes(), &createResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &createResp)
 	edgeID := createResp.ID
 
 	t.Logf("✓ Created edge %d: %d -> %d", edgeID, nodeA.ID, nodeB.ID)
@@ -572,7 +572,7 @@ func TestEdge_Integration(t *testing.T) {
 	}
 
 	var retrieveResp EdgeResponse
-	json.Unmarshal(rr.Body.Bytes(), &retrieveResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &retrieveResp)
 
 	if retrieveResp.ID != edgeID {
 		t.Errorf("Expected edge ID %d, got %d", edgeID, retrieveResp.ID)
@@ -618,7 +618,7 @@ func TestEdge_Integration(t *testing.T) {
 	}
 
 	var batchResp BatchEdgeResponse
-	json.Unmarshal(rr.Body.Bytes(), &batchResp)
+	_ = json.Unmarshal(rr.Body.Bytes(), &batchResp)
 
 	if batchResp.Created != 2 {
 		t.Errorf("Expected 2 edges created, got %d", batchResp.Created)

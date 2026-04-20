@@ -234,7 +234,7 @@ func TestConcurrent_BatchOperations(t *testing.T) {
 
 			if rr.Code == http.StatusCreated {
 				var response BatchNodeResponse
-				json.Unmarshal(rr.Body.Bytes(), &response)
+				_ = json.Unmarshal(rr.Body.Bytes(), &response)
 				atomic.AddInt32(&totalCreated, int32(response.Created))
 			}
 		}(i)
@@ -264,7 +264,7 @@ func TestConcurrent_AlgorithmExecution(t *testing.T) {
 		nodeIDs[i] = node.ID
 
 		if i > 0 {
-			server.graph.CreateEdge(nodeIDs[i-1], nodeIDs[i], "LINK", map[string]storage.Value{}, 1.0)
+			_, _ = server.graph.CreateEdge(nodeIDs[i-1], nodeIDs[i], "LINK", map[string]storage.Value{}, 1.0)
 		}
 	}
 
@@ -313,7 +313,7 @@ func TestConcurrent_MixedOperations(t *testing.T) {
 
 	// Create initial data
 	for i := 0; i < 10; i++ {
-		server.graph.CreateNode([]string{"Initial"}, map[string]storage.Value{
+		_, _ = server.graph.CreateNode([]string{"Initial"}, map[string]storage.Value{
 			"id": storage.IntValue(int64(i)),
 		})
 	}
@@ -436,7 +436,7 @@ func TestStress_RapidCreationDeletion(t *testing.T) {
 
 			if rr.Code == http.StatusCreated {
 				var response NodeResponse
-				json.Unmarshal(rr.Body.Bytes(), &response)
+				_ = json.Unmarshal(rr.Body.Bytes(), &response)
 				nodeIDs = append(nodeIDs, response.ID)
 				atomic.AddInt32(&totalCreated, 1)
 			}

@@ -68,6 +68,12 @@ func (c *suilClient) info(message string, fields map[string]any) {
 	c.log("info", message, fields)
 }
 
+// logError is the error-level counterpart to info(). Kept for symmetry
+// of the observability API surface; callers can escalate to this level
+// when they introduce error-path instrumentation without re-implementing
+// the wrapping.
+//
+//nolint:unused // observability API surface reserved for error-level callers
 func (c *suilClient) logError(message string, fields map[string]any) {
 	c.log("error", message, fields)
 }
@@ -133,7 +139,7 @@ func (c *suilClient) flush() {
 	if err != nil {
 		return
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // suilMiddleware instruments HTTP requests. No-op if client is nil.

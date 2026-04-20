@@ -148,7 +148,7 @@ func TestCreateNode_PropertySanitization(t *testing.T) {
 
 			// Parse response and check that dangerous content was sanitized
 			var response NodeResponse
-			json.NewDecoder(rr.Body).Decode(&response)
+			_ = json.NewDecoder(rr.Body).Decode(&response)
 
 			bioValue, exists := response.Properties["bio"]
 			if !exists {

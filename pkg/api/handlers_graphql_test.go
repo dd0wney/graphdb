@@ -18,7 +18,7 @@ func TestGraphQL_ComplexityValidation(t *testing.T) {
 
 	// Create some test data and regenerate schema to include the new labels
 	for i := 0; i < 5; i++ {
-		server.graph.CreateNode([]string{"Person"}, map[string]storage.Value{
+		_, _ = server.graph.CreateNode([]string{"Person"}, map[string]storage.Value{
 			"name": storage.StringValue("Person"),
 		})
 	}
@@ -165,7 +165,7 @@ func TestGraphQL_LimitsEnforced(t *testing.T) {
 
 	// Create more nodes than the default limit
 	for i := 0; i < 150; i++ {
-		server.graph.CreateNode([]string{"Item"}, map[string]storage.Value{
+		_, _ = server.graph.CreateNode([]string{"Item"}, map[string]storage.Value{
 			"name": storage.StringValue("Item"),
 		})
 	}
