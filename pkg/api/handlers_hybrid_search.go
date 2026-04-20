@@ -191,19 +191,22 @@ func (s *Server) handleHybridSearch(w http.ResponseWriter, r *http.Request) {
 		return mergedList[i].id < mergedList[j].id
 	})
 
-	// Label post-filter — requires the FTS-hydrated Node. Results that
-	// came from LSA only (not in FTS) don't have a node here; if a label
-	// filter is requested we drop them rather than fetch (keeps hot path
-	// I/O-free; future revision can hydrate on demand).
+	// Label post-filter. FTS-stage candidates already carry a hydrated
+	// node; LSA-only candidates need an on-demand GetNode. Cost is
+	// bounded by overFetchK, which in turn is bounded by 3*(limit+offset).
+	// Filter mismatches (and GetNode failures from deleted nodes) are
+	// dropped from the result set.
 	if len(req.Labels) > 0 {
 		filtered := mergedList[:0]
 		for _, m := range mergedList {
 			if m.ftsNode == nil {
-				continue
+				node, err := s.graph.GetNode(m.id)
+				if err != nil || node == nil {
+					continue
+				}
+				m.ftsNode = s.nodeToResponse(node)
 			}
-			labels := make([]string, len(m.ftsNode.Labels))
-			copy(labels, m.ftsNode.Labels)
-			if hasAnyLabel(labels, req.Labels) {
+			if hasAnyLabel(m.ftsNode.Labels, req.Labels) {
 				filtered = append(filtered, m)
 			}
 		}

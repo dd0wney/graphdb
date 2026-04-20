@@ -259,3 +259,39 @@ func TestHybridSearch_LimitClamp(t *testing.T) {
 		t.Errorf("Limit=500 produced %d results, want ≤ %d", len(resp.Results), hybridMaxLimit)
 	}
 }
+
+// TestHybridSearch_LabelFiltersLSAOnly ensures the label post-filter
+// works on LSA-only candidates too (those not returned by FTS). Before
+// the on-demand GetNode hydration, these candidates were dropped from
+// any label-filtered query because they had no hydrated node to check.
+func TestHybridSearch_LabelFiltersLSAOnly(t *testing.T) {
+	server, cleanup := hybridServerWithCorpus(t, "default")
+	defer cleanup()
+
+	// "neighbor" appears in the corpus in docs labeled "Doc" only; no
+	// "Note"-labeled doc mentions it. With alpha=0.0 (pure LSA) we
+	// rely on semantic neighbors — docs that don't literally contain
+	// the word but sit nearby in latent space. Those LSA-only matches
+	// must still respect a "Doc"-only label filter.
+	zero := 0.0
+	_, resp := hybridRequest(t, server, "default", HybridSearchRequest{
+		Query:        "retrieval",
+		Alpha:        &zero,
+		Labels:       []string{"Doc"},
+		IncludeNodes: true,
+	})
+
+	if len(resp.Results) == 0 {
+		t.Skip("alpha=0 LSA path returned no candidates; corpus too small to exercise")
+	}
+
+	for _, r := range resp.Results {
+		if r.Node == nil {
+			t.Errorf("result NodeID=%d: want Node populated by on-demand hydration, got nil", r.NodeID)
+			continue
+		}
+		if !hasAnyLabel(r.Node.Labels, []string{"Doc"}) {
+			t.Errorf("result NodeID=%d labels=%v; want 'Doc'", r.NodeID, r.Node.Labels)
+		}
+	}
+}
