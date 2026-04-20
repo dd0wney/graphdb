@@ -171,10 +171,9 @@ func TestPerformanceRegression_NodeQuery(t *testing.T) {
 	startTime := time.Now()
 	for i := 0; i < queryCount; i++ {
 		nodeID := uint64(i % nodeCount)
-		_, err := gs.GetNode(nodeID)
-		if err != nil {
-			// Some queries may fail, that's OK for this test
-		}
+		// Ignore errors — this bench measures throughput, not correctness.
+		// Some IDs may miss the node table; that's an acceptable no-op.
+		_, _ = gs.GetNode(nodeID)
 	}
 	duration := time.Since(startTime)
 

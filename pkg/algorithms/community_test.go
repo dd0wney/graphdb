@@ -585,12 +585,9 @@ func TestModularity_ConnectedComponentsIntegration(t *testing.T) {
 		t.Fatalf("ConnectedComponents failed: %v", err)
 	}
 
-	// Modularity should be calculated (not 0.0 placeholder)
-	// Disconnected components should have positive modularity
-	if result.Modularity == 0.0 && len(result.Communities) > 1 {
-		// This is actually valid - small disconnected graphs can have modularity = 0
-		// The key is that the calculation was performed
-	}
+	// Small disconnected graphs can legitimately have Modularity == 0
+	// (the calculation still executed; there's just no community
+	// structure to score). The real invariant is the range check below.
 
 	// Modularity must be in valid range
 	if result.Modularity < -0.5 || result.Modularity > 1.0 {

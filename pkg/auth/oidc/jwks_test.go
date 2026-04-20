@@ -313,7 +313,7 @@ func TestFindKeyByKid(t *testing.T) {
 	// Find existing key
 	key := FindKeyByKid(&testJWKS, "test-key-1")
 	if key == nil {
-		t.Error("Expected to find test-key-1")
+		t.Fatal("Expected to find test-key-1")
 	}
 	if key.Kid != "test-key-1" {
 		t.Errorf("Expected kid test-key-1, got %s", key.Kid)

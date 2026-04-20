@@ -26,7 +26,7 @@ func TestStateStore_GenerateAndValidate(t *testing.T) {
 		t.Error("Expected state to be valid")
 	}
 	if entry == nil {
-		t.Error("Expected entry to be returned")
+		t.Fatal("Expected entry to be returned")
 	}
 	if entry.Nonce == "" {
 		t.Error("Expected nonce to be set")

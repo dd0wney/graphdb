@@ -176,13 +176,9 @@ func (gs *GraphStorage) allocateNodeID() (uint64, error) {
 	// Note: AddUint64 returns the NEW value, so we subtract 1 to get the allocated ID
 	nodeID := atomic.AddUint64(&gs.nextNodeID, 1) - 1
 
-	// Check for ID space exhaustion (overflow detection)
-	// If we've wrapped around to 0, the previous value was MaxUint64
-	if nodeID == 0 && atomic.LoadUint64(&gs.nextNodeID) > 1 {
-		// This is actually checking if we started from a valid state
-		// The real overflow check is if nodeID is close to max
-	}
-	if nodeID >= ^uint64(0)-1 { // Near MaxUint64
+	// Detect ID space exhaustion. AddUint64 will wrap at MaxUint64, so
+	// a returned nodeID near the cap means we've consumed the space.
+	if nodeID >= ^uint64(0)-1 {
 		return 0, fmt.Errorf("node ID space exhausted")
 	}
 
