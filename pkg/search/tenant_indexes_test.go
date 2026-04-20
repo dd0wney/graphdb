@@ -24,7 +24,7 @@ func TestTenantIndexes_Isolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Tenant A: the word "alpha" is tenant-A-only content.
 	if _, err := gs.CreateNodeWithTenant("tenant-A", []string{"Article"}, map[string]storage.Value{
@@ -101,7 +101,7 @@ func TestTenantIndexes_LazyGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	ti := NewTenantIndexes(gs)
 
@@ -132,7 +132,7 @@ func TestIndexPrepared_FirstTimeDoesNotUnderflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node, err := gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"body": storage.StringValue("some content for indexing"),

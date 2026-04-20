@@ -20,18 +20,18 @@ func TestBasicTextSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test nodes
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":        storage.StringValue("Alice Johnson"),
 		"description": storage.StringValue("Software engineer"),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":        storage.StringValue("Bob Smith"),
 		"description": storage.StringValue("Data scientist"),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":        storage.StringValue("Charlie Brown"),
 		"description": storage.StringValue("Software architect"),
 	})
@@ -67,15 +67,15 @@ func TestCaseInsensitiveSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Document"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Document"}, map[string]storage.Value{
 		"title":   storage.StringValue("The Quick Brown Fox"),
 		"content": storage.StringValue("Jumps over the lazy dog"),
 	})
 
 	index := NewFullTextIndex(gs)
-	index.IndexNodes([]string{"Document"}, []string{"title", "content"})
+	_ = index.IndexNodes([]string{"Document"}, []string{"title", "content"})
 
 	// Search with different cases
 	testCases := []string{"QUICK", "quick", "QuIcK", "BROWN", "brown"}
@@ -103,20 +103,20 @@ func TestMultiWordSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Introduction to Machine Learning"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Deep Learning Fundamentals"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Machine Learning and Deep Learning"),
 	})
 
 	index := NewFullTextIndex(gs)
-	index.IndexNodes([]string{"Article"}, []string{"title"})
+	_ = index.IndexNodes([]string{"Article"}, []string{"title"})
 
 	// Search for "machine learning" (both words)
 	results, err := index.Search("machine learning")
@@ -142,20 +142,20 @@ func TestPhraseSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Document"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Document"}, map[string]storage.Value{
 		"content": storage.StringValue("New York City is amazing"),
 	})
-	gs.CreateNode([]string{"Document"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Document"}, map[string]storage.Value{
 		"content": storage.StringValue("York is a city in England"),
 	})
-	gs.CreateNode([]string{"Document"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Document"}, map[string]storage.Value{
 		"content": storage.StringValue("I live in New York"),
 	})
 
 	index := NewFullTextIndex(gs)
-	index.IndexNodes([]string{"Document"}, []string{"content"})
+	_ = index.IndexNodes([]string{"Document"}, []string{"content"})
 
 	// Search for exact phrase "New York"
 	results, err := index.SearchPhrase("New York")
@@ -181,23 +181,23 @@ func TestBooleanSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Python programming tutorial"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Java programming guide"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Python data analysis"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("JavaScript tutorial"),
 	})
 
 	index := NewFullTextIndex(gs)
-	index.IndexNodes([]string{"Article"}, []string{"title"})
+	_ = index.IndexNodes([]string{"Article"}, []string{"title"})
 
 	// Test AND: "python AND programming"
 	andResults, err := index.SearchBoolean("python AND programming")
@@ -239,26 +239,26 @@ func TestRelevanceScoring(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Node 1: "database" appears once
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Introduction to database systems"),
 	})
 
 	// Node 2: "database" appears three times
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title":   storage.StringValue("Database design patterns"),
 		"content": storage.StringValue("Database architecture and database optimization"),
 	})
 
 	// Node 3: "database" appears twice
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Database fundamentals and database queries"),
 	})
 
 	index := NewFullTextIndex(gs)
-	index.IndexNodes([]string{"Article"}, []string{"title", "content"})
+	_ = index.IndexNodes([]string{"Article"}, []string{"title", "content"})
 
 	results, err := index.Search("database")
 	if err != nil {
@@ -290,17 +290,17 @@ func TestFuzzySearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Product"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Product"}, map[string]storage.Value{
 		"name": storage.StringValue("Laptop Computer"),
 	})
-	gs.CreateNode([]string{"Product"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Product"}, map[string]storage.Value{
 		"name": storage.StringValue("Desktop Computer"),
 	})
 
 	index := NewFullTextIndex(gs)
-	index.IndexNodes([]string{"Product"}, []string{"name"})
+	_ = index.IndexNodes([]string{"Product"}, []string{"name"})
 
 	// Search with typo: "compter" instead of "computer"
 	results, err := index.SearchFuzzy("compter", 2) // max edit distance of 2
@@ -326,19 +326,19 @@ func TestSearchOnSpecificProperty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":  storage.StringValue("John Developer"),
 		"title": storage.StringValue("Manager"),
 	})
-	gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name":  storage.StringValue("Jane Manager"),
 		"title": storage.StringValue("Developer"),
 	})
 
 	index := NewFullTextIndex(gs)
-	index.IndexNodes([]string{"Person"}, []string{"name", "title"})
+	_ = index.IndexNodes([]string{"Person"}, []string{"name", "title"})
 
 	// Search only in "title" property
 	results, err := index.SearchInProperty("title", "developer")
@@ -364,14 +364,14 @@ func TestIndexUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node, _ := gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Original Title"),
 	})
 
 	index := NewFullTextIndex(gs)
-	index.IndexNodes([]string{"Article"}, []string{"title"})
+	_ = index.IndexNodes([]string{"Article"}, []string{"title"})
 
 	// Search for "original" should find it
 	results1, _ := index.Search("original")
@@ -380,12 +380,12 @@ func TestIndexUpdate(t *testing.T) {
 	}
 
 	// Update the node
-	gs.UpdateNode(node.ID, map[string]storage.Value{
+	_ = gs.UpdateNode(node.ID, map[string]storage.Value{
 		"title": storage.StringValue("Updated Title"),
 	})
 
 	// Reindex
-	index.UpdateNode(node.ID)
+	_ = index.UpdateNode(node.ID)
 
 	// Search for "original" should find nothing
 	results2, _ := index.Search("original")
@@ -412,7 +412,7 @@ func TestEmptySearchQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	index := NewFullTextIndex(gs)
 
@@ -438,14 +438,14 @@ func TestSearchWithNoMatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("GraphDB Tutorial"),
 	})
 
 	index := NewFullTextIndex(gs)
-	index.IndexNodes([]string{"Article"}, []string{"title"})
+	_ = index.IndexNodes([]string{"Article"}, []string{"title"})
 
 	results, err := index.Search("nonexistent")
 	if err != nil {
@@ -471,12 +471,12 @@ func TestSearchBooleanNoOperator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("GraphDB Tutorial"),
 	})
-	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+	_, _ = gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Advanced GraphDB Topics"),
 	})
 
@@ -508,7 +508,7 @@ func TestNodeContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node, err := gs.CreateNode([]string{"Article"}, map[string]storage.Value{
 		"title": storage.StringValue("Metempsychosis"),
@@ -557,7 +557,7 @@ func TestSearchTopK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	for i := 0; i < 5; i++ {
 		if _, err := gs.CreateNode([]string{"Article"}, map[string]storage.Value{
@@ -610,7 +610,7 @@ func BenchmarkSearchVsSearchTopK(b *testing.B) {
 	if err != nil {
 		b.Fatalf("storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	const corpusSize = 1000
 	for i := 0; i < corpusSize; i++ {
@@ -661,7 +661,7 @@ func BenchmarkUpdateNodeLargeVocab(b *testing.B) {
 	if err != nil {
 		b.Fatalf("storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// 2000 docs × ~6 unique tokens each gives vocab ≈ 12000, doc-terms ≈ 6.
 	// Theoretical ratio vocab/doc-terms = 2000×, so post-fix UpdateNode
