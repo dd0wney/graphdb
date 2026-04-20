@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/auth"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
@@ -203,6 +204,63 @@ func TestLSAIndex_CorpusTooSmall(t *testing.T) {
 	})
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Errorf("want 422 for too-small corpus, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// TestSearchIndexAdmin_RoleGuard exercises the middleware chain for
+// the index-admin routes (requireAdmin → withTenant → handler): admin
+// users pass, viewer/non-admin users get 403. This is the end-to-end
+// check that complements the handler-level tests which bypass middleware.
+func TestSearchIndexAdmin_RoleGuard(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	adminUser, err := server.userStore.CreateUser("idx-admin", "pw-admin-12345", auth.RoleAdmin)
+	if err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+	viewerUser, err := server.userStore.CreateUser("idx-viewer", "pw-viewer-12345", auth.RoleViewer)
+	if err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+	adminTok, err := server.jwtManager.GenerateToken(adminUser.ID, adminUser.Username, adminUser.Role)
+	if err != nil {
+		t.Fatalf("token admin: %v", err)
+	}
+	viewerTok, err := server.jwtManager.GenerateToken(viewerUser.ID, viewerUser.Username, viewerUser.Role)
+	if err != nil {
+		t.Fatalf("token viewer: %v", err)
+	}
+
+	chain := server.requireAdmin(server.withTenant(server.handleSearchIndex))
+
+	body, _ := json.Marshal(SearchIndexRequest{
+		Labels:     []string{"Doc"},
+		Properties: []string{"body"},
+	})
+
+	cases := []struct {
+		name       string
+		token      string
+		wantStatus int
+	}{
+		{"admin 200", adminTok, http.StatusOK},
+		{"viewer 403", viewerTok, http.StatusForbidden},
+		{"no token 401", "", http.StatusUnauthorized},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/search/index", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			if tc.token != "" {
+				req.Header.Set("Authorization", "Bearer "+tc.token)
+			}
+			rr := httptest.NewRecorder()
+			chain(rr, req)
+			if rr.Code != tc.wantStatus {
+				t.Errorf("want %d, got %d: %s", tc.wantStatus, rr.Code, rr.Body.String())
+			}
+		})
 	}
 }
 
