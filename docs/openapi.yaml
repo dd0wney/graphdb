@@ -1208,6 +1208,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /search:
+    post:
+      tags:
+        - Full-Text Search
+      summary: Ranked full-text search over the tenant's index
+      description: |
+        Returns nodes ranked by TF-IDF relevance for a free-text query.
+        Scoped to the caller's tenant — cross-tenant results are never
+        returned. An un-indexed tenant returns zero results rather than
+        an error; indexes are populated out-of-band by administrators.
+
+        **Behavior:**
+        - `limit` defaults to 20, clamped silently at 100.
+        - `offset` paginates; the underlying ranking breaks score ties
+          by NodeID ascending so pages are stable across calls.
+        - `labels` is a post-filter on Node.Labels — a highly selective
+          label can produce fewer than `limit` results.
+        - `include_content` returns a rune-safe 160-character excerpt
+          of the indexed text (full match-aware snippets are planned).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Ranked search results for the tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: Missing or empty query, or malformed body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '405':
+          description: Method not allowed (POST only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # Security Management endpoints
   /api/v1/security/keys/rotate:
     post:
@@ -1737,6 +1784,77 @@ components:
           type: integer
           format: int64
           description: Search execution time in milliseconds
+          example: 3
+
+    SearchRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: Free-text query. Must be non-empty after trim.
+          example: metempsychosis
+        limit:
+          type: integer
+          description: Maximum results to return. Default 20, clamped at 100.
+          minimum: 1
+          maximum: 100
+          example: 20
+        offset:
+          type: integer
+          description: Number of results to skip for pagination.
+          minimum: 0
+          example: 0
+        labels:
+          type: array
+          description: Optional label post-filter — results matching none are excluded.
+          items:
+            type: string
+          example: ["Article", "Note"]
+        include_content:
+          type: boolean
+          description: If true, populate `snippet` with a rune-safe 160-char excerpt.
+          example: false
+        include_nodes:
+          type: boolean
+          description: If true, populate `node` with full node data.
+          example: false
+
+    SearchResultItem:
+      type: object
+      properties:
+        node_id:
+          type: integer
+          format: int64
+          example: 12345
+        score:
+          type: number
+          format: double
+          description: TF-IDF relevance score (higher = more relevant).
+          example: 7.42
+        snippet:
+          type: string
+          description: Truncated text excerpt (present when include_content=true).
+          example: "the word metempsychosis he'd heard from the bookseller"
+        node:
+          $ref: '#/components/schemas/Node'
+
+    SearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResultItem'
+        count:
+          type: integer
+          description: Number of results returned (after pagination).
+          example: 17
+        took_ms:
+          type: integer
+          format: int64
+          description: Search execution time in milliseconds.
           example: 3
 
   responses:
