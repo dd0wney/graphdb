@@ -34,16 +34,14 @@ func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 			nodeIDs = append(nodeIDs, nodeID)
 		}
 
-		// Add 3 edges
-		edgeIDs := make([]uint64, 0)
+		// Add 3 edges. Edge IDs aren't retained — the test's assertions
+		// are on counts / FindEdgesByType, not on specific edges.
 		for i := 0; i < 3; i++ {
-			edgeID, err := batch.AddEdge(nodeIDs[i], nodeIDs[i+1], "KNOWS", map[string]Value{
+			if _, err := batch.AddEdge(nodeIDs[i], nodeIDs[i+1], "KNOWS", map[string]Value{
 				"since": IntValue(2020 + int64(i)),
-			}, 1.0)
-			if err != nil {
+			}, 1.0); err != nil {
 				t.Fatalf("AddEdge failed: %v", err)
 			}
-			edgeIDs = append(edgeIDs, edgeID)
 		}
 
 		// Commit batch

@@ -174,9 +174,10 @@ func ListSSTables(dir string) ([][]*SSTable, error) {
 		return nil, fmt.Errorf("glob SSTable files: %w", err)
 	}
 
-	// Group by level
+	// Group by level. This function returns partial results on error —
+	// successfully-opened SSTables are passed back via `levels`, so the
+	// caller owns them and no cleanup-on-error tracking is needed here.
 	levelMap := make(map[int][]*SSTable)
-	var openedSSTables []*SSTable // Track for cleanup on error
 	var errs []error
 
 	for _, path := range files {
@@ -193,7 +194,6 @@ func ListSSTables(dir string) ([][]*SSTable, error) {
 			continue
 		}
 
-		openedSSTables = append(openedSSTables, sst)
 		levelMap[level] = append(levelMap[level], sst)
 	}
 

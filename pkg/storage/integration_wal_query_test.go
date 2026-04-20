@@ -10,7 +10,9 @@ func TestGraphStorage_LabelIndexRecovery(t *testing.T) {
 	dataDir := t.TempDir()
 	defer func() { _ = os.RemoveAll(dataDir) }()
 
-	var personIDs, companyIDs []uint64
+	// personIDs is read across the crash boundary (re-verified on Phase 2);
+	// Company IDs aren't retained — the test asserts on label counts only.
+	var personIDs []uint64
 
 	// Phase 1: Create nodes with different labels, crash (no Close)
 	{
@@ -26,10 +28,9 @@ func TestGraphStorage_LabelIndexRecovery(t *testing.T) {
 			personIDs = append(personIDs, node.ID)
 		}
 
-		// Create Company nodes
+		// Create Company nodes — IDs not retained.
 		for i := 0; i < 3; i++ {
-			node, _ := gs.CreateNode([]string{"Company"}, nil)
-			companyIDs = append(companyIDs, node.ID)
+			_, _ = gs.CreateNode([]string{"Company"}, nil)
 		}
 
 		// Create multi-label nodes
@@ -111,7 +112,9 @@ func TestGraphStorage_TypeIndexRecovery(t *testing.T) {
 	dataDir := t.TempDir()
 	defer func() { _ = os.RemoveAll(dataDir) }()
 
-	var knowsIDs, worksAtIDs []uint64
+	// knowsIDs is re-read after crash recovery; WORKS_AT IDs aren't
+	// retained — the test asserts on FindEdgesByType counts only.
+	var knowsIDs []uint64
 
 	// Phase 1: Create edges with different types, crash
 	{
@@ -132,10 +135,9 @@ func TestGraphStorage_TypeIndexRecovery(t *testing.T) {
 			knowsIDs = append(knowsIDs, edge.ID)
 		}
 
-		// Create WORKS_AT edges
+		// Create WORKS_AT edges — IDs not retained.
 		for i := 0; i < 3; i++ {
-			edge, _ := gs.CreateEdge(person1.ID, company.ID, "WORKS_AT", nil, 1.0)
-			worksAtIDs = append(worksAtIDs, edge.ID)
+			_, _ = gs.CreateEdge(person1.ID, company.ID, "WORKS_AT", nil, 1.0)
 		}
 
 		// Verify type index before crash

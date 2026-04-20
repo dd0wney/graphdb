@@ -462,10 +462,10 @@ func TestGraphStorage_StatisticsWithConcurrentOperations(t *testing.T) {
 	defer func() { _ = gs.Close() }()
 
 	// Create initial nodes
-	var nodeIDs []uint64
+	// Create initial nodes — IDs not retained; the test asserts on
+	// stats/counts later, not on specific nodes.
 	for i := 0; i < 10; i++ {
-		node, _ := gs.CreateNode([]string{"Person"}, nil)
-		nodeIDs = append(nodeIDs, node.ID)
+		_, _ = gs.CreateNode([]string{"Person"}, nil)
 	}
 
 	// Concurrently create 100 more nodes
