@@ -56,8 +56,8 @@ func TestIntegration_SCCFeedsLinkPrediction(t *testing.T) {
 	opts.Direction = DirectionOut
 	opts.ExcludeExisting = false
 
-	scoreAD, err := PredictLinkScore(gs, a.ID, d.ID, opts)
-	if err != nil {
+	// First call exercises DirectionOut; score value isn't asserted here.
+	if _, err := PredictLinkScore(gs, a.ID, d.ID, opts); err != nil {
 		t.Fatalf("PredictLinkScore A->D failed: %v", err)
 	}
 
@@ -68,7 +68,7 @@ func TestIntegration_SCCFeedsLinkPrediction(t *testing.T) {
 
 	// Use DirectionBoth for broader reach
 	opts.Direction = DirectionBoth
-	scoreAD, err = PredictLinkScore(gs, a.ID, d.ID, opts)
+	scoreAD, err := PredictLinkScore(gs, a.ID, d.ID, opts)
 	if err != nil {
 		t.Fatalf("PredictLinkScore A->D (both) failed: %v", err)
 	}

@@ -484,8 +484,10 @@ func TestValidator_GetConstraints_Immutability(t *testing.T) {
 	// Get constraints
 	constraints := validator.GetConstraints()
 
-	// Modify returned slice (should not affect validator)
-	constraints = append(constraints, &PropertyConstraint{
+	// Modify returned slice (should not affect validator). Discard the
+	// result of append — the test's invariant is that validator's
+	// internal slice is untouched, not that the local grew.
+	_ = append(constraints, &PropertyConstraint{
 		NodeLabel:    "User",
 		PropertyName: "name",
 		Required:     true,

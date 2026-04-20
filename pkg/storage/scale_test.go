@@ -443,13 +443,12 @@ func BenchmarkLargeGraphTraversal(b *testing.B) {
 		startNode := nodes[i%nodeCount]
 		edges, _ := gs.GetOutgoingEdges(startNode.ID)
 
-		// Follow the chain for a few steps
-		currentID := startNode.ID
+		// Follow the chain for a few steps. currentID is scoped inside
+		// the loop — the prior outer assignment to startNode.ID was
+		// never read since the loop reassigns immediately.
 		for j := 0; j < 10 && len(edges) > 0; j++ {
-			if len(edges) > 0 {
-				currentID = edges[0].ToNodeID
-				edges, _ = gs.GetOutgoingEdges(currentID)
-			}
+			currentID := edges[0].ToNodeID
+			edges, _ = gs.GetOutgoingEdges(currentID)
 		}
 	}
 }

@@ -90,8 +90,9 @@ func TestEdgeCase_SingleNode(t *testing.T) {
 		t.Errorf("Failed to delete single node: %v", err)
 	}
 
-	// Verify node is gone
-	retrieved, err = gs.GetNode(node.ID)
+	// Verify node is gone. GetNode's err signals "not found"; the test
+	// asserts on the nil-retrieved path, so the error itself is expected.
+	retrieved, _ = gs.GetNode(node.ID)
 	if retrieved != nil {
 		t.Error("Node still exists after deletion")
 	}
