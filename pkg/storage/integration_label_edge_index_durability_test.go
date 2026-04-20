@@ -8,7 +8,7 @@ import (
 // TestLabelIndexDurability_CrashRecovery tests label indexes survive crash
 func TestLabelIndexDurability_CrashRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create nodes with labels, crash
 	{
@@ -73,7 +73,7 @@ func TestLabelIndexDurability_CrashRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify Person nodes
 		persons, err := gs.FindNodesByLabel("Person")
@@ -101,7 +101,7 @@ func TestLabelIndexDurability_CrashRecovery(t *testing.T) {
 // TestLabelIndexDurability_MultipleLabels tests nodes with multiple labels
 func TestLabelIndexDurability_MultipleLabels(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create nodes with multiple labels, crash
 	{
@@ -147,7 +147,7 @@ func TestLabelIndexDurability_MultipleLabels(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify Person label
 		persons, err := gs.FindNodesByLabel("Person")
@@ -175,7 +175,7 @@ func TestLabelIndexDurability_MultipleLabels(t *testing.T) {
 // TestLabelIndexDurability_DeleteNode tests label index cleanup after delete
 func TestLabelIndexDurability_DeleteNode(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node2ID uint64
 
@@ -191,9 +191,9 @@ func TestLabelIndexDurability_DeleteNode(t *testing.T) {
 		}
 
 		// Create 3 Person nodes
-		gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Alice")})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Alice")})
 		node2, _ := gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Bob")})
-		gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Charlie")})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Charlie")})
 		node2ID = node2.ID
 
 		// Delete Bob
@@ -223,7 +223,7 @@ func TestLabelIndexDurability_DeleteNode(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify only 2 Person nodes
 		persons, err := gs.FindNodesByLabel("Person")
@@ -247,7 +247,7 @@ func TestLabelIndexDurability_DeleteNode(t *testing.T) {
 // TestEdgeTypeIndexDurability_CrashRecovery tests edge type indexes survive crash
 func TestEdgeTypeIndexDurability_CrashRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create edges with different types, crash
 	{
@@ -308,7 +308,7 @@ func TestEdgeTypeIndexDurability_CrashRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify KNOWS edges
 		knows, err := gs.FindEdgesByType("KNOWS")
@@ -336,7 +336,7 @@ func TestEdgeTypeIndexDurability_CrashRecovery(t *testing.T) {
 // TestEdgeTypeIndexDurability_DeleteEdge tests edge type index cleanup after delete
 func TestEdgeTypeIndexDurability_DeleteEdge(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var edge2ID uint64
 
@@ -356,9 +356,9 @@ func TestEdgeTypeIndexDurability_DeleteEdge(t *testing.T) {
 		node2, _ := gs.CreateNode([]string{"Person"}, nil)
 
 		// Create 3 KNOWS edges
-		gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
 		edge2, _ := gs.CreateEdge(node2.ID, node1.ID, "KNOWS", nil, 1.0)
-		gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
 		edge2ID = edge2.ID
 
 		// Delete edge2
@@ -388,7 +388,7 @@ func TestEdgeTypeIndexDurability_DeleteEdge(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify only 2 KNOWS edges
 		knows, err := gs.FindEdgesByType("KNOWS")
@@ -412,7 +412,7 @@ func TestEdgeTypeIndexDurability_DeleteEdge(t *testing.T) {
 // TestLabelIndexDurability_SnapshotRecovery tests labels survive snapshot
 func TestLabelIndexDurability_SnapshotRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create nodes, close cleanly (snapshot)
 	{
@@ -427,10 +427,10 @@ func TestLabelIndexDurability_SnapshotRecovery(t *testing.T) {
 
 		// Create nodes with different labels
 		for i := 0; i < 10; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{"id": IntValue(int64(i))})
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"id": IntValue(int64(i))})
 		}
 		for i := 0; i < 5; i++ {
-			gs.CreateNode([]string{"Company"}, map[string]Value{"id": IntValue(int64(i))})
+			_, _ = gs.CreateNode([]string{"Company"}, map[string]Value{"id": IntValue(int64(i))})
 		}
 
 		// Close cleanly
@@ -452,7 +452,7 @@ func TestLabelIndexDurability_SnapshotRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover from snapshot: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify label indexes
 		persons, _ := gs.FindNodesByLabel("Person")
@@ -473,7 +473,7 @@ func TestLabelIndexDurability_SnapshotRecovery(t *testing.T) {
 // TestEdgeTypeIndexDurability_SnapshotRecovery tests edge types survive snapshot
 func TestEdgeTypeIndexDurability_SnapshotRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create edges, close cleanly (snapshot)
 	{
@@ -492,10 +492,10 @@ func TestEdgeTypeIndexDurability_SnapshotRecovery(t *testing.T) {
 
 		// Create edges with different types
 		for i := 0; i < 5; i++ {
-			gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
+			_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
 		}
 		for i := 0; i < 3; i++ {
-			gs.CreateEdge(node1.ID, node2.ID, "WORKS_WITH", nil, 1.0)
+			_, _ = gs.CreateEdge(node1.ID, node2.ID, "WORKS_WITH", nil, 1.0)
 		}
 
 		// Close cleanly
@@ -517,7 +517,7 @@ func TestEdgeTypeIndexDurability_SnapshotRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover from snapshot: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify edge type indexes
 		knows, _ := gs.FindEdgesByType("KNOWS")
@@ -538,7 +538,7 @@ func TestEdgeTypeIndexDurability_SnapshotRecovery(t *testing.T) {
 // TestMixedIndexDurability tests both label and edge type indexes together
 func TestMixedIndexDurability(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create complex graph, crash
 	{
@@ -571,12 +571,12 @@ func TestMixedIndexDurability(t *testing.T) {
 
 		// Create KNOWS edges between Persons
 		for i := 0; i < 4; i++ {
-			gs.CreateEdge(personIDs[i], personIDs[i+1], "KNOWS", nil, 1.0)
+			_, _ = gs.CreateEdge(personIDs[i], personIDs[i+1], "KNOWS", nil, 1.0)
 		}
 
 		// Create WORKS_FOR edges from Persons to Companies
 		for i := 0; i < 5; i++ {
-			gs.CreateEdge(personIDs[i], companyIDs[i%3], "WORKS_FOR", nil, 1.0)
+			_, _ = gs.CreateEdge(personIDs[i], companyIDs[i%3], "WORKS_FOR", nil, 1.0)
 		}
 
 		t.Log("Before crash: 5 Person, 3 Company, 4 KNOWS, 5 WORKS_FOR")
@@ -594,7 +594,7 @@ func TestMixedIndexDurability(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify label indexes
 		persons, _ := gs.FindNodesByLabel("Person")

@@ -8,7 +8,7 @@ import (
 // TestPropertyIndexDurability_CreateIndexThenNodes tests index creation before nodes
 func TestPropertyIndexDurability_CreateIndexThenNodes(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create index, add nodes, crash
 	{
@@ -59,7 +59,7 @@ func TestPropertyIndexDurability_CreateIndexThenNodes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Check if index exists
 		if _, exists := gs.propertyIndexes["age"]; !exists {
@@ -88,7 +88,7 @@ func TestPropertyIndexDurability_CreateIndexThenNodes(t *testing.T) {
 // TestPropertyIndexDurability_NodesBeforeIndex tests nodes created before index
 func TestPropertyIndexDurability_NodesBeforeIndex(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create nodes FIRST, then index, then crash
 	{
@@ -139,7 +139,7 @@ func TestPropertyIndexDurability_NodesBeforeIndex(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Check if index exists
 		if _, exists := gs.propertyIndexes["age"]; !exists {
@@ -169,7 +169,7 @@ func TestPropertyIndexDurability_NodesBeforeIndex(t *testing.T) {
 // TestPropertyIndexDurability_UpdateNodes tests index updates survive crash
 func TestPropertyIndexDurability_UpdateNodes(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node1ID uint64
 
@@ -235,7 +235,7 @@ func TestPropertyIndexDurability_UpdateNodes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Check if updated value is in index
 		nodes, err := gs.FindNodesByProperty("age", IntValue(30))
@@ -259,7 +259,7 @@ func TestPropertyIndexDurability_UpdateNodes(t *testing.T) {
 // TestPropertyIndexDurability_DeleteNodes tests index handles deletes
 func TestPropertyIndexDurability_DeleteNodes(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node2ID uint64
 
@@ -281,9 +281,9 @@ func TestPropertyIndexDurability_DeleteNodes(t *testing.T) {
 		}
 
 		// Create 3 nodes
-		gs.CreateNode([]string{"Person"}, map[string]Value{"age": IntValue(20)})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"age": IntValue(20)})
 		node2, _ := gs.CreateNode([]string{"Person"}, map[string]Value{"age": IntValue(21)})
-		gs.CreateNode([]string{"Person"}, map[string]Value{"age": IntValue(22)})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"age": IntValue(22)})
 		node2ID = node2.ID
 
 		// Delete node2
@@ -319,7 +319,7 @@ func TestPropertyIndexDurability_DeleteNodes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Check index size
 		indexSize := gs.propertyIndexes["age"].GetStatistics().TotalNodes
@@ -348,7 +348,7 @@ func TestPropertyIndexDurability_DeleteNodes(t *testing.T) {
 // TestPropertyIndexDurability_DropIndex tests dropping index survives crash
 func TestPropertyIndexDurability_DropIndex(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create index, drop it, crash
 	{
@@ -363,7 +363,7 @@ func TestPropertyIndexDurability_DropIndex(t *testing.T) {
 
 		// Create some nodes
 		for i := 0; i < 5; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 				"age": IntValue(int64(20 + i)),
 			})
 		}
@@ -405,7 +405,7 @@ func TestPropertyIndexDurability_DropIndex(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify index does NOT exist
 		if _, exists := gs.propertyIndexes["age"]; exists {
@@ -419,7 +419,7 @@ func TestPropertyIndexDurability_DropIndex(t *testing.T) {
 // TestPropertyIndexDurability_SnapshotRecovery tests index survives snapshot
 func TestPropertyIndexDurability_SnapshotRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create index, close cleanly (snapshot)
 	{
@@ -440,7 +440,7 @@ func TestPropertyIndexDurability_SnapshotRecovery(t *testing.T) {
 
 		// Create nodes
 		for i := 0; i < 10; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 				"age": IntValue(int64(25 + i)),
 			})
 		}
@@ -464,7 +464,7 @@ func TestPropertyIndexDurability_SnapshotRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover from snapshot: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify index exists
 		if _, exists := gs.propertyIndexes["age"]; !exists {
@@ -494,7 +494,7 @@ func TestPropertyIndexDurability_SnapshotRecovery(t *testing.T) {
 // TestPropertyIndexDurability_MultipleIndexes tests multiple indexes survive crash
 func TestPropertyIndexDurability_MultipleIndexes(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create multiple indexes, crash
 	{
@@ -508,13 +508,13 @@ func TestPropertyIndexDurability_MultipleIndexes(t *testing.T) {
 		}
 
 		// Create 3 different indexes
-		gs.CreatePropertyIndex("age", TypeInt)
-		gs.CreatePropertyIndex("name", TypeString)
-		gs.CreatePropertyIndex("active", TypeBool)
+		_ = gs.CreatePropertyIndex("age", TypeInt)
+		_ = gs.CreatePropertyIndex("name", TypeString)
+		_ = gs.CreatePropertyIndex("active", TypeBool)
 
 		// Create nodes with all properties
 		for i := 0; i < 5; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 				"age":    IntValue(int64(20 + i)),
 				"name":   StringValue("User" + string(rune('A'+i))),
 				"active": BoolValue(i%2 == 0),
@@ -541,7 +541,7 @@ func TestPropertyIndexDurability_MultipleIndexes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Check all 3 indexes exist
 		if len(gs.propertyIndexes) != 3 {

@@ -12,7 +12,7 @@ func TestNewLSMGraphStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create LSM graph storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	if gs == nil {
 		t.Fatal("Expected non-nil storage")
@@ -34,7 +34,7 @@ func TestLSMGraphStorage_CreateNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a node
 	node, err := gs.CreateNode(
@@ -80,7 +80,7 @@ func TestLSMGraphStorage_GetNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a node
 	node1, _ := gs.CreateNode(
@@ -112,7 +112,7 @@ func TestLSMGraphStorage_GetNode_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	_, err = gs.GetNode(999)
 	if err != ErrNodeNotFound {
@@ -127,7 +127,7 @@ func TestLSMGraphStorage_UpdateNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a node
 	node, _ := gs.CreateNode(
@@ -160,7 +160,7 @@ func TestLSMGraphStorage_DeleteNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a node
 	node, _ := gs.CreateNode(
@@ -188,7 +188,7 @@ func TestLSMGraphStorage_CreateEdge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create two nodes
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]Value{})
@@ -227,7 +227,7 @@ func TestLSMGraphStorage_GetEdge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edge
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]Value{})
@@ -252,7 +252,7 @@ func TestLSMGraphStorage_DeleteEdge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edge
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]Value{})
@@ -279,7 +279,7 @@ func TestLSMGraphStorage_GetOutgoingEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]Value{})
@@ -287,8 +287,8 @@ func TestLSMGraphStorage_GetOutgoingEdges(t *testing.T) {
 	node3, _ := gs.CreateNode([]string{"Person"}, map[string]Value{})
 
 	// Create edges from node1
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]Value{}, 1.0)
-	gs.CreateEdge(node1.ID, node3.ID, "FOLLOWS", map[string]Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node3.ID, "FOLLOWS", map[string]Value{}, 1.0)
 
 	// Get outgoing edges
 	edges, err := gs.GetOutgoingEdges(node1.ID)
@@ -308,7 +308,7 @@ func TestLSMGraphStorage_GetIncomingEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]Value{})
@@ -316,8 +316,8 @@ func TestLSMGraphStorage_GetIncomingEdges(t *testing.T) {
 	node3, _ := gs.CreateNode([]string{"Person"}, map[string]Value{})
 
 	// Create edges TO node1
-	gs.CreateEdge(node2.ID, node1.ID, "KNOWS", map[string]Value{}, 1.0)
-	gs.CreateEdge(node3.ID, node1.ID, "FOLLOWS", map[string]Value{}, 1.0)
+	_, _ = gs.CreateEdge(node2.ID, node1.ID, "KNOWS", map[string]Value{}, 1.0)
+	_, _ = gs.CreateEdge(node3.ID, node1.ID, "FOLLOWS", map[string]Value{}, 1.0)
 
 	// Get incoming edges
 	edges, err := gs.GetIncomingEdges(node1.ID)
@@ -337,12 +337,12 @@ func TestLSMGraphStorage_FindNodesByLabel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes with different labels
-	gs.CreateNode([]string{"User"}, map[string]Value{})
-	gs.CreateNode([]string{"User", "Verified"}, map[string]Value{})
-	gs.CreateNode([]string{"Admin"}, map[string]Value{})
+	_, _ = gs.CreateNode([]string{"User"}, map[string]Value{})
+	_, _ = gs.CreateNode([]string{"User", "Verified"}, map[string]Value{})
+	_, _ = gs.CreateNode([]string{"Admin"}, map[string]Value{})
 
 	// Find User nodes
 	users, err := gs.FindNodesByLabel("User")
@@ -374,7 +374,7 @@ func TestLSMGraphStorage_Persistence(t *testing.T) {
 		)
 		nodeID = node.ID
 
-		gs.Close()
+		_ = gs.Close()
 	}
 
 	// Reopen storage and verify data persists
@@ -383,7 +383,7 @@ func TestLSMGraphStorage_Persistence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reopen storage: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		node, err := gs.GetNode(nodeID)
 		if err != nil {
@@ -410,12 +410,12 @@ func TestLSMGraphStorage_GetStatistics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create some data
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]Value{})
 	node2, _ := gs.CreateNode([]string{"Person"}, map[string]Value{})
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]Value{}, 1.0)
 
 	stats := gs.GetStatistics()
 

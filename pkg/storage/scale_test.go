@@ -19,7 +19,7 @@ func TestLargeScaleNodeCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Scale based on available memory (reduced from 50000 for reasonable test time)
 	nodeCount := 1000
@@ -65,7 +65,7 @@ func TestLargeScaleEdgeCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes first
 	nodeCount := 1000
@@ -119,7 +119,7 @@ func TestConcurrentLargeScaleOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	workers := 4                             // Fixed count to avoid excessive contention
 	nodesPerWorker := 10                     // Reduced from 100 for reasonable test time (WAL sync limited)
@@ -189,7 +189,7 @@ func TestMemoryUsageAtScale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Get initial memory stats
 	var m1 runtime.MemStats
@@ -243,7 +243,7 @@ func TestQueryPerformanceAtScale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create dataset (reduced from 10000 for reasonable test time)
 	nodeCount := 1000
@@ -336,7 +336,7 @@ func TestStoragePersistenceAtScale(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reopen storage: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify a sample of nodes
 		sampleSize := 100
@@ -370,7 +370,7 @@ func TestHighThroughputWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	duration := 3 * time.Second // Reduced from 10s for reasonable test time
 	operationCount := 0
@@ -418,7 +418,7 @@ func BenchmarkLargeGraphTraversal(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a connected graph
 	nodeCount := 1000
@@ -432,7 +432,7 @@ func BenchmarkLargeGraphTraversal(b *testing.B) {
 
 		// Connect to previous node
 		if i > 0 {
-			gs.CreateEdge(nodes[i-1].ID, nodes[i].ID, "NEXT", nil, 1.0)
+			_, _ = gs.CreateEdge(nodes[i-1].ID, nodes[i].ID, "NEXT", nil, 1.0)
 		}
 	}
 
@@ -461,7 +461,7 @@ func BenchmarkConcurrentNodeCreation(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -470,7 +470,7 @@ func BenchmarkConcurrentNodeCreation(b *testing.B) {
 			props := map[string]Value{
 				"id": IntValue(int64(counter)),
 			}
-			gs.CreateNode([]string{"BenchNode"}, props)
+			_, _ = gs.CreateNode([]string{"BenchNode"}, props)
 			counter++
 		}
 	})

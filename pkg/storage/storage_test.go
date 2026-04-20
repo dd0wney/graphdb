@@ -12,7 +12,7 @@ func TestGraphStorage_CreateNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a node
 	node, err := gs.CreateNode(
@@ -76,7 +76,7 @@ func TestGraphStorage_CreateEdge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create two nodes
 	node1, _ := gs.CreateNode(
@@ -134,7 +134,7 @@ func TestGraphStorage_GetOutgoingEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	node1, _ := gs.CreateNode([]string{"User"}, map[string]Value{})
@@ -142,8 +142,8 @@ func TestGraphStorage_GetOutgoingEdges(t *testing.T) {
 	node3, _ := gs.CreateNode([]string{"User"}, map[string]Value{})
 
 	// Create edges from node1 to node2 and node3
-	gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
-	gs.CreateEdge(node1.ID, node3.ID, "VERIFIED_BY", map[string]Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node3.ID, "VERIFIED_BY", map[string]Value{}, 1.0)
 
 	// Get outgoing edges
 	edges, err := gs.GetOutgoingEdges(node1.ID)
@@ -162,12 +162,12 @@ func TestGraphStorage_FindNodesByLabel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes with different labels
-	gs.CreateNode([]string{"User"}, map[string]Value{})
-	gs.CreateNode([]string{"User", "Verified"}, map[string]Value{})
-	gs.CreateNode([]string{"Book"}, map[string]Value{})
+	_, _ = gs.CreateNode([]string{"User"}, map[string]Value{})
+	_, _ = gs.CreateNode([]string{"User", "Verified"}, map[string]Value{})
+	_, _ = gs.CreateNode([]string{"Book"}, map[string]Value{})
 
 	// Find User nodes
 	userNodes, err := gs.FindNodesByLabel("User")
@@ -196,12 +196,12 @@ func TestGraphStorage_DeleteNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edges
 	node1, _ := gs.CreateNode([]string{"User"}, map[string]Value{})
 	node2, _ := gs.CreateNode([]string{"User"}, map[string]Value{})
-	gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
 
 	// Delete node1
 	err = gs.DeleteNode(node1.ID)
@@ -238,7 +238,7 @@ func TestGraphStorage_Snapshot(t *testing.T) {
 		[]string{"User"},
 		map[string]Value{"id": StringValue("user2")},
 	)
-	gs.CreateEdge(node1.ID, node2.ID, "VERIFIED_BY", map[string]Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "VERIFIED_BY", map[string]Value{}, 1.0)
 
 	// Save snapshot
 	err = gs.Snapshot()
@@ -247,14 +247,14 @@ func TestGraphStorage_Snapshot(t *testing.T) {
 	}
 
 	// Close storage
-	gs.Close()
+	_ = gs.Close()
 
 	// Load from disk
 	gs2, err := NewGraphStorage(dataDir)
 	if err != nil {
 		t.Fatalf("Failed to load from disk: %v", err)
 	}
-	defer gs2.Close()
+	defer func() { _ = gs2.Close() }()
 
 	// Verify data was restored
 	stats := gs2.GetStatistics()
@@ -285,18 +285,18 @@ func TestGraphStorage_FindNodesByProperty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes with different trust scores
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"User"},
 		map[string]Value{"trustScore": IntValue(750)},
 	)
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"User"},
 		map[string]Value{"trustScore": IntValue(850)},
 	)
-	gs.CreateNode(
+	_, _ = gs.CreateNode(
 		[]string{"User"},
 		map[string]Value{"trustScore": IntValue(750)},
 	)
@@ -315,11 +315,11 @@ func TestGraphStorage_FindNodesByProperty(t *testing.T) {
 func BenchmarkGraphStorage_CreateNode(b *testing.B) {
 	dataDir := b.TempDir()
 	gs, _ := NewGraphStorage(dataDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.CreateNode(
+		_, _ = gs.CreateNode(
 			[]string{"User"},
 			map[string]Value{"id": StringValue("user")},
 		)
@@ -329,7 +329,7 @@ func BenchmarkGraphStorage_CreateNode(b *testing.B) {
 func BenchmarkGraphStorage_CreateEdge(b *testing.B) {
 	dataDir := b.TempDir()
 	gs, _ := NewGraphStorage(dataDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Pre-create nodes
 	node1, _ := gs.CreateNode([]string{"User"}, map[string]Value{})
@@ -337,39 +337,39 @@ func BenchmarkGraphStorage_CreateEdge(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
 	}
 }
 
 func BenchmarkGraphStorage_GetNode(b *testing.B) {
 	dataDir := b.TempDir()
 	gs, _ := NewGraphStorage(dataDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node, _ := gs.CreateNode([]string{"User"}, map[string]Value{})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.GetNode(node.ID)
+		_, _ = gs.GetNode(node.ID)
 	}
 }
 
 func BenchmarkGraphStorage_GetOutgoingEdges(b *testing.B) {
 	dataDir := b.TempDir()
 	gs, _ := NewGraphStorage(dataDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"User"}, map[string]Value{})
 
 	// Create 10 outgoing edges
 	for i := 0; i < 10; i++ {
 		node2, _ := gs.CreateNode([]string{"User"}, map[string]Value{})
-		gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.GetOutgoingEdges(node1.ID)
+		_, _ = gs.GetOutgoingEdges(node1.ID)
 	}
 }
 
@@ -377,7 +377,7 @@ func BenchmarkGraphStorage_GetOutgoingEdges(b *testing.B) {
 func BenchmarkGraphStorage_Snapshot(b *testing.B) {
 	dataDir := b.TempDir()
 	gs, _ := NewGraphStorage(dataDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Pre-populate with 1000 nodes and 3000 edges
 	nodeIDs := make([]uint64, 1000)
@@ -391,12 +391,12 @@ func BenchmarkGraphStorage_Snapshot(b *testing.B) {
 	for i := 0; i < 3000; i++ {
 		from := nodeIDs[i%1000]
 		to := nodeIDs[(i+1)%1000]
-		gs.CreateEdge(from, to, "FOLLOWS", map[string]Value{}, 1.0)
+		_, _ = gs.CreateEdge(from, to, "FOLLOWS", map[string]Value{}, 1.0)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.Snapshot()
+		_ = gs.Snapshot()
 	}
 }
 
@@ -404,7 +404,7 @@ func BenchmarkGraphStorage_Snapshot(b *testing.B) {
 func BenchmarkGraphStorage_FindNodesByLabel(b *testing.B) {
 	dataDir := b.TempDir()
 	gs, _ := NewGraphStorage(dataDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Pre-populate with mixed labels
 	for i := 0; i < 1000; i++ {
@@ -412,12 +412,12 @@ func BenchmarkGraphStorage_FindNodesByLabel(b *testing.B) {
 		if i%2 == 0 {
 			labels = append(labels, "Verified")
 		}
-		gs.CreateNode(labels, map[string]Value{})
+		_, _ = gs.CreateNode(labels, map[string]Value{})
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.FindNodesByLabel("Verified")
+		_, _ = gs.FindNodesByLabel("Verified")
 	}
 }
 
@@ -425,18 +425,18 @@ func BenchmarkGraphStorage_FindNodesByLabel(b *testing.B) {
 func BenchmarkGraphStorage_FindNodesByProperty(b *testing.B) {
 	dataDir := b.TempDir()
 	gs, _ := NewGraphStorage(dataDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Pre-populate with properties
 	for i := 0; i < 1000; i++ {
-		gs.CreateNode([]string{"User"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"User"}, map[string]Value{
 			"trustScore": IntValue(int64(i % 100)),
 		})
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.FindNodesByProperty("trustScore", IntValue(50))
+		_, _ = gs.FindNodesByProperty("trustScore", IntValue(50))
 	}
 }
 
@@ -444,7 +444,7 @@ func BenchmarkGraphStorage_FindNodesByProperty(b *testing.B) {
 func BenchmarkGraphStorage_DeleteNode(b *testing.B) {
 	dataDir := b.TempDir()
 	gs, _ := NewGraphStorage(dataDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Pre-create nodes for deletion
 	nodeIDs := make([]uint64, b.N)
@@ -455,7 +455,7 @@ func BenchmarkGraphStorage_DeleteNode(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.DeleteNode(nodeIDs[i])
+		_ = gs.DeleteNode(nodeIDs[i])
 	}
 }
 
@@ -463,7 +463,7 @@ func BenchmarkGraphStorage_DeleteNode(b *testing.B) {
 func BenchmarkGraphStorage_GetIncomingEdges(b *testing.B) {
 	dataDir := b.TempDir()
 	gs, _ := NewGraphStorage(dataDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create target node
 	target, _ := gs.CreateNode([]string{"User"}, map[string]Value{})
@@ -471,12 +471,12 @@ func BenchmarkGraphStorage_GetIncomingEdges(b *testing.B) {
 	// Create 10 nodes pointing to target
 	for i := 0; i < 10; i++ {
 		source, _ := gs.CreateNode([]string{"User"}, map[string]Value{})
-		gs.CreateEdge(source.ID, target.ID, "FOLLOWS", map[string]Value{}, 1.0)
+		_, _ = gs.CreateEdge(source.ID, target.ID, "FOLLOWS", map[string]Value{}, 1.0)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.GetIncomingEdges(target.ID)
+		_, _ = gs.GetIncomingEdges(target.ID)
 	}
 }
 
@@ -529,7 +529,7 @@ func TestGraphStorage_GetCurrentLSN(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create storage: %v", err)
 			}
-			defer gs.Close()
+			defer func() { _ = gs.Close() }()
 
 			// Perform operations
 			for i := 0; i < tt.operations; i++ {
@@ -563,7 +563,7 @@ func TestQueryStatistics_TotalQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test data
 	node, err := gs.CreateNode([]string{"Test"}, map[string]Value{"name": StringValue("test")})
@@ -604,7 +604,7 @@ func TestQueryStatistics_AvgQueryTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test data
 	node, err := gs.CreateNode([]string{"Test"}, map[string]Value{"name": StringValue("test")})
@@ -646,7 +646,7 @@ func TestQueryStatistics_ConcurrentQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test data
 	node, err := gs.CreateNode([]string{"Test"}, map[string]Value{"name": StringValue("test")})
@@ -692,7 +692,7 @@ func TestQueryStatistics_AllOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test data
 	node1, err := gs.CreateNode([]string{"Test"}, map[string]Value{"name": StringValue("node1")})
@@ -719,10 +719,10 @@ func TestQueryStatistics_AllOperations(t *testing.T) {
 		name string
 		fn   func()
 	}{
-		{"GetNode", func() { gs.GetNode(node1.ID) }},
-		{"GetEdge", func() { gs.GetEdge(edge.ID) }},
-		{"GetOutgoingEdges", func() { gs.GetOutgoingEdges(node1.ID) }},
-		{"GetIncomingEdges", func() { gs.GetIncomingEdges(node2.ID) }},
+		{"GetNode", func() { _, _ = gs.GetNode(node1.ID) }},
+		{"GetEdge", func() { _, _ = gs.GetEdge(edge.ID) }},
+		{"GetOutgoingEdges", func() { _, _ = gs.GetOutgoingEdges(node1.ID) }},
+		{"GetIncomingEdges", func() { _, _ = gs.GetIncomingEdges(node2.ID) }},
 	}
 
 	for i, op := range operations {
@@ -742,7 +742,7 @@ func BenchmarkGetNode_Sequential(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test nodes
 	const numNodes = 1000
@@ -756,7 +756,7 @@ func BenchmarkGetNode_Sequential(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.GetNode(nodeIDs[i%numNodes])
+		_, _ = gs.GetNode(nodeIDs[i%numNodes])
 	}
 }
 
@@ -767,7 +767,7 @@ func BenchmarkGetNode_Concurrent(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test nodes spread across different shards
 	const numNodes = 1000
@@ -783,7 +783,7 @@ func BenchmarkGetNode_Concurrent(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			gs.GetNode(nodeIDs[i%numNodes])
+			_, _ = gs.GetNode(nodeIDs[i%numNodes])
 			i++
 		}
 	})
@@ -796,7 +796,7 @@ func BenchmarkGetNode_ConcurrentSameShard(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes that hash to the same shard (shard 0)
 	// Node IDs that are multiples of 256 will hash to shard 0
@@ -822,7 +822,7 @@ func BenchmarkGetNode_ConcurrentSameShard(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			gs.GetNode(nodeIDs[i%numNodes])
+			_, _ = gs.GetNode(nodeIDs[i%numNodes])
 			i++
 		}
 	})
@@ -835,7 +835,7 @@ func BenchmarkGetNode_ConcurrentDifferentShards(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes in many different shards
 	const numNodes = 256 // One per shard
@@ -864,7 +864,7 @@ func BenchmarkGetNode_ConcurrentDifferentShards(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			gs.GetNode(nodeIDs[i%numNodes])
+			_, _ = gs.GetNode(nodeIDs[i%numNodes])
 			i++
 		}
 	})
@@ -877,7 +877,7 @@ func BenchmarkGetOutgoingEdges_Concurrent(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes with edges
 	const numNodes = 100
@@ -889,7 +889,7 @@ func BenchmarkGetOutgoingEdges_Concurrent(b *testing.B) {
 		// Create 10 outgoing edges per node
 		for j := 0; j < 10; j++ {
 			target, _ := gs.CreateNode([]string{"Target"}, map[string]Value{})
-			gs.CreateEdge(node.ID, target.ID, "LINKS_TO", nil, 1.0)
+			_, _ = gs.CreateEdge(node.ID, target.ID, "LINKS_TO", nil, 1.0)
 		}
 	}
 
@@ -897,7 +897,7 @@ func BenchmarkGetOutgoingEdges_Concurrent(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			gs.GetOutgoingEdges(nodeIDs[i%numNodes])
+			_, _ = gs.GetOutgoingEdges(nodeIDs[i%numNodes])
 			i++
 		}
 	})
@@ -910,7 +910,7 @@ func BenchmarkMixedOperations_Concurrent(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create realistic graph: 500 nodes, avg degree 5
 	const numNodes = 500
@@ -940,13 +940,13 @@ func BenchmarkMixedOperations_Concurrent(b *testing.B) {
 			// Mix of operations: 40% GetNode, 30% GetOutgoing, 20% GetIncoming, 10% GetEdge
 			switch i % 10 {
 			case 0, 1, 2, 3:
-				gs.GetNode(nodeIDs[i%numNodes])
+				_, _ = gs.GetNode(nodeIDs[i%numNodes])
 			case 4, 5, 6:
-				gs.GetOutgoingEdges(nodeIDs[i%numNodes])
+				_, _ = gs.GetOutgoingEdges(nodeIDs[i%numNodes])
 			case 7, 8:
-				gs.GetIncomingEdges(nodeIDs[i%numNodes])
+				_, _ = gs.GetIncomingEdges(nodeIDs[i%numNodes])
 			case 9:
-				gs.GetEdge(edgeIDs[i%len(edgeIDs)])
+				_, _ = gs.GetEdge(edgeIDs[i%len(edgeIDs)])
 			}
 			i++
 		}

@@ -112,7 +112,7 @@ func testCrashableStorage(t *testing.T, dataDir string, config ...StorageConfig)
 	// Register cleanup to prevent goroutine leaks
 	// This runs after the test completes, even if Close() was never called
 	t.Cleanup(func() {
-		gs.Close()
+		_ = gs.Close()
 	})
 
 	return gs

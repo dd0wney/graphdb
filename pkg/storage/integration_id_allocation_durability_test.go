@@ -8,7 +8,7 @@ import (
 // TestIDAllocation_NodeIDsNeverReused tests that node IDs are never reused after crash
 func TestIDAllocation_NodeIDsNeverReused(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var firstBatchIDs []uint64
 
@@ -49,7 +49,7 @@ func TestIDAllocation_NodeIDsNeverReused(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Create 10 more nodes
 		var secondBatchIDs []uint64
@@ -90,7 +90,7 @@ func TestIDAllocation_NodeIDsNeverReused(t *testing.T) {
 // TestIDAllocation_EdgeIDsNeverReused tests that edge IDs are never reused after crash
 func TestIDAllocation_EdgeIDsNeverReused(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var firstBatchIDs []uint64
 	var node1ID, node2ID uint64
@@ -136,7 +136,7 @@ func TestIDAllocation_EdgeIDsNeverReused(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Create 10 more edges
 		var secondBatchIDs []uint64
@@ -175,7 +175,7 @@ func TestIDAllocation_EdgeIDsNeverReused(t *testing.T) {
 // TestIDAllocation_LargeIDGaps tests ID allocation with large gaps
 func TestIDAllocation_LargeIDGaps(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create node with large ID (simulating long-running system), crash
 	{
@@ -190,7 +190,7 @@ func TestIDAllocation_LargeIDGaps(t *testing.T) {
 
 		// Create many nodes to get a high ID
 		for i := 0; i < 100; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 				"index": IntValue(int64(i)),
 			})
 		}
@@ -215,7 +215,7 @@ func TestIDAllocation_LargeIDGaps(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Create a new node - it should have an ID higher than all existing nodes
 		newNode, err := gs.CreateNode([]string{"Person"}, map[string]Value{
@@ -246,7 +246,7 @@ func TestIDAllocation_LargeIDGaps(t *testing.T) {
 // TestIDAllocation_SnapshotRecovery tests ID allocation after snapshot recovery
 func TestIDAllocation_SnapshotRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var lastNodeID, lastEdgeID uint64
 
@@ -290,7 +290,7 @@ func TestIDAllocation_SnapshotRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover from snapshot: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Create new node - should have ID > lastNodeID
 		newNode, _ := gs.CreateNode([]string{"Person"}, nil)
@@ -315,7 +315,7 @@ func TestIDAllocation_SnapshotRecovery(t *testing.T) {
 // TestIDAllocation_BatchOperations tests ID allocation in batch operations
 func TestIDAllocation_BatchOperations(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var firstBatchNodeIDs []uint64
 
@@ -364,7 +364,7 @@ func TestIDAllocation_BatchOperations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Create 10 more nodes via regular CreateNode
 		var secondBatchNodeIDs []uint64
@@ -399,7 +399,7 @@ func TestIDAllocation_BatchOperations(t *testing.T) {
 // TestIDAllocation_DeletedNodesIDsNotReused tests that deleted node IDs are NOT reused
 func TestIDAllocation_DeletedNodesIDsNotReused(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var deletedNodeID uint64
 
@@ -441,7 +441,7 @@ func TestIDAllocation_DeletedNodesIDsNotReused(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify deleted node doesn't exist
 		deletedNode, _ := gs.GetNode(deletedNodeID)
@@ -472,7 +472,7 @@ func TestIDAllocation_DeletedNodesIDsNotReused(t *testing.T) {
 // TestIDAllocation_MultipleRecoveries tests ID allocation across multiple crash/recovery cycles
 func TestIDAllocation_MultipleRecoveries(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	allNodeIDs := make(map[uint64]bool)
 
@@ -508,7 +508,7 @@ func TestIDAllocation_MultipleRecoveries(t *testing.T) {
 
 		// Don't close - simulate crash (except last cycle)
 		if cycle == 4 {
-			gs.Close()
+			_ = gs.Close()
 		}
 	}
 
@@ -523,7 +523,7 @@ func TestIDAllocation_MultipleRecoveries(t *testing.T) {
 // TestIDAllocation_ConcurrentCreation tests ID allocation under concurrent load
 func TestIDAllocation_ConcurrentCreation(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create nodes concurrently, crash
 	{
@@ -539,7 +539,7 @@ func TestIDAllocation_ConcurrentCreation(t *testing.T) {
 		// This is just creating sequentially for now since concurrent creation
 		// would require proper synchronization testing
 		for i := 0; i < 50; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 				"index": IntValue(int64(i)),
 			})
 		}
@@ -559,7 +559,7 @@ func TestIDAllocation_ConcurrentCreation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify all nodes have unique IDs
 		if len(gs.nodes) != 50 {

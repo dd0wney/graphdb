@@ -22,21 +22,21 @@ const (
 
 func makeNodeKey(nodeID uint64) []byte {
 	b := pools.NewBufferBuilder(9)
-	b.WriteByte(KeyPrefixNode)
+	_ = b.WriteByte(KeyPrefixNode)
 	b.WriteUint64BE(nodeID)
 	return b.Bytes()
 }
 
 func makeEdgeKey(edgeID uint64) []byte {
 	b := pools.NewBufferBuilder(9)
-	b.WriteByte(KeyPrefixEdge)
+	_ = b.WriteByte(KeyPrefixEdge)
 	b.WriteUint64BE(edgeID)
 	return b.Bytes()
 }
 
 func makeOutEdgeKey(fromID, toID uint64) []byte {
 	b := pools.NewBufferBuilder(17)
-	b.WriteByte(KeyPrefixOutEdge)
+	_ = b.WriteByte(KeyPrefixOutEdge)
 	b.WriteUint64BE(fromID)
 	b.WriteUint64BE(toID)
 	return b.Bytes()
@@ -44,7 +44,7 @@ func makeOutEdgeKey(fromID, toID uint64) []byte {
 
 func makeInEdgeKey(toID, fromID uint64) []byte {
 	b := pools.NewBufferBuilder(17)
-	b.WriteByte(KeyPrefixInEdge)
+	_ = b.WriteByte(KeyPrefixInEdge)
 	b.WriteUint64BE(toID)
 	b.WriteUint64BE(fromID)
 	return b.Bytes()
@@ -52,9 +52,9 @@ func makeInEdgeKey(toID, fromID uint64) []byte {
 
 func makeLabelKey(label string, nodeID uint64) []byte {
 	b := pools.NewBufferBuilder(1 + len(label) + 1 + 8)
-	b.WriteByte(KeyPrefixLabel)
+	_ = b.WriteByte(KeyPrefixLabel)
 	b.WriteString(label)
-	b.WriteByte(':')
+	_ = b.WriteByte(':')
 	b.WriteUint64BE(nodeID)
 	return b.Bytes()
 }
@@ -62,18 +62,18 @@ func makeLabelKey(label string, nodeID uint64) []byte {
 func makePropertyKey(propKey string, value Value, nodeID uint64) []byte {
 	valueStr := fmt.Sprintf("%v", value.Data)
 	b := pools.NewBufferBuilder(1 + len(propKey) + 1 + len(valueStr) + 1 + 8)
-	b.WriteByte(KeyPrefixProperty)
+	_ = b.WriteByte(KeyPrefixProperty)
 	b.WriteString(propKey)
-	b.WriteByte(':')
+	_ = b.WriteByte(':')
 	b.WriteString(valueStr)
-	b.WriteByte(':')
+	_ = b.WriteByte(':')
 	b.WriteUint64BE(nodeID)
 	return b.Bytes()
 }
 
 func makeMetaKey(key string) []byte {
 	b := pools.NewBufferBuilder(1 + len(key))
-	b.WriteByte(KeyPrefixMeta)
+	_ = b.WriteByte(KeyPrefixMeta)
 	b.WriteString(key)
 	return b.Bytes()
 }

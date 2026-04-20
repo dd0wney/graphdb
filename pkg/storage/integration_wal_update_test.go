@@ -8,7 +8,7 @@ import (
 // TestGraphStorage_NodePropertyUpdateDurable tests that node property updates survive crashes
 func TestGraphStorage_NodePropertyUpdateDurable(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeID uint64
 
@@ -55,7 +55,7 @@ func TestGraphStorage_NodePropertyUpdateDurable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Get the node
 		node, err := gs.GetNode(nodeID)
@@ -88,7 +88,7 @@ func TestGraphStorage_NodePropertyUpdateDurable(t *testing.T) {
 // TestGraphStorage_PropertyIndexUpdateOnNodeUpdate tests that property indexes update when node properties change
 func TestGraphStorage_PropertyIndexUpdateOnNodeUpdate(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeID uint64
 
@@ -161,7 +161,7 @@ func TestGraphStorage_PropertyIndexUpdateOnNodeUpdate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify node is NOT in index with old value (score=100)
 		nodesOld, err := gs.FindNodesByPropertyIndexed("score", IntValue(100))
@@ -197,7 +197,7 @@ func TestGraphStorage_PropertyIndexUpdateOnNodeUpdate(t *testing.T) {
 // TestGraphStorage_MultipleUpdatesSequential tests multiple sequential updates to same node
 func TestGraphStorage_MultipleUpdatesSequential(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeID uint64
 
@@ -242,7 +242,7 @@ func TestGraphStorage_MultipleUpdatesSequential(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Get the node
 		node, err := gs.GetNode(nodeID)
@@ -262,7 +262,7 @@ func TestGraphStorage_MultipleUpdatesSequential(t *testing.T) {
 // TestGraphStorage_UpdateThenSnapshot tests that updates survive clean shutdown via snapshot
 func TestGraphStorage_UpdateThenSnapshot(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeID uint64
 
@@ -288,7 +288,7 @@ func TestGraphStorage_UpdateThenSnapshot(t *testing.T) {
 		nodeID = node.ID
 
 		// Update node
-		gs.UpdateNode(nodeID, map[string]Value{
+		_ = gs.UpdateNode(nodeID, map[string]Value{
 			"age": IntValue(30),
 		})
 
@@ -311,7 +311,7 @@ func TestGraphStorage_UpdateThenSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify node update persisted in snapshot
 		node, err := gs.GetNode(nodeID)
@@ -329,7 +329,7 @@ func TestGraphStorage_UpdateThenSnapshot(t *testing.T) {
 // TestGraphStorage_UpdateNonExistentNode tests error handling for updating non-existent nodes
 func TestGraphStorage_UpdateNonExistentNode(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -339,7 +339,7 @@ func TestGraphStorage_UpdateNonExistentNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Try to update non-existent node
 	err = gs.UpdateNode(99999, map[string]Value{

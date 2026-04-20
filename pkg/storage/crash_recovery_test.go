@@ -31,7 +31,7 @@ func TestCrashRecovery(t *testing.T) {
 		)
 
 		// Create edge
-		gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
 
 		// Save snapshot
 		if err := gs.Snapshot(); err != nil {
@@ -44,7 +44,7 @@ func TestCrashRecovery(t *testing.T) {
 			map[string]Value{"id": StringValue("user3")},
 		)
 
-		gs.CreateEdge(node2.ID, node3.ID, "VERIFIED_BY", map[string]Value{}, 1.0)
+		_, _ = gs.CreateEdge(node2.ID, node3.ID, "VERIFIED_BY", map[string]Value{}, 1.0)
 
 		// SIMULATE CRASH: Don't call Close(), just let it go out of scope
 		// This means the last 2 operations are only in WAL, not in snapshot
@@ -53,7 +53,7 @@ func TestCrashRecovery(t *testing.T) {
 	// Cleanup crashed storage after test completes (stops background goroutines)
 	t.Cleanup(func() {
 		if crashedStorage != nil {
-			crashedStorage.Close()
+			_ = crashedStorage.Close()
 		}
 	})
 
@@ -63,7 +63,7 @@ func TestCrashRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reopen storage: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify all data is present (from snapshot + WAL replay)
 		stats := gs.GetStatistics()
@@ -119,7 +119,7 @@ func TestWALReplayOrder(t *testing.T) {
 
 		// Create nodes in specific order
 		for i := 1; i <= 5; i++ {
-			gs.CreateNode(
+			_, _ = gs.CreateNode(
 				[]string{"User"},
 				map[string]Value{"order": IntValue(int64(i))},
 			)
@@ -131,7 +131,7 @@ func TestWALReplayOrder(t *testing.T) {
 	// Cleanup crashed storage after test
 	t.Cleanup(func() {
 		if crashedStorage != nil {
-			crashedStorage.Close()
+			_ = crashedStorage.Close()
 		}
 	})
 
@@ -141,7 +141,7 @@ func TestWALReplayOrder(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify order is maintained
 		users, _ := gs.FindNodesByLabel("User")
@@ -171,13 +171,13 @@ func TestPartialSnapshot(t *testing.T) {
 		crashedStorage = gs
 
 		// Create 3 nodes
-		gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("Alice")})
-		gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("Bob")})
-		gs.Snapshot() // Snapshot with 2 nodes
+		_, _ = gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("Alice")})
+		_, _ = gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("Bob")})
+		_ = gs.Snapshot() // Snapshot with 2 nodes
 
 		// Add 2 more nodes after snapshot
-		gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("Charlie")})
-		gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("David")})
+		_, _ = gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("Charlie")})
+		_, _ = gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("David")})
 
 		// Crash without saving
 	}
@@ -185,13 +185,13 @@ func TestPartialSnapshot(t *testing.T) {
 	// Cleanup crashed storage after test
 	t.Cleanup(func() {
 		if crashedStorage != nil {
-			crashedStorage.Close()
+			_ = crashedStorage.Close()
 		}
 	})
 
 	{
 		gs, _ := NewGraphStorage(dataDir)
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		users, _ := gs.FindNodesByLabel("User")
 		if len(users) != 4 {

@@ -10,7 +10,7 @@ import (
 // TestQueryStatistics_SnapshotDurability tests that query statistics survive clean shutdown
 func TestQueryStatistics_SnapshotDurability(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create storage, run queries, close cleanly
 	{
@@ -25,14 +25,14 @@ func TestQueryStatistics_SnapshotDurability(t *testing.T) {
 
 		// Create test data
 		for i := 0; i < 5; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 				"id": IntValue(int64(i)),
 			})
 		}
 
 		// Run 10 queries to track statistics
 		for i := 0; i < 10; i++ {
-			gs.FindNodesByLabel("Person")
+			_, _ = gs.FindNodesByLabel("Person")
 		}
 
 		// Check stats before close
@@ -68,7 +68,7 @@ func TestQueryStatistics_SnapshotDurability(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify query statistics recovered from snapshot
 		stats := gs.GetStatistics()
@@ -87,7 +87,7 @@ func TestQueryStatistics_SnapshotDurability(t *testing.T) {
 // TestQueryStatistics_CrashRecovery tests query statistics after crash (WAL replay)
 func TestQueryStatistics_CrashRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create storage, run queries, simulate crash
 	{
@@ -99,14 +99,14 @@ func TestQueryStatistics_CrashRecovery(t *testing.T) {
 
 		// Create test data
 		for i := 0; i < 5; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 				"id": IntValue(int64(i)),
 			})
 		}
 
 		// Run 15 queries
 		for i := 0; i < 15; i++ {
-			gs.FindNodesByLabel("Person")
+			_, _ = gs.FindNodesByLabel("Person")
 		}
 
 		// Check stats before crash
@@ -131,7 +131,7 @@ func TestQueryStatistics_CrashRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// After WAL replay, query statistics should be reset to 0
 		// (because they're metadata, not operations that can be replayed)
@@ -154,7 +154,7 @@ func TestQueryStatistics_CrashRecovery(t *testing.T) {
 // TestQueryStatistics_MixedRecovery tests snapshot then more queries then crash
 func TestQueryStatistics_MixedRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create, query, close cleanly (snapshot created)
 	{
@@ -169,12 +169,12 @@ func TestQueryStatistics_MixedRecovery(t *testing.T) {
 
 		// Create nodes
 		for i := 0; i < 3; i++ {
-			gs.CreateNode([]string{"Person"}, nil)
+			_, _ = gs.CreateNode([]string{"Person"}, nil)
 		}
 
 		// Run 5 queries
 		for i := 0; i < 5; i++ {
-			gs.FindNodesByLabel("Person")
+			_, _ = gs.FindNodesByLabel("Person")
 		}
 
 		// Close cleanly
@@ -202,7 +202,7 @@ func TestQueryStatistics_MixedRecovery(t *testing.T) {
 
 		// Run 10 more queries
 		for i := 0; i < 10; i++ {
-			gs.FindNodesByLabel("Person")
+			_, _ = gs.FindNodesByLabel("Person")
 		}
 
 		// Should now have 15 total queries
@@ -226,7 +226,7 @@ func TestQueryStatistics_MixedRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover after crash: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// After crash, only snapshot statistics are preserved
 		// The 10 queries run after snapshot are lost
@@ -245,7 +245,7 @@ func TestQueryStatistics_MixedRecovery(t *testing.T) {
 // TestQueryStatistics_AvgQueryTimeAccuracy tests average query time calculation
 func TestQueryStatistics_AvgQueryTimeAccuracy(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -255,11 +255,11 @@ func TestQueryStatistics_AvgQueryTimeAccuracy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes for querying
 	for i := 0; i < 100; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 			"id": IntValue(int64(i)),
 		})
 	}
@@ -270,7 +270,7 @@ func TestQueryStatistics_AvgQueryTimeAccuracy(t *testing.T) {
 
 	for i := 0; i < numQueries; i++ {
 		start := time.Now()
-		gs.FindNodesByLabel("Person")
+		_, _ = gs.FindNodesByLabel("Person")
 		totalDuration += time.Since(start)
 	}
 
@@ -305,7 +305,7 @@ func TestQueryStatistics_AvgQueryTimeAccuracy(t *testing.T) {
 // TestQueryStatistics_ConcurrentQueriesDurability tests query statistics under concurrent load
 func TestQueryStatistics_ConcurrentQueriesDurability(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -315,11 +315,11 @@ func TestQueryStatistics_ConcurrentQueriesDurability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test data
 	for i := 0; i < 50; i++ {
-		gs.CreateNode([]string{"Person"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 			"id": IntValue(int64(i)),
 		})
 	}
@@ -335,7 +335,7 @@ func TestQueryStatistics_ConcurrentQueriesDurability(t *testing.T) {
 		go func(workerID int) {
 			defer wg.Done()
 			for j := 0; j < queriesPerWorker; j++ {
-				gs.FindNodesByLabel("Person")
+				_, _ = gs.FindNodesByLabel("Person")
 			}
 		}(i)
 	}
@@ -359,7 +359,7 @@ func TestQueryStatistics_ConcurrentQueriesDurability(t *testing.T) {
 // TestQueryStatistics_DifferentQueryTypes tests that all query types are tracked
 func TestQueryStatistics_DifferentQueryTypes(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -369,7 +369,7 @@ func TestQueryStatistics_DifferentQueryTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create test data
 	var nodeIDs []uint64
@@ -382,24 +382,24 @@ func TestQueryStatistics_DifferentQueryTypes(t *testing.T) {
 
 	// Create edges
 	for i := 0; i < 5; i++ {
-		gs.CreateEdge(nodeIDs[i], nodeIDs[i+1], "KNOWS", nil, 1.0)
+		_, _ = gs.CreateEdge(nodeIDs[i], nodeIDs[i+1], "KNOWS", nil, 1.0)
 	}
 
 	// Create property index
-	gs.CreatePropertyIndex("age", TypeInt)
+	_ = gs.CreatePropertyIndex("age", TypeInt)
 
 	expectedQueries := 0
 
 	// Test FindNodesByLabel (1 query)
-	gs.FindNodesByLabel("Person")
+	_, _ = gs.FindNodesByLabel("Person")
 	expectedQueries++
 
 	// Test FindEdgesByType (1 query)
-	gs.FindEdgesByType("KNOWS")
+	_, _ = gs.FindEdgesByType("KNOWS")
 	expectedQueries++
 
 	// Test FindNodesByProperty (1 query)
-	gs.FindNodesByProperty("age", IntValue(25))
+	_, _ = gs.FindNodesByProperty("age", IntValue(25))
 	expectedQueries++
 
 	// Verify all query types are tracked
@@ -415,7 +415,7 @@ func TestQueryStatistics_DifferentQueryTypes(t *testing.T) {
 // TestQueryStatistics_ZeroStateInitialization tests fresh database has zero query stats
 func TestQueryStatistics_ZeroStateInitialization(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -425,7 +425,7 @@ func TestQueryStatistics_ZeroStateInitialization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Verify initial state
 	stats := gs.GetStatistics()

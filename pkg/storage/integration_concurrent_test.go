@@ -11,7 +11,7 @@ import (
 // TestGraphStorage_ConcurrentNodeCreation tests concurrent node creation with disk-backed edges
 func TestGraphStorage_ConcurrentNodeCreation(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -21,7 +21,7 @@ func TestGraphStorage_ConcurrentNodeCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create 100 nodes concurrently from 10 goroutines
 	numGoroutines := 10
@@ -74,7 +74,7 @@ func TestGraphStorage_ConcurrentNodeCreation(t *testing.T) {
 // TestGraphStorage_ConcurrentEdgeCreation tests concurrent edge creation to same nodes
 func TestGraphStorage_ConcurrentEdgeCreation(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -84,7 +84,7 @@ func TestGraphStorage_ConcurrentEdgeCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create two nodes
 	node1, _ := gs.CreateNode([]string{"Person"}, nil)
@@ -146,7 +146,7 @@ func TestGraphStorage_ConcurrentEdgeCreation(t *testing.T) {
 // TestGraphStorage_ConcurrentReadWrite tests concurrent reads and writes
 func TestGraphStorage_ConcurrentReadWrite(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -156,7 +156,7 @@ func TestGraphStorage_ConcurrentReadWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create initial nodes
 	var nodeIDs []uint64
@@ -236,7 +236,7 @@ func TestGraphStorage_ConcurrentReadWrite(t *testing.T) {
 // TestGraphStorage_ConcurrentDeletion tests concurrent node and edge deletion
 func TestGraphStorage_ConcurrentDeletion(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -246,7 +246,7 @@ func TestGraphStorage_ConcurrentDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edges
 	numNodes := 100
@@ -260,7 +260,7 @@ func TestGraphStorage_ConcurrentDeletion(t *testing.T) {
 
 	// Create edges between consecutive nodes
 	for i := 0; i < numNodes-1; i++ {
-		gs.CreateEdge(nodeIDs[i], nodeIDs[i+1], "KNOWS", nil, 1.0)
+		_, _ = gs.CreateEdge(nodeIDs[i], nodeIDs[i+1], "KNOWS", nil, 1.0)
 	}
 
 	// Delete half the nodes concurrently
@@ -312,7 +312,7 @@ func TestGraphStorage_ConcurrentDeletion(t *testing.T) {
 // TestGraphStorage_ConcurrentPropertyIndex tests concurrent property index operations
 func TestGraphStorage_ConcurrentPropertyIndex(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -322,7 +322,7 @@ func TestGraphStorage_ConcurrentPropertyIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create property index
 	err = gs.CreatePropertyIndex("score", TypeInt)
@@ -379,7 +379,7 @@ func TestGraphStorage_ConcurrentPropertyIndex(t *testing.T) {
 // TestGraphStorage_ConcurrentCrashRecovery tests concurrent operations then crash recovery
 func TestGraphStorage_ConcurrentCrashRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Concurrent writes, then crash
 	{
@@ -400,7 +400,7 @@ func TestGraphStorage_ConcurrentCrashRecovery(t *testing.T) {
 				defer wg.Done()
 
 				for j := 0; j < nodesPerGoroutine; j++ {
-					gs.CreateNode([]string{"Person"}, map[string]Value{
+					_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 						"worker": IntValue(int64(workerID)),
 						"index":  IntValue(int64(j)),
 					})
@@ -424,7 +424,7 @@ func TestGraphStorage_ConcurrentCrashRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify all nodes recovered
 		expectedTotal := 5 * 20

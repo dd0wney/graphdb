@@ -96,9 +96,9 @@ func TestPropertyIndex_Remove(t *testing.T) {
 	idx := NewPropertyIndex("status", TypeString)
 
 	// Insert nodes
-	idx.Insert(1, StringValue("active"))
-	idx.Insert(2, StringValue("active"))
-	idx.Insert(3, StringValue("inactive"))
+	_ = idx.Insert(1, StringValue("active"))
+	_ = idx.Insert(2, StringValue("active"))
+	_ = idx.Insert(3, StringValue("inactive"))
 
 	// Remove node 1
 	err := idx.Remove(1, StringValue("active"))
@@ -128,7 +128,7 @@ func TestPropertyIndex_RemoveLastNode(t *testing.T) {
 	idx := NewPropertyIndex("status", TypeString)
 
 	// Insert single node
-	idx.Insert(1, StringValue("pending"))
+	_ = idx.Insert(1, StringValue("pending"))
 
 	// Remove it
 	err := idx.Remove(1, StringValue("pending"))
@@ -153,7 +153,7 @@ func TestPropertyIndex_RemoveLastNode(t *testing.T) {
 func TestPropertyIndex_RemoveNonExistent(t *testing.T) {
 	idx := NewPropertyIndex("name", TypeString)
 
-	idx.Insert(1, StringValue("Alice"))
+	_ = idx.Insert(1, StringValue("Alice"))
 
 	// Try to remove non-existent node
 	err := idx.Remove(999, StringValue("Alice"))
@@ -172,9 +172,9 @@ func TestPropertyIndex_RemoveNonExistent(t *testing.T) {
 func TestPropertyIndex_Lookup(t *testing.T) {
 	idx := NewPropertyIndex("city", TypeString)
 
-	idx.Insert(1, StringValue("NYC"))
-	idx.Insert(2, StringValue("LA"))
-	idx.Insert(3, StringValue("NYC"))
+	_ = idx.Insert(1, StringValue("NYC"))
+	_ = idx.Insert(2, StringValue("LA"))
+	_ = idx.Insert(3, StringValue("NYC"))
 
 	// Lookup NYC
 	nodes, err := idx.Lookup(StringValue("NYC"))
@@ -197,7 +197,7 @@ func TestPropertyIndex_Lookup(t *testing.T) {
 func TestPropertyIndex_LookupTypeMismatch(t *testing.T) {
 	idx := NewPropertyIndex("age", TypeInt)
 
-	idx.Insert(1, IntValue(30))
+	_ = idx.Insert(1, IntValue(30))
 
 	// Try to lookup with wrong type
 	_, err := idx.Lookup(StringValue("30"))
@@ -210,8 +210,8 @@ func TestPropertyIndex_LookupTypeMismatch(t *testing.T) {
 func TestPropertyIndex_LookupReturnsIsolatedCopy(t *testing.T) {
 	idx := NewPropertyIndex("tag", TypeString)
 
-	idx.Insert(1, StringValue("important"))
-	idx.Insert(2, StringValue("important"))
+	_ = idx.Insert(1, StringValue("important"))
+	_ = idx.Insert(2, StringValue("important"))
 
 	// Get results
 	nodes, _ := idx.Lookup(StringValue("important"))
@@ -237,11 +237,11 @@ func TestPropertyIndex_RangeLookup(t *testing.T) {
 	idx := NewPropertyIndex("score", TypeInt)
 
 	// Insert nodes with scores
-	idx.Insert(1, IntValue(10))
-	idx.Insert(2, IntValue(20))
-	idx.Insert(3, IntValue(30))
-	idx.Insert(4, IntValue(40))
-	idx.Insert(5, IntValue(50))
+	_ = idx.Insert(1, IntValue(10))
+	_ = idx.Insert(2, IntValue(20))
+	_ = idx.Insert(3, IntValue(30))
+	_ = idx.Insert(4, IntValue(40))
+	_ = idx.Insert(5, IntValue(50))
 
 	// Range lookup [20, 40]
 	nodes, err := idx.RangeLookup(IntValue(20), IntValue(40))
@@ -260,11 +260,11 @@ func TestPropertyIndex_RangeLookupNegativeNumbers(t *testing.T) {
 	idx := NewPropertyIndex("temperature", TypeInt)
 
 	// Insert negative and positive values
-	idx.Insert(1, IntValue(-10))
-	idx.Insert(2, IntValue(-5))
-	idx.Insert(3, IntValue(0))
-	idx.Insert(4, IntValue(5))
-	idx.Insert(5, IntValue(10))
+	_ = idx.Insert(1, IntValue(-10))
+	_ = idx.Insert(2, IntValue(-5))
+	_ = idx.Insert(3, IntValue(0))
+	_ = idx.Insert(4, IntValue(5))
+	_ = idx.Insert(5, IntValue(10))
 
 	// Range lookup [-5, 5]
 	nodes, err := idx.RangeLookup(IntValue(-5), IntValue(5))
@@ -282,10 +282,10 @@ func TestPropertyIndex_RangeLookupNegativeNumbers(t *testing.T) {
 func TestPropertyIndex_RangeLookupFloats(t *testing.T) {
 	idx := NewPropertyIndex("price", TypeFloat)
 
-	idx.Insert(1, FloatValue(10.5))
-	idx.Insert(2, FloatValue(20.3))
-	idx.Insert(3, FloatValue(30.7))
-	idx.Insert(4, FloatValue(40.1))
+	_ = idx.Insert(1, FloatValue(10.5))
+	_ = idx.Insert(2, FloatValue(20.3))
+	_ = idx.Insert(3, FloatValue(30.7))
+	_ = idx.Insert(4, FloatValue(40.1))
 
 	// Range lookup [15.0, 35.0]
 	nodes, err := idx.RangeLookup(FloatValue(15.0), FloatValue(35.0))
@@ -303,10 +303,10 @@ func TestPropertyIndex_RangeLookupFloats(t *testing.T) {
 func TestPropertyIndex_PrefixLookup(t *testing.T) {
 	idx := NewPropertyIndex("email", TypeString)
 
-	idx.Insert(1, StringValue("alice@example.com"))
-	idx.Insert(2, StringValue("alice@test.com"))
-	idx.Insert(3, StringValue("bob@example.com"))
-	idx.Insert(4, StringValue("alison@example.com"))
+	_ = idx.Insert(1, StringValue("alice@example.com"))
+	_ = idx.Insert(2, StringValue("alice@test.com"))
+	_ = idx.Insert(3, StringValue("bob@example.com"))
+	_ = idx.Insert(4, StringValue("alison@example.com"))
 
 	// Prefix lookup "alice"
 	nodes, err := idx.PrefixLookup("alice")
@@ -324,8 +324,8 @@ func TestPropertyIndex_PrefixLookup(t *testing.T) {
 func TestPropertyIndex_PrefixLookupEmptyPrefix(t *testing.T) {
 	idx := NewPropertyIndex("name", TypeString)
 
-	idx.Insert(1, StringValue("Alice"))
-	idx.Insert(2, StringValue("Bob"))
+	_ = idx.Insert(1, StringValue("Alice"))
+	_ = idx.Insert(2, StringValue("Bob"))
 
 	// Empty prefix should match all
 	nodes, err := idx.PrefixLookup("")
@@ -342,7 +342,7 @@ func TestPropertyIndex_PrefixLookupEmptyPrefix(t *testing.T) {
 func TestPropertyIndex_PrefixLookupWrongType(t *testing.T) {
 	idx := NewPropertyIndex("age", TypeInt)
 
-	idx.Insert(1, IntValue(30))
+	_ = idx.Insert(1, IntValue(30))
 
 	// Try prefix lookup on int index
 	_, err := idx.PrefixLookup("30")
@@ -356,12 +356,12 @@ func TestPropertyIndex_GetStatistics(t *testing.T) {
 	idx := NewPropertyIndex("category", TypeString)
 
 	// Insert nodes
-	idx.Insert(1, StringValue("A"))
-	idx.Insert(2, StringValue("A"))
-	idx.Insert(3, StringValue("A"))
-	idx.Insert(4, StringValue("B"))
-	idx.Insert(5, StringValue("B"))
-	idx.Insert(6, StringValue("C"))
+	_ = idx.Insert(1, StringValue("A"))
+	_ = idx.Insert(2, StringValue("A"))
+	_ = idx.Insert(3, StringValue("A"))
+	_ = idx.Insert(4, StringValue("B"))
+	_ = idx.Insert(5, StringValue("B"))
+	_ = idx.Insert(6, StringValue("C"))
 
 	stats := idx.GetStatistics()
 
@@ -407,9 +407,9 @@ func TestPropertyIndex_GetStatisticsEmpty(t *testing.T) {
 func TestPropertyIndex_GetAllKeys(t *testing.T) {
 	idx := NewPropertyIndex("status", TypeString)
 
-	idx.Insert(1, StringValue("active"))
-	idx.Insert(2, StringValue("pending"))
-	idx.Insert(3, StringValue("active"))
+	_ = idx.Insert(1, StringValue("active"))
+	_ = idx.Insert(2, StringValue("pending"))
+	_ = idx.Insert(3, StringValue("active"))
 
 	keys := idx.GetAllKeys()
 
@@ -437,9 +437,9 @@ func TestPropertyIndex_ValueToKeyInt(t *testing.T) {
 	idx := NewPropertyIndex("num", TypeInt)
 
 	// Test that numeric keys are zero-padded for proper sorting
-	idx.Insert(1, IntValue(5))
-	idx.Insert(2, IntValue(50))
-	idx.Insert(3, IntValue(500))
+	_ = idx.Insert(1, IntValue(5))
+	_ = idx.Insert(2, IntValue(50))
+	_ = idx.Insert(3, IntValue(500))
 
 	keys := idx.GetAllKeys()
 
@@ -461,9 +461,9 @@ func TestPropertyIndex_ValueToKeyInt(t *testing.T) {
 func TestPropertyIndex_ValueToKeyBool(t *testing.T) {
 	idx := NewPropertyIndex("active", TypeBool)
 
-	idx.Insert(1, BoolValue(true))
-	idx.Insert(2, BoolValue(false))
-	idx.Insert(3, BoolValue(true))
+	_ = idx.Insert(1, BoolValue(true))
+	_ = idx.Insert(2, BoolValue(false))
+	_ = idx.Insert(3, BoolValue(true))
 
 	// Lookup true
 	nodes, _ := idx.Lookup(BoolValue(true))
@@ -484,7 +484,7 @@ func TestPropertyIndex_ConcurrentAccess(t *testing.T) {
 
 	// Insert initial data
 	for i := 0; i < 100; i++ {
-		idx.Insert(uint64(i), IntValue(int64(i%10)))
+		_ = idx.Insert(uint64(i), IntValue(int64(i%10)))
 	}
 
 	// Concurrent reads and writes
@@ -493,7 +493,7 @@ func TestPropertyIndex_ConcurrentAccess(t *testing.T) {
 	// Writer goroutine
 	go func() {
 		for i := 100; i < 200; i++ {
-			idx.Insert(uint64(i), IntValue(int64(i%10)))
+			_ = idx.Insert(uint64(i), IntValue(int64(i%10)))
 		}
 		done <- true
 	}()
@@ -501,7 +501,7 @@ func TestPropertyIndex_ConcurrentAccess(t *testing.T) {
 	// Reader goroutine
 	go func() {
 		for i := 0; i < 100; i++ {
-			idx.Lookup(IntValue(int64(i % 10)))
+			_, _ = idx.Lookup(IntValue(int64(i % 10)))
 		}
 		done <- true
 	}()
@@ -509,7 +509,7 @@ func TestPropertyIndex_ConcurrentAccess(t *testing.T) {
 	// Remover goroutine
 	go func() {
 		for i := 0; i < 50; i++ {
-			idx.Remove(uint64(i), IntValue(int64(i%10)))
+			_ = idx.Remove(uint64(i), IntValue(int64(i%10)))
 		}
 		done <- true
 	}()
@@ -569,7 +569,7 @@ func BenchmarkPropertyIndex_Insert(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		idx.Insert(uint64(i), IntValue(int64(i%1000)))
+		_ = idx.Insert(uint64(i), IntValue(int64(i%1000)))
 	}
 }
 
@@ -579,12 +579,12 @@ func BenchmarkPropertyIndex_Lookup(b *testing.B) {
 
 	// Pre-populate index
 	for i := 0; i < 10000; i++ {
-		idx.Insert(uint64(i), IntValue(int64(i%100)))
+		_ = idx.Insert(uint64(i), IntValue(int64(i%100)))
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		idx.Lookup(IntValue(int64(i % 100)))
+		_, _ = idx.Lookup(IntValue(int64(i % 100)))
 	}
 }
 
@@ -594,12 +594,12 @@ func BenchmarkPropertyIndex_RangeLookup(b *testing.B) {
 
 	// Pre-populate index with sequential numbers
 	for i := 0; i < 10000; i++ {
-		idx.Insert(uint64(i), IntValue(int64(i)))
+		_ = idx.Insert(uint64(i), IntValue(int64(i)))
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		idx.RangeLookup(IntValue(1000), IntValue(2000))
+		_, _ = idx.RangeLookup(IntValue(1000), IntValue(2000))
 	}
 }
 
@@ -611,12 +611,12 @@ func BenchmarkPropertyIndex_PrefixLookup(b *testing.B) {
 	prefixes := []string{"alice", "bob", "charlie", "david", "eve"}
 	for i := 0; i < 10000; i++ {
 		prefix := prefixes[i%len(prefixes)]
-		idx.Insert(uint64(i), StringValue(prefix+string(rune('0'+i%10))))
+		_ = idx.Insert(uint64(i), StringValue(prefix+string(rune('0'+i%10))))
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		idx.PrefixLookup("alice")
+		_, _ = idx.PrefixLookup("alice")
 	}
 }
 
@@ -625,12 +625,12 @@ func BenchmarkPropertyIndex_Remove(b *testing.B) {
 	// Pre-populate index
 	idx := NewPropertyIndex("prop", TypeInt)
 	for i := 0; i < b.N; i++ {
-		idx.Insert(uint64(i), IntValue(int64(i%1000)))
+		_ = idx.Insert(uint64(i), IntValue(int64(i%1000)))
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		idx.Remove(uint64(i), IntValue(int64(i%1000)))
+		_ = idx.Remove(uint64(i), IntValue(int64(i%1000)))
 	}
 }
 
@@ -640,7 +640,7 @@ func BenchmarkPropertyIndex_GetStatistics(b *testing.B) {
 
 	// Pre-populate index
 	for i := 0; i < 10000; i++ {
-		idx.Insert(uint64(i), IntValue(int64(i%100)))
+		_ = idx.Insert(uint64(i), IntValue(int64(i%100)))
 	}
 
 	b.ResetTimer()
@@ -761,10 +761,10 @@ func TestCompositeIndex_PrefixLookup(t *testing.T) {
 	)
 
 	// Insert nodes
-	idx.Insert(1, []Value{StringValue("math"), StringValue("active")})
-	idx.Insert(2, []Value{StringValue("math"), StringValue("archived")})
-	idx.Insert(3, []Value{StringValue("math"), StringValue("draft")})
-	idx.Insert(4, []Value{StringValue("science"), StringValue("active")})
+	_ = idx.Insert(1, []Value{StringValue("math"), StringValue("active")})
+	_ = idx.Insert(2, []Value{StringValue("math"), StringValue("archived")})
+	_ = idx.Insert(3, []Value{StringValue("math"), StringValue("draft")})
+	_ = idx.Insert(4, []Value{StringValue("science"), StringValue("active")})
 
 	// Prefix lookup for just "math" domain
 	nodes, err := idx.PrefixLookup([]Value{StringValue("math")})
@@ -792,8 +792,8 @@ func TestCompositeIndex_Remove(t *testing.T) {
 		[]ValueType{TypeString, TypeString},
 	)
 
-	idx.Insert(1, []Value{StringValue("math"), StringValue("active")})
-	idx.Insert(2, []Value{StringValue("math"), StringValue("active")})
+	_ = idx.Insert(1, []Value{StringValue("math"), StringValue("active")})
+	_ = idx.Insert(2, []Value{StringValue("math"), StringValue("active")})
 
 	// Remove node 1
 	err := idx.Remove(1, []Value{StringValue("math"), StringValue("active")})
@@ -827,9 +827,9 @@ func TestCompositeIndex_MixedTypes(t *testing.T) {
 		[]ValueType{TypeString, TypeInt},
 	)
 
-	idx.Insert(1, []Value{StringValue("bug"), IntValue(1)})
-	idx.Insert(2, []Value{StringValue("bug"), IntValue(2)})
-	idx.Insert(3, []Value{StringValue("feature"), IntValue(1)})
+	_ = idx.Insert(1, []Value{StringValue("bug"), IntValue(1)})
+	_ = idx.Insert(2, []Value{StringValue("bug"), IntValue(2)})
+	_ = idx.Insert(3, []Value{StringValue("feature"), IntValue(1)})
 
 	// Lookup exact match
 	nodes, err := idx.Lookup([]Value{StringValue("bug"), IntValue(1)})
@@ -857,10 +857,10 @@ func TestCompositeIndex_ThreeProperties(t *testing.T) {
 		[]ValueType{TypeString, TypeString, TypeString},
 	)
 
-	idx.Insert(1, []Value{StringValue("us"), StringValue("user"), StringValue("active")})
-	idx.Insert(2, []Value{StringValue("us"), StringValue("user"), StringValue("inactive")})
-	idx.Insert(3, []Value{StringValue("us"), StringValue("admin"), StringValue("active")})
-	idx.Insert(4, []Value{StringValue("eu"), StringValue("user"), StringValue("active")})
+	_ = idx.Insert(1, []Value{StringValue("us"), StringValue("user"), StringValue("active")})
+	_ = idx.Insert(2, []Value{StringValue("us"), StringValue("user"), StringValue("inactive")})
+	_ = idx.Insert(3, []Value{StringValue("us"), StringValue("admin"), StringValue("active")})
+	_ = idx.Insert(4, []Value{StringValue("eu"), StringValue("user"), StringValue("active")})
 
 	// Full key lookup
 	nodes, _ := idx.Lookup([]Value{StringValue("us"), StringValue("user"), StringValue("active")})
@@ -888,10 +888,10 @@ func TestCompositeIndex_Statistics(t *testing.T) {
 		[]ValueType{TypeString, TypeString},
 	)
 
-	idx.Insert(1, []Value{StringValue("x"), StringValue("1")})
-	idx.Insert(2, []Value{StringValue("x"), StringValue("1")})
-	idx.Insert(3, []Value{StringValue("x"), StringValue("2")})
-	idx.Insert(4, []Value{StringValue("y"), StringValue("1")})
+	_ = idx.Insert(1, []Value{StringValue("x"), StringValue("1")})
+	_ = idx.Insert(2, []Value{StringValue("x"), StringValue("1")})
+	_ = idx.Insert(3, []Value{StringValue("x"), StringValue("2")})
+	_ = idx.Insert(4, []Value{StringValue("y"), StringValue("1")})
 
 	stats := idx.GetStatistics()
 	if len(stats.PropertyKeys) != 2 {
@@ -919,7 +919,7 @@ func TestCompositeIndex_TypeMismatch(t *testing.T) {
 	}
 
 	// Wrong type on lookup
-	idx.Insert(1, []Value{StringValue("Alice"), IntValue(30)})
+	_ = idx.Insert(1, []Value{StringValue("Alice"), IntValue(30)})
 	_, err = idx.Lookup([]Value{StringValue("Alice"), StringValue("30")})
 	if err == nil {
 		t.Error("Expected error for type mismatch on lookup")
@@ -946,7 +946,7 @@ func TestCompositeIndex_WrongNumberOfValues(t *testing.T) {
 	}
 
 	// Too many values on prefix lookup
-	idx.Insert(1, []Value{StringValue("x"), StringValue("y")})
+	_ = idx.Insert(1, []Value{StringValue("x"), StringValue("y")})
 	_, err = idx.PrefixLookup([]Value{StringValue("x"), StringValue("y"), StringValue("z")})
 	if err == nil {
 		t.Error("Expected error for too many values on prefix lookup")
@@ -973,12 +973,12 @@ func BenchmarkCompositeIndex_Lookup(b *testing.B) {
 	for i := 0; i < 10000; i++ {
 		domain := domains[i%len(domains)]
 		status := statuses[i%len(statuses)]
-		idx.Insert(uint64(i), []Value{StringValue(domain), StringValue(status)})
+		_ = idx.Insert(uint64(i), []Value{StringValue(domain), StringValue(status)})
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		idx.Lookup([]Value{StringValue("math"), StringValue("active")})
+		_, _ = idx.Lookup([]Value{StringValue("math"), StringValue("active")})
 	}
 }
 
@@ -995,11 +995,11 @@ func BenchmarkCompositeIndex_PrefixLookup(b *testing.B) {
 	for i := 0; i < 10000; i++ {
 		domain := domains[i%len(domains)]
 		status := statuses[i%len(statuses)]
-		idx.Insert(uint64(i), []Value{StringValue(domain), StringValue(status)})
+		_ = idx.Insert(uint64(i), []Value{StringValue(domain), StringValue(status)})
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		idx.PrefixLookup([]Value{StringValue("math")})
+		_, _ = idx.PrefixLookup([]Value{StringValue("math")})
 	}
 }

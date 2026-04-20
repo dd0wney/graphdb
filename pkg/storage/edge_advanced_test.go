@@ -7,7 +7,7 @@ import (
 // Test edge creation and retrieval with properties
 func TestEdgeWithProperties(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]Value{
 		"name": StringValue("Alice"),
@@ -49,7 +49,7 @@ func TestEdgeWithProperties(t *testing.T) {
 // Test retrieving outgoing and incoming edges
 func TestGetEdgeDirections(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"Person"}, nil)
 	node2, _ := gs.CreateNode([]string{"Person"}, nil)
@@ -114,7 +114,7 @@ func TestGetEdgeDirections(t *testing.T) {
 // Test finding edges by type
 func TestFindEdgesByType(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"Person"}, nil)
 	node2, _ := gs.CreateNode([]string{"Person"}, nil)
@@ -153,7 +153,7 @@ func TestFindEdgesByType(t *testing.T) {
 // Test error cases
 func TestEdgeErrors(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Test creating edge with invalid source node
 	_, err := gs.CreateEdge(99999, 88888, "KNOWS", nil, 1.0)
@@ -178,7 +178,7 @@ func TestEdgeErrors(t *testing.T) {
 // Test FindEdgeBetween
 func TestFindEdgeBetween(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Alice")})
 	node2, _ := gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Bob")})
@@ -248,7 +248,7 @@ func TestFindEdgeBetween(t *testing.T) {
 // Test FindAllEdgesBetween
 func TestFindAllEdgesBetween(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"Person"}, nil)
 	node2, _ := gs.CreateNode([]string{"Person"}, nil)
@@ -286,7 +286,7 @@ func TestFindAllEdgesBetween(t *testing.T) {
 // Test UpsertEdge - create new edge
 func TestUpsertEdge_Create(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"User"}, nil)
 	node2, _ := gs.CreateNode([]string{"Concept"}, nil)
@@ -322,7 +322,7 @@ func TestUpsertEdge_Create(t *testing.T) {
 // Test UpsertEdge - update existing edge
 func TestUpsertEdge_Update(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"User"}, nil)
 	node2, _ := gs.CreateNode([]string{"Concept"}, nil)
@@ -377,7 +377,7 @@ func TestUpsertEdge_Update(t *testing.T) {
 // Test UpsertEdge preserves unmodified properties
 func TestUpsertEdge_MergesProperties(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"User"}, nil)
 	node2, _ := gs.CreateNode([]string{"Concept"}, nil)
@@ -414,7 +414,7 @@ func TestUpsertEdge_MergesProperties(t *testing.T) {
 // Test UpsertEdge with different edge types between same nodes
 func TestUpsertEdge_DifferentTypes(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"User"}, nil)
 	node2, _ := gs.CreateNode([]string{"User"}, nil)
@@ -455,7 +455,7 @@ func TestUpsertEdge_DifferentTypes(t *testing.T) {
 // Test DeleteEdgeBetween
 func TestDeleteEdgeBetween(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"Person"}, nil)
 	node2, _ := gs.CreateNode([]string{"Person"}, nil)
@@ -496,7 +496,7 @@ func TestDeleteEdgeBetween(t *testing.T) {
 // Test UpsertEdge with invalid nodes
 func TestUpsertEdge_InvalidNodes(t *testing.T) {
 	gs := setupTestStorage(t)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"Person"}, nil)
 

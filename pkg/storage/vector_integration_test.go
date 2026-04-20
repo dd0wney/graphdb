@@ -178,7 +178,7 @@ func TestStorageVectorSearchIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create vector index for "embedding" property
 	err = gs.CreateVectorIndex("embedding", 3, 16, 200, vector.MetricCosine)
@@ -261,7 +261,7 @@ func TestStorageVectorIndexManagement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create index
 	err = gs.CreateVectorIndex("embedding", 128, 16, 200, vector.MetricCosine)
@@ -304,10 +304,10 @@ func TestStorageVectorUpdateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create index
-	gs.CreateVectorIndex("embedding", 3, 16, 200, vector.MetricCosine)
+	_ = gs.CreateVectorIndex("embedding", 3, 16, 200, vector.MetricCosine)
 
 	// Add node with vector
 	node := &Node{
@@ -321,7 +321,7 @@ func TestStorageVectorUpdateDelete(t *testing.T) {
 	}
 
 	gs.nodes[node.ID] = node
-	gs.UpdateNodeVectorIndexes(node)
+	_ = gs.UpdateNodeVectorIndexes(node)
 
 	// Search for the node
 	results, _ := gs.VectorSearch("embedding", []float32{1, 0, 0}, 1, 50)

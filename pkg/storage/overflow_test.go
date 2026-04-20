@@ -29,14 +29,14 @@ func mustNewCompressedEdgeListForOverflowBench(b *testing.B, nodeIDs []uint64) *
 // TestIDGenerationOverflow tests that we detect ID space exhaustion
 func TestNodeIDGenerationOverflow(t *testing.T) {
 	// Clean up
-	os.RemoveAll("./data/test-overflow-node")
-	defer os.RemoveAll("./data/test-overflow-node")
+	_ = os.RemoveAll("./data/test-overflow-node")
+	defer func() { _ = os.RemoveAll("./data/test-overflow-node") }()
 
 	graph, err := NewGraphStorage("./data/test-overflow-node")
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Set nextNodeID to max value - 1
 	graph.nextNodeID = math.MaxUint64 - 1
@@ -67,14 +67,14 @@ func TestNodeIDGenerationOverflow(t *testing.T) {
 }
 
 func TestEdgeIDGenerationOverflow(t *testing.T) {
-	os.RemoveAll("./data/test-overflow-edge")
-	defer os.RemoveAll("./data/test-overflow-edge")
+	_ = os.RemoveAll("./data/test-overflow-edge")
+	defer func() { _ = os.RemoveAll("./data/test-overflow-edge") }()
 
 	graph, err := NewGraphStorage("./data/test-overflow-edge")
 	if err != nil {
 		t.Fatalf("Failed to create graph: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create two nodes
 	node1, _ := graph.CreateNode([]string{"Test"}, nil)

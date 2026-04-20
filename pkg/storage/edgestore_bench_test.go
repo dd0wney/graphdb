@@ -23,7 +23,7 @@ func BenchmarkEdgeStore_CacheHit(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	// Populate with test data
 	nodeID := uint64(1)
@@ -53,7 +53,7 @@ func BenchmarkEdgeStore_CacheMiss(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	// Populate with test data (multiple nodes)
 	const numNodes = 100
@@ -81,7 +81,7 @@ func BenchmarkEdgeStore_Write(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	edges := make([]uint64, 100)
 	for i := range edges {
@@ -102,7 +102,7 @@ func BenchmarkEdgeStore_SmallEdgeList(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	edges := make([]uint64, 10)
 	for i := range edges {
@@ -110,8 +110,8 @@ func BenchmarkEdgeStore_SmallEdgeList(b *testing.B) {
 	}
 
 	// Store and prime cache
-	es.StoreOutgoingEdges(1, edges)
-	es.GetOutgoingEdges(1)
+	_ = es.StoreOutgoingEdges(1, edges)
+	_, _ = es.GetOutgoingEdges(1)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -126,7 +126,7 @@ func BenchmarkEdgeStore_LargeEdgeList(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	edges := make([]uint64, 10000)
 	for i := range edges {
@@ -134,8 +134,8 @@ func BenchmarkEdgeStore_LargeEdgeList(b *testing.B) {
 	}
 
 	// Store and prime cache
-	es.StoreOutgoingEdges(1, edges)
-	es.GetOutgoingEdges(1)
+	_ = es.StoreOutgoingEdges(1, edges)
+	_, _ = es.GetOutgoingEdges(1)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -197,14 +197,14 @@ func BenchmarkEdgeStore_CacheSize(b *testing.B) {
 			if err != nil {
 				b.Fatalf("Failed to create EdgeStore: %v", err)
 			}
-			defer es.Close()
+			defer func() { _ = es.Close() }()
 
 			// Populate with more nodes than cache size
 			const numNodes = 1000
 			for i := 0; i < numNodes; i++ {
 				nodeID := uint64(i + 1)
 				edges := []uint64{uint64(i * 10)}
-				es.StoreOutgoingEdges(nodeID, edges)
+				_ = es.StoreOutgoingEdges(nodeID, edges)
 			}
 
 			b.ResetTimer()
@@ -269,7 +269,7 @@ func BenchmarkMemoryUsage_DiskBacked(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	// Store edges (goes to disk)
 	for i := 0; i < numNodes; i++ {
@@ -278,13 +278,13 @@ func BenchmarkMemoryUsage_DiskBacked(b *testing.B) {
 		for j := 0; j < edgesPerNode; j++ {
 			edges[j] = uint64(i*10 + j)
 		}
-		es.StoreOutgoingEdges(nodeID, edges)
+		_ = es.StoreOutgoingEdges(nodeID, edges)
 	}
 
 	// Access some nodes to populate cache
 	for i := 0; i < cacheSize; i++ {
 		nodeID := uint64(i + 1)
-		es.GetOutgoingEdges(nodeID)
+		_, _ = es.GetOutgoingEdges(nodeID)
 	}
 
 	// Measure after storing
@@ -304,14 +304,14 @@ func BenchmarkEdgeStore_Throughput(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	// Populate
 	const numNodes = 1000
 	for i := 0; i < numNodes; i++ {
 		nodeID := uint64(i + 1)
 		edges := []uint64{uint64(i * 10), uint64(i * 10 + 1)}
-		es.StoreOutgoingEdges(nodeID, edges)
+		_ = es.StoreOutgoingEdges(nodeID, edges)
 	}
 
 	b.ResetTimer()

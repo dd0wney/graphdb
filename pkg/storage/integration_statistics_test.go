@@ -9,7 +9,7 @@ import (
 // TestGraphStorage_StatisticsAfterCrash tests that NodeCount and EdgeCount survive crashes
 func TestGraphStorage_StatisticsAfterCrash(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create nodes and edges, crash
 	{
@@ -62,7 +62,7 @@ func TestGraphStorage_StatisticsAfterCrash(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify statistics recovered correctly
 		stats := gs.stats
@@ -80,7 +80,7 @@ func TestGraphStorage_StatisticsAfterCrash(t *testing.T) {
 // TestGraphStorage_StatisticsAfterSnapshot tests that statistics survive clean shutdown
 func TestGraphStorage_StatisticsAfterSnapshot(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create data, close cleanly
 	{
@@ -101,7 +101,7 @@ func TestGraphStorage_StatisticsAfterSnapshot(t *testing.T) {
 		}
 		// Create 12 edges using actual node IDs
 		for i := 0; i < 12; i++ {
-			gs.CreateEdge(nodeIDs[i%7], nodeIDs[(i+1)%7], "KNOWS", nil, 1.0)
+			_, _ = gs.CreateEdge(nodeIDs[i%7], nodeIDs[(i+1)%7], "KNOWS", nil, 1.0)
 		}
 
 		// Verify stats before close
@@ -130,7 +130,7 @@ func TestGraphStorage_StatisticsAfterSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify statistics from snapshot
 		stats := gs.stats
@@ -148,7 +148,7 @@ func TestGraphStorage_StatisticsAfterSnapshot(t *testing.T) {
 // TestGraphStorage_StatisticsAfterDeletion tests that statistics decrement correctly
 func TestGraphStorage_StatisticsAfterDeletion(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create data, delete some, crash
 	{
@@ -173,13 +173,13 @@ func TestGraphStorage_StatisticsAfterDeletion(t *testing.T) {
 		}
 
 		// Delete 3 edges
-		gs.DeleteEdge(edgeIDs[0])
-		gs.DeleteEdge(edgeIDs[5])
-		gs.DeleteEdge(edgeIDs[10])
+		_ = gs.DeleteEdge(edgeIDs[0])
+		_ = gs.DeleteEdge(edgeIDs[5])
+		_ = gs.DeleteEdge(edgeIDs[10])
 
 		// Delete 2 nodes (will cascade delete their edges)
-		gs.DeleteNode(nodeIDs[3])
-		gs.DeleteNode(nodeIDs[7])
+		_ = gs.DeleteNode(nodeIDs[3])
+		_ = gs.DeleteNode(nodeIDs[7])
 
 		// Check stats before crash
 		stats := gs.stats
@@ -208,7 +208,7 @@ func TestGraphStorage_StatisticsAfterDeletion(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify statistics after recovery match reality
 		stats := gs.stats
@@ -236,7 +236,7 @@ func TestGraphStorage_StatisticsAfterDeletion(t *testing.T) {
 // TestGraphStorage_StatisticsAccuracyAfterManyOperations tests stats accuracy with many operations
 func TestGraphStorage_StatisticsAccuracyAfterManyOperations(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create, update, delete in sequence, crash
 	{
@@ -261,23 +261,23 @@ func TestGraphStorage_StatisticsAccuracyAfterManyOperations(t *testing.T) {
 		}
 
 		// Update some nodes (shouldn't affect counts)
-		gs.UpdateNode(nodeIDs[0], map[string]Value{"updated": BoolValue(true)})
-		gs.UpdateNode(nodeIDs[5], map[string]Value{"updated": BoolValue(true)})
-		gs.UpdateNode(nodeIDs[10], map[string]Value{"updated": BoolValue(true)})
+		_ = gs.UpdateNode(nodeIDs[0], map[string]Value{"updated": BoolValue(true)})
+		_ = gs.UpdateNode(nodeIDs[5], map[string]Value{"updated": BoolValue(true)})
+		_ = gs.UpdateNode(nodeIDs[10], map[string]Value{"updated": BoolValue(true)})
 
 		// Delete 5 edges
 		for i := 0; i < 5; i++ {
-			gs.DeleteEdge(edgeIDs[i])
+			_ = gs.DeleteEdge(edgeIDs[i])
 		}
 
 		// Delete 3 nodes
 		for i := 0; i < 3; i++ {
-			gs.DeleteNode(nodeIDs[i])
+			_ = gs.DeleteNode(nodeIDs[i])
 		}
 
 		// Create 5 more nodes
 		for i := 0; i < 5; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{"id": IntValue(int64(i + 100))})
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"id": IntValue(int64(i + 100))})
 		}
 
 		// Expected: (20 - 3 + 5) = 22 nodes
@@ -301,7 +301,7 @@ func TestGraphStorage_StatisticsAccuracyAfterManyOperations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify node count
 		stats := gs.stats
@@ -329,13 +329,13 @@ func TestGraphStorage_StatisticsAccuracyAfterManyOperations(t *testing.T) {
 // TestGraphStorage_StatisticsMultipleRecoveries tests stats through multiple crash/recovery cycles
 func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Track all crashed storages for cleanup
 	var crashedStorages []*GraphStorage
 	t.Cleanup(func() {
 		for _, gs := range crashedStorages {
-			gs.Close()
+			_ = gs.Close()
 		}
 	})
 
@@ -357,7 +357,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 			nodeIDs = append(nodeIDs, node.ID)
 		}
 		for i := 0; i < 7; i++ {
-			gs.CreateEdge(nodeIDs[i%5], nodeIDs[(i+1)%5], "KNOWS", nil, 1.0)
+			_, _ = gs.CreateEdge(nodeIDs[i%5], nodeIDs[(i+1)%5], "KNOWS", nil, 1.0)
 		}
 
 		// DON'T CLOSE - simulate crash (cleanup registered above)
@@ -397,7 +397,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 
 		// Create 5 edges using actual node IDs (now have 8 nodes total)
 		for i := 0; i < 5; i++ {
-			gs.CreateEdge(nodeIDs[i%8], nodeIDs[(i+1)%8], "KNOWS", nil, 1.0)
+			_, _ = gs.CreateEdge(nodeIDs[i%8], nodeIDs[(i+1)%8], "KNOWS", nil, 1.0)
 		}
 
 		// DON'T CLOSE - simulate crash (cleanup registered above)
@@ -414,7 +414,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed final recovery: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		stats := gs.stats
 		expectedNodes := 8 // 5 + 3
@@ -449,7 +449,7 @@ func TestGraphStorage_StatisticsWithConcurrentOperations(t *testing.T) {
 	}
 
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -459,7 +459,7 @@ func TestGraphStorage_StatisticsWithConcurrentOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create initial nodes
 	var nodeIDs []uint64
@@ -479,7 +479,7 @@ func TestGraphStorage_StatisticsWithConcurrentOperations(t *testing.T) {
 		go func(workerID int) {
 			defer wg.Done()
 			for j := 0; j < nodesPerGoroutine; j++ {
-				gs.CreateNode([]string{"Person"}, map[string]Value{
+				_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 					"worker": IntValue(int64(workerID)),
 				})
 			}

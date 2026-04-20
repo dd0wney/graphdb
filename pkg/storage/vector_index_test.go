@@ -81,9 +81,9 @@ func TestVectorIndexRemove(t *testing.T) {
 	vi := NewVectorIndex()
 
 	// Create index and add vectors
-	vi.CreateIndex("embedding", 3, 16, 200, vector.MetricCosine)
-	vi.AddVector("embedding", 1, []float32{1, 0, 0})
-	vi.AddVector("embedding", 2, []float32{0, 1, 0})
+	_ = vi.CreateIndex("embedding", 3, 16, 200, vector.MetricCosine)
+	_ = vi.AddVector("embedding", 1, []float32{1, 0, 0})
+	_ = vi.AddVector("embedding", 2, []float32{0, 1, 0})
 
 	// Remove vector
 	err := vi.RemoveVector("embedding", 1)
@@ -106,7 +106,7 @@ func TestVectorIndexDrop(t *testing.T) {
 	vi := NewVectorIndex()
 
 	// Create index
-	vi.CreateIndex("embedding", 128, 16, 200, vector.MetricCosine)
+	_ = vi.CreateIndex("embedding", 128, 16, 200, vector.MetricCosine)
 
 	// Drop index
 	err := vi.DropIndex("embedding")
@@ -131,8 +131,8 @@ func TestVectorIndexList(t *testing.T) {
 	vi := NewVectorIndex()
 
 	// Create multiple indexes
-	vi.CreateIndex("embedding1", 128, 16, 200, vector.MetricCosine)
-	vi.CreateIndex("embedding2", 256, 16, 200, vector.MetricEuclidean)
+	_ = vi.CreateIndex("embedding1", 128, 16, 200, vector.MetricCosine)
+	_ = vi.CreateIndex("embedding2", 256, 16, 200, vector.MetricEuclidean)
 
 	// List indexes
 	indexes := vi.ListIndexes()
@@ -179,7 +179,7 @@ func TestVectorIndexConcurrent(t *testing.T) {
 	vi := NewVectorIndex()
 
 	// Create index
-	vi.CreateIndex("embedding", 10, 16, 200, vector.MetricCosine)
+	_ = vi.CreateIndex("embedding", 10, 16, 200, vector.MetricCosine)
 
 	// Add vectors concurrently
 	done := make(chan bool, 10)

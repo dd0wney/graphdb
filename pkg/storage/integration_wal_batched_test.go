@@ -9,7 +9,7 @@ import (
 // TestGraphStorage_BatchedWAL_NodesDurable tests that batched node creations survive crashes
 func TestGraphStorage_BatchedWAL_NodesDurable(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeIDs []uint64
 
@@ -55,7 +55,7 @@ func TestGraphStorage_BatchedWAL_NodesDurable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify all nodes recovered
 		stats := gs.stats
@@ -86,7 +86,7 @@ func TestGraphStorage_BatchedWAL_NodesDurable(t *testing.T) {
 // TestGraphStorage_BatchedWAL_EdgesDurable tests that batched edge creations survive crashes
 func TestGraphStorage_BatchedWAL_EdgesDurable(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var edgeIDs []uint64
 	var node1ID, node2ID uint64
@@ -139,7 +139,7 @@ func TestGraphStorage_BatchedWAL_EdgesDurable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify all edges recovered
 		stats := gs.stats
@@ -181,13 +181,13 @@ func TestGraphStorage_BatchedWAL_EdgesDurable(t *testing.T) {
 // TestGraphStorage_BatchedWAL_MultipleCycles tests multiple crash/recovery cycles
 func TestGraphStorage_BatchedWAL_MultipleCycles(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Track all crashed storages for cleanup
 	var crashedStorages []*GraphStorage
 	t.Cleanup(func() {
 		for _, gs := range crashedStorages {
-			gs.Close()
+			_ = gs.Close()
 		}
 	})
 
@@ -206,9 +206,9 @@ func TestGraphStorage_BatchedWAL_MultipleCycles(t *testing.T) {
 		}
 		crashedStorages = append(crashedStorages, gs)
 
-		gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(1)})
-		gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(1)})
-		gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(1)})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(1)})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(1)})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(1)})
 
 		// Wait for background flush
 		time.Sleep(100 * time.Millisecond)
@@ -237,8 +237,8 @@ func TestGraphStorage_BatchedWAL_MultipleCycles(t *testing.T) {
 			t.Fatalf("Cycle 2: Expected 3 nodes from cycle 1, got %d", stats.NodeCount)
 		}
 
-		gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(2)})
-		gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(2)})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(2)})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(2)})
 
 		// Wait for background flush
 		time.Sleep(100 * time.Millisecond)
@@ -267,7 +267,7 @@ func TestGraphStorage_BatchedWAL_MultipleCycles(t *testing.T) {
 			t.Fatalf("Cycle 3: Expected 5 nodes from cycles 1+2, got %d", stats.NodeCount)
 		}
 
-		gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(3)})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(3)})
 
 		// Wait for background flush
 		time.Sleep(100 * time.Millisecond)
@@ -289,7 +289,7 @@ func TestGraphStorage_BatchedWAL_MultipleCycles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed final recovery: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		stats := gs.stats
 		if stats.NodeCount != 6 {
@@ -329,7 +329,7 @@ func TestGraphStorage_BatchedWAL_MultipleCycles(t *testing.T) {
 // TestGraphStorage_BatchedWAL_DeletionDurable tests that batched deletions survive crashes
 func TestGraphStorage_BatchedWAL_DeletionDurable(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeToDelete uint64
 
@@ -357,7 +357,7 @@ func TestGraphStorage_BatchedWAL_DeletionDurable(t *testing.T) {
 		// Wait for background flush
 		time.Sleep(100 * time.Millisecond)
 
-		gs.Close() // Clean close
+		_ = gs.Close() // Clean close
 	}
 
 	// Phase 2: Recover, delete one node, flush, crash
@@ -402,7 +402,7 @@ func TestGraphStorage_BatchedWAL_DeletionDurable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed final recovery: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		stats := gs.stats
 		if stats.NodeCount != 4 {

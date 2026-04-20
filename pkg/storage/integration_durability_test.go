@@ -8,7 +8,7 @@ import (
 // TestGraphStorage_DiskBackedEdges_WALIntegration tests that disk-backed edge operations are logged to WAL
 func TestGraphStorage_DiskBackedEdges_WALIntegration(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node1ID, node2ID, edgeID uint64
 
@@ -58,7 +58,7 @@ func TestGraphStorage_DiskBackedEdges_WALIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reopen GraphStorage: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify nodes recovered
 		node1, err := gs.GetNode(node1ID)
@@ -102,7 +102,7 @@ func TestGraphStorage_DiskBackedEdges_WALIntegration(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_CrashRecovery simulates a crash and verifies recovery
 func TestGraphStorage_DiskBackedEdges_CrashRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeIDs []uint64
 	const numNodes = 100
@@ -131,7 +131,7 @@ func TestGraphStorage_DiskBackedEdges_CrashRecovery(t *testing.T) {
 			for j := 0; j < edgesPerNode; j++ {
 				sourceID := nodeIDs[i]
 				targetID := nodeIDs[(i+j+1)%numNodes]
-				gs.CreateEdge(sourceID, targetID, "CONNECTS", nil, 1.0)
+				_, _ = gs.CreateEdge(sourceID, targetID, "CONNECTS", nil, 1.0)
 			}
 		}
 
@@ -151,7 +151,7 @@ func TestGraphStorage_DiskBackedEdges_CrashRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover after crash: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify all nodes recovered
 		recoveredNodes := 0
@@ -191,7 +191,7 @@ func TestGraphStorage_DiskBackedEdges_CrashRecovery(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_PartialWriteRecovery tests recovery from partial writes
 func TestGraphStorage_DiskBackedEdges_PartialWriteRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node1ID, node2ID uint64
 
@@ -210,12 +210,12 @@ func TestGraphStorage_DiskBackedEdges_PartialWriteRecovery(t *testing.T) {
 		node2, _ := gs.CreateNode([]string{"Node"}, nil)
 
 		// Create initial edge
-		gs.CreateEdge(node1.ID, node2.ID, "EDGE1", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "EDGE1", nil, 1.0)
 
 		node1ID = node1.ID
 		node2ID = node2.ID
 
-		gs.Close() // Clean shutdown
+		_ = gs.Close() // Clean shutdown
 	}
 
 	// Phase 2: Reopen, add more data, crash
@@ -228,8 +228,8 @@ func TestGraphStorage_DiskBackedEdges_PartialWriteRecovery(t *testing.T) {
 		})
 
 		// Add more edges
-		gs.CreateEdge(node1ID, node2ID, "EDGE2", nil, 1.0)
-		gs.CreateEdge(node1ID, node2ID, "EDGE3", nil, 1.0)
+		_, _ = gs.CreateEdge(node1ID, node2ID, "EDGE2", nil, 1.0)
+		_, _ = gs.CreateEdge(node1ID, node2ID, "EDGE3", nil, 1.0)
 
 		// Simulate crash (no Close)
 		// testCrashableStorage will clean up after the test completes
@@ -246,7 +246,7 @@ func TestGraphStorage_DiskBackedEdges_PartialWriteRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Should recover at least the first edge (committed before crash)
 		outgoing, err := gs.GetOutgoingEdges(node1ID)
@@ -278,7 +278,7 @@ func TestGraphStorage_DiskBackedEdges_PartialWriteRecovery(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_NodeDeletionWithEdges tests deleting nodes that have disk-backed edges
 func TestGraphStorage_DiskBackedEdges_NodeDeletionWithEdges(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -288,7 +288,7 @@ func TestGraphStorage_DiskBackedEdges_NodeDeletionWithEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes with edges
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -358,7 +358,7 @@ func TestGraphStorage_DiskBackedEdges_NodeDeletionWithEdges(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_SnapshotIntegration tests that disk-backed edges work with snapshots
 func TestGraphStorage_DiskBackedEdges_SnapshotIntegration(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node1ID, node2ID, edgeID uint64
 
@@ -391,7 +391,7 @@ func TestGraphStorage_DiskBackedEdges_SnapshotIntegration(t *testing.T) {
 			t.Fatalf("Snapshot failed: %v", err)
 		}
 
-		gs.Close()
+		_ = gs.Close()
 	}
 
 	// Phase 2: Restore from snapshot
@@ -404,7 +404,7 @@ func TestGraphStorage_DiskBackedEdges_SnapshotIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to restore from snapshot: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify nodes restored
 		node1, err := gs.GetNode(node1ID)
@@ -443,7 +443,7 @@ func TestGraphStorage_DiskBackedEdges_SnapshotIntegration(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_ConcurrentCrashRecovery tests recovery from crash during concurrent operations
 func TestGraphStorage_DiskBackedEdges_ConcurrentCrashRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	const numWorkers = 10
 	const operationsPerWorker = 100
@@ -471,7 +471,7 @@ func TestGraphStorage_DiskBackedEdges_ConcurrentCrashRecovery(t *testing.T) {
 				for i := 0; i < operationsPerWorker; i++ {
 					source := nodeIDs[id*2]
 					target := nodeIDs[id*2+1]
-					gs.CreateEdge(source, target, "EDGE", nil, 1.0)
+					_, _ = gs.CreateEdge(source, target, "EDGE", nil, 1.0)
 				}
 				done <- true
 			}(worker)
@@ -499,7 +499,7 @@ func TestGraphStorage_DiskBackedEdges_ConcurrentCrashRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Count recovered edges (any amount > 0 is acceptable for concurrent crash)
 		totalEdges := 0

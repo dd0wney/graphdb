@@ -8,7 +8,7 @@ import (
 // TestGraphStorage_SnapshotAndTruncate tests that Clean close creates snapshot, truncates WAL
 func TestGraphStorage_SnapshotAndTruncate(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeIDs []uint64
 
@@ -53,7 +53,7 @@ func TestGraphStorage_SnapshotAndTruncate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify all nodes recovered from snapshot
 		stats := gs.stats
@@ -83,7 +83,7 @@ func TestGraphStorage_SnapshotAndTruncate(t *testing.T) {
 // TestGraphStorage_SnapshotThenMoreOps tests operations after snapshot but before truncate
 func TestGraphStorage_SnapshotThenMoreOps(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create 3 nodes, close cleanly
 	{
@@ -97,10 +97,10 @@ func TestGraphStorage_SnapshotThenMoreOps(t *testing.T) {
 		}
 
 		for i := 0; i < 3; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{"phase": IntValue(1)})
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"phase": IntValue(1)})
 		}
 
-		gs.Close() // Snapshot + truncate
+		_ = gs.Close() // Snapshot + truncate
 		t.Log("Phase 1: Created 3 nodes, closed cleanly")
 	}
 
@@ -119,7 +119,7 @@ func TestGraphStorage_SnapshotThenMoreOps(t *testing.T) {
 
 		// Create 2 more nodes
 		for i := 0; i < 2; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{"phase": IntValue(2)})
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"phase": IntValue(2)})
 		}
 
 		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
@@ -136,7 +136,7 @@ func TestGraphStorage_SnapshotThenMoreOps(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed final recovery: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		stats := gs.stats
 		if stats.NodeCount != 5 {
@@ -174,7 +174,7 @@ func TestGraphStorage_SnapshotThenMoreOps(t *testing.T) {
 // TestGraphStorage_MultipleSnapshotCycles tests multiple snapshot/truncate cycles
 func TestGraphStorage_MultipleSnapshotCycles(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	expectedTotal := 0
 
@@ -190,11 +190,11 @@ func TestGraphStorage_MultipleSnapshotCycles(t *testing.T) {
 		}
 
 		for i := 0; i < 3; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(1)})
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(1)})
 		}
 		expectedTotal += 3
 
-		gs.Close()
+		_ = gs.Close()
 		t.Log("Cycle 1: Created 3 nodes, closed (snapshot + truncate)")
 	}
 
@@ -215,11 +215,11 @@ func TestGraphStorage_MultipleSnapshotCycles(t *testing.T) {
 		}
 
 		for i := 0; i < 4; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(2)})
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(2)})
 		}
 		expectedTotal += 4
 
-		gs.Close()
+		_ = gs.Close()
 		t.Log("Cycle 2: Recovered 3, created 4 more, closed (snapshot + truncate)")
 	}
 
@@ -240,11 +240,11 @@ func TestGraphStorage_MultipleSnapshotCycles(t *testing.T) {
 		}
 
 		for i := 0; i < 2; i++ {
-			gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(3)})
+			_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"cycle": IntValue(3)})
 		}
 		expectedTotal += 2
 
-		gs.Close()
+		_ = gs.Close()
 		t.Log("Cycle 3: Recovered 7, created 2 more, closed (snapshot + truncate)")
 	}
 
@@ -258,7 +258,7 @@ func TestGraphStorage_MultipleSnapshotCycles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed final recovery: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		stats := gs.stats
 		if stats.NodeCount != uint64(expectedTotal) {
@@ -294,7 +294,7 @@ func TestGraphStorage_MultipleSnapshotCycles(t *testing.T) {
 // TestGraphStorage_EdgesDurableAcrossSnapshot tests that edges survive snapshot/truncate
 func TestGraphStorage_EdgesDurableAcrossSnapshot(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node1ID, node2ID uint64
 	var edgeIDs []uint64
@@ -326,7 +326,7 @@ func TestGraphStorage_EdgesDurableAcrossSnapshot(t *testing.T) {
 			edgeIDs = append(edgeIDs, edge.ID)
 		}
 
-		gs.Close() // Snapshot + truncate
+		_ = gs.Close() // Snapshot + truncate
 		t.Log("Created 2 nodes and 3 edges, closed cleanly")
 	}
 
@@ -340,7 +340,7 @@ func TestGraphStorage_EdgesDurableAcrossSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify edge count
 		stats := gs.stats
@@ -389,7 +389,7 @@ func TestGraphStorage_EdgesDurableAcrossSnapshot(t *testing.T) {
 // TestGraphStorage_IndexesDurableAcrossSnapshot tests that indexes survive snapshot/truncate
 func TestGraphStorage_IndexesDurableAcrossSnapshot(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create property index and nodes, close cleanly
 	{
@@ -409,20 +409,20 @@ func TestGraphStorage_IndexesDurableAcrossSnapshot(t *testing.T) {
 		}
 
 		// Create nodes with indexed property
-		gs.CreateNode([]string{"Person"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 			"name": StringValue("Alice"),
 			"age":  IntValue(25),
 		})
-		gs.CreateNode([]string{"Person"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 			"name": StringValue("Bob"),
 			"age":  IntValue(30),
 		})
-		gs.CreateNode([]string{"Person"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 			"name": StringValue("Charlie"),
 			"age":  IntValue(25),
 		})
 
-		gs.Close() // Snapshot + truncate
+		_ = gs.Close() // Snapshot + truncate
 		t.Log("Created property index and 3 nodes, closed cleanly")
 	}
 
@@ -436,7 +436,7 @@ func TestGraphStorage_IndexesDurableAcrossSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// The property index metadata should be in snapshot, but NOT the index data
 		// After recovery, the index needs to be rebuilt from WAL or snapshot

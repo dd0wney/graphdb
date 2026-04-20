@@ -8,7 +8,7 @@ import (
 // TestGraphStorage_LabelIndexDurableAfterCrash tests that label indexes survive crash recovery
 func TestGraphStorage_LabelIndexDurableAfterCrash(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeIDs []uint64
 
@@ -67,7 +67,7 @@ func TestGraphStorage_LabelIndexDurableAfterCrash(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Query by label - Person
 		persons, err := gs.FindNodesByLabel("Person")
@@ -108,7 +108,7 @@ func TestGraphStorage_LabelIndexDurableAfterCrash(t *testing.T) {
 // TestGraphStorage_TypeIndexDurableAfterCrash tests that type indexes survive crash recovery
 func TestGraphStorage_TypeIndexDurableAfterCrash(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var edgeIDs []uint64
 	var crashedStorage *GraphStorage
@@ -175,7 +175,7 @@ func TestGraphStorage_TypeIndexDurableAfterCrash(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Query by type - KNOWS
 		knows, err := gs.FindEdgesByType("KNOWS")
@@ -216,7 +216,7 @@ func TestGraphStorage_TypeIndexDurableAfterCrash(t *testing.T) {
 // TestGraphStorage_MultiLabelNodeDurability tests nodes with multiple labels
 func TestGraphStorage_MultiLabelNodeDurability(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeID uint64
 
@@ -267,7 +267,7 @@ func TestGraphStorage_MultiLabelNodeDurability(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify all 3 label indexes work after crash
 		persons, err := gs.FindNodesByLabel("Person")
@@ -301,7 +301,7 @@ func TestGraphStorage_MultiLabelNodeDurability(t *testing.T) {
 // TestGraphStorage_LabelIndexAfterNodeDeletion tests that label indexes are cleaned up when nodes are deleted
 func TestGraphStorage_LabelIndexAfterNodeDeletion(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create nodes, delete some, crash
 	{
@@ -319,8 +319,8 @@ func TestGraphStorage_LabelIndexAfterNodeDeletion(t *testing.T) {
 		}
 
 		// Delete 2 of them
-		gs.DeleteNode(nodeIDs[1])
-		gs.DeleteNode(nodeIDs[3])
+		_ = gs.DeleteNode(nodeIDs[1])
+		_ = gs.DeleteNode(nodeIDs[3])
 
 		// Verify label index before crash
 		persons, _ := gs.FindNodesByLabel("Person")
@@ -342,7 +342,7 @@ func TestGraphStorage_LabelIndexAfterNodeDeletion(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify label index after crash - should have 3 nodes, not 5
 		persons, err := gs.FindNodesByLabel("Person")
@@ -360,7 +360,7 @@ func TestGraphStorage_LabelIndexAfterNodeDeletion(t *testing.T) {
 // TestGraphStorage_TypeIndexAfterEdgeDeletion tests that type indexes are cleaned up when edges are deleted
 func TestGraphStorage_TypeIndexAfterEdgeDeletion(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create edges, delete some, crash
 	{
@@ -382,8 +382,8 @@ func TestGraphStorage_TypeIndexAfterEdgeDeletion(t *testing.T) {
 		}
 
 		// Delete 2 of them
-		gs.DeleteEdge(edgeIDs[1])
-		gs.DeleteEdge(edgeIDs[3])
+		_ = gs.DeleteEdge(edgeIDs[1])
+		_ = gs.DeleteEdge(edgeIDs[3])
 
 		// Verify type index before crash
 		knows, _ := gs.FindEdgesByType("KNOWS")
@@ -405,7 +405,7 @@ func TestGraphStorage_TypeIndexAfterEdgeDeletion(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify type index after crash - should have 3 edges, not 5
 		knows, err := gs.FindEdgesByType("KNOWS")
@@ -423,7 +423,7 @@ func TestGraphStorage_TypeIndexAfterEdgeDeletion(t *testing.T) {
 // TestGraphStorage_LabelIndexSnapshot tests that label indexes survive clean shutdown
 func TestGraphStorage_LabelIndexSnapshot(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create nodes, close cleanly
 	{
@@ -437,9 +437,9 @@ func TestGraphStorage_LabelIndexSnapshot(t *testing.T) {
 		}
 
 		// Create nodes with different labels
-		gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Alice")})
-		gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Bob")})
-		gs.CreateNode([]string{"Company"}, map[string]Value{"name": StringValue("Acme")})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Alice")})
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{"name": StringValue("Bob")})
+		_, _ = gs.CreateNode([]string{"Company"}, map[string]Value{"name": StringValue("Acme")})
 
 		// Close cleanly - snapshot + truncate
 		err = gs.Close()
@@ -460,7 +460,7 @@ func TestGraphStorage_LabelIndexSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify label indexes from snapshot
 		persons, err := gs.FindNodesByLabel("Person")
@@ -486,7 +486,7 @@ func TestGraphStorage_LabelIndexSnapshot(t *testing.T) {
 // TestGraphStorage_TypeIndexSnapshot tests that type indexes survive clean shutdown
 func TestGraphStorage_TypeIndexSnapshot(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create edges, close cleanly
 	{
@@ -504,9 +504,9 @@ func TestGraphStorage_TypeIndexSnapshot(t *testing.T) {
 		node2, _ := gs.CreateNode([]string{"Person"}, nil)
 
 		// Create edges with different types
-		gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
-		gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
-		gs.CreateEdge(node1.ID, node2.ID, "LIKES", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "LIKES", nil, 1.0)
 
 		// Close cleanly - snapshot + truncate
 		err = gs.Close()
@@ -527,7 +527,7 @@ func TestGraphStorage_TypeIndexSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify type indexes from snapshot
 		knows, err := gs.FindEdgesByType("KNOWS")

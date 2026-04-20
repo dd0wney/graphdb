@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/binary"
 	"encoding/json"
+	"log"
 	"time"
 )
 
@@ -46,9 +47,13 @@ func (gs *LSMGraphStorage) CreateEdge(fromID, toID uint64, relType string, prope
 		return nil, err
 	}
 
-	// Periodically save counters
+	// Periodically save counters — best-effort durability. A failure
+	// here doesn't invalidate the edge (which is already in the LSM);
+	// it just means counters may replay stale on crash recovery.
 	if edgeID%1000 == 0 {
-		gs.saveCounters()
+		if err := gs.saveCounters(); err != nil {
+			log.Printf("lsm edges: saveCounters failed at edgeID=%d: %v", edgeID, err)
+		}
 	}
 
 	return edge, nil
@@ -76,9 +81,14 @@ func (gs *LSMGraphStorage) DeleteEdge(edgeID uint64) error {
 		return err
 	}
 
-	// Delete edge indexes
-	gs.lsm.Delete(makeOutEdgeKey(edge.FromNodeID, edge.ToNodeID))
-	gs.lsm.Delete(makeInEdgeKey(edge.ToNodeID, edge.FromNodeID))
+	// Delete edge indexes. Tolerate missing keys (idempotent retries);
+	// log real errors so corruption can be diagnosed.
+	if err := gs.lsm.Delete(makeOutEdgeKey(edge.FromNodeID, edge.ToNodeID)); err != nil {
+		log.Printf("lsm edges: delete out-edge key failed: %v", err)
+	}
+	if err := gs.lsm.Delete(makeInEdgeKey(edge.ToNodeID, edge.FromNodeID)); err != nil {
+		log.Printf("lsm edges: delete in-edge key failed: %v", err)
+	}
 
 	// Delete edge data
 	return gs.lsm.Delete(makeEdgeKey(edgeID))

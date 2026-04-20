@@ -49,7 +49,7 @@ func TestPerformanceRegression_NodeCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	nodeCount := 500 // Reduced from 10000 for reasonable test time
 	t.Logf("Performance baseline: %.0f nodes/second", baseline.NodeCreationRate)
@@ -97,7 +97,7 @@ func TestPerformanceRegression_EdgeCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes first (reduced from 1000 for reasonable test time)
 	nodeCount := 200
@@ -152,7 +152,7 @@ func TestPerformanceRegression_NodeQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create dataset (reduced from 5000 for reasonable setup time)
 	nodeCount := 500
@@ -160,7 +160,7 @@ func TestPerformanceRegression_NodeQuery(t *testing.T) {
 		props := map[string]Value{
 			"id": IntValue(int64(i)),
 		}
-		gs.CreateNode([]string{"QueryPerfTest"}, props)
+		_, _ = gs.CreateNode([]string{"QueryPerfTest"}, props)
 	}
 
 	// Test query performance (reduced from 10000)
@@ -206,7 +206,7 @@ func TestPerformanceRegression_EdgeQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create graph with edges (reduced from 1000 for reasonable setup time)
 	nodeCount := 100
@@ -220,7 +220,7 @@ func TestPerformanceRegression_EdgeQuery(t *testing.T) {
 		// Create edges to next 3 nodes
 		for j := 1; j <= 3 && i+j < nodeCount; j++ {
 			if nodes[i+j] != nil {
-				gs.CreateEdge(node.ID, nodes[i+j].ID, "LINKS", nil, 1.0)
+				_, _ = gs.CreateEdge(node.ID, nodes[i+j].ID, "LINKS", nil, 1.0)
 			}
 		}
 	}
@@ -269,7 +269,7 @@ func TestPerformanceRegression_GraphTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a chain of nodes (reduced from 1000 for reasonable setup time)
 	chainLength := 200
@@ -281,7 +281,7 @@ func TestPerformanceRegression_GraphTraversal(t *testing.T) {
 		nodes[i] = node
 
 		if i > 0 {
-			gs.CreateEdge(nodes[i-1].ID, node.ID, "NEXT", nil, 1.0)
+			_, _ = gs.CreateEdge(nodes[i-1].ID, node.ID, "NEXT", nil, 1.0)
 		}
 	}
 
@@ -338,7 +338,7 @@ func TestPerformanceRegression_ConcurrentWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	workers := runtime.NumCPU()
 	writesPerWorker := 100 // Reduced from 5000 for reasonable test time with WAL sync
@@ -360,7 +360,7 @@ func TestPerformanceRegression_ConcurrentWrites(t *testing.T) {
 					"worker": IntValue(int64(workerID)),
 					"index":  IntValue(int64(i)),
 				}
-				gs.CreateNode([]string{"ConcurrentPerfTest"}, props)
+				_, _ = gs.CreateNode([]string{"ConcurrentPerfTest"}, props)
 			}
 		}(w)
 	}
@@ -398,7 +398,7 @@ func TestPerformanceRegression_MemoryEfficiency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Measure memory before
 	runtime.GC()
@@ -415,7 +415,7 @@ func TestPerformanceRegression_MemoryEfficiency(t *testing.T) {
 			"name": StringValue(fmt.Sprintf("Node_%d", i)),
 			"data": StringValue(fmt.Sprintf("Data for node %d", i)),
 		}
-		gs.CreateNode([]string{"MemPerfTest"}, props)
+		_, _ = gs.CreateNode([]string{"MemPerfTest"}, props)
 	}
 
 	// Measure memory after
@@ -450,7 +450,7 @@ func TestPerformanceRegression_MixedWorkload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Pre-populate with some nodes to avoid race conditions
 	nodeCount := 100
@@ -458,7 +458,7 @@ func TestPerformanceRegression_MixedWorkload(t *testing.T) {
 		props := map[string]Value{
 			"id": IntValue(int64(i)),
 		}
-		gs.CreateNode([]string{"MixedTest"}, props)
+		_, _ = gs.CreateNode([]string{"MixedTest"}, props)
 	}
 
 	duration := 3 * time.Second
@@ -514,7 +514,7 @@ func TestPerformanceRegression_MixedWorkload(t *testing.T) {
 				return
 			default:
 				nodeID := uint64(rand.Int63n(100))
-				gs.GetNode(nodeID)
+				_, _ = gs.GetNode(nodeID)
 				localCount++
 			}
 		}
@@ -552,7 +552,7 @@ func TestPerformanceRegression_LargePropertyHandling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes with varying property sizes
 	nodeCount := 100                          // Reduced from 1000 for reasonable test time

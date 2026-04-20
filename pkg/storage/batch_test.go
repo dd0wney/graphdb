@@ -18,7 +18,7 @@ func newTestStorage(t *testing.T) *GraphStorage {
 // TestBatchBasicOperations tests basic batch operations
 func TestBatchBasicOperations(t *testing.T) {
 	storage := newTestStorage(t)
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	batch := storage.BeginBatch()
 
@@ -90,7 +90,7 @@ func TestBatchBasicOperations(t *testing.T) {
 // This validates the atomic ID allocation fix
 func TestBatchIDAllocationRace(t *testing.T) {
 	storage := newTestStorage(t)
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	numBatches := 10
 	nodesPerBatch := 100
@@ -152,7 +152,7 @@ func TestBatchIDAllocationRace(t *testing.T) {
 // TestBatchEdgeIDAllocationRace tests concurrent edge ID allocation
 func TestBatchEdgeIDAllocationRace(t *testing.T) {
 	storage := newTestStorage(t)
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Create some nodes first
 	node1, _ := storage.CreateNode([]string{"Node"}, map[string]Value{})
@@ -214,7 +214,7 @@ func TestBatchEdgeIDAllocationRace(t *testing.T) {
 // This validates the atomic statistics fix
 func TestBatchStatisticsRace(t *testing.T) {
 	storage := newTestStorage(t)
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	numBatches := 20
 	nodesPerBatch := 50
@@ -233,7 +233,7 @@ func TestBatchStatisticsRace(t *testing.T) {
 			}
 
 			for j := 0; j < nodesPerBatch; j++ {
-				batch.AddNode([]string{"Test"}, props)
+				_, _ = batch.AddNode([]string{"Test"}, props)
 			}
 
 			if err := batch.Commit(); err != nil {
@@ -256,7 +256,7 @@ func TestBatchStatisticsRace(t *testing.T) {
 // TestBatchUpdateOperations tests batch update operations
 func TestBatchUpdateOperations(t *testing.T) {
 	storage := newTestStorage(t)
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Create a node
 	props := map[string]Value{
@@ -289,7 +289,7 @@ func TestBatchUpdateOperations(t *testing.T) {
 // TestBatchDeleteOperations tests batch delete operations
 func TestBatchDeleteOperations(t *testing.T) {
 	storage := newTestStorage(t)
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Create nodes and edge
 	node1, _ := storage.CreateNode([]string{"Node"}, map[string]Value{})
@@ -331,14 +331,14 @@ func TestBatchDeleteOperations(t *testing.T) {
 // TestBatchClear tests clearing a batch
 func TestBatchClear(t *testing.T) {
 	storage := newTestStorage(t)
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	batch := storage.BeginBatch()
 
 	// Add operations
 	props := map[string]Value{"test": StringValue("value")}
-	batch.AddNode([]string{"Test"}, props)
-	batch.AddNode([]string{"Test"}, props)
+	_, _ = batch.AddNode([]string{"Test"}, props)
+	_, _ = batch.AddNode([]string{"Test"}, props)
 
 	if batch.Size() != 2 {
 		t.Errorf("Expected size 2, got %d", batch.Size())
@@ -366,7 +366,7 @@ func TestBatchClear(t *testing.T) {
 // TestBatchConcurrentCommits tests multiple batches committing concurrently
 func TestBatchConcurrentCommits(t *testing.T) {
 	storage := newTestStorage(t)
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	numBatches := 10
 	var wg sync.WaitGroup
@@ -383,7 +383,7 @@ func TestBatchConcurrentCommits(t *testing.T) {
 
 			// Add multiple nodes
 			for j := 0; j < 10; j++ {
-				batch.AddNode([]string{fmt.Sprintf("Batch%d", batchNum)}, props)
+				_, _ = batch.AddNode([]string{fmt.Sprintf("Batch%d", batchNum)}, props)
 			}
 
 			if err := batch.Commit(); err != nil {

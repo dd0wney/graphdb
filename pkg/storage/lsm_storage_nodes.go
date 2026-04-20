@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/binary"
 	"encoding/json"
+	"log"
 )
 
 // CreateNode creates a new node in LSM storage
@@ -43,9 +44,11 @@ func (gs *LSMGraphStorage) CreateNode(labels []string, properties map[string]Val
 		}
 	}
 
-	// Periodically save counters
+	// Periodically save counters — best-effort; see lsm_storage_edges.go.
 	if nodeID%1000 == 0 {
-		gs.saveCounters()
+		if err := gs.saveCounters(); err != nil {
+			log.Printf("lsm nodes: saveCounters failed at nodeID=%d: %v", nodeID, err)
+		}
 	}
 
 	return node, nil
@@ -110,30 +113,39 @@ func (gs *LSMGraphStorage) DeleteNode(nodeID uint64) error {
 		return err
 	}
 
-	// Delete outgoing edges
+	// Delete outgoing edges. Tolerate individual failures so one bad
+	// edge doesn't strand the rest; log each so operators can see them.
 	outEdges, err := gs.GetOutgoingEdges(nodeID)
 	if err == nil {
 		for _, edge := range outEdges {
-			gs.DeleteEdge(edge.ID)
+			if err := gs.DeleteEdge(edge.ID); err != nil {
+				log.Printf("lsm nodes: cascade delete out-edge %d failed: %v", edge.ID, err)
+			}
 		}
 	}
 
-	// Delete incoming edges
+	// Delete incoming edges — same tolerance as outgoing.
 	inEdges, err := gs.GetIncomingEdges(nodeID)
 	if err == nil {
 		for _, edge := range inEdges {
-			gs.DeleteEdge(edge.ID)
+			if err := gs.DeleteEdge(edge.ID); err != nil {
+				log.Printf("lsm nodes: cascade delete in-edge %d failed: %v", edge.ID, err)
+			}
 		}
 	}
 
 	// Remove label indexes
 	for _, label := range node.Labels {
-		gs.lsm.Delete(makeLabelKey(label, nodeID))
+		if err := gs.lsm.Delete(makeLabelKey(label, nodeID)); err != nil {
+			log.Printf("lsm nodes: delete label key failed: %v", err)
+		}
 	}
 
-	// Remove property indexes
+	// Remove property indexes — tolerate missing keys (idempotent).
 	for key, value := range node.Properties {
-		gs.lsm.Delete(makePropertyKey(key, value, nodeID))
+		if err := gs.lsm.Delete(makePropertyKey(key, value, nodeID)); err != nil {
+			log.Printf("lsm nodes: delete property key failed: %v", err)
+		}
 	}
 
 	// Delete node

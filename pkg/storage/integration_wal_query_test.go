@@ -8,7 +8,7 @@ import (
 // TestGraphStorage_LabelIndexRecovery tests that GetNodesByLabel works after crash recovery
 func TestGraphStorage_LabelIndexRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var personIDs, companyIDs []uint64
 
@@ -34,7 +34,7 @@ func TestGraphStorage_LabelIndexRecovery(t *testing.T) {
 
 		// Create multi-label nodes
 		for i := 0; i < 2; i++ {
-			gs.CreateNode([]string{"Person", "Employee"}, nil)
+			_, _ = gs.CreateNode([]string{"Person", "Employee"}, nil)
 		}
 
 		// Verify labels work before crash
@@ -62,7 +62,7 @@ func TestGraphStorage_LabelIndexRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify Person label index
 		persons, err := gs.FindNodesByLabel("Person")
@@ -109,7 +109,7 @@ func TestGraphStorage_LabelIndexRecovery(t *testing.T) {
 // TestGraphStorage_TypeIndexRecovery tests that GetEdgesByType works after crash recovery
 func TestGraphStorage_TypeIndexRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var knowsIDs, worksAtIDs []uint64
 
@@ -163,7 +163,7 @@ func TestGraphStorage_TypeIndexRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify KNOWS type index
 		knows, err := gs.FindEdgesByType("KNOWS")
@@ -204,7 +204,7 @@ func TestGraphStorage_TypeIndexRecovery(t *testing.T) {
 // TestGraphStorage_PropertyIndexRecovery tests that property indexes are rebuilt after crash
 func TestGraphStorage_PropertyIndexRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create property index and nodes, crash
 	{
@@ -221,17 +221,17 @@ func TestGraphStorage_PropertyIndexRecovery(t *testing.T) {
 		}
 
 		// Create nodes with indexed property
-		gs.CreateNode([]string{"Person"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 			"name": StringValue("Alice"),
 			"age":  IntValue(25),
 		})
 
-		gs.CreateNode([]string{"Person"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 			"name": StringValue("Bob"),
 			"age":  IntValue(30),
 		})
 
-		gs.CreateNode([]string{"Person"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 			"name": StringValue("Charlie"),
 			"age":  IntValue(25), // Same age as Alice
 		})
@@ -256,7 +256,7 @@ func TestGraphStorage_PropertyIndexRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify property index query works
 		nodes, err := gs.FindNodesByPropertyIndexed("age", IntValue(25))
@@ -285,7 +285,7 @@ func TestGraphStorage_PropertyIndexRecovery(t *testing.T) {
 // TestGraphStorage_DeletedNodeLabelIndexRecovery tests that deleted nodes are removed from label indexes
 func TestGraphStorage_DeletedNodeLabelIndexRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var nodeToDelete uint64
 
@@ -331,7 +331,7 @@ func TestGraphStorage_DeletedNodeLabelIndexRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify label index doesn't include deleted node
 		persons, err := gs.FindNodesByLabel("Person")

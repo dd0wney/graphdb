@@ -17,7 +17,7 @@ func TestEdgeCase_DisconnectedComponents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing disconnected graph components...")
 
@@ -38,7 +38,7 @@ func TestEdgeCase_DisconnectedComponents(t *testing.T) {
 			}
 
 			if prevNode != nil {
-				gs.CreateEdge(prevNode.ID, node.ID, "NEXT", nil, 1.0)
+				_, _ = gs.CreateEdge(prevNode.ID, node.ID, "NEXT", nil, 1.0)
 			}
 			prevNode = node
 		}
@@ -59,7 +59,7 @@ func TestEdgeCase_VeryDeepTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing very deep tree structure...")
 
@@ -75,7 +75,7 @@ func TestEdgeCase_VeryDeepTree(t *testing.T) {
 		}
 
 		if prevNode != nil {
-			gs.CreateEdge(prevNode.ID, node.ID, "CHILD", nil, 1.0)
+			_, _ = gs.CreateEdge(prevNode.ID, node.ID, "CHILD", nil, 1.0)
 		}
 		prevNode = node
 	}
@@ -107,7 +107,7 @@ func TestEdgeCase_StarPattern(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing star pattern (hub and spoke)...")
 
@@ -157,7 +157,7 @@ func TestEdgeCase_PropertyTypeChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing property type changes...")
 
@@ -189,7 +189,7 @@ func TestEdgeCase_ExtremeFloatValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing extreme float values...")
 
@@ -243,7 +243,7 @@ func TestEdgeCase_MaxIntValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing maximum integer values...")
 
@@ -293,7 +293,7 @@ func TestEdgeCase_ManyProperties(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing nodes with many properties...")
 
@@ -335,7 +335,7 @@ func TestEdgeCase_ManyLabels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing nodes with many labels...")
 
@@ -375,7 +375,7 @@ func TestEdgeCase_TimestampBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing timestamp boundaries...")
 
@@ -430,7 +430,7 @@ func TestEdgeCase_BooleanValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing boolean values...")
 
@@ -478,7 +478,7 @@ func TestEdgeCase_BinaryData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing binary data storage...")
 
@@ -537,7 +537,7 @@ func TestEdgeCase_DeleteDuringIteration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing delete during iteration...")
 
@@ -593,7 +593,7 @@ func TestEdgeCase_LongPropertyNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing long property names...")
 
@@ -630,7 +630,7 @@ func TestEdgeCase_RepeatedEdgeTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing repeated edge types...")
 
@@ -680,12 +680,12 @@ func TestEdgeCase_CorruptWAL(t *testing.T) {
 		}
 
 		for i := 0; i < 10; i++ {
-			gs.CreateNode([]string{"WALTest"}, map[string]Value{
+			_, _ = gs.CreateNode([]string{"WALTest"}, map[string]Value{
 				"id": IntValue(int64(i)),
 			})
 		}
 
-		gs.Close()
+		_ = gs.Close()
 	}
 
 	// Corrupt WAL file
@@ -699,7 +699,7 @@ func TestEdgeCase_CorruptWAL(t *testing.T) {
 				for i := len(data) / 2; i < len(data)/2+10 && i < len(data); i++ {
 					data[i] = 0xFF
 				}
-				os.WriteFile(walFile, data, 0644)
+				_ = os.WriteFile(walFile, data, 0644)
 				t.Logf("  Corrupted WAL file: %s", filepath.Base(walFile))
 				break
 			}
@@ -714,7 +714,7 @@ func TestEdgeCase_CorruptWAL(t *testing.T) {
 		if err != nil {
 			t.Logf("  ✓ Storage correctly detected WAL corruption: %v", err)
 		} else {
-			defer gs.Close()
+			defer func() { _ = gs.Close() }()
 			t.Log("  ✓ Storage handled WAL corruption gracefully")
 		}
 	}
@@ -727,7 +727,7 @@ func TestEdgeCase_ExtremeEdgeWeights(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing extreme edge weights...")
 
@@ -766,7 +766,7 @@ func TestEdgeCase_NodeCreationSpeed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing rapid minimal node creation...")
 

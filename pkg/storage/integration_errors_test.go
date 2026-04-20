@@ -29,7 +29,7 @@ func TestGraphStorage_DiskBackedEdges_InvalidConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Should accept zero cache size (use default): %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Should still work with default cache size
 		node1, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -59,7 +59,7 @@ func TestGraphStorage_DiskBackedEdges_InvalidConfig(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_EmptyEdgeLists tests operations on nodes with no edges
 func TestGraphStorage_DiskBackedEdges_EmptyEdgeLists(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -69,7 +69,7 @@ func TestGraphStorage_DiskBackedEdges_EmptyEdgeLists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create node with no edges
 	node, err := gs.CreateNode([]string{"Node"}, nil)
@@ -99,7 +99,7 @@ func TestGraphStorage_DiskBackedEdges_EmptyEdgeLists(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_NonExistentNode tests operations on non-existent nodes
 func TestGraphStorage_DiskBackedEdges_NonExistentNode(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -109,7 +109,7 @@ func TestGraphStorage_DiskBackedEdges_NonExistentNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Try to get edges for non-existent node (should return empty, not crash)
 	nonExistentID := uint64(99999)
@@ -128,7 +128,7 @@ func TestGraphStorage_DiskBackedEdges_NonExistentNode(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_DuplicateEdges tests handling of duplicate edges
 func TestGraphStorage_DiskBackedEdges_DuplicateEdges(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -138,7 +138,7 @@ func TestGraphStorage_DiskBackedEdges_DuplicateEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)
 	node2, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -172,7 +172,7 @@ func TestGraphStorage_DiskBackedEdges_VeryLargeEdgeList(t *testing.T) {
 	}
 
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -182,7 +182,7 @@ func TestGraphStorage_DiskBackedEdges_VeryLargeEdgeList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create node with 10K outgoing edges (reduced from 100K for reasonable test time)
 	sourceNode, _ := gs.CreateNode([]string{"Hub"}, nil)
@@ -219,7 +219,7 @@ func TestGraphStorage_DiskBackedEdges_VeryLargeEdgeList(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_InvalidEdgeID tests operations with invalid edge IDs
 func TestGraphStorage_DiskBackedEdges_InvalidEdgeID(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -229,7 +229,7 @@ func TestGraphStorage_DiskBackedEdges_InvalidEdgeID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Try to delete non-existent edge
 	err = gs.DeleteEdge(99999)
@@ -247,7 +247,7 @@ func TestGraphStorage_DiskBackedEdges_InvalidEdgeID(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_DoubleClose tests closing GraphStorage twice
 func TestGraphStorage_DiskBackedEdges_DoubleClose(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -276,7 +276,7 @@ func TestGraphStorage_DiskBackedEdges_DoubleClose(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_OperationsAfterClose tests using storage after close
 func TestGraphStorage_DiskBackedEdges_OperationsAfterClose(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -290,7 +290,7 @@ func TestGraphStorage_DiskBackedEdges_OperationsAfterClose(t *testing.T) {
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)
 	node2, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.Close()
+	_ = gs.Close()
 
 	// Try operations after close (should error or handle gracefully)
 	_, err = gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
@@ -311,7 +311,7 @@ func TestGraphStorage_DiskBackedEdges_OperationsAfterClose(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_CorruptedDataRecovery tests recovery from corrupted data
 func TestGraphStorage_DiskBackedEdges_CorruptedDataRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create valid data
 	{
@@ -326,9 +326,9 @@ func TestGraphStorage_DiskBackedEdges_CorruptedDataRecovery(t *testing.T) {
 
 		node1, _ := gs.CreateNode([]string{"Node"}, nil)
 		node2, _ := gs.CreateNode([]string{"Node"}, nil)
-		gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
 
-		gs.Close()
+		_ = gs.Close()
 	}
 
 	// Phase 2: Corrupt the EdgeStore data
@@ -340,7 +340,7 @@ func TestGraphStorage_DiskBackedEdges_CorruptedDataRecovery(t *testing.T) {
 		if filepath.Ext(file.Name()) == ".sst" {
 			filePath := filepath.Join(edgeStoreDir, file.Name())
 			// Truncate file to corrupt it
-			os.WriteFile(filePath, []byte("corrupted"), 0644)
+			_ = os.WriteFile(filePath, []byte("corrupted"), 0644)
 			t.Logf("Corrupted file: %s", file.Name())
 			break
 		}
@@ -356,7 +356,7 @@ func TestGraphStorage_DiskBackedEdges_CorruptedDataRecovery(t *testing.T) {
 		t.Logf("GraphStorage correctly failed to open with corrupted data: %v", err)
 		return
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// If it opened, operations should either work (recovery) or error gracefully
 	_, err = gs.GetOutgoingEdges(1)
@@ -370,7 +370,7 @@ func TestGraphStorage_DiskBackedEdges_CorruptedDataRecovery(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_CacheSizeOne tests edge case of cache size = 1
 func TestGraphStorage_DiskBackedEdges_CacheSizeOne(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -380,7 +380,7 @@ func TestGraphStorage_DiskBackedEdges_CacheSizeOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create multiple nodes with edges
 	nodes := make([]*Node, 10)
@@ -389,7 +389,7 @@ func TestGraphStorage_DiskBackedEdges_CacheSizeOne(t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
-		gs.CreateEdge(nodes[i].ID, nodes[(i+1)%10].ID, "EDGE", nil, 1.0)
+		_, _ = gs.CreateEdge(nodes[i].ID, nodes[(i+1)%10].ID, "EDGE", nil, 1.0)
 	}
 
 	// Access all edges (should cause cache thrashing but work correctly)
@@ -413,7 +413,7 @@ func TestGraphStorage_DiskBackedEdges_ReadOnlyFilesystem(t *testing.T) {
 	}
 
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Create initial data
 	{
@@ -425,13 +425,13 @@ func TestGraphStorage_DiskBackedEdges_ReadOnlyFilesystem(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create GraphStorage: %v", err)
 		}
-		gs.Close()
+		_ = gs.Close()
 	}
 
 	// Make directory read-only
 	edgeStoreDir := filepath.Join(dataDir, "edgestore")
-	os.Chmod(edgeStoreDir, 0444)
-	defer os.Chmod(edgeStoreDir, 0755) // Restore permissions for cleanup
+	_ = os.Chmod(edgeStoreDir, 0444)
+	defer func() { _ = os.Chmod(edgeStoreDir, 0755) }() // Restore permissions for cleanup
 
 	// Try to open with read-only filesystem
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
@@ -443,7 +443,7 @@ func TestGraphStorage_DiskBackedEdges_ReadOnlyFilesystem(t *testing.T) {
 		t.Logf("Correctly failed to open on read-only filesystem: %v", err)
 		return
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Try to write (should fail)
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)

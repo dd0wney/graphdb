@@ -60,8 +60,10 @@ func (gs *GraphStorage) UpdateNodeVectorIndexes(node *Node) error {
 					return fmt.Errorf("failed to decode vector for property %s: %w", propName, err)
 				}
 
-				// Try to remove old vector first (in case of update)
-				gs.vectorIndex.RemoveVector(propName, node.ID)
+				// Try to remove old vector first (in case of update).
+				// Ignore errors — if the index is empty for this node,
+				// RemoveVector is a no-op and returns a missing-entry error.
+				_ = gs.vectorIndex.RemoveVector(propName, node.ID)
 
 				// Add new vector
 				if err := gs.vectorIndex.AddVector(propName, node.ID, vec); err != nil {
@@ -79,7 +81,7 @@ func (gs *GraphStorage) RemoveNodeFromVectorIndexes(nodeID uint64) error {
 	// Remove from all vector indexes
 	for _, indexName := range gs.vectorIndex.ListIndexes() {
 		// Ignore errors - node might not be in all indexes
-		gs.vectorIndex.RemoveVector(indexName, nodeID)
+		_ = gs.vectorIndex.RemoveVector(indexName, nodeID)
 	}
 	return nil
 }

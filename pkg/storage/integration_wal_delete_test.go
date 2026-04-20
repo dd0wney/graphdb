@@ -8,7 +8,7 @@ import (
 // TestGraphStorage_DiskBackedEdges_DeleteEdgeWALReplay tests that deleted edges stay deleted after crash recovery
 func TestGraphStorage_DiskBackedEdges_DeleteEdgeWALReplay(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node1ID, node2ID, deletedEdgeID, survivingEdgeID uint64
 
@@ -52,7 +52,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteEdgeWALReplay(t *testing.T) {
 		}
 
 		// Close cleanly (flush WAL)
-		gs.Close()
+		_ = gs.Close()
 	}
 
 	// Phase 2: Reopen and verify deleted edge stays deleted
@@ -65,7 +65,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteEdgeWALReplay(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reopen: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify only surviving edge exists
 		outgoing, err := gs.GetOutgoingEdges(node1ID)
@@ -101,7 +101,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteEdgeWALReplay(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_DeleteEdgeCrashRecovery tests edge deletion with crash (no Close)
 func TestGraphStorage_DiskBackedEdges_DeleteEdgeCrashRecovery(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node1ID, edge1ID, edge2ID uint64
 
@@ -128,7 +128,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteEdgeCrashRecovery(t *testing.T) {
 		edge1ID = edge1.ID
 		edge2ID = edge2.ID
 
-		gs.Close() // Clean close
+		_ = gs.Close() // Clean close
 	}
 
 	// Phase 2: Reopen, delete edge, crash (no Close)
@@ -165,7 +165,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteEdgeCrashRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify edge1 is still deleted (WAL replay should have deleted it)
 		outgoing, err := gs.GetOutgoingEdges(node1ID)
@@ -193,7 +193,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteEdgeCrashRecovery(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_MultipleDeletesWAL tests multiple edge deletions in WAL
 func TestGraphStorage_DiskBackedEdges_MultipleDeletesWAL(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node1ID uint64
 	var deletedEdges, survivingEdges []uint64
@@ -253,7 +253,7 @@ func TestGraphStorage_DiskBackedEdges_MultipleDeletesWAL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		outgoing, err := gs.GetOutgoingEdges(node1ID)
 		if err != nil {
@@ -296,7 +296,7 @@ func TestGraphStorage_DiskBackedEdges_MultipleDeletesWAL(t *testing.T) {
 // TestGraphStorage_DiskBackedEdges_DeleteAllEdgesWAL tests deleting all edges from a node
 func TestGraphStorage_DiskBackedEdges_DeleteAllEdgesWAL(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	var node1ID, node2ID uint64
 
@@ -349,7 +349,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteAllEdgesWAL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify no edges recovered
 		outgoing, err := gs.GetOutgoingEdges(node1ID)

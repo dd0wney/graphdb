@@ -28,22 +28,22 @@ func setupTemporalTestGraph(t *testing.T) (*GraphStorage, func()) {
 
 	// Create edges with temporal properties
 	// Alice -> Bob: valid from 100 to 200
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]Value{
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]Value{
 		"valid_from": IntValue(100),
 		"valid_to":   IntValue(200),
 	}, 1.0)
 
 	// Alice -> Charlie: valid from 150 onwards (no end)
-	gs.CreateEdge(node1.ID, node3.ID, "KNOWS", map[string]Value{
+	_, _ = gs.CreateEdge(node1.ID, node3.ID, "KNOWS", map[string]Value{
 		"valid_from": IntValue(150),
 	}, 1.0)
 
 	// Bob -> Charlie: no temporal properties (always valid)
-	gs.CreateEdge(node2.ID, node3.ID, "KNOWS", map[string]Value{}, 1.0)
+	_, _ = gs.CreateEdge(node2.ID, node3.ID, "KNOWS", map[string]Value{}, 1.0)
 
 	cleanup := func() {
-		gs.Close()
-		os.RemoveAll(tempDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tempDir)
 	}
 
 	return gs, cleanup
@@ -52,9 +52,9 @@ func setupTemporalTestGraph(t *testing.T) (*GraphStorage, func()) {
 // TestNewTemporalQuery tests temporal query creation
 func TestNewTemporalQuery(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "temporal_test_new")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	gs, _ := NewGraphStorage(tempDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 	tq := NewTemporalQuery(gs)
 
 	if tq == nil {
@@ -253,14 +253,14 @@ func TestGetEdgesInTimeRange(t *testing.T) {
 // TestGetEdgesInTimeRange_OverlapLogic tests edge cases of overlap detection
 func TestGetEdgesInTimeRange_OverlapLogic(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "temporal_test_overlap")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	gs, _ := NewGraphStorage(tempDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 	node1, _ := gs.CreateNode([]string{"Test"}, nil)
 	node2, _ := gs.CreateNode([]string{"Test"}, nil)
 
 	// Edge valid from 100 to 200
-	gs.CreateEdge(node1.ID, node2.ID, "TEST", map[string]Value{
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "TEST", map[string]Value{
 		"valid_from": IntValue(100),
 		"valid_to":   IntValue(200),
 	}, 1.0)
@@ -297,9 +297,9 @@ func TestGetEdgesInTimeRange_OverlapLogic(t *testing.T) {
 // TestCreateTemporalEdge tests creating temporal edges
 func TestCreateTemporalEdge(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "temporal_test_create")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	gs, _ := NewGraphStorage(tempDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 	node1, _ := gs.CreateNode([]string{"Person"}, nil)
 	node2, _ := gs.CreateNode([]string{"Person"}, nil)
 
@@ -354,9 +354,9 @@ func TestCreateTemporalEdge(t *testing.T) {
 // TestCreateTemporalEdge_NoEndTime tests creating edge with no end time
 func TestCreateTemporalEdge_NoEndTime(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "temporal_test_noend")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	gs, _ := NewGraphStorage(tempDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 	node1, _ := gs.CreateNode([]string{"Person"}, nil)
 	node2, _ := gs.CreateNode([]string{"Person"}, nil)
 
@@ -388,9 +388,9 @@ func TestCreateTemporalEdge_NoEndTime(t *testing.T) {
 // TestNewGraphSnapshot tests creating graph snapshots
 func TestNewGraphSnapshot(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "temporal_test_snapshot")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	gs, _ := NewGraphStorage(tempDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 	timestamp := time.Now().Unix()
 
 	snapshot := NewGraphSnapshot(gs, timestamp)
@@ -468,9 +468,9 @@ func TestComputeTemporalMetrics(t *testing.T) {
 // TestComputeTemporalMetrics_EmptyGraph tests metrics on empty graph
 func TestComputeTemporalMetrics_EmptyGraph(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "temporal_test_empty")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	gs, _ := NewGraphStorage(tempDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	metrics, err := ComputeTemporalMetrics(gs, 0, 1000)
 	if err != nil {
@@ -507,13 +507,13 @@ func TestComputeTemporalMetrics_ZeroTimeRange(t *testing.T) {
 func TestComputeTemporalMetrics_DeletionRate(t *testing.T) {
 	// Use a fresh graph to have precise control over edges
 	tempDir := filepath.Join(os.TempDir(), "temporal_deletion_rate_test")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	gs, err := NewGraphStorage(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	tq := NewTemporalQuery(gs)
 
@@ -654,9 +654,9 @@ func TestTemporalTraversal(t *testing.T) {
 // TestTemporalTraversal_NoEdges tests traversal with no valid edges
 func TestTemporalTraversal_NoEdges(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "temporal_test_trav")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	gs, _ := NewGraphStorage(tempDir)
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 	node, _ := gs.CreateNode([]string{"Isolated"}, nil)
 
 	nodes, err := TemporalTraversal(gs, node.ID, 100, 5)

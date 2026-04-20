@@ -8,7 +8,7 @@ import (
 // TestBatchDurability_CrashAfterCommit tests if batch operations survive crash
 func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create batch, commit, crash
 	{
@@ -74,7 +74,7 @@ func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Check if batch-created nodes survived crash
 		if len(gs.nodes) != 5 {
@@ -107,7 +107,7 @@ func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 // TestBatchDurability_MixedOperations tests batch with creates, updates, and deletes
 func TestBatchDurability_MixedOperations(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Create initial data
 	var node1ID, node2ID, node3ID uint64
@@ -130,7 +130,7 @@ func TestBatchDurability_MixedOperations(t *testing.T) {
 		node3ID = node3.ID
 
 		// Close cleanly so they're persisted
-		gs.Close()
+		_ = gs.Close()
 	}
 
 	// Phase 2: Use batch to mix operations, then crash
@@ -160,8 +160,8 @@ func TestBatchDurability_MixedOperations(t *testing.T) {
 		newNode, _ := batch.AddNode([]string{"Person"}, map[string]Value{"name": StringValue("Dave")})
 
 		// Add edge
-		batch.AddEdge(node1ID, node2ID, "KNOWS", nil, 1.0)
-		batch.AddEdge(node2ID, newNode, "KNOWS", nil, 1.0)
+		_, _ = batch.AddEdge(node1ID, node2ID, "KNOWS", nil, 1.0)
+		_, _ = batch.AddEdge(node2ID, newNode, "KNOWS", nil, 1.0)
 
 		// Commit
 		if err := batch.Commit(); err != nil {
@@ -189,7 +189,7 @@ func TestBatchDurability_MixedOperations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Check if update survived
 		node1, _ := gs.GetNode(node1ID)
@@ -229,7 +229,7 @@ func TestBatchDurability_MixedOperations(t *testing.T) {
 // TestBatchDurability_LargeBatch tests large batch durability
 func TestBatchDurability_LargeBatch(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	const numNodes = 100
 	const numEdges = 150
@@ -289,7 +289,7 @@ func TestBatchDurability_LargeBatch(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Check node count
 		if len(gs.nodes) != numNodes {
@@ -322,7 +322,7 @@ func TestBatchDurability_LargeBatch(t *testing.T) {
 // TestBatchDurability_SnapshotAfterBatch tests batch operations preserved in snapshot
 func TestBatchDurability_SnapshotAfterBatch(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Phase 1: Batch operations, then clean close (snapshot)
 	{
@@ -339,7 +339,7 @@ func TestBatchDurability_SnapshotAfterBatch(t *testing.T) {
 
 		// Add nodes via batch
 		for i := 0; i < 10; i++ {
-			batch.AddNode([]string{"BatchNode"}, map[string]Value{
+			_, _ = batch.AddNode([]string{"BatchNode"}, map[string]Value{
 				"batch_index": IntValue(int64(i)),
 			})
 		}
@@ -367,7 +367,7 @@ func TestBatchDurability_SnapshotAfterBatch(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to recover from snapshot: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify batch nodes in snapshot
 		batchNodes, _ := gs.FindNodesByLabel("BatchNode")
@@ -384,7 +384,7 @@ func TestBatchDurability_SnapshotAfterBatch(t *testing.T) {
 // TestBatchDurability_EmptyBatch tests empty batch doesn't cause issues
 func TestBatchDurability_EmptyBatch(t *testing.T) {
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
@@ -394,7 +394,7 @@ func TestBatchDurability_EmptyBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create and commit empty batch
 	batch := gs.BeginBatch()

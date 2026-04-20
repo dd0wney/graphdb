@@ -11,7 +11,7 @@ func TestUpdateEdge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	node1, _ := gs.CreateNode([]string{"Node1"}, nil)
@@ -63,7 +63,7 @@ func TestGetAllLabels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Initially no labels
 	labels := gs.GetAllLabels()
@@ -72,10 +72,10 @@ func TestGetAllLabels(t *testing.T) {
 	}
 
 	// Create nodes with various labels
-	gs.CreateNode([]string{"Person"}, nil)
-	gs.CreateNode([]string{"Person", "Employee"}, nil)
-	gs.CreateNode([]string{"Company"}, nil)
-	gs.CreateNode([]string{"Person"}, nil) // Duplicate label
+	_, _ = gs.CreateNode([]string{"Person"}, nil)
+	_, _ = gs.CreateNode([]string{"Person", "Employee"}, nil)
+	_, _ = gs.CreateNode([]string{"Company"}, nil)
+	_, _ = gs.CreateNode([]string{"Person"}, nil) // Duplicate label
 
 	// Get all unique labels
 	labels = gs.GetAllLabels()
@@ -106,7 +106,7 @@ func TestFindNodesByPropertyRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create property index for age
 	err = gs.CreatePropertyIndex("age", TypeInt)
@@ -128,7 +128,7 @@ func TestFindNodesByPropertyRange(t *testing.T) {
 	}
 
 	for _, td := range testData {
-		gs.CreateNode([]string{"Person"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"Person"}, map[string]Value{
 			"name": StringValue(td.name),
 			"age":  IntValue(td.age),
 		})
@@ -174,7 +174,7 @@ func TestFindNodesByPropertyPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create property index for email
 	err = gs.CreatePropertyIndex("email", TypeString)
@@ -195,7 +195,7 @@ func TestFindNodesByPropertyPrefix(t *testing.T) {
 	}
 
 	for _, td := range testData {
-		gs.CreateNode([]string{"User"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"User"}, map[string]Value{
 			"name":  StringValue(td.name),
 			"email": StringValue(td.email),
 		})
@@ -235,7 +235,7 @@ func TestCompressEdgeLists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	node1, _ := gs.CreateNode([]string{"Hub"}, nil)
@@ -245,11 +245,11 @@ func TestCompressEdgeLists(t *testing.T) {
 		node2, _ := gs.CreateNode([]string{"Spoke"}, map[string]Value{
 			"id": IntValue(int64(i)),
 		})
-		gs.CreateEdge(node1.ID, node2.ID, "CONNECTS", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "CONNECTS", nil, 1.0)
 	}
 
 	// Manually trigger compression
-	gs.CompressEdgeLists()
+	_ = gs.CompressEdgeLists()
 
 	// Get compression stats
 	stats := gs.GetCompressionStats()
@@ -281,7 +281,7 @@ func TestGetIndexStatistics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create property index
 	err = gs.CreatePropertyIndex("category", TypeString)
@@ -292,7 +292,7 @@ func TestGetIndexStatistics(t *testing.T) {
 	// Create nodes with indexed property
 	categories := []string{"A", "B", "C", "A", "B", "A"}
 	for i, cat := range categories {
-		gs.CreateNode([]string{"Item"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"Item"}, map[string]Value{
 			"id":       IntValue(int64(i)),
 			"category": StringValue(cat),
 		})
@@ -361,7 +361,7 @@ func TestSetEncryption(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Mock encryption engine and key manager (typed interfaces)
 	mockEngine := &mockEncrypter{}

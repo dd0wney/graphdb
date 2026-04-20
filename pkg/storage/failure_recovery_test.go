@@ -96,7 +96,7 @@ func TestCorruptedDataFileRecovery(t *testing.T) {
 			// Expected: storage may fail to open with corruption
 			t.Logf("  ✓ Storage correctly detected corruption: %v", err)
 		} else {
-			defer gs.Close()
+			defer func() { _ = gs.Close() }()
 
 			// Try to read some nodes - some may be corrupted
 			successCount := 0
@@ -157,7 +157,7 @@ func TestWALRecoveryAfterCrash(t *testing.T) {
 	// Cleanup crashed storage after test
 	t.Cleanup(func() {
 		if crashedStorage != nil {
-			crashedStorage.Close()
+			_ = crashedStorage.Close()
 		}
 	})
 
@@ -168,7 +168,7 @@ func TestWALRecoveryAfterCrash(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reopen storage: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// Verify data recovery
 		recoveredCount := 0
@@ -200,7 +200,7 @@ func TestPartitionedWritesRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Simulate partitioned writes (concurrent writes that might conflict)
 	partitionCount := 4
@@ -325,7 +325,7 @@ func TestSplitBrainRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to open for verification: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		// We expect both sets of writes to be present
 		// (In a real distributed system, we'd have conflict resolution)
@@ -345,7 +345,7 @@ func TestDiskFullRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing graceful handling of write failures (simulating disk full)...")
 
@@ -397,7 +397,7 @@ func TestConcurrentFailureRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing concurrent operations with random failures...")
 
@@ -497,7 +497,7 @@ func TestIndexCorruptionRecovery(t *testing.T) {
 				if len(data) > 10 {
 					data[0] = 0xFF
 					data[1] = 0xFF
-					os.WriteFile(indexFile, data, 0644)
+					_ = os.WriteFile(indexFile, data, 0644)
 					t.Logf("  Corrupted: %s", filepath.Base(indexFile))
 				}
 			}
@@ -513,7 +513,7 @@ func TestIndexCorruptionRecovery(t *testing.T) {
 		if err != nil {
 			t.Logf("  Storage failed to open (expected with corruption): %v", err)
 		} else {
-			defer gs.Close()
+			defer func() { _ = gs.Close() }()
 			t.Log("  ✓ Storage opened despite index corruption")
 
 			// Try to read some nodes
@@ -579,7 +579,7 @@ func TestRapidRestartRecovery(t *testing.T) {
 	t.Cleanup(func() {
 		for _, gs := range crashedStorages {
 			if gs != nil {
-				gs.Close()
+				_ = gs.Close()
 			}
 		}
 	})
@@ -591,7 +591,7 @@ func TestRapidRestartRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to open after rapid restarts: %v", err)
 		}
-		defer gs.Close()
+		defer func() { _ = gs.Close() }()
 
 		t.Logf("✓ Storage recovered successfully after %d rapid restarts", cycles)
 	}
@@ -608,7 +608,7 @@ func TestMemoryPressureRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing behavior under memory pressure...")
 

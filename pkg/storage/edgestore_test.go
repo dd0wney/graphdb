@@ -11,7 +11,7 @@ func TestEdgeStore_StoreAndRetrieve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	// Store outgoing edges for node 1
 	nodeID := uint64(1)
@@ -47,7 +47,7 @@ func TestEdgeStore_EmptyNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	// Try to get edges for non-existent node
 	edges, err := es.GetOutgoingEdges(999)
@@ -67,7 +67,7 @@ func TestEdgeStore_IncomingEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	nodeID := uint64(1)
 	edges := []uint64{100, 200, 300}
@@ -97,7 +97,7 @@ func TestEdgeStore_LargeEdgeList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	nodeID := uint64(1)
 
@@ -150,7 +150,7 @@ func TestEdgeStore_Persistence(t *testing.T) {
 			t.Fatalf("StoreOutgoingEdges failed: %v", err)
 		}
 
-		es.Close()
+		_ = es.Close()
 	}
 
 	// Phase 2: Reopen and verify data persisted
@@ -159,7 +159,7 @@ func TestEdgeStore_Persistence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reopen EdgeStore: %v", err)
 		}
-		defer es.Close()
+		defer func() { _ = es.Close() }()
 
 		retrieved, err := es.GetOutgoingEdges(1)
 		if err != nil {
@@ -183,7 +183,7 @@ func TestEdgeStore_UpdateEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	nodeID := uint64(1)
 
@@ -223,7 +223,7 @@ func TestEdgeStore_ConcurrentAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	// Concurrent writes and reads
 	const numGoroutines = 10
@@ -237,7 +237,7 @@ func TestEdgeStore_ConcurrentAccess(t *testing.T) {
 			for j := 0; j < opsPerGoroutine; j++ {
 				nodeID := uint64(id*1000 + j)
 				edges := []uint64{nodeID * 10, nodeID * 20}
-				es.StoreOutgoingEdges(nodeID, edges)
+				_ = es.StoreOutgoingEdges(nodeID, edges)
 			}
 			done <- true
 		}(i)
@@ -248,7 +248,7 @@ func TestEdgeStore_ConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			for j := 0; j < opsPerGoroutine; j++ {
 				nodeID := uint64(id * 1000)
-				es.GetOutgoingEdges(nodeID)
+				_, _ = es.GetOutgoingEdges(nodeID)
 			}
 			done <- true
 		}(i)
@@ -269,7 +269,7 @@ func TestEdgeStore_DeleteEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	nodeID := uint64(1)
 

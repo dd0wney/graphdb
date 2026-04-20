@@ -15,7 +15,7 @@ func BenchmarkGraphStorage_CreateEdge_InMemory(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create source and target nodes
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -23,7 +23,7 @@ func BenchmarkGraphStorage_CreateEdge_InMemory(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
 	}
 }
 
@@ -39,7 +39,7 @@ func BenchmarkGraphStorage_CreateEdge_DiskBacked(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create source and target nodes
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -47,7 +47,7 @@ func BenchmarkGraphStorage_CreateEdge_DiskBacked(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
 	}
 }
 
@@ -62,18 +62,18 @@ func BenchmarkGraphStorage_GetOutgoingEdges_InMemory(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edges
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)
 	node2, _ := gs.CreateNode([]string{"Node"}, nil)
 	for i := 0; i < 10; i++ {
-		gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.GetOutgoingEdges(node1.ID)
+		_, _ = gs.GetOutgoingEdges(node1.ID)
 	}
 }
 
@@ -89,21 +89,21 @@ func BenchmarkGraphStorage_GetOutgoingEdges_DiskBacked_CacheHit(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes and edges
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)
 	node2, _ := gs.CreateNode([]string{"Node"}, nil)
 	for i := 0; i < 10; i++ {
-		gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
+		_, _ = gs.CreateEdge(node1.ID, node2.ID, "EDGE", nil, 1.0)
 	}
 
 	// Prime the cache
-	gs.GetOutgoingEdges(node1.ID)
+	_, _ = gs.GetOutgoingEdges(node1.ID)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.GetOutgoingEdges(node1.ID)
+		_, _ = gs.GetOutgoingEdges(node1.ID)
 	}
 }
 
@@ -119,7 +119,7 @@ func BenchmarkGraphStorage_GetOutgoingEdges_DiskBacked_CacheMiss(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create many nodes with edges to evict cache
 	const numNodes = 100
@@ -129,14 +129,14 @@ func BenchmarkGraphStorage_GetOutgoingEdges_DiskBacked_CacheMiss(b *testing.B) {
 		nodeIDs[i] = node.ID
 		targetNode, _ := gs.CreateNode([]string{"Node"}, nil)
 		for j := 0; j < 10; j++ {
-			gs.CreateEdge(node.ID, targetNode.ID, "EDGE", nil, 1.0)
+			_, _ = gs.CreateEdge(node.ID, targetNode.ID, "EDGE", nil, 1.0)
 		}
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Access different nodes to force cache misses
-		gs.GetOutgoingEdges(nodeIDs[i%numNodes])
+		_, _ = gs.GetOutgoingEdges(nodeIDs[i%numNodes])
 	}
 }
 
@@ -151,7 +151,7 @@ func BenchmarkGraphStorage_DeleteEdge_InMemory(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Pre-create edges for deletion
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -164,7 +164,7 @@ func BenchmarkGraphStorage_DeleteEdge_InMemory(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.DeleteEdge(edgeIDs[i])
+		_ = gs.DeleteEdge(edgeIDs[i])
 	}
 }
 
@@ -180,7 +180,7 @@ func BenchmarkGraphStorage_DeleteEdge_DiskBacked(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Pre-create edges for deletion
 	node1, _ := gs.CreateNode([]string{"Node"}, nil)
@@ -193,7 +193,7 @@ func BenchmarkGraphStorage_DeleteEdge_DiskBacked(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gs.DeleteEdge(edgeIDs[i])
+		_ = gs.DeleteEdge(edgeIDs[i])
 	}
 }
 
@@ -208,7 +208,7 @@ func BenchmarkGraphStorage_MixedWorkload_InMemory(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Setup: Create initial graph
 	const numNodes = 100
@@ -224,17 +224,17 @@ func BenchmarkGraphStorage_MixedWorkload_InMemory(b *testing.B) {
 		op := i % 10
 		if op < 7 {
 			// Read operation
-			gs.GetOutgoingEdges(nodeIDs[i%numNodes])
+			_, _ = gs.GetOutgoingEdges(nodeIDs[i%numNodes])
 		} else if op < 9 {
 			// Write operation
 			src := nodeIDs[i%numNodes]
 			dst := nodeIDs[(i+1)%numNodes]
-			gs.CreateEdge(src, dst, "EDGE", nil, 1.0)
+			_, _ = gs.CreateEdge(src, dst, "EDGE", nil, 1.0)
 		} else {
 			// Delete operation (if edges exist)
 			outgoing, _ := gs.GetOutgoingEdges(nodeIDs[i%numNodes])
 			if len(outgoing) > 0 {
-				gs.DeleteEdge(outgoing[0].ID)
+				_ = gs.DeleteEdge(outgoing[0].ID)
 			}
 		}
 	}
@@ -252,7 +252,7 @@ func BenchmarkGraphStorage_MixedWorkload_DiskBacked(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create GraphStorage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Setup: Create initial graph
 	const numNodes = 100
@@ -268,17 +268,17 @@ func BenchmarkGraphStorage_MixedWorkload_DiskBacked(b *testing.B) {
 		op := i % 10
 		if op < 7 {
 			// Read operation
-			gs.GetOutgoingEdges(nodeIDs[i%numNodes])
+			_, _ = gs.GetOutgoingEdges(nodeIDs[i%numNodes])
 		} else if op < 9 {
 			// Write operation
 			src := nodeIDs[i%numNodes]
 			dst := nodeIDs[(i+1)%numNodes]
-			gs.CreateEdge(src, dst, "EDGE", nil, 1.0)
+			_, _ = gs.CreateEdge(src, dst, "EDGE", nil, 1.0)
 		} else {
 			// Delete operation (if edges exist)
 			outgoing, _ := gs.GetOutgoingEdges(nodeIDs[i%numNodes])
 			if len(outgoing) > 0 {
-				gs.DeleteEdge(outgoing[0].ID)
+				_ = gs.DeleteEdge(outgoing[0].ID)
 			}
 		}
 	}

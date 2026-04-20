@@ -17,7 +17,7 @@ func TestEdgeCase_EmptyGraph(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing operations on empty graph...")
 
@@ -58,7 +58,7 @@ func TestEdgeCase_SingleNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing single node operations...")
 
@@ -106,7 +106,7 @@ func TestEdgeCase_EmptyProperties(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing empty properties...")
 
@@ -140,7 +140,7 @@ func TestEdgeCase_EmptyStrings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing empty string handling...")
 
@@ -177,7 +177,7 @@ func TestEdgeCase_VeryLargeProperties(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing very large properties...")
 
@@ -230,7 +230,7 @@ func TestEdgeCase_SpecialCharacters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing special characters...")
 
@@ -291,7 +291,7 @@ func TestEdgeCase_MaximumEdgesPerNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing maximum edges per node...")
 
@@ -347,7 +347,7 @@ func TestEdgeCase_OrphanedEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing orphaned edges...")
 
@@ -387,7 +387,7 @@ func TestEdgeCase_CircularReferences(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing circular references...")
 
@@ -396,9 +396,9 @@ func TestEdgeCase_CircularReferences(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, map[string]Value{"name": StringValue("B")})
 	nodeC, _ := gs.CreateNode([]string{"Node"}, map[string]Value{"name": StringValue("C")})
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "NEXT", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "NEXT", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "NEXT", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "NEXT", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "NEXT", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "NEXT", nil, 1.0)
 
 	t.Log("  ✓ Created circular reference: A -> B -> C -> A")
 
@@ -433,7 +433,7 @@ func TestEdgeCase_DuplicateEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing duplicate edges...")
 
@@ -477,7 +477,7 @@ func TestEdgeCase_ConcurrentSameNodeAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing concurrent access to same node...")
 
@@ -533,7 +533,7 @@ func TestEdgeCase_InvalidNodeIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing invalid node IDs...")
 
@@ -571,7 +571,7 @@ func TestEdgeCase_InvalidEdgeCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing invalid edge creation...")
 
@@ -607,7 +607,7 @@ func TestEdgeCase_NegativeWeights(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing negative edge weights...")
 
@@ -669,7 +669,7 @@ func TestEdgeCase_MultipleLabels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing multiple labels...")
 
@@ -701,19 +701,19 @@ func TestEdgeCase_InvalidDataDirectory(t *testing.T) {
 	if err != nil {
 		t.Logf("  ✓ Invalid path rejected: %v", err)
 	} else {
-		gs.Close()
+		_ = gs.Close()
 		t.Log("  ✓ Storage created nested directory successfully")
 	}
 
 	// Try to use a file as directory
 	tmpFile, _ := os.CreateTemp(t.TempDir(), "testfile")
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	gs, err = NewGraphStorage(tmpFile.Name())
 	if err != nil {
 		t.Logf("  ✓ File-as-directory rejected: %v", err)
 	} else {
-		gs.Close()
+		_ = gs.Close()
 		t.Error("Storage created using file path (unexpected)")
 	}
 }
@@ -725,7 +725,7 @@ func TestEdgeCase_RapidCreateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing rapid create/delete cycles...")
 
@@ -757,7 +757,7 @@ func TestEdgeCase_ZeroWeight(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing zero-weight edges...")
 

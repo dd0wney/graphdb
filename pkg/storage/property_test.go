@@ -31,7 +31,7 @@ func TestGraphInvariants(t *testing.T) {
 	properties.Property("edge creation preserves node existence", prop.ForAll(
 		func(fromID, toID uint64, label string) bool {
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create an edge (note: signature requires all 5 args)
 			_, err := storage.CreateEdge(fromID, toID, label, nil, 1.0)
@@ -55,7 +55,7 @@ func TestGraphInvariants(t *testing.T) {
 	properties.Property("create then delete is idempotent", prop.ForAll(
 		func(labels []string, name string) bool {
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create node
 			props := map[string]Value{
@@ -83,7 +83,7 @@ func TestGraphInvariants(t *testing.T) {
 	properties.Property("node creation increases count", prop.ForAll(
 		func(label string, propKey string, propValue string) bool {
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Get initial count
 			initialCount := storage.GetStatistics().NodeCount
@@ -110,7 +110,7 @@ func TestGraphInvariants(t *testing.T) {
 	properties.Property("edge endpoints are immutable", prop.ForAll(
 		func(label string) bool {
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create two nodes
 			node1, _ := storage.CreateNode([]string{"Test"}, nil)
@@ -138,7 +138,7 @@ func TestGraphInvariants(t *testing.T) {
 	properties.Property("node deletion cascades to edges", prop.ForAll(
 		func() bool {
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create nodes
 			node1, _ := storage.CreateNode([]string{"Test"}, nil)
@@ -173,7 +173,7 @@ func TestGraphInvariants(t *testing.T) {
 			}
 
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create node with property
 			props := map[string]Value{
@@ -207,15 +207,15 @@ func TestGraphInvariants(t *testing.T) {
 	properties.Property("outgoing edges have correct source", prop.ForAll(
 		func() bool {
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create nodes and edges
 			node1, _ := storage.CreateNode([]string{"Test"}, nil)
 			node2, _ := storage.CreateNode([]string{"Test"}, nil)
 			node3, _ := storage.CreateNode([]string{"Test"}, nil)
 
-			storage.CreateEdge(node1.ID, node2.ID, "TEST", nil, 1.0)
-			storage.CreateEdge(node1.ID, node3.ID, "TEST", nil, 1.0)
+			_, _ = storage.CreateEdge(node1.ID, node2.ID, "TEST", nil, 1.0)
+			_, _ = storage.CreateEdge(node1.ID, node3.ID, "TEST", nil, 1.0)
 
 			// Get outgoing edges
 			edges, err := storage.GetOutgoingEdges(node1.ID)
@@ -242,12 +242,12 @@ func TestGraphInvariants(t *testing.T) {
 			}
 
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create nodes with and without the label
-			storage.CreateNode([]string{label}, nil)
-			storage.CreateNode([]string{label, "Other"}, nil)
-			storage.CreateNode([]string{"Different"}, nil)
+			_, _ = storage.CreateNode([]string{label}, nil)
+			_, _ = storage.CreateNode([]string{label, "Other"}, nil)
+			_, _ = storage.CreateNode([]string{"Different"}, nil)
 
 			// Find by label
 			nodes, err := storage.FindNodesByLabel(label)
@@ -283,11 +283,11 @@ func TestGraphInvariants(t *testing.T) {
 			}
 
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create nodes
 			for i := 0; i < numNodes; i++ {
-				storage.CreateNode([]string{"Test"}, nil)
+				_, _ = storage.CreateNode([]string{"Test"}, nil)
 			}
 
 			// Node count should match
@@ -301,7 +301,7 @@ func TestGraphInvariants(t *testing.T) {
 	properties.Property("concurrent reads are safe", prop.ForAll(
 		func() bool {
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create test data
 			node, _ := storage.CreateNode([]string{"Test"}, map[string]Value{
@@ -316,7 +316,7 @@ func TestGraphInvariants(t *testing.T) {
 			done := make(chan bool, 10)
 			for i := 0; i < 10; i++ {
 				go func() {
-					storage.GetNode(node.ID)
+					_, _ = storage.GetNode(node.ID)
 					done <- true
 				}()
 			}
@@ -349,7 +349,7 @@ func TestGraphPropertyInvariantsWithData(t *testing.T) {
 	properties.Property("friendship symmetry", prop.ForAll(
 		func() bool {
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create two people
 			alice, _ := storage.CreateNode([]string{"Person"}, map[string]Value{
@@ -360,8 +360,8 @@ func TestGraphPropertyInvariantsWithData(t *testing.T) {
 			})
 
 			// Create friendship edges (both directions)
-			storage.CreateEdge(alice.ID, bob.ID, "FRIEND", nil, 1.0)
-			storage.CreateEdge(bob.ID, alice.ID, "FRIEND", nil, 1.0)
+			_, _ = storage.CreateEdge(alice.ID, bob.ID, "FRIEND", nil, 1.0)
+			_, _ = storage.CreateEdge(bob.ID, alice.ID, "FRIEND", nil, 1.0)
 
 			// Alice's friends should include Bob
 			aliceFriends, _ := storage.GetOutgoingEdges(alice.ID)
@@ -391,7 +391,7 @@ func TestGraphPropertyInvariantsWithData(t *testing.T) {
 	properties.Property("self-loop detection", prop.ForAll(
 		func() bool {
 			storage := newPropertyTestStorage(t)
-			defer storage.Close()
+			defer func() { _ = storage.Close() }()
 
 			// Create a node
 			node, _ := storage.CreateNode([]string{"DAGNode"}, nil)
@@ -428,13 +428,13 @@ func newPropertyTestStorage(t *testing.T) *GraphStorage {
 
 	storage, err := NewGraphStorage(tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Skipf("Failed to create test storage: %v", err)
 	}
 
 	// Track temp dir for cleanup
 	t.Cleanup(func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	})
 
 	return storage

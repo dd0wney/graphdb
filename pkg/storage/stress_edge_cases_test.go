@@ -17,7 +17,7 @@ func TestEdgeCase_ConcurrentNodeDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing concurrent deletion of same node...")
 
@@ -63,7 +63,7 @@ func TestEdgeCase_ConcurrentEdgeCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing concurrent edge creation to same nodes...")
 
@@ -111,7 +111,7 @@ func TestEdgeCase_ReadWriteRace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing concurrent read/write race conditions...")
 
@@ -202,7 +202,7 @@ func TestEdgeCase_MemoryLeakDetection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing for memory leaks...")
 
@@ -226,7 +226,7 @@ func TestEdgeCase_MemoryLeakDetection(t *testing.T) {
 
 		// Delete nodes
 		for _, id := range nodeIDs {
-			gs.DeleteNode(id)
+			_ = gs.DeleteNode(id)
 		}
 
 		if cycle%2 == 0 {
@@ -261,7 +261,7 @@ func TestEdgeCase_StressTestMixedOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Running stress test with mixed operations...")
 
@@ -282,7 +282,7 @@ func TestEdgeCase_StressTestMixedOperations(t *testing.T) {
 	// Pre-populate with some nodes
 	initialNodes := 100
 	for i := 0; i < initialNodes; i++ {
-		gs.CreateNode([]string{"StressTest"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"StressTest"}, map[string]Value{
 			"id": IntValue(int64(i)),
 		})
 	}
@@ -411,7 +411,7 @@ func TestEdgeCase_RapidStorageReopens(t *testing.T) {
 		}
 
 		// Perform some operations
-		gs.CreateNode([]string{"ReopenTest"}, map[string]Value{
+		_, _ = gs.CreateNode([]string{"ReopenTest"}, map[string]Value{
 			"cycle": IntValue(int64(i)),
 		})
 
@@ -431,7 +431,7 @@ func TestEdgeCase_ConcurrentPropertyUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing concurrent property updates...")
 
@@ -475,7 +475,7 @@ func TestEdgeCase_EdgeCaseNaNFloats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing NaN and Inf float values...")
 
@@ -527,7 +527,7 @@ func TestEdgeCase_PathologicalGraphStructures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing pathological graph structures...")
 
@@ -561,11 +561,11 @@ func TestEdgeCase_PathologicalGraphStructures(t *testing.T) {
 		node, _ := gs.CreateNode([]string{"Chain"}, nil)
 
 		// Add self-loop
-		gs.CreateEdge(node.ID, node.ID, "SELF", nil, 1.0)
+		_, _ = gs.CreateEdge(node.ID, node.ID, "SELF", nil, 1.0)
 
 		// Connect to previous
 		if prevNode != nil {
-			gs.CreateEdge(prevNode.ID, node.ID, "NEXT", nil, 1.0)
+			_, _ = gs.CreateEdge(prevNode.ID, node.ID, "NEXT", nil, 1.0)
 		}
 		prevNode = node
 	}
@@ -580,7 +580,7 @@ func TestEdgeCase_VeryLongEdgeTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing very long edge type names...")
 
@@ -611,7 +611,7 @@ func TestEdgeCase_ZeroLengthArrays(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing zero-length arrays...")
 
@@ -655,7 +655,7 @@ func TestEdgeCase_MaxConcurrency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	t.Log("Testing maximum concurrency...")
 

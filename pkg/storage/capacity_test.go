@@ -24,7 +24,7 @@ func Test5MNodeCapacity(t *testing.T) {
 	}
 
 	dataDir := t.TempDir()
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Configuration for 5M node test
 	const (
@@ -51,7 +51,7 @@ func Test5MNodeCapacity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create EdgeStore: %v", err)
 	}
-	defer es.Close()
+	defer func() { _ = es.Close() }()
 
 	t.Logf("EdgeStore created in %s", time.Since(startTime))
 
@@ -246,7 +246,7 @@ func TestEdgeStoreMemoryScaling(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create EdgeStore: %v", err)
 			}
-			defer es.Close()
+			defer func() { _ = es.Close() }()
 
 			// Write nodes
 			for i := 0; i < scale.nodes; i++ {

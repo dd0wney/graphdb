@@ -16,13 +16,13 @@ func setupTransactionTest(t *testing.T) (*GraphStorage, func()) {
 
 	gs, err := NewGraphStorage(tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
 
 	cleanup := func() {
-		gs.Close()
-		os.RemoveAll(tmpDir)
+		_ = gs.Close()
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return gs, cleanup
@@ -278,14 +278,14 @@ func TestTransaction_ConcurrentTransactionsAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to begin transaction 1: %v", err)
 	}
-	defer tx1.Rollback()
+	defer func() { _ = tx1.Rollback() }()
 
 	// Concurrent transactions should be allowed
 	tx2, err := gs.BeginTransaction()
 	if err != nil {
 		t.Fatalf("Failed to begin concurrent transaction 2: %v", err)
 	}
-	defer tx2.Rollback()
+	defer func() { _ = tx2.Rollback() }()
 
 	if tx1.id == tx2.id {
 		t.Error("Expected different transaction IDs for concurrent transactions")

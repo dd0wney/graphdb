@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"log"
 	"sync/atomic"
 	"time"
 
@@ -158,7 +159,9 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 		// Remove from property indexes
 		if idx, exists := gs.propertyIndexes[key]; exists {
 			if oldValue, hasKey := node.Properties[key]; hasKey {
-				idx.Remove(nodeID, oldValue)
+				if err := idx.Remove(nodeID, oldValue); err != nil {
+					log.Printf("node_operations: property index Remove failed for key %q node %d: %v", key, nodeID, err)
+				}
 			}
 		}
 		delete(node.Properties, key)
