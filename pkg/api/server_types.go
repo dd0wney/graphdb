@@ -23,20 +23,20 @@ import (
 type Server struct {
 	graph               *storage.GraphStorage
 	executor            *query.Executor
-	searchIndex         *search.FullTextIndex       // Shared with executor via queryutil.WireCapabilities; empty until IndexNodes is called
+	searchIndex         *search.FullTextIndex // Shared with executor via queryutil.WireCapabilities; empty until IndexNodes is called
 	graphqlHandler      *gqlpkg.GraphQLHandler
-	graphqlSchema       graphql.Schema              // Current GraphQL schema (protected by schemaLock)
-	schemaLock          sync.RWMutex                // Protects graphqlSchema during regeneration
-	complexityConfig    *gqlpkg.ComplexityConfig    // GraphQL query complexity limits
-	limitConfig         *gqlpkg.LimitConfig         // GraphQL result limits
+	graphqlSchema       graphql.Schema           // Current GraphQL schema (protected by schemaLock)
+	schemaLock          sync.RWMutex             // Protects graphqlSchema during regeneration
+	complexityConfig    *gqlpkg.ComplexityConfig // GraphQL query complexity limits
+	limitConfig         *gqlpkg.LimitConfig      // GraphQL result limits
 	authHandler         *auth.AuthHandler
 	userHandler         *auth.UserManagementHandler
 	jwtManager          *auth.JWTManager
 	userStore           *auth.UserStore
 	apiKeyStore         *auth.APIKeyStore
-	auditLogger         audit.Logger                  // Interface for audit logging (in-memory or persistent)
-	inMemoryAuditLogger *audit.AuditLogger            // In-memory logger for GetEvents/GetRecentEvents
-	persistentAudit     *audit.PersistentAuditLogger  // Persistent logger (nil if disabled)
+	auditLogger         audit.Logger                 // Interface for audit logging (in-memory or persistent)
+	inMemoryAuditLogger *audit.AuditLogger           // In-memory logger for GetEvents/GetRecentEvents
+	persistentAudit     *audit.PersistentAuditLogger // Persistent logger (nil if disabled)
 	metricsRegistry     *metrics.Registry
 	healthChecker       *health.HealthChecker
 	tlsConfig           *tlspkg.Config
@@ -52,8 +52,8 @@ type Server struct {
 	startTime           time.Time
 	version             string
 	port                int
-	dataDir             string                      // Data directory for auth persistence
-	environment         string                      // "live" or "test" - for API key environment enforcement
-	metricsStopCh       chan struct{}               // Stop channel for metrics goroutine
-	metricsWg           sync.WaitGroup              // WaitGroup for metrics goroutine
+	dataDir             string         // Data directory for auth persistence
+	environment         string         // "live" or "test" - for API key environment enforcement
+	metricsStopCh       chan struct{}  // Stop channel for metrics goroutine
+	metricsWg           sync.WaitGroup // WaitGroup for metrics goroutine
 }
