@@ -240,9 +240,9 @@ func TestPartitionedGraph_GetEdgeCuts(t *testing.T) {
 	}
 
 	// Create edges
-	gs.CreateEdge(nodes[0].ID, nodes[1].ID, "LINK", nil, 1.0)
-	gs.CreateEdge(nodes[0].ID, nodes[2].ID, "LINK", nil, 1.0)
-	gs.CreateEdge(nodes[2].ID, nodes[3].ID, "LINK", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[0].ID, nodes[1].ID, "LINK", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[0].ID, nodes[2].ID, "LINK", nil, 1.0)
+	_, _ = gs.CreateEdge(nodes[2].ID, nodes[3].ID, "LINK", nil, 1.0)
 
 	hp := NewHashPartition(2)
 	pg := NewPartitionedGraph(gs, hp, 0)
@@ -301,7 +301,7 @@ func TestComputePartitionMetrics_WithData(t *testing.T) {
 
 	// Create some edges (including cross-partition)
 	for i := 0; i < 19; i++ {
-		gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "NEXT", nil, 1.0)
+		_, _ = gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "NEXT", nil, 1.0)
 	}
 
 	hp := NewHashPartition(4)
@@ -337,7 +337,7 @@ func TestRebalancePartitions_BalancedGraph(t *testing.T) {
 
 	// Create nodes that will be somewhat balanced
 	for i := 0; i < 40; i++ {
-		gs.CreateNode([]string{"Test"}, nil)
+		_, _ = gs.CreateNode([]string{"Test"}, nil)
 	}
 
 	hp := NewHashPartition(4)
@@ -450,7 +450,7 @@ func TestDistributedQuery_TraverseGraph(t *testing.T) {
 
 	// Link them: 0 -> 1 -> 2 -> 3 -> 4
 	for i := 0; i < 4; i++ {
-		gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "NEXT", nil, 1.0)
+		_, _ = gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "NEXT", nil, 1.0)
 	}
 
 	hp := NewHashPartition(2)
@@ -482,7 +482,7 @@ func TestDistributedQuery_TraverseGraph_DepthLimit(t *testing.T) {
 
 	// Link them: 0 -> 1 -> ... -> 9
 	for i := 0; i < 9; i++ {
-		gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "NEXT", nil, 1.0)
+		_, _ = gs.CreateEdge(nodes[i].ID, nodes[i+1].ID, "NEXT", nil, 1.0)
 	}
 
 	hp := NewHashPartition(2)

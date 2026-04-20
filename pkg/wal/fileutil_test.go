@@ -141,7 +141,7 @@ func TestSafeWriter(t *testing.T) {
 	path := filepath.Join(dir, "test.log")
 
 	file, _ := os.Create(path)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	fr := NewFileRotator(path, 0)
 	if err := fr.Open(); err != nil {
@@ -190,7 +190,7 @@ func TestFileExists(t *testing.T) {
 
 	// Create a file
 	path := filepath.Join(dir, "exists.txt")
-	os.WriteFile(path, []byte("test"), 0644)
+	_ = os.WriteFile(path, []byte("test"), 0644)
 
 	if !FileExists(path) {
 		t.Error("FileExists should return true for existing file")
@@ -203,7 +203,7 @@ func TestFileSize(t *testing.T) {
 
 	// Write known data
 	data := []byte("1234567890")
-	os.WriteFile(path, data, 0644)
+	_ = os.WriteFile(path, data, 0644)
 
 	size, err := FileSize(path)
 	if err != nil {

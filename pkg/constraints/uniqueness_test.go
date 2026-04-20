@@ -9,7 +9,7 @@ import (
 // TestUniquePropertyConstraint_GlobalScope tests global uniqueness
 func TestUniquePropertyConstraint_GlobalScope(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create nodes with unique IDs
 	node1, _ := graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -54,7 +54,7 @@ func TestUniquePropertyConstraint_GlobalScope(t *testing.T) {
 // TestUniquePropertyConstraint_WithLabel tests uniqueness within a specific label
 func TestUniquePropertyConstraint_WithLabel(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create users with unique emails
 	node1, _ := graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -97,7 +97,7 @@ func TestUniquePropertyConstraint_WithLabel(t *testing.T) {
 // TestUniquePropertyConstraint_PerLabelScope tests per-label uniqueness
 func TestUniquePropertyConstraint_PerLabelScope(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create users
 	graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -148,7 +148,7 @@ func TestUniquePropertyConstraint_PerLabelScope(t *testing.T) {
 // TestUniquePropertyConstraint_NoViolations tests when all values are unique
 func TestUniquePropertyConstraint_NoViolations(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	graph.CreateNode([]string{"User"}, map[string]storage.Value{
 		"id": storage.StringValue("user-1"),
@@ -178,7 +178,7 @@ func TestUniquePropertyConstraint_NoViolations(t *testing.T) {
 // TestUniquePropertyConstraint_MissingProperty tests nodes without the property
 func TestUniquePropertyConstraint_MissingProperty(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create nodes, some without the unique property
 	graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -210,7 +210,7 @@ func TestUniquePropertyConstraint_MissingProperty(t *testing.T) {
 // TestUniquePropertyConstraint_IntegerValues tests uniqueness of integer properties
 func TestUniquePropertyConstraint_IntegerValues(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	node1, _ := graph.CreateNode([]string{"Product"}, map[string]storage.Value{
 		"sku": storage.IntValue(12345),
@@ -274,7 +274,7 @@ func TestUniquePropertyConstraint_Name(t *testing.T) {
 // TestUniqueEdgeConstraint tests unique edge validation
 func TestUniqueEdgeConstraint(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	user1, _ := graph.CreateNode([]string{"User"}, nil)
 	user2, _ := graph.CreateNode([]string{"User"}, nil)
@@ -311,7 +311,7 @@ func TestUniqueEdgeConstraint(t *testing.T) {
 // TestUniqueEdgeConstraint_NoViolations tests when all edges are unique
 func TestUniqueEdgeConstraint_NoViolations(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	user1, _ := graph.CreateNode([]string{"User"}, nil)
 	user2, _ := graph.CreateNode([]string{"User"}, nil)
@@ -339,7 +339,7 @@ func TestUniqueEdgeConstraint_NoViolations(t *testing.T) {
 // TestUniqueEdgeConstraint_DifferentTypes tests that different edge types are independent
 func TestUniqueEdgeConstraint_DifferentTypes(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	user1, _ := graph.CreateNode([]string{"User"}, nil)
 	user2, _ := graph.CreateNode([]string{"User"}, nil)
@@ -367,7 +367,7 @@ func TestUniqueEdgeConstraint_DifferentTypes(t *testing.T) {
 // TestUniqueEdgeConstraint_WithLabels tests edge constraint with label filtering
 func TestUniqueEdgeConstraint_WithLabels(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	user1, _ := graph.CreateNode([]string{"User"}, nil)
 	user2, _ := graph.CreateNode([]string{"User"}, nil)

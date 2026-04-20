@@ -77,7 +77,7 @@ func TestDetectEdition_FromLicense(t *testing.T) {
 		t.Fatalf("Failed to create test license file: %v", err)
 	}
 	f.WriteString("test-license-key")
-	f.Close()
+	_ = f.Close()
 	defer os.Remove(tmpFile)
 
 	// Set path to our test license
@@ -99,7 +99,7 @@ func TestDetectEdition_Precedence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test license file: %v", err)
 	}
-	f.Close()
+	_ = f.Close()
 	defer os.Remove(tmpFile)
 
 	// Set both env var (Community) and license file (Enterprise)
@@ -248,7 +248,7 @@ func TestLicenseExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test license file: %v", err)
 	}
-	f.Close()
+	_ = f.Close()
 	defer os.Remove(tmpFile)
 
 	// Set path and test
@@ -271,7 +271,7 @@ func TestLicenseExists_MultipleLocations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create license file: %v", err)
 	}
-	f.Close()
+	_ = f.Close()
 	defer os.Remove(licenseFile)
 
 	if !licenseExists() {

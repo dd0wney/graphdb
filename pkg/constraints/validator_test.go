@@ -10,7 +10,7 @@ import (
 // TestValidator_SingleConstraint tests validator with one constraint
 func TestValidator_SingleConstraint(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create invalid node (missing required property)
 	graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -47,7 +47,7 @@ func TestValidator_SingleConstraint(t *testing.T) {
 // TestValidator_MultipleConstraints tests validator with multiple constraints
 func TestValidator_MultipleConstraints(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create user with multiple violations
 	graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -89,7 +89,7 @@ func TestValidator_MultipleConstraints(t *testing.T) {
 // TestValidator_AllValid tests when all constraints pass
 func TestValidator_AllValid(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create valid user
 	graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -130,7 +130,7 @@ func TestValidator_AllValid(t *testing.T) {
 // TestValidator_MixedConstraintTypes tests property + cardinality constraints
 func TestValidator_MixedConstraintTypes(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create account without owner and invalid balance
 	account, _ := graph.CreateNode([]string{"Account"}, map[string]storage.Value{
@@ -181,7 +181,7 @@ func TestValidator_MixedConstraintTypes(t *testing.T) {
 // TestValidator_EmptyGraph tests validator on empty graph
 func TestValidator_EmptyGraph(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	validator := NewValidator()
 	validator.AddConstraint(&PropertyConstraint{
@@ -207,7 +207,7 @@ func TestValidator_EmptyGraph(t *testing.T) {
 // TestValidator_NoConstraints tests validator with no constraints
 func TestValidator_NoConstraints(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	graph.CreateNode([]string{"User"}, nil)
 
@@ -226,7 +226,7 @@ func TestValidator_NoConstraints(t *testing.T) {
 // TestValidator_ConstraintError tests handling of constraint errors
 func TestValidator_ConstraintError(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// This should not cause issues even if constraint references non-existent label
 	validator := NewValidator()
@@ -249,7 +249,7 @@ func TestValidator_ConstraintError(t *testing.T) {
 // TestValidator_FilterBySeverity tests getting violations by severity
 func TestValidator_FilterBySeverity(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create node with violation
 	graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -282,7 +282,7 @@ func TestValidator_FilterBySeverity(t *testing.T) {
 // TestValidator_GetViolationsByType tests getting violations by type
 func TestValidator_GetViolationsByType(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create node with property and cardinality violations
 	graph.CreateNode([]string{"Account"}, map[string]storage.Value{
@@ -323,7 +323,7 @@ func TestValidator_GetViolationsByType(t *testing.T) {
 // TestValidator_TimestampRecorded tests that validation timestamp is recorded
 func TestValidator_TimestampRecorded(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	validator := NewValidator()
 	validator.AddConstraint(&PropertyConstraint{

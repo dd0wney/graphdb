@@ -51,7 +51,7 @@ func TestJWKSClient_GetJWKS(t *testing.T) {
 			name: "JWKS endpoint returns 404",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte("Not Found"))
+				_, _ = w.Write([]byte("Not Found"))
 			},
 			wantErr:    true,
 			errContain: "status 404",
@@ -60,7 +60,7 @@ func TestJWKSClient_GetJWKS(t *testing.T) {
 			name: "JWKS endpoint returns invalid JSON",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte("not valid json"))
+				_, _ = w.Write([]byte("not valid json"))
 			},
 			wantErr:    true,
 			errContain: "decode JWKS",

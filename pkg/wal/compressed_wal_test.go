@@ -12,7 +12,7 @@ func TestNewCompressedWAL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -35,7 +35,7 @@ func TestCompressedWAL_Append(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -62,7 +62,7 @@ func TestCompressedWAL_ReadAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -109,7 +109,7 @@ func TestCompressedWAL_Compression(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -154,7 +154,7 @@ func TestCompressedWAL_GetStatistics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -197,7 +197,7 @@ func TestCompressedWAL_Truncate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -241,7 +241,7 @@ func TestCompressedWAL_Flush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -268,7 +268,7 @@ func TestCompressedWAL_Close(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -294,7 +294,7 @@ func TestCompressedWAL_RecoverLSN(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create WAL and write entries
 	cw1, err := NewCompressedWAL(tmpDir)
@@ -331,7 +331,7 @@ func TestCompressedWAL_EmptyReadAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -360,7 +360,7 @@ func TestCompressedWAL_DifferentOpTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -404,7 +404,7 @@ func TestCompressedWAL_LargeData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {
@@ -454,7 +454,7 @@ func TestCompressedWAL_MultipleAppends(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cw, err := NewCompressedWAL(tmpDir)
 	if err != nil {

@@ -12,7 +12,7 @@ func TestNewBatchedWAL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	bw, err := NewBatchedWAL(tmpDir, 10, 100*time.Millisecond)
 	if err != nil {
@@ -39,7 +39,7 @@ func TestBatchedWAL_Append(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	bw, err := NewBatchedWAL(tmpDir, 10, 100*time.Millisecond)
 	if err != nil {
@@ -66,7 +66,7 @@ func TestBatchedWAL_BatchFlush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Small batch size to trigger flush quickly
 	bw, err := NewBatchedWAL(tmpDir, 3, 1*time.Second)
@@ -101,7 +101,7 @@ func TestBatchedWAL_TimedFlush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Very short flush interval
 	bw, err := NewBatchedWAL(tmpDir, 100, 50*time.Millisecond)
@@ -136,7 +136,7 @@ func TestBatchedWAL_Replay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Write some entries
 	bw, err := NewBatchedWAL(tmpDir, 10, 100*time.Millisecond)
@@ -195,7 +195,7 @@ func TestBatchedWAL_Truncate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	bw, err := NewBatchedWAL(tmpDir, 10, 100*time.Millisecond)
 	if err != nil {
@@ -245,7 +245,7 @@ func TestBatchedWAL_GetCurrentLSN(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	bw, err := NewBatchedWAL(tmpDir, 10, 100*time.Millisecond)
 	if err != nil {
@@ -277,7 +277,7 @@ func TestBatchedWAL_ConcurrentAppends(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	bw, err := NewBatchedWAL(tmpDir, 10, 100*time.Millisecond)
 	if err != nil {
@@ -338,7 +338,7 @@ func TestBatchedWAL_Close(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	bw, err := NewBatchedWAL(tmpDir, 10, 100*time.Millisecond)
 	if err != nil {
@@ -370,7 +370,7 @@ func TestBatchedWAL_EmptyFlush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	bw, err := NewBatchedWAL(tmpDir, 10, 100*time.Millisecond)
 	if err != nil {
@@ -392,7 +392,7 @@ func TestWAL_AppendBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	wal, err := NewWAL(tmpDir)
 	if err != nil {
@@ -435,7 +435,7 @@ func TestWAL_AppendBatch_EmptyBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	wal, err := NewWAL(tmpDir)
 	if err != nil {

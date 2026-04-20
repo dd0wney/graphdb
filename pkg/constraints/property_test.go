@@ -17,7 +17,7 @@ func setupTestGraph(t *testing.T) *storage.GraphStorage {
 // TestPropertyConstraint_Required tests that required properties are validated
 func TestPropertyConstraint_Required(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create node without required property
 	node1, _ := graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -66,7 +66,7 @@ func TestPropertyConstraint_Required(t *testing.T) {
 // TestPropertyConstraint_Type tests type validation
 func TestPropertyConstraint_Type(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create node with correct type
 	node1, _ := graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -111,7 +111,7 @@ func TestPropertyConstraint_Type(t *testing.T) {
 // TestPropertyConstraint_Range tests range validation for integers
 func TestPropertyConstraint_IntRange(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create nodes with different ages
 	node1, _ := graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -172,7 +172,7 @@ func TestPropertyConstraint_IntRange(t *testing.T) {
 // TestPropertyConstraint_FloatRange tests range validation for floats
 func TestPropertyConstraint_FloatRange(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	node1, _ := graph.CreateNode([]string{"Product"}, map[string]storage.Value{
 		"price": storage.FloatValue(19.99), // Valid
@@ -213,7 +213,7 @@ func TestPropertyConstraint_FloatRange(t *testing.T) {
 // TestPropertyConstraint_NoLabel tests nodes without the target label are ignored
 func TestPropertyConstraint_NoLabel(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create User without email
 	graph.CreateNode([]string{"User"}, map[string]storage.Value{
@@ -245,7 +245,7 @@ func TestPropertyConstraint_NoLabel(t *testing.T) {
 // TestPropertyConstraint_EmptyGraph tests validation on empty graph
 func TestPropertyConstraint_EmptyGraph(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	constraint := &PropertyConstraint{
 		NodeLabel:    "User",
@@ -266,7 +266,7 @@ func TestPropertyConstraint_EmptyGraph(t *testing.T) {
 // TestPropertyConstraint_MultipleViolations tests node with multiple constraint violations
 func TestPropertyConstraint_MultipleViolations(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Node with age that's wrong type AND out of range
 	node, _ := graph.CreateNode([]string{"User"}, map[string]storage.Value{

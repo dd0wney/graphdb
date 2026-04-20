@@ -14,7 +14,7 @@ func TestWireCapabilities_VectorSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create storage: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create vector index: 3 dimensions, m=4, efConstruction=50, cosine metric
 	if err := graph.CreateVectorIndex("embedding", 3, 4, 50, vector.MetricCosine); err != nil {
@@ -92,7 +92,7 @@ func TestWireCapabilities_FullTextSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create storage: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create nodes with text content
 	names := []string{"graph database systems", "machine learning", "graph neural networks"}
@@ -142,7 +142,7 @@ func TestWireCapabilities_ReturnsSameExecutor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create storage: %v", err)
 	}
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	executor := query.NewExecutor(graph)
 	result, idx := WireCapabilities(executor, graph)

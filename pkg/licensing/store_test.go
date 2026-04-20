@@ -28,7 +28,7 @@ func TestNewStore(t *testing.T) {
 			dataDir: filepath.Join(os.TempDir(), "test-store-existing"),
 			wantErr: false,
 			setup: func(dir string) {
-				os.MkdirAll(dir, 0755)
+				_ = os.MkdirAll(dir, 0755)
 			},
 		},
 		{
@@ -36,7 +36,7 @@ func TestNewStore(t *testing.T) {
 			dataDir: filepath.Join(os.TempDir(), "test-store-with-data"),
 			wantErr: false,
 			setup: func(dir string) {
-				os.MkdirAll(dir, 0755)
+				_ = os.MkdirAll(dir, 0755)
 				// Create a test license file
 				licenses := map[string]*License{
 					"test-id-1": {
@@ -47,7 +47,7 @@ func TestNewStore(t *testing.T) {
 					},
 				}
 				data, _ := json.MarshalIndent(licenses, "", "  ")
-				os.WriteFile(filepath.Join(dir, "licenses.json"), data, 0600)
+				_ = os.WriteFile(filepath.Join(dir, "licenses.json"), data, 0600)
 			},
 		},
 	}
@@ -61,7 +61,7 @@ func TestNewStore(t *testing.T) {
 
 			// Cleanup after test
 			defer func() {
-				os.RemoveAll(tt.dataDir)
+				_ = os.RemoveAll(tt.dataDir)
 				if tt.cleanup != nil {
 					tt.cleanup(tt.dataDir)
 				}
@@ -95,7 +95,7 @@ func TestNewStore(t *testing.T) {
 
 func TestStore_SaveLoad(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-save-load")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -172,12 +172,12 @@ func TestStore_SaveLoad(t *testing.T) {
 
 func TestStore_LoadCorruptedJSON(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-corrupted")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Create directory and corrupted JSON file
-	os.MkdirAll(dataDir, 0755)
+	_ = os.MkdirAll(dataDir, 0755)
 	corruptedData := []byte(`{"invalid": json syntax}`)
-	os.WriteFile(filepath.Join(dataDir, "licenses.json"), corruptedData, 0600)
+	_ = os.WriteFile(filepath.Join(dataDir, "licenses.json"), corruptedData, 0600)
 
 	// Attempt to create store with corrupted data
 	_, err := NewStore(dataDir)
@@ -188,7 +188,7 @@ func TestStore_LoadCorruptedJSON(t *testing.T) {
 
 func TestStore_LoadNonExistentFile(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-empty")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	// Create store in empty directory (no licenses.json)
 	store, err := NewStore(dataDir)
@@ -205,7 +205,7 @@ func TestStore_LoadNonExistentFile(t *testing.T) {
 
 func TestStore_ConcurrentAccess(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-concurrent")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -250,7 +250,7 @@ func TestStore_ConcurrentAccess(t *testing.T) {
 
 func TestStore_ConcurrentReadWrite(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-rw-concurrent")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -314,7 +314,7 @@ func TestStore_ConcurrentReadWrite(t *testing.T) {
 
 func TestStore_UpdateNonExistentLicense(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-update-nonexistent")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -336,7 +336,7 @@ func TestStore_UpdateNonExistentLicense(t *testing.T) {
 
 func TestStore_GetNonExistentLicense(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-get-nonexistent")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -351,7 +351,7 @@ func TestStore_GetNonExistentLicense(t *testing.T) {
 
 func TestStore_GetLicenseByKeyNotFound(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-getbykey-notfound")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -366,7 +366,7 @@ func TestStore_GetLicenseByKeyNotFound(t *testing.T) {
 
 func TestStore_GetLicenseByCustomer(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-get-by-customer")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -400,7 +400,7 @@ func TestStore_GetLicenseByCustomer(t *testing.T) {
 
 func TestStore_ListLicenses(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-list")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -433,7 +433,7 @@ func TestStore_ListLicenses(t *testing.T) {
 
 func TestStore_Ping(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-ping")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -448,7 +448,7 @@ func TestStore_Ping(t *testing.T) {
 
 func TestStore_Close(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-close")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -463,7 +463,7 @@ func TestStore_Close(t *testing.T) {
 
 func TestStore_FilePermissions(t *testing.T) {
 	dataDir := filepath.Join(os.TempDir(), "test-store-permissions")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -500,7 +500,7 @@ func generateTestKey(id int) string {
 // Benchmark store operations
 func BenchmarkStore_CreateLicense(b *testing.B) {
 	dataDir := filepath.Join(os.TempDir(), "bench-store-create")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, _ := NewStore(dataDir)
 	license := &License{
@@ -519,7 +519,7 @@ func BenchmarkStore_CreateLicense(b *testing.B) {
 
 func BenchmarkStore_GetLicense(b *testing.B) {
 	dataDir := filepath.Join(os.TempDir(), "bench-store-get")
-	defer os.RemoveAll(dataDir)
+	defer func() { _ = os.RemoveAll(dataDir) }()
 
 	store, _ := NewStore(dataDir)
 	license := &License{

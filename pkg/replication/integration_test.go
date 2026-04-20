@@ -472,7 +472,7 @@ func TestHandshakeRejection(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		decoder := json.NewDecoder(conn)
 		encoder := json.NewEncoder(conn)

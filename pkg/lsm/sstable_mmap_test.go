@@ -272,7 +272,7 @@ func TestMappedSSTable_InvalidMagic(t *testing.T) {
 	// Create file with invalid header
 	f, _ := os.Create(badPath)
 	f.Write([]byte{0, 0, 0, 0, 0, 0, 0, 0}) // Wrong magic
-	f.Close()
+	_ = f.Close()
 
 	_, err := OpenMappedSSTable(badPath)
 	if err == nil {

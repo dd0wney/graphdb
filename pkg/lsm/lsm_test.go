@@ -332,7 +332,7 @@ func TestLSMStatistics(t *testing.T) {
 // Benchmark concurrent reads with compaction
 func BenchmarkLSMConcurrentReadsWithCompaction(b *testing.B) {
 	tmpDir := b.TempDir()
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	opts := DefaultLSMOptions(tmpDir)
 	opts.EnableAutoCompaction = true

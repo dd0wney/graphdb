@@ -33,21 +33,21 @@ func TestE2E_SecurityFullStack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create graph storage
 	gs, err := storage.NewGraphStorage(tmpDir + "/data")
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Setup encryption
 	masterKeyHex := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	masterKey, _ := hex.DecodeString(masterKeyHex)
 
 	keyDir := tmpDir + "/keys"
-	os.MkdirAll(keyDir, 0700)
+	_ = os.MkdirAll(keyDir, 0700)
 
 	_, err = encryption.NewKeyManager(encryption.KeyManagerConfig{
 		KeyDir:    keyDir,
@@ -352,15 +352,15 @@ func TestE2E_EncryptionIntegrity(t *testing.T) {
 	}
 
 	tmpDir, _ := os.MkdirTemp("", "e2e-encryption-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	gs, _ := storage.NewGraphStorage(tmpDir + "/data")
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Setup encryption
 	masterKey, _ := hex.DecodeString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	keyDir := tmpDir + "/keys"
-	os.MkdirAll(keyDir, 0700)
+	_ = os.MkdirAll(keyDir, 0700)
 
 	keyManager, err := encryption.NewKeyManager(encryption.KeyManagerConfig{
 		KeyDir:    keyDir,

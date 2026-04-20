@@ -19,7 +19,7 @@ func TestForceDirectedLayout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a simple graph
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -32,8 +32,8 @@ func TestForceDirectedLayout(t *testing.T) {
 		"name": storage.StringValue("Charlie"),
 	})
 
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{}, 1.0)
-	gs.CreateEdge(node2.ID, node3.ID, "KNOWS", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(node2.ID, node3.ID, "KNOWS", map[string]storage.Value{}, 1.0)
 
 	// Apply force-directed layout
 	layout := NewForceDirectedLayout(&LayoutConfig{
@@ -85,7 +85,7 @@ func TestCircularLayout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	nodeIDs := make([]uint64, 5)
@@ -138,7 +138,7 @@ func TestHierarchicalLayout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create a tree structure
 	root, _ := gs.CreateNode([]string{"Node"}, map[string]storage.Value{})
@@ -147,10 +147,10 @@ func TestHierarchicalLayout(t *testing.T) {
 	grandchild1, _ := gs.CreateNode([]string{"Node"}, map[string]storage.Value{})
 	grandchild2, _ := gs.CreateNode([]string{"Node"}, map[string]storage.Value{})
 
-	gs.CreateEdge(root.ID, child1.ID, "CHILD", map[string]storage.Value{}, 1.0)
-	gs.CreateEdge(root.ID, child2.ID, "CHILD", map[string]storage.Value{}, 1.0)
-	gs.CreateEdge(child1.ID, grandchild1.ID, "CHILD", map[string]storage.Value{}, 1.0)
-	gs.CreateEdge(child1.ID, grandchild2.ID, "CHILD", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(root.ID, child1.ID, "CHILD", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(root.ID, child2.ID, "CHILD", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(child1.ID, grandchild1.ID, "CHILD", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(child1.ID, grandchild2.ID, "CHILD", map[string]storage.Value{}, 1.0)
 
 	// Apply hierarchical layout
 	layout := NewHierarchicalLayout(&LayoutConfig{
@@ -200,7 +200,7 @@ func TestLayoutNormalization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create nodes
 	nodeIDs := make([]uint64, 3)
@@ -240,7 +240,7 @@ func TestEmptyGraph(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	layout := NewForceDirectedLayout(&LayoutConfig{
 		Width:  800,
@@ -269,7 +269,7 @@ func TestSingleNodeLayout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	node, _ := gs.CreateNode([]string{"Node"}, map[string]storage.Value{})
 
@@ -307,7 +307,7 @@ func TestVisualizationExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer gs.Close()
+	defer func() { _ = gs.Close() }()
 
 	// Create simple graph
 	node1, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
@@ -316,7 +316,7 @@ func TestVisualizationExport(t *testing.T) {
 	node2, _ := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
 		"name": storage.StringValue("Bob"),
 	})
-	gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{}, 1.0)
+	_, _ = gs.CreateEdge(node1.ID, node2.ID, "KNOWS", map[string]storage.Value{}, 1.0)
 
 	layout := NewForceDirectedLayout(&LayoutConfig{
 		Width:      800,

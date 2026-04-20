@@ -232,7 +232,7 @@ func TestExport_WithLimit(t *testing.T) {
 	}
 
 	var parsed []*PersistentEvent
-	json.Unmarshal(buf.Bytes(), &parsed)
+	_ = json.Unmarshal(buf.Bytes(), &parsed)
 	if len(parsed) != 3 {
 		t.Errorf("Expected 3 events (limit), got %d", len(parsed))
 	}
@@ -259,7 +259,7 @@ func TestExport_FilterBySeverity(t *testing.T) {
 	}
 
 	var parsed []*PersistentEvent
-	json.Unmarshal(buf.Bytes(), &parsed)
+	_ = json.Unmarshal(buf.Bytes(), &parsed)
 	if len(parsed) != 2 {
 		t.Errorf("Expected 2 warning events, got %d", len(parsed))
 	}
@@ -287,7 +287,7 @@ func TestExport_FilterByAction(t *testing.T) {
 	}
 
 	var parsed []*PersistentEvent
-	json.Unmarshal(buf.Bytes(), &parsed)
+	_ = json.Unmarshal(buf.Bytes(), &parsed)
 	if len(parsed) != 3 {
 		t.Errorf("Expected 3 delete events, got %d", len(parsed))
 	}
@@ -314,7 +314,7 @@ func TestExport_FilterByUsername(t *testing.T) {
 	}
 
 	var parsed []*PersistentEvent
-	json.Unmarshal(buf.Bytes(), &parsed)
+	_ = json.Unmarshal(buf.Bytes(), &parsed)
 	if len(parsed) != 2 {
 		t.Errorf("Expected 2 admin events, got %d", len(parsed))
 	}
@@ -348,7 +348,7 @@ func TestExport_FilterByTimeRange(t *testing.T) {
 	}
 
 	var parsed []*PersistentEvent
-	json.Unmarshal(buf.Bytes(), &parsed)
+	_ = json.Unmarshal(buf.Bytes(), &parsed)
 	// Events at -3h, -2h, -1h should match
 	if len(parsed) != 3 {
 		t.Errorf("Expected 3 events in time range, got %d", len(parsed))
@@ -448,7 +448,7 @@ func TestExport_GzippedLogFile(t *testing.T) {
 	}
 
 	var parsed []*PersistentEvent
-	json.Unmarshal(buf.Bytes(), &parsed)
+	_ = json.Unmarshal(buf.Bytes(), &parsed)
 	if len(parsed) != 3 {
 		t.Errorf("Expected 3 events from gzipped file, got %d", len(parsed))
 	}
@@ -536,7 +536,7 @@ func writeTestLogFile(t *testing.T, dir string, events []*PersistentEvent) {
 	if err != nil {
 		t.Fatalf("Failed to create test log file: %v", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	for _, event := range events {
 		data, _ := json.Marshal(event)
@@ -552,7 +552,7 @@ func writeGzippedLogFile(t *testing.T, dir string, events []*PersistentEvent) {
 	if err != nil {
 		t.Fatalf("Failed to create test gzipped log file: %v", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	gzWriter := gzip.NewWriter(file)
 	defer gzWriter.Close()

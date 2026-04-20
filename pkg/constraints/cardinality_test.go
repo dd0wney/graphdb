@@ -9,7 +9,7 @@ import (
 // TestCardinalityConstraint_MinEdges tests minimum edge count validation
 func TestCardinalityConstraint_MinEdges(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Create Account that must have at least 1 OWNS edge
 	account1, _ := graph.CreateNode([]string{"Account"}, map[string]storage.Value{
@@ -55,7 +55,7 @@ func TestCardinalityConstraint_MinEdges(t *testing.T) {
 // TestCardinalityConstraint_MaxEdges tests maximum edge count validation
 func TestCardinalityConstraint_MaxEdges(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Person can have at most 1 manager
 	person1, _ := graph.CreateNode([]string{"Person"}, nil)
@@ -95,7 +95,7 @@ func TestCardinalityConstraint_MaxEdges(t *testing.T) {
 // TestCardinalityConstraint_ExactCount tests exact edge count
 func TestCardinalityConstraint_ExactCount(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Triangle must have exactly 3 EDGE_OF edges
 	triangle1, _ := graph.CreateNode([]string{"Triangle"}, nil)
@@ -139,7 +139,7 @@ func TestCardinalityConstraint_ExactCount(t *testing.T) {
 // TestCardinalityConstraint_AnyDirection tests counting edges in any direction
 func TestCardinalityConstraint_AnyDirection(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// User must have at least 1 FRIEND edge (either direction)
 	user1, _ := graph.CreateNode([]string{"User"}, nil)
@@ -178,7 +178,7 @@ func TestCardinalityConstraint_AnyDirection(t *testing.T) {
 // TestCardinalityConstraint_AllEdgeTypes tests constraint without specific edge type
 func TestCardinalityConstraint_AllEdgeTypes(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Node must have at least 1 outgoing edge of any type
 	node1, _ := graph.CreateNode([]string{"Node"}, nil)
@@ -215,7 +215,7 @@ func TestCardinalityConstraint_AllEdgeTypes(t *testing.T) {
 // TestCardinalityConstraint_ZeroMin tests that Min=0 means optional
 func TestCardinalityConstraint_ZeroMin(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	// Optional edge (0 or more)
 	node, _ := graph.CreateNode([]string{"Node"}, nil)
@@ -244,7 +244,7 @@ func TestCardinalityConstraint_ZeroMin(t *testing.T) {
 // TestCardinalityConstraint_EmptyGraph tests empty graph
 func TestCardinalityConstraint_EmptyGraph(t *testing.T) {
 	graph := setupTestGraph(t)
-	defer graph.Close()
+	defer func() { _ = graph.Close() }()
 
 	constraint := &CardinalityConstraint{
 		NodeLabel: "Node",

@@ -79,8 +79,8 @@ func TestTraverseBFS_SingleNode(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
@@ -103,9 +103,9 @@ func TestTraverseBFS_MaxDepth(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
@@ -139,8 +139,8 @@ func TestTraverseBFS_MultipleStartNodes(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
@@ -163,9 +163,9 @@ func TestTraverseBFS_Cycle(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
@@ -187,8 +187,8 @@ func TestTraverseDFS_SingleNode(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
@@ -211,9 +211,9 @@ func TestTraverseDFS_MaxDepth(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
@@ -240,9 +240,9 @@ func TestTraverseDFS_Cycle(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeA.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
@@ -266,7 +266,7 @@ func TestTraverseDFS_HighDegreeNode(t *testing.T) {
 	for i := 0; i < 15; i++ {
 		spoke, _ := gs.CreateNode([]string{"Spoke"}, nil)
 		spokes[i] = spoke
-		gs.CreateEdge(hub.ID, spoke.ID, "LINKS", nil, 1.0)
+		_, _ = gs.CreateEdge(hub.ID, spoke.ID, "LINKS", nil, 1.0)
 	}
 
 	pt, _ := NewParallelTraverser(gs, 4)
@@ -307,7 +307,7 @@ func TestParallelShortestPath_DirectConnection(t *testing.T) {
 	nodeA, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
@@ -335,8 +335,8 @@ func TestParallelShortestPath_LinearPath(t *testing.T) {
 	nodeB, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
@@ -389,9 +389,9 @@ func TestParallelShortestPath_MaxDepth(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()
@@ -418,10 +418,10 @@ func TestParallelShortestPath_MultiplePaths(t *testing.T) {
 	nodeC, _ := gs.CreateNode([]string{"Node"}, nil)
 	nodeD, _ := gs.CreateNode([]string{"Node"}, nil)
 
-	gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeB.ID, nodeD.ID, "LINKS", nil, 1.0)
-	gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeB.ID, nodeD.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(nodeC.ID, nodeD.ID, "LINKS", nil, 1.0)
 
 	pt, _ := NewParallelTraverser(gs, 2)
 	defer pt.Close()

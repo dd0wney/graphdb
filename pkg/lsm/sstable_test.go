@@ -390,7 +390,7 @@ func TestSSTable_InvalidFile(t *testing.T) {
 		t.Fatalf("Failed to create file: %v", err)
 	}
 	file.Write([]byte{0x00, 0x00, 0x00, 0x00}) // Invalid magic
-	file.Close()
+	_ = file.Close()
 
 	// OpenSSTable should fail
 	_, err = OpenSSTable(path)
