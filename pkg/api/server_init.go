@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
@@ -272,7 +273,124 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 	// Initialize CORS from environment variables
 	server.InitCORSFromEnv()
 
+	// Bootstrap tenant indexes from environment if configured. Fails
+	// soft — a bad config or corpus-too-small problem logs and continues
+	// rather than refusing to boot.
+	server.bootstrapIndexesFromEnv()
+
 	return server, nil
+}
+
+// bootstrapIndexesFromEnv builds the FTS and/or LSA index for the
+// default tenant at startup when corresponding env vars are set. Intended
+// for container deployments that can't easily curl the admin endpoints
+// post-boot. Multi-tenant setups should continue using the admin
+// endpoints; this env path handles only the default tenant.
+//
+// FTS config (both required to trigger):
+//
+//	GRAPHDB_FTS_BOOTSTRAP_LABELS     comma-separated, e.g. "Doc,Note"
+//	GRAPHDB_FTS_BOOTSTRAP_PROPERTIES comma-separated, e.g. "title,body"
+//
+// LSA config (labels + body_properties required; title_property optional):
+//
+//	GRAPHDB_LSA_BOOTSTRAP_LABELS          e.g. "Doc"
+//	GRAPHDB_LSA_BOOTSTRAP_TITLE_PROPERTY  e.g. "title" (optional)
+//	GRAPHDB_LSA_BOOTSTRAP_BODY_PROPERTIES e.g. "body,summary"
+//	GRAPHDB_LSA_BOOTSTRAP_DIMS            e.g. "200" (optional)
+func (s *Server) bootstrapIndexesFromEnv() {
+	const defaultTenantID = "default"
+
+	// FTS bootstrap.
+	if labels := splitEnvCSV("GRAPHDB_FTS_BOOTSTRAP_LABELS"); len(labels) > 0 {
+		props := splitEnvCSV("GRAPHDB_FTS_BOOTSTRAP_PROPERTIES")
+		if len(props) == 0 {
+			log.Printf("bootstrap: GRAPHDB_FTS_BOOTSTRAP_LABELS set but _PROPERTIES empty; skipping FTS bootstrap")
+		} else if err := s.searchIndexes.IndexForTenant(defaultTenantID, labels, props); err != nil {
+			log.Printf("bootstrap: FTS IndexForTenant(default) failed: %v", err)
+		} else {
+			log.Printf("✅ Bootstrapped FTS index for default tenant (labels=%v, properties=%v)", labels, props)
+		}
+	}
+
+	// LSA bootstrap.
+	if labels := splitEnvCSV("GRAPHDB_LSA_BOOTSTRAP_LABELS"); len(labels) > 0 {
+		bodyProps := splitEnvCSV("GRAPHDB_LSA_BOOTSTRAP_BODY_PROPERTIES")
+		if len(bodyProps) == 0 {
+			log.Printf("bootstrap: GRAPHDB_LSA_BOOTSTRAP_LABELS set but _BODY_PROPERTIES empty; skipping LSA bootstrap")
+			return
+		}
+		titleProp := os.Getenv("GRAPHDB_LSA_BOOTSTRAP_TITLE_PROPERTY")
+
+		if err := s.buildAndRegisterLSA(defaultTenantID, labels, titleProp, bodyProps); err != nil {
+			log.Printf("bootstrap: LSA build for default tenant failed: %v", err)
+		}
+	}
+}
+
+// buildAndRegisterLSA gathers the tenant's nodes, constructs Document
+// records, runs BuildLSAIndex, and registers the result. Shared between
+// env-bootstrap and the future scheduled-rebuild path.
+func (s *Server) buildAndRegisterLSA(tenantID string, labels []string, titleProp string, bodyProps []string) error {
+	var nodes []*storage.Node
+	for _, label := range labels {
+		nodes = append(nodes, s.graph.GetNodesByLabelForTenant(tenantID, label)...)
+	}
+
+	docs := make([]search.Document, 0, len(nodes))
+	for _, n := range nodes {
+		title := stringProperty(n, titleProp)
+		var bodyParts []string
+		for _, p := range bodyProps {
+			if v := stringProperty(n, p); v != "" {
+				bodyParts = append(bodyParts, v)
+			}
+		}
+		body := strings.Join(bodyParts, " ")
+		if body == "" {
+			continue
+		}
+		docs = append(docs, search.Document{ID: n.ID, Title: title, Body: body})
+	}
+
+	cfg := search.DefaultLSAConfig()
+	if v := getEnvInt("GRAPHDB_LSA_BOOTSTRAP_DIMS", 0); v > 0 {
+		cfg.Dims = v
+	}
+	if v := getEnvInt("GRAPHDB_LSA_BOOTSTRAP_MIN_DOC_FREQ", 0); v > 0 {
+		cfg.MinDocFreq = v
+	}
+	if v := getEnvInt("GRAPHDB_LSA_BOOTSTRAP_MAX_VOCAB", 0); v > 0 {
+		cfg.MaxVocab = v
+	}
+	if v := getEnvInt("GRAPHDB_LSA_BOOTSTRAP_TITLE_BOOST", 0); v > 0 {
+		cfg.TitleBoost = v
+	}
+
+	idx, err := search.BuildLSAIndex(docs, cfg)
+	if err != nil {
+		return err
+	}
+	s.lsaIndexes.Set(tenantID, idx)
+	log.Printf("✅ Bootstrapped LSA index for %s (%d docs, %d dims)", tenantID, idx.NumDocs(), idx.Dimensions())
+	return nil
+}
+
+// splitEnvCSV reads a comma-separated env var and returns non-empty
+// trimmed entries. Returns nil for unset or empty.
+func splitEnvCSV(key string) []string {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // getEnvInt reads an integer environment variable with a default value
