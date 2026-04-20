@@ -23,7 +23,7 @@ import (
 type Server struct {
 	graph               *storage.GraphStorage
 	executor            *query.Executor
-	searchIndex         *search.FullTextIndex // Shared with executor via queryutil.WireCapabilities; empty until IndexNodes is called
+	searchIndexes       *search.TenantIndexes // Per-tenant full-text indexes; empty until IndexForTenant is called for a given tenant
 	graphqlHandler      *gqlpkg.GraphQLHandler
 	graphqlSchema       graphql.Schema           // Current GraphQL schema (protected by schemaLock)
 	schemaLock          sync.RWMutex             // Protects graphqlSchema during regeneration

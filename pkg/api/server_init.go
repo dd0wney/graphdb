@@ -17,6 +17,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
 	"github.com/dd0wney/cluso-graphdb/pkg/queryutil"
+	"github.com/dd0wney/cluso-graphdb/pkg/search"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
@@ -232,12 +233,15 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		log.Printf("✅ Multi-tenancy enabled (default tenant: %s)", tenant.DefaultTenantID)
 	}
 
-	executor, searchIndex := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
+	// WireCapabilities gives the executor its own (DSL-facing) FullTextIndex.
+	// The REST surface uses per-tenant indexes via TenantIndexes instead;
+	// tenant-aware DSL search() is a follow-up.
+	executor, _ := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
 
 	server := &Server{
 		graph:               graph,
 		executor:            executor,
-		searchIndex:         searchIndex,
+		searchIndexes:       search.NewTenantIndexes(graph),
 		graphqlHandler:      graphqlHandler,
 		graphqlSchema:       schema,
 		complexityConfig:    complexityConfig,

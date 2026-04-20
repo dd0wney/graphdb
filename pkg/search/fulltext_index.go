@@ -7,6 +7,25 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
+// IndexPrepared indexes a pre-collected set of nodes under the given
+// labels and properties. Use when the caller has scoped the node set
+// (e.g. to a single tenant) that IndexNodes's label-based storage
+// lookup can't express. Replaces any existing entries for these nodes.
+func (fti *FullTextIndex) IndexPrepared(nodes []*storage.Node, labels, properties []string) error {
+	fti.indexMu.Lock()
+	defer fti.indexMu.Unlock()
+
+	fti.indexedLabels = labels
+	fti.indexedProps = properties
+
+	for _, node := range nodes {
+		// Remove any existing entries for this node so rebuilds are idempotent.
+		fti.removeNodeLocked(node.ID)
+		fti.indexNode(node, properties)
+	}
+	return nil
+}
+
 // IndexNodes indexes all nodes with specified labels and properties
 func (fti *FullTextIndex) IndexNodes(labels []string, properties []string) error {
 	// Collect all nodes WITHOUT holding the index lock to prevent deadlock
@@ -88,8 +107,12 @@ func (fti *FullTextIndex) indexNode(node *storage.Node, properties []string) {
 
 // removeNodeLocked removes all index entries for nodeID. Must be called
 // with the write lock held. O(terms-in-document) instead of O(vocabulary)
-// because it iterates only the reverse posting for this node.
+// because it iterates only the reverse posting for this node. No-op if
+// the node was never indexed — totalDocs is not decremented in that case.
 func (fti *FullTextIndex) removeNodeLocked(nodeID uint64) {
+	if _, indexed := fti.nodeTerms[nodeID]; !indexed {
+		return
+	}
 	for term := range fti.nodeTerms[nodeID] {
 		if postings, ok := fti.index[term]; ok {
 			delete(postings, nodeID)
