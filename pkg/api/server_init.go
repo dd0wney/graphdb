@@ -232,9 +232,12 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		log.Printf("✅ Multi-tenancy enabled (default tenant: %s)", tenant.DefaultTenantID)
 	}
 
+	executor, searchIndex := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
+
 	server := &Server{
 		graph:               graph,
-		executor:            queryutil.WireCapabilities(query.NewExecutor(graph), graph),
+		executor:            executor,
+		searchIndex:         searchIndex,
 		graphqlHandler:      graphqlHandler,
 		graphqlSchema:       schema,
 		complexityConfig:    complexityConfig,

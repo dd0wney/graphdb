@@ -12,6 +12,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
+	"github.com/dd0wney/cluso-graphdb/pkg/search"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
@@ -22,6 +23,7 @@ import (
 type Server struct {
 	graph               *storage.GraphStorage
 	executor            *query.Executor
+	searchIndex         *search.FullTextIndex       // Shared with executor via queryutil.WireCapabilities; empty until IndexNodes is called
 	graphqlHandler      *gqlpkg.GraphQLHandler
 	graphqlSchema       graphql.Schema              // Current GraphQL schema (protected by schemaLock)
 	schemaLock          sync.RWMutex                // Protects graphqlSchema during regeneration

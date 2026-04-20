@@ -41,9 +41,10 @@ func main() {
 	fmt.Printf("   Nodes: %d\n", stats.NodeCount)
 	fmt.Printf("   Edges: %d\n\n", stats.EdgeCount)
 
+	executor, _ := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
 	cli := &CLI{
 		graph:    graph,
-		executor: queryutil.WireCapabilities(query.NewExecutor(graph), graph),
+		executor: executor,
 		scanner:  bufio.NewScanner(os.Stdin),
 	}
 

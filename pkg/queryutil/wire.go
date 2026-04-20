@@ -10,8 +10,11 @@ import (
 )
 
 // WireCapabilities attaches full-text search and vector search to an executor.
-// Returns the same executor pointer for inline use at call sites.
-func WireCapabilities(executor *query.Executor, graph *storage.GraphStorage) *query.Executor {
+// Returns the same executor pointer plus the constructed FullTextIndex so
+// callers (notably the API server) can reference the same index instance
+// as the executor — avoiding a second in-memory index and keeping query-DSL
+// and REST/GraphQL surfaces consistent.
+func WireCapabilities(executor *query.Executor, graph *storage.GraphStorage) (*query.Executor, *search.FullTextIndex) {
 	// Full-text search
 	idx := search.NewFullTextIndex(graph)
 	executor.SetSearchIndex(idx)
@@ -39,5 +42,5 @@ func WireCapabilities(executor *query.Executor, graph *storage.GraphStorage) *qu
 		},
 	)
 
-	return executor
+	return executor, idx
 }

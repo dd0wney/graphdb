@@ -145,9 +145,12 @@ func TestWireCapabilities_ReturnsSameExecutor(t *testing.T) {
 	defer graph.Close()
 
 	executor := query.NewExecutor(graph)
-	result := WireCapabilities(executor, graph)
+	result, idx := WireCapabilities(executor, graph)
 
 	if result != executor {
 		t.Error("WireCapabilities should return the same executor pointer")
+	}
+	if idx == nil {
+		t.Error("WireCapabilities should return a non-nil FullTextIndex")
 	}
 }

@@ -197,9 +197,10 @@ func initialModel(graph *storage.GraphStorage) model {
 		Bold(false)
 	t.SetStyles(s)
 
+	executor, _ := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
 	return model{
 		graph:       graph,
-		executor:    queryutil.WireCapabilities(query.NewExecutor(graph), graph),
+		executor:    executor,
 		currentView: dashboardView,
 		queryInput:  ti,
 		nodeTable:   t,

@@ -145,7 +145,7 @@ func benchmarkFindAllUsers(graph *storage.GraphStorage) {
 	start = time.Now()
 
 	queryStr := "MATCH (u:User) RETURN u"
-	executor := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
+	executor, _ := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
 
 	// Parse query
 	lexer := query.NewLexer(queryStr)
@@ -206,7 +206,7 @@ func benchmarkPropertyFilter(graph *storage.GraphStorage) {
 	start = time.Now()
 
 	queryStr := "MATCH (u:User) WHERE u.age > 30 RETURN u"
-	executor := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
+	executor, _ := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
 
 	lexer := query.NewLexer(queryStr)
 	tokens, err := lexer.Tokenize()
@@ -261,7 +261,7 @@ func benchmarkFindFriends(graph *storage.GraphStorage, nodeIDs []uint64) {
 	start = time.Now()
 
 	queryStr := "MATCH (u:User)-[:KNOWS]->(friend:User) RETURN friend.id"
-	executor := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
+	executor, _ := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
 
 	lexer := query.NewLexer(queryStr)
 	tokens, err := lexer.Tokenize()
@@ -315,7 +315,7 @@ func benchmarkCreateNodes(graph *storage.GraphStorage) {
 	start = time.Now()
 
 	declarativeCount := 0
-	executor := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
+	executor, _ := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
 
 	for i := 0; i < 100; i++ {
 		queryStr := fmt.Sprintf("CREATE (n:TestNode {name: 'test%d'})", i+100)
@@ -372,7 +372,7 @@ func benchmarkFriendsOfFriends(graph *storage.GraphStorage, nodeIDs []uint64) {
 	start = time.Now()
 
 	queryStr := "MATCH (u:User)-[:KNOWS]->(f:User)-[:KNOWS]->(fof:User) RETURN fof.id"
-	executor := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
+	executor, _ := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
 
 	lexer := query.NewLexer(queryStr)
 	tokens, err := lexer.Tokenize()
