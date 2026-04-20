@@ -1317,6 +1317,94 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /search/index:
+    post:
+      tags:
+        - Full-Text Search
+      summary: Build / rebuild the tenant's full-text search index
+      description: |
+        Rebuilds the FullTextIndex for the caller's tenant from nodes
+        matching the given labels and properties. Synchronous and
+        idempotent — safe to retry. Until this endpoint has been
+        called, `/search` returns zero results for the tenant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchIndexRequest'
+      responses:
+        '200':
+          description: Index built
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchIndexResponse'
+        '400':
+          description: Missing labels or properties
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '405':
+          description: Method not allowed (POST only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /hybrid-search/lsa-index:
+    post:
+      tags:
+        - Full-Text Search
+      summary: Build / rebuild the tenant's LSA semantic index
+      description: |
+        Builds an LSA index (randomized truncated SVD over the
+        tenant's tokenized corpus) and registers it for use by
+        `/hybrid-search`. Synchronous; scales as O(D × T × l) where
+        D = doc count, T = vocab, l ≈ dims + oversample. Expect
+        seconds for ~10k-doc corpora and minutes beyond that.
+
+        Returns 422 when the corpus is too small to support the
+        requested `dims` (vocab size below dims after the stopword +
+        stemming + min-doc-freq filters). Callers can retry with a
+        smaller `dims` or a larger corpus.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LSAIndexRequest'
+      responses:
+        '200':
+          description: LSA index built and registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LSAIndexResponse'
+        '400':
+          description: Missing labels or body_properties
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '405':
+          description: Method not allowed (POST only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Corpus too small for requested dims
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # Security Management endpoints
   /api/v1/security/keys/rotate:
     post:
@@ -2001,6 +2089,101 @@ components:
           description: Set when the hybrid pipeline fell back to a single stage.
           enum: [no-lsa-index, query-out-of-vocabulary, ""]
           example: ""
+
+    SearchIndexRequest:
+      type: object
+      required:
+        - labels
+        - properties
+      properties:
+        labels:
+          type: array
+          description: Node labels to include in the index.
+          items:
+            type: string
+          example: ["Article", "Note"]
+        properties:
+          type: array
+          description: Property names whose string values are indexed.
+          items:
+            type: string
+          example: ["title", "body"]
+
+    SearchIndexResponse:
+      type: object
+      properties:
+        indexed_nodes:
+          type: integer
+          description: Number of nodes visited during indexing (per-label sum).
+          example: 1250
+        took_ms:
+          type: integer
+          format: int64
+          example: 84
+
+    LSAIndexRequest:
+      type: object
+      required:
+        - labels
+        - body_properties
+      properties:
+        labels:
+          type: array
+          description: Node labels to include.
+          items:
+            type: string
+          example: ["Article"]
+        title_property:
+          type: string
+          description: Property used as Document.Title (amplified by title_boost).
+          example: title
+        body_properties:
+          type: array
+          description: Property names whose string values are joined into Document.Body.
+          items:
+            type: string
+          example: ["body", "summary"]
+        dims:
+          type: integer
+          description: LSA latent dimensions (default 200).
+          minimum: 1
+          example: 200
+        min_doc_freq:
+          type: integer
+          description: Discard terms appearing in fewer docs than this (default 3).
+          minimum: 1
+          example: 3
+        max_vocab:
+          type: integer
+          description: Hard cap on vocabulary size (default 8000).
+          minimum: 1
+          example: 8000
+        title_boost:
+          type: integer
+          description: Times to repeat Title during tokenization (default 3).
+          minimum: 1
+          example: 3
+        seed:
+          type: integer
+          format: int64
+          description: RNG seed for reproducible SVD (default 42).
+          example: 42
+
+    LSAIndexResponse:
+      type: object
+      properties:
+        indexed_docs:
+          type: integer
+          description: Number of documents that contributed to the index.
+          example: 1250
+        dimensions:
+          type: integer
+          description: Latent dimension count of the built index.
+          example: 200
+        took_ms:
+          type: integer
+          format: int64
+          example: 4210
 
   responses:
     BadRequest:
