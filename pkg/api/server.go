@@ -60,6 +60,9 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/vector-indexes/", s.requireAuth(s.withTenant(s.handleVectorIndex)))
 	mux.HandleFunc("/vector-search", s.requireAuth(s.withTenant(s.handleVectorSearch)))
 
+	// Full-text search (protected, tenant-scoped)
+	mux.HandleFunc("/search", s.requireAuth(s.withTenant(s.handleSearch)))
+
 	// User management endpoints (admin only) - handler does its own auth check
 	mux.Handle("/api/users", s.userHandler)
 	mux.Handle("/api/users/", s.userHandler)

@@ -23,7 +23,16 @@ func (fti *FullTextIndex) scoreResults(nodeIDs map[uint64]bool, queryTokens []st
 	for nodeID := range nodeIDs {
 		cands = append(cands, scored{nodeID, fti.calculateScore(nodeID, queryTokens)})
 	}
-	sort.Slice(cands, func(i, j int) bool { return cands[i].score > cands[j].score })
+	// Sort by score desc, then NodeID asc as tie-breaker. The tie-breaker
+	// makes top-K a deterministic prefix of top-(K+N), which matters for
+	// paginated search where callers expect offset/limit slices to be
+	// stable across successive calls with different K.
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].score != cands[j].score {
+			return cands[i].score > cands[j].score
+		}
+		return cands[i].id < cands[j].id
+	})
 
 	if limit > 0 && limit < len(cands) {
 		cands = cands[:limit]
