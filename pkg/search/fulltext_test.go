@@ -454,3 +454,41 @@ func TestSearchWithNoMatches(t *testing.T) {
 		t.Errorf("Expected 0 results for nonexistent term, got %d", len(results))
 	}
 }
+
+// TestSearchBooleanNoOperator exercises the fallthrough branch of SearchBoolean
+// where the query contains no AND/OR/NOT — historically this branch called
+// RUnlock manually and then returned, letting the deferred RUnlock fire on an
+// already-unlocked mutex and panic with "sync: RUnlock of unlocked RWMutex".
+func TestSearchBooleanNoOperator(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := storage.StorageConfig{
+		DataDir:        tmpDir,
+		BulkImportMode: true,
+	}
+	gs, err := storage.NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer gs.Close()
+
+	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+		"title": storage.StringValue("GraphDB Tutorial"),
+	})
+	gs.CreateNode([]string{"Article"}, map[string]storage.Value{
+		"title": storage.StringValue("Advanced GraphDB Topics"),
+	})
+
+	index := NewFullTextIndex(gs)
+	if err := index.IndexNodes([]string{"Article"}, []string{"title"}); err != nil {
+		t.Fatalf("IndexNodes: %v", err)
+	}
+
+	// No AND/OR/NOT — triggers the no-operator fallthrough branch.
+	results, err := index.SearchBoolean("graphdb")
+	if err != nil {
+		t.Fatalf("SearchBoolean returned error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 results for 'graphdb', got %d", len(results))
+	}
+}

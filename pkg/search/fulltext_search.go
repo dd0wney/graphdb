@@ -152,27 +152,29 @@ func (fti *FullTextIndex) containsPhrase(nodeID uint64, terms []string) bool {
 
 // SearchBoolean performs boolean search with AND, OR, NOT operators
 func (fti *FullTextIndex) SearchBoolean(query string) ([]SearchResult, error) {
+	query = strings.ToUpper(query)
+
+	// No boolean operator — delegate to Search before taking a lock. Avoids
+	// the prior double-unlock (manual RUnlock + deferred RUnlock) and the
+	// recursive-RLock footgun that can deadlock when a writer is queued.
+	hasAND := strings.Contains(query, " AND ")
+	hasOR := strings.Contains(query, " OR ")
+	hasNOT := strings.Contains(query, " NOT ")
+	if !hasAND && !hasOR && !hasNOT {
+		return fti.Search(query)
+	}
+
 	fti.indexMu.RLock()
 	defer fti.indexMu.RUnlock()
 
-	// Simple boolean parser
-	query = strings.ToUpper(query)
-
 	var results map[uint64]bool
-
-	if strings.Contains(query, " AND ") {
-		parts := strings.Split(query, " AND ")
-		results = fti.searchAND(parts)
-	} else if strings.Contains(query, " OR ") {
-		parts := strings.Split(query, " OR ")
-		results = fti.searchOR(parts)
-	} else if strings.Contains(query, " NOT ") {
-		parts := strings.Split(query, " NOT ")
-		results = fti.searchNOT(parts)
-	} else {
-		// No boolean operator, treat as regular search
-		fti.indexMu.RUnlock()
-		return fti.Search(query)
+	switch {
+	case hasAND:
+		results = fti.searchAND(strings.Split(query, " AND "))
+	case hasOR:
+		results = fti.searchOR(strings.Split(query, " OR "))
+	case hasNOT:
+		results = fti.searchNOT(strings.Split(query, " NOT "))
 	}
 
 	return fti.scoreResults(results, tokenize(query)), nil
