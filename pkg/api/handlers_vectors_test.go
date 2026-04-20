@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
 // TestCreateVectorIndex tests the POST /vector-indexes endpoint
@@ -947,6 +948,92 @@ func TestDistanceToScore(t *testing.T) {
 			if diff := score - tt.expected; diff > 0.001 || diff < -0.001 {
 				t.Errorf("distanceToScore(%f, %s) = %f, expected %f",
 					tt.distance, tt.metric, score, tt.expected)
+			}
+		})
+	}
+}
+
+// TestVectorSearch_TenantIsolation asserts that /vector-search filters
+// HNSW results so a caller in tenant A never sees vectors belonging to
+// tenant B's nodes — and vice versa. The HNSW index is global across
+// tenants; isolation is enforced in the handler by post-filtering on
+// Node.TenantID.
+func TestVectorSearch_TenantIsolation(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	const propertyName = "embedding"
+	if err := server.graph.CreateVectorIndex(propertyName, 3, 16, 200, "cosine"); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	// Two nodes, near-identical vectors so HNSW returns both regardless
+	// of tenant — the handler is what must filter.
+	vecA := []float32{1.0, 0.0, 0.0}
+	vecB := []float32{1.0, 0.001, 0.0}
+
+	nodeA, err := server.graph.CreateNodeWithTenant("tenant-A", []string{"Doc"}, map[string]storage.Value{
+		propertyName: storage.VectorValue(vecA),
+		"label":      storage.StringValue("A"),
+	})
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	nodeB, err := server.graph.CreateNodeWithTenant("tenant-B", []string{"Doc"}, map[string]storage.Value{
+		propertyName: storage.VectorValue(vecB),
+		"label":      storage.StringValue("B"),
+	})
+	if err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		tenantID    string
+		wantNodeIDs []uint64
+	}{
+		{"tenant-A sees only A's node", "tenant-A", []uint64{nodeA.ID}},
+		{"tenant-B sees only B's node", "tenant-B", []uint64{nodeB.ID}},
+		{"tenant-C (empty) sees nothing", "tenant-C", nil},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body, _ := json.Marshal(VectorSearchRequest{
+				PropertyName: propertyName,
+				QueryVector:  vecA,
+				K:            10,
+			})
+			req := httptest.NewRequest(http.MethodPost, "/vector-search", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			// Inject tenant context directly (bypasses requireAuth+withTenant
+			// chain; the context shape matches what withTenant produces).
+			req = req.WithContext(tenant.WithTenant(req.Context(), tc.tenantID))
+
+			rr := httptest.NewRecorder()
+			server.handleVectorSearch(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d: %s", rr.Code, rr.Body.String())
+			}
+			var resp VectorSearchResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+
+			gotIDs := make([]uint64, 0, len(resp.Results))
+			for _, r := range resp.Results {
+				gotIDs = append(gotIDs, r.NodeID)
+			}
+
+			if len(gotIDs) != len(tc.wantNodeIDs) {
+				t.Fatalf("want %d results (%v), got %d (%v)",
+					len(tc.wantNodeIDs), tc.wantNodeIDs, len(gotIDs), gotIDs)
+			}
+			for i, want := range tc.wantNodeIDs {
+				if gotIDs[i] != want {
+					t.Errorf("result %d: want NodeID=%d, got %d", i, want, gotIDs[i])
+				}
 			}
 		})
 	}

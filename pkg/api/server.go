@@ -55,10 +55,10 @@ func (s *Server) Start() error {
 	// Algorithm endpoints (protected)
 	mux.HandleFunc("/algorithms", s.requireAuth(s.handleAlgorithm))
 
-	// Vector search endpoints (protected)
-	mux.HandleFunc("/vector-indexes", s.requireAuth(s.handleVectorIndexes))
-	mux.HandleFunc("/vector-indexes/", s.requireAuth(s.handleVectorIndex))
-	mux.HandleFunc("/vector-search", s.requireAuth(s.handleVectorSearch))
+	// Vector search endpoints (protected, tenant-scoped)
+	mux.HandleFunc("/vector-indexes", s.requireAuth(s.withTenant(s.handleVectorIndexes)))
+	mux.HandleFunc("/vector-indexes/", s.requireAuth(s.withTenant(s.handleVectorIndex)))
+	mux.HandleFunc("/vector-search", s.requireAuth(s.withTenant(s.handleVectorSearch)))
 
 	// User management endpoints (admin only) - handler does its own auth check
 	mux.Handle("/api/users", s.userHandler)

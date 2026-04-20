@@ -94,6 +94,17 @@ func getTenantFromContext(r *http.Request) string {
 	return tenantID
 }
 
+// matchesTenant reports whether a node/edge with nodeTenantID should be
+// visible to a request with requestTenantID. An empty nodeTenantID is
+// treated as the default tenant (pre-multi-tenant data that was written
+// before tenants existed still belongs conceptually to "default").
+func matchesTenant(nodeTenantID, requestTenantID string) bool {
+	if nodeTenantID == "" {
+		nodeTenantID = tenant.DefaultTenantID
+	}
+	return nodeTenantID == requestTenantID
+}
+
 // requireTenant middleware ensures a valid tenant is in context.
 // This is a stricter version that fails if no tenant is set.
 func (s *Server) requireTenant(next http.HandlerFunc) http.HandlerFunc {

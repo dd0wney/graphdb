@@ -289,18 +289,27 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Tenant isolation: HNSW indexes are global across tenants, so the
+	// handler post-filters by Node.TenantID to ensure a caller never sees
+	// vectors from another tenant. This adds one GetNode per candidate
+	// result, but K is bounded (default 50, max 1000).
+	tenantID := getTenantFromContext(r)
+
 	// Build response with proper filtering
 	results := make([]VectorSearchResult, 0, len(searchResults))
 	for _, sr := range searchResults {
-		// Apply label filter BEFORE adding to results (fixes count mismatch)
-		if req.IncludeNodes && len(req.FilterLabels) > 0 {
-			node, err := s.graph.GetNode(sr.ID)
-			if err != nil || node == nil {
-				continue // Skip nodes we can't retrieve
-			}
-			if !hasAnyLabel(node.Labels, req.FilterLabels) {
-				continue // Skip nodes that don't match filter
-			}
+		// Fetch once and reuse for tenant + label + include-node checks.
+		node, err := s.graph.GetNode(sr.ID)
+		if err != nil || node == nil {
+			continue
+		}
+
+		if !matchesTenant(node.TenantID, tenantID) {
+			continue // cross-tenant result; drop
+		}
+
+		if len(req.FilterLabels) > 0 && !hasAnyLabel(node.Labels, req.FilterLabels) {
+			continue
 		}
 
 		result := VectorSearchResult{
@@ -309,12 +318,8 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 			Score:    distanceToScore(sr.Distance, metric),
 		}
 
-		// Optionally include full node data
 		if req.IncludeNodes {
-			node, err := s.graph.GetNode(sr.ID)
-			if err == nil && node != nil {
-				result.Node = s.nodeToResponse(node)
-			}
+			result.Node = s.nodeToResponse(node)
 		}
 
 		results = append(results, result)
