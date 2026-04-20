@@ -242,6 +242,7 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		graph:               graph,
 		executor:            executor,
 		searchIndexes:       search.NewTenantIndexes(graph),
+		lsaIndexes:          search.NewTenantLSAIndexes(),
 		graphqlHandler:      graphqlHandler,
 		graphqlSchema:       schema,
 		complexityConfig:    complexityConfig,

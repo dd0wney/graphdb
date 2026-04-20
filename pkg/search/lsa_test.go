@@ -243,6 +243,106 @@ func TestBuildLSAIndexRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+// TestLSATopKByVector asserts TopKByVector returns at most k results,
+// ranked by similarity descending, and that a self-query (fold a doc's
+// body then search) places that doc first.
+func TestLSATopKByVector(t *testing.T) {
+	docs := testCorpus()
+	idx, err := BuildLSAIndex(docs, testLSAConfig())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	// Fold doc 1's body, then TopKByVector should rank doc 1 highest.
+	qvec, _, err := idx.FoldQuery(docs[0].Body)
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+
+	results, err := idx.TopKByVector(qvec, 3)
+	if err != nil {
+		t.Fatalf("TopKByVector: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("want 3 results, got %d", len(results))
+	}
+	if results[0].NodeID != docs[0].ID {
+		t.Errorf("want doc %d ranked first (self-fold), got %d", docs[0].ID, results[0].NodeID)
+	}
+	// Descending similarity.
+	for i := 1; i < len(results); i++ {
+		if results[i].Similarity > results[i-1].Similarity {
+			t.Errorf("results not sorted: [%d].sim=%.3f > [%d].sim=%.3f",
+				i, results[i].Similarity, i-1, results[i-1].Similarity)
+		}
+	}
+}
+
+// TestLSATopKByVector_DimMismatch returns an error (programming bug).
+func TestLSATopKByVector_DimMismatch(t *testing.T) {
+	idx, err := BuildLSAIndex(testCorpus(), testLSAConfig())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if _, err := idx.TopKByVector(make([]float32, idx.Dimensions()+7), 3); err == nil {
+		t.Error("expected error for mismatched dim, got nil")
+	}
+}
+
+// TestLSATopKByVector_StableTieBreak: two near-identical similarity
+// values must resolve the same way across calls, so top-K is always a
+// prefix of top-(K+N).
+func TestLSATopKByVector_StableTieBreak(t *testing.T) {
+	idx, err := BuildLSAIndex(testCorpus(), testLSAConfig())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	// "dogs" stems to "dog" which appears in 4 test-corpus docs; enough
+	// to produce multiple results with some likely score ties.
+	qvec, _, err := idx.FoldQuery("dogs")
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+
+	r2, _ := idx.TopKByVector(qvec, 2)
+	r4, _ := idx.TopKByVector(qvec, 4)
+	if len(r2) == 0 || len(r4) == 0 {
+		t.Fatal("empty")
+	}
+	for i := range r2 {
+		if r2[i].NodeID != r4[i].NodeID {
+			t.Errorf("top-2[%d]=%d differs from top-4[%d]=%d — pagination would break",
+				i, r2[i].NodeID, i, r4[i].NodeID)
+		}
+	}
+}
+
+// TestTenantLSAIndexes_GetSet asserts the Get/Set/remove contract.
+func TestTenantLSAIndexes_GetSet(t *testing.T) {
+	tli := NewTenantLSAIndexes()
+	if tli.Get("never-set") != nil {
+		t.Error("Get should return nil for unregistered tenant")
+	}
+
+	idx, err := BuildLSAIndex(testCorpus(), testLSAConfig())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	tli.Set("tenant-A", idx)
+	if got := tli.Get("tenant-A"); got != idx {
+		t.Error("Get after Set should return the registered index")
+	}
+	if tli.Get("tenant-B") != nil {
+		t.Error("Get for different tenant should still be nil")
+	}
+
+	tli.Set("tenant-A", nil)
+	if tli.Get("tenant-A") != nil {
+		t.Error("Set(tenantID, nil) should remove the entry")
+	}
+}
+
 func cosine(a, b []float32) float32 {
 	if len(a) != len(b) {
 		return 0

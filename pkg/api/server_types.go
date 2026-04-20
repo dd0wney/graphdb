@@ -23,7 +23,8 @@ import (
 type Server struct {
 	graph               *storage.GraphStorage
 	executor            *query.Executor
-	searchIndexes       *search.TenantIndexes // Per-tenant full-text indexes; empty until IndexForTenant is called for a given tenant
+	searchIndexes       *search.TenantIndexes    // Per-tenant full-text indexes; empty until IndexForTenant is called for a given tenant
+	lsaIndexes          *search.TenantLSAIndexes // Per-tenant LSA indexes for /hybrid-search; nil entry means LSA unavailable for that tenant
 	graphqlHandler      *gqlpkg.GraphQLHandler
 	graphqlSchema       graphql.Schema           // Current GraphQL schema (protected by schemaLock)
 	schemaLock          sync.RWMutex             // Protects graphqlSchema during regeneration

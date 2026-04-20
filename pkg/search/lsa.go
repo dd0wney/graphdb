@@ -525,6 +525,53 @@ func (i *LSAIndex) Dimensions() int { return i.dims }
 // NumDocs returns the number of documents in the corpus.
 func (i *LSAIndex) NumDocs() int { return len(i.nodeIDs) }
 
+// LSAResult is a ranked result from LSA semantic search.
+type LSAResult struct {
+	NodeID     uint64
+	Similarity float32 // cosine similarity in [-1, 1] (typically [0, 1] for stored embeddings)
+}
+
+// TopKByVector returns the k documents most similar to qvec, ranked by
+// cosine similarity descending. Ties are broken by NodeID ascending so
+// the result is a deterministic prefix of any larger K — the same
+// property SearchTopK maintains for paginated callers.
+//
+// qvec must have the same dimensionality as the index (Dimensions()) and
+// should be L2-normalized; FoldQuery returns vectors that satisfy both.
+// A mismatched dimension returns an error; it's a programming bug, not
+// a user error.
+//
+// No storage I/O — operates entirely on in-memory docVecs.
+func (i *LSAIndex) TopKByVector(qvec []float32, k int) ([]LSAResult, error) {
+	if len(qvec) != i.dims {
+		return nil, fmt.Errorf("qvec dim %d != index dim %d", len(qvec), i.dims)
+	}
+	if k <= 0 {
+		k = len(i.docVecs)
+	}
+
+	scored := make([]LSAResult, 0, len(i.docVecs))
+	for d, dv := range i.docVecs {
+		sim := float32(0)
+		for j := range dv {
+			sim += dv[j] * qvec[j]
+		}
+		scored = append(scored, LSAResult{NodeID: i.nodeIDs[d], Similarity: sim})
+	}
+
+	sort.Slice(scored, func(a, b int) bool {
+		if scored[a].Similarity != scored[b].Similarity {
+			return scored[a].Similarity > scored[b].Similarity
+		}
+		return scored[a].NodeID < scored[b].NodeID
+	})
+
+	if k < len(scored) {
+		scored = scored[:k]
+	}
+	return scored, nil
+}
+
 // --- Linear algebra helpers ---
 
 func lsaRandMatrix(rng *rand.Rand, rows, cols int) [][]float32 {
