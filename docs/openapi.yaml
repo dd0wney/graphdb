@@ -1321,12 +1321,15 @@ paths:
     post:
       tags:
         - Full-Text Search
-      summary: Build / rebuild the tenant's full-text search index
+      summary: Build / rebuild the tenant's full-text search index (admin only)
       description: |
         Rebuilds the FullTextIndex for the caller's tenant from nodes
         matching the given labels and properties. Synchronous and
         idempotent — safe to retry. Until this endpoint has been
         called, `/search` returns zero results for the tenant.
+
+        **Admin-only.** Index rebuilds are resource-intensive; restrict
+        to operators rather than application-level users.
       requestBody:
         required: true
         content:
@@ -1348,6 +1351,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is authenticated but lacks the admin role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '405':
           description: Method not allowed (POST only)
           content:
@@ -1359,7 +1368,7 @@ paths:
     post:
       tags:
         - Full-Text Search
-      summary: Build / rebuild the tenant's LSA semantic index
+      summary: Build / rebuild the tenant's LSA semantic index (admin only)
       description: |
         Builds an LSA index (randomized truncated SVD over the
         tenant's tokenized corpus) and registers it for use by
@@ -1371,6 +1380,9 @@ paths:
         requested `dims` (vocab size below dims after the stopword +
         stemming + min-doc-freq filters). Callers can retry with a
         smaller `dims` or a larger corpus.
+
+        **Admin-only.** SVD builds are expensive; restrict to
+        operators rather than application-level users.
       requestBody:
         required: true
         content:
@@ -1392,6 +1404,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is authenticated but lacks the admin role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '405':
           description: Method not allowed (POST only)
           content:
