@@ -6,6 +6,7 @@ import (
 
 	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
@@ -29,10 +30,13 @@ type GraphStorage struct {
 	propertyIndexes map[string]*PropertyIndex // property key -> index
 	vectorIndex     *VectorIndex              // vector search indexes
 
-	// Tenant-scoped indexes for multi-tenancy
-	tenantNodesByLabel map[string]map[string][]uint64 // tenant -> label -> node IDs
-	tenantEdgesByType  map[string]map[string][]uint64 // tenant -> edge type -> edge IDs
-	tenantStats        map[string]*TenantStats        // tenant -> usage statistics
+	// Tenant-scoped indexes for multi-tenancy.
+	// Keyed by tenantid.TenantID since audit task A1 (2026-05-06); public
+	// methods that take "tenantID string" still convert at the boundary
+	// until A3 migrates the public surface.
+	tenantNodesByLabel map[tenantid.TenantID]map[string][]uint64 // tenant -> label -> node IDs
+	tenantEdgesByType  map[tenantid.TenantID]map[string][]uint64 // tenant -> edge type -> edge IDs
+	tenantStats        map[tenantid.TenantID]*TenantStats        // tenant -> usage statistics
 
 	// Compressed edge storage (optional)
 	compressedOutgoing map[uint64]*CompressedEdgeList // node ID -> compressed outgoing edges
