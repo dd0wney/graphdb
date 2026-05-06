@@ -83,7 +83,11 @@ func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, p
 	return node.Clone(), nil
 }
 
-// GetNode retrieves a node by ID
+// GetNode retrieves a node by ID.
+//
+// Tenant-blind. New callers should prefer GetNodeForTenant. Legacy
+// callers retain this entry point until the audit-driven migration
+// completes — see docs/AUDIT_fixes_plan_2026-05-06.md task A3.
 func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 	start := time.Now()
 	defer gs.startQueryTiming()()
@@ -108,7 +112,34 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 	return node.Clone(), nil
 }
 
-// UpdateNode updates a node's properties
+// GetNodeForTenant retrieves a node by ID, scoped to the given tenant.
+//
+// In A3a (this commit) tenantID is accepted but not enforced — behaviour
+// is identical to GetNode. A3b will add the matchesTenant check that
+// returns ErrNodeNotFound on cross-tenant access (Security CRIT #1 from
+// docs/AUDIT_security_2026-05-06.md). Empty tenantID defaults to
+// tenantid.Default.
+//
+// Why two methods: the legacy GetNode has 70+ call sites in this
+// codebase. A breaking-change migration would interleave mechanical
+// caller updates with the security-critical enforcement diff. Splitting
+// keeps each commit reviewable.
+func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node, error) {
+	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
+	return gs.GetNode(nodeID)
+}
+
+// UpdateNodeForTenant updates a node's properties, scoped to the given
+// tenant. See GetNodeForTenant for the migration rationale; A3b adds
+// enforcement.
+func (gs *GraphStorage) UpdateNodeForTenant(nodeID uint64, properties map[string]Value, tenantID string) error {
+	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
+	return gs.UpdateNode(nodeID, properties)
+}
+
+// UpdateNode updates a node's properties.
+//
+// Tenant-blind. New callers should prefer UpdateNodeForTenant.
 func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -187,7 +218,17 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	return nil
 }
 
-// DeleteNode deletes a node and all its edges
+// DeleteNodeForTenant deletes a node and all its edges, scoped to the
+// given tenant. See GetNodeForTenant for the migration rationale; A3b
+// adds enforcement.
+func (gs *GraphStorage) DeleteNodeForTenant(nodeID uint64, tenantID string) error {
+	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
+	return gs.DeleteNode(nodeID)
+}
+
+// DeleteNode deletes a node and all its edges.
+//
+// Tenant-blind. New callers should prefer DeleteNodeForTenant.
 func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
