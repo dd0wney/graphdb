@@ -1,12 +1,15 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/vector"
 )
 
@@ -42,6 +45,14 @@ type VectorSearchRequest struct {
 	Ef           int       `json:"ef,omitempty"`  // Search parameter (default: k * 2)
 	IncludeNodes bool      `json:"include_nodes"` // Include full node data in results
 	FilterLabels []string  `json:"filter_labels"` // Optional: filter results by labels
+
+	// PropertyFilter applies an exact-match predicate inside the HNSW
+	// post-filter loop, alongside the tenant + label filters. Values
+	// must be string, JSON number, or bool; non-primitives are rejected
+	// with 400. Like FilterLabels, this is a post-filter on HNSW
+	// candidates, so selective predicates may yield fewer than K
+	// results even when many matching nodes exist deeper in the index.
+	PropertyFilter map[string]any `json:"property_filter,omitempty"`
 }
 
 // VectorSearchResult represents a single search result
@@ -260,6 +271,21 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Reject non-primitive property_filter values. convertToValue's default
+	// branch stringifies, which would silently produce fuzzy matches on
+	// arrays/objects and defeat the privacy boundary this filter exists to
+	// enforce. Fail closed.
+	for k, v := range req.PropertyFilter {
+		switch v.(type) {
+		case string, float64, bool:
+			// ok
+		default:
+			s.respondError(w, http.StatusBadRequest,
+				fmt.Sprintf("property_filter[%q]: only string, number, and boolean values are supported", k))
+			return
+		}
+	}
+
 	// Check index exists
 	if !s.graph.HasVectorIndex(req.PropertyName) {
 		s.respondError(w, http.StatusNotFound, "Vector index not found: "+req.PropertyName)
@@ -295,10 +321,20 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 	// result, but K is bounded (default 50, max 1000).
 	tenantID := getTenantFromContext(r)
 
+	// Lift the property predicate into storage.Value form once so the
+	// per-node check is a cheap byte comparison.
+	var propertyPredicate map[string]storage.Value
+	if len(req.PropertyFilter) > 0 {
+		propertyPredicate = make(map[string]storage.Value, len(req.PropertyFilter))
+		for k, v := range req.PropertyFilter {
+			propertyPredicate[k] = s.convertToValue(v)
+		}
+	}
+
 	// Build response with proper filtering
 	results := make([]VectorSearchResult, 0, len(searchResults))
 	for _, sr := range searchResults {
-		// Fetch once and reuse for tenant + label + include-node checks.
+		// Fetch once and reuse for tenant + label + property + include-node checks.
 		node, err := s.graph.GetNode(sr.ID)
 		if err != nil || node == nil {
 			continue
@@ -309,6 +345,10 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(req.FilterLabels) > 0 && !hasAnyLabel(node.Labels, req.FilterLabels) {
+			continue
+		}
+
+		if len(propertyPredicate) > 0 && !matchesPropertyFilter(node.Properties, propertyPredicate) {
 			continue
 		}
 
@@ -360,4 +400,21 @@ func hasAnyLabel(nodeLabels, filterLabels []string) bool {
 		}
 	}
 	return false
+}
+
+// matchesPropertyFilter returns true when every key in predicate is present
+// in props AND the typed values are byte-identical. Both maps must already
+// hold storage.Value — convert the request-side predicate once, before
+// calling this.
+func matchesPropertyFilter(props, predicate map[string]storage.Value) bool {
+	for key, want := range predicate {
+		got, ok := props[key]
+		if !ok {
+			return false
+		}
+		if got.Type != want.Type || !bytes.Equal(got.Data, want.Data) {
+			return false
+		}
+	}
+	return true
 }
