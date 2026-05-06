@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -554,6 +555,41 @@ func TestAPI_GraphQL_VariableSupport(t *testing.T) {
 	// Verify no errors
 	if errors, ok := response["errors"]; ok && errors != nil {
 		t.Errorf("Response has errors: %v", errors)
+	}
+}
+
+// TestNewServer_FailsClosedOnEmptyJWTSecret pins the audit-fix
+// behaviour: NewServer must refuse to start when JWT_SECRET is unset
+// or empty, in any environment. The previous code generated a random
+// secret unless GRAPHDB_ENV=="production"; that path is gone.
+//
+// Audit reference: AUDIT_security_2026-05-06.md HIGH #4 (silent
+// per-process random secret rotation in misconfigured staging).
+func TestNewServer_FailsClosedOnEmptyJWTSecret(t *testing.T) {
+	// t.Setenv restores the previous value (set by TestMain) on test end.
+	t.Setenv("JWT_SECRET", "")
+
+	tmpDir, err := os.MkdirTemp("", "api-test-jwt-fail-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	gs, err := storage.NewGraphStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewGraphStorage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	server, err := NewServer(gs, 8080)
+	if err == nil {
+		t.Fatal("NewServer succeeded with empty JWT_SECRET; expected fail-closed error")
+	}
+	if server != nil {
+		t.Errorf("NewServer returned non-nil server alongside error: %+v", server)
+	}
+	if !strings.Contains(err.Error(), "JWT_SECRET") {
+		t.Errorf("error message should name JWT_SECRET; got: %v", err)
 	}
 }
 
