@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
@@ -61,12 +60,8 @@ func (s *Server) handleAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 // handleAPIKey handles DELETE for /api/v1/apikeys/{id}
 func (s *Server) handleAPIKey(w http.ResponseWriter, r *http.Request) {
-	// Extract key ID from path
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/apikeys/")
-	keyID := strings.TrimSuffix(path, "/")
-
-	if keyID == "" {
-		s.respondError(w, http.StatusBadRequest, "API key ID required")
+	keyID, ok := s.NewPathExtractor(w, r).ExtractString("/api/v1/apikeys/")
+	if !ok {
 		return
 	}
 

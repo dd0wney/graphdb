@@ -296,8 +296,10 @@ func (s *Server) handleGetTenantUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract tenant ID from path like /api/v1/tenants/{id}/usage
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
-	parts := strings.Split(path, "/")
+	parts, ok := s.NewPathExtractor(w, r).ExtractParts("/api/v1/tenants/")
+	if !ok {
+		return
+	}
 	if len(parts) < 2 || parts[1] != "usage" {
 		s.respondError(w, http.StatusBadRequest, "Invalid path")
 		return
@@ -352,8 +354,10 @@ func (s *Server) handleSuspendTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract tenant ID
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
-	parts := strings.Split(path, "/")
+	parts, ok := s.NewPathExtractor(w, r).ExtractParts("/api/v1/tenants/")
+	if !ok {
+		return
+	}
 	if len(parts) < 2 || parts[1] != "suspend" {
 		s.respondError(w, http.StatusBadRequest, "Invalid path")
 		return
@@ -399,8 +403,10 @@ func (s *Server) handleActivateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract tenant ID
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
-	parts := strings.Split(path, "/")
+	parts, ok := s.NewPathExtractor(w, r).ExtractParts("/api/v1/tenants/")
+	if !ok {
+		return
+	}
 	if len(parts) < 2 || parts[1] != "activate" {
 		s.respondError(w, http.StatusBadRequest, "Invalid path")
 		return
@@ -474,10 +480,13 @@ func (s *Server) handleTenantsEndpoint(w http.ResponseWriter, r *http.Request) {
 
 // handleTenantEndpoint routes /api/v1/tenants/{id}[/action] based on HTTP method and path
 func (s *Server) handleTenantEndpoint(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
-	parts := strings.Split(path, "/")
-
-	if len(parts) == 0 || parts[0] == "" {
+	parts, ok := s.NewPathExtractor(w, r).ExtractParts("/api/v1/tenants/")
+	if !ok {
+		return
+	}
+	if parts[0] == "" {
+		// Defensive: catches double-slash URLs like /api/v1/tenants//abc
+		// where ExtractParts returns ["", "abc"] but the tenant ID is empty.
 		s.respondError(w, http.StatusBadRequest, "Tenant ID is required")
 		return
 	}

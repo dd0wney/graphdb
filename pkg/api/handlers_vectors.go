@@ -184,12 +184,8 @@ func (s *Server) createVectorIndex(w http.ResponseWriter, r *http.Request) {
 
 // getVectorIndex gets info about a specific vector index
 func (s *Server) getVectorIndex(w http.ResponseWriter, r *http.Request) {
-	// Extract property name from path
-	propertyName := strings.TrimPrefix(r.URL.Path, "/vector-indexes/")
-	propertyName = strings.TrimSuffix(propertyName, "/")
-
-	if propertyName == "" {
-		s.respondError(w, http.StatusBadRequest, "Property name is required")
+	propertyName, ok := s.NewPathExtractor(w, r).ExtractString("/vector-indexes/")
+	if !ok {
 		return
 	}
 
@@ -205,12 +201,8 @@ func (s *Server) getVectorIndex(w http.ResponseWriter, r *http.Request) {
 
 // deleteVectorIndex deletes a vector index
 func (s *Server) deleteVectorIndex(w http.ResponseWriter, r *http.Request) {
-	// Extract property name from path
-	propertyName := strings.TrimPrefix(r.URL.Path, "/vector-indexes/")
-	propertyName = strings.TrimSuffix(propertyName, "/")
-
-	if propertyName == "" {
-		s.respondError(w, http.StatusBadRequest, "Property name is required")
+	propertyName, ok := s.NewPathExtractor(w, r).ExtractString("/vector-indexes/")
+	if !ok {
 		return
 	}
 
