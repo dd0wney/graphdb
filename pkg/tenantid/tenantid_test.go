@@ -78,9 +78,9 @@ func TestJSONRoundTrip(t *testing.T) {
 // would fail to compile (and so would the whole codebase).
 func TestMapKey(t *testing.T) {
 	m := map[TenantID]int{
-		Default:                  1,
-		TenantID("acme"):         2,
-		TenantID("globex-corp"):  3,
+		Default:                 1,
+		TenantID("acme"):        2,
+		TenantID("globex-corp"): 3,
 	}
 
 	if got := m[Default]; got != 1 {
