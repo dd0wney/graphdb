@@ -23,10 +23,16 @@ jobs:
 
     - name: Run golangci-lint
       # @v4 resolved to golangci-lint v1.x, which rejects the
-      # v2-format .golangci.yml in this repo. @v6 supports v2 configs.
+      # v2-format .golangci.yml in this repo. @v6 supports v2.
+      # Pin to v2.11.4 — the dev environment's version. "latest"
+      # bumps to v2.x.y with stricter schema validation that
+      # rejects fields the repo's config uses (output.formats as
+      # object, linters.exclusions.presets, linters.settings).
+      # When upgrading the pin, run `golangci-lint config verify`
+      # locally first.
       uses: golangci/golangci-lint-action@v6
       with:
-        version: latest
+        version: v2.11.4
         install-mode: goinstall
         args: --timeout=5m
         only-new-issues: false
