@@ -26,14 +26,16 @@ jobs:
       # v2-format .golangci.yml in this repo. @v6 supports v2.
       # Pin to v2.11.4 — the dev environment's version. "latest"
       # bumps to v2.x.y with stricter schema validation that
-      # rejects fields the repo's config uses (output.formats as
-      # object, linters.exclusions.presets, linters.settings).
-      # When upgrading the pin, run `golangci-lint config verify`
-      # locally first.
+      # rejects fields the repo's config uses. When upgrading the
+      # pin, run `golangci-lint config verify` locally first.
+      #
+      # install-mode: binary (default) downloads the prebuilt
+      # release. goinstall is broken for v2 because Go modules
+      # require the /v2/ major-version suffix in the install path,
+      # which the action doesn't synthesize.
       uses: golangci/golangci-lint-action@v6
       with:
         version: v2.11.4
-        install-mode: goinstall
         args: --timeout=5m
         only-new-issues: false
         skip-cache: false
