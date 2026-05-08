@@ -317,12 +317,14 @@ func TestReplicaNode_HandleMessage_Heartbeat(t *testing.T) {
 	}
 	defer storageInst.Close()
 
+	// Only fields exercised by this test are populated. govet's
+	// unusedwrite flagged the previously-set replicaID, storage, stopCh
+	// — the test was a focused unit on heartbeat tracking that doesn't
+	// actually read those fields.
 	rn := &ReplicaNode{
-		replicaID:                "replica-1",
-		storage:                  storageInst,
-		stopCh:                   make(chan struct{}),
 		lastReceivedHeartbeatSeq: 0,
 	}
+	_ = storageInst // referenced by defer Close above; not by rn here
 
 	hb := HeartbeatMessage{
 		From:       "primary-1",

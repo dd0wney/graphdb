@@ -57,27 +57,27 @@ func ValidateNodeRequest(req *NodeRequest) error {
 
 	// Additional label validation
 	if len(req.Labels) > MaxLabels {
-		return fmt.Errorf("Labels: maximum %d labels allowed, got %d", MaxLabels, len(req.Labels))
+		return fmt.Errorf("labels: maximum %d allowed, got %d", MaxLabels, len(req.Labels))
 	}
 
 	for i, label := range req.Labels {
 		if len(label) > MaxLabelLength {
-			return fmt.Errorf("Labels: label at index %d exceeds maximum length of %d characters", i, MaxLabelLength)
+			return fmt.Errorf("labels: label at index %d exceeds maximum length of %d characters", i, MaxLabelLength)
 		}
 		if !labelPattern.MatchString(label) {
-			return fmt.Errorf("Labels: label '%s' contains invalid characters (only alphanumeric and underscore allowed)", label)
+			return fmt.Errorf("labels: label %q contains invalid characters (only alphanumeric and underscore allowed)", label)
 		}
 	}
 
 	// Additional properties validation
 	if len(req.Properties) > MaxProperties {
-		return fmt.Errorf("Properties: maximum %d properties allowed, got %d", MaxProperties, len(req.Properties))
+		return fmt.Errorf("properties: maximum %d properties allowed, got %d", MaxProperties, len(req.Properties))
 	}
 
 	// Validate property keys
 	for key := range req.Properties {
 		if err := ValidatePropertyKey(key); err != nil {
-			return fmt.Errorf("Properties: %w", err)
+			return fmt.Errorf("properties: %w", err)
 		}
 	}
 
@@ -97,21 +97,21 @@ func ValidateEdgeRequest(req *EdgeRequest) error {
 
 	// Additional type validation
 	if len(req.Type) > MaxLabelLength {
-		return fmt.Errorf("Type: exceeds maximum length of %d characters", MaxLabelLength)
+		return fmt.Errorf("type: exceeds maximum length of %d characters", MaxLabelLength)
 	}
 	if !labelPattern.MatchString(req.Type) {
-		return fmt.Errorf("Type: '%s' contains invalid characters (only alphanumeric and underscore allowed)", req.Type)
+		return fmt.Errorf("type: %q contains invalid characters (only alphanumeric and underscore allowed)", req.Type)
 	}
 
 	// Additional properties validation
 	if len(req.Properties) > MaxProperties {
-		return fmt.Errorf("Properties: maximum %d properties allowed, got %d", MaxProperties, len(req.Properties))
+		return fmt.Errorf("properties: maximum %d properties allowed, got %d", MaxProperties, len(req.Properties))
 	}
 
 	// Validate property keys
 	for key := range req.Properties {
 		if err := ValidatePropertyKey(key); err != nil {
-			return fmt.Errorf("Properties: %w", err)
+			return fmt.Errorf("properties: %w", err)
 		}
 	}
 

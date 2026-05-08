@@ -666,6 +666,10 @@ func TestMustFromContext(t *testing.T) {
 }
 
 func TestFromContext_NilContext(t *testing.T) {
+	// Deliberately pass nil to assert FromContext defends against it.
+	// The SA1012 lint rule warns against nil contexts in general use; this
+	// test is the exception — we're testing the defensive code path.
+	//nolint:staticcheck // SA1012: testing nil-context defensive behaviour
 	tenantID, ok := FromContext(nil)
 	if ok {
 		t.Error("Expected ok to be false for nil context")
