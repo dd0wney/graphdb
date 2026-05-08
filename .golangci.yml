@@ -1,171 +1,143 @@
-# GolangCI-Lint configuration for Cluso GraphDB
-# See: https://golangci-lint.run/usage/configuration/
-
+version: "2"
 run:
-  timeout: 5m
-  tests: true
   modules-download-mode: readonly
-
-linters:
-  enable:
-    # Enabled by default
-    - errcheck     # Check for unchecked errors
-    - gosimple     # Simplify code
-    - govet        # Reports suspicious constructs
-    - ineffassign  # Detect ineffectual assignments
-    - staticcheck  # Go static analysis
-    - unused       # Check for unused constants, variables, functions
-
-    # Additional important linters
-    - gofmt        # Check code is gofmt-ed
-    - goimports    # Check import formatting
-    - misspell     # Check for misspelled English words
-    - revive       # Fast, configurable, extensible linter
-    - gosec        # Security checks
-    - gocritic     # Comprehensive Go source code linter
-    - unconvert    # Remove unnecessary type conversions
-    - nakedret     # Find naked returns in functions
-
-  disable:
-    - typecheck    # Can be problematic with generics
-    - predeclared  # Too strict for demonstration code
-    - unparam      # Too strict for demonstration code
-    - gocyclo      # Too strict for demonstration code
-    - dupl         # Too strict for demonstration code
-    - goconst      # Too strict for demonstration code
-    - godot        # Too pedantic about comment periods
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-    exclude-functions:
-      # Read-only operations where errors indicate "not found" - handled by caller
-      - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetOutgoingEdges
-      - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetIncomingEdges
-      - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetNode
-      # Internal cleanup operations - errors logged internally
-      - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.Compactor).CleanupOldSSTables
-      - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.LSMStorage).compact
-      - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.BlockCache).evict
-      - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.BlockCache).Put
-      # Binary read errors checked elsewhere
-      - encoding/binary.Read
-
-  govet:
-    enable-all: true
-    disable:
-      - shadow  # Can be too strict
-      - fieldalignment  # Optimization not critical for this codebase
-
-  gofmt:
-    simplify: true
-
-  goimports:
-    local-prefixes: github.com/dd0wney/cluso-graphdb
-
-  revive:
-    severity: warning
-    rules:
-      - name: exported
-        severity: warning
-      - name: var-naming
-        severity: warning
-      - name: indent-error-flow
-        severity: warning
-
-  gocritic:
-    disabled-checks:
-      - ifElseChain  # Overly pedantic, doesn't improve readability
-      - appendAssign # Sometimes intentional for clarity
-      - elseif       # Too pedantic
-
-  gosec:
-    severity: medium
-    confidence: medium
-    excludes:
-      - G404  # Use of weak random number generator (math/rand)
-      - G114  # Use of net/http without timeouts - handled by graceful server wrapper
-      - G115  # Integer overflow conversion - safe in our benchmark/demo code
-
-  gocyclo:
-    min-complexity: 15
-
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-
-  dupl:
-    threshold: 100
-
-  nakedret:
-    max-func-lines: 30
-
-issues:
-  exclude-rules:
-    # Exclude some linters from running on tests
-    - path: _test\.go
-      linters:
-        - gocyclo
-        - errcheck
-        - dupl
-        - gosec
-        - goconst
-        - ineffassign
-
-    # Exclude benchmark/cmd files from strict linting (demonstration code)
-    - path: cmd/
-      linters:
-        - gocyclo
-        - dupl
-        - errcheck
-        - gocritic
-        - goimports
-        - staticcheck
-        - unused
-        - gosec
-        - ineffassign
-
-    # Exclude pkg/query - complex query engine has many stylistic choices
-    - path: pkg/query/
-      linters:
-        - errcheck
-        - gocritic
-        - ineffassign
-        - staticcheck
-        - gosimple
-        - govet
-
-    # Exclude pkg/storage - performance-critical code with intentional patterns
-    - path: pkg/storage/
-      linters:
-        - errcheck
-        - gocritic
-        - ineffassign
-        - staticcheck
-
-    # Exclude pkg/replication - internal replication logic with many fallible operations
-    - path: pkg/replication/
-      linters:
-        - errcheck
-
-    # Ignore long lines in go:generate
-    - linters:
-        - lll
-      source: "^//go:generate "
-
-  # Maximum issues count per one linter
-  max-issues-per-linter: 50
-
-  # Maximum count of issues with the same text
-  max-same-issues: 3
-
-  # Show only new issues
-  new: false
-
+  tests: true
 output:
   formats:
-    - format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
-  sort-results: true
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+linters:
+  enable:
+    - gocritic
+    - gosec
+    - misspell
+    - nakedret
+    - revive
+    - unconvert
+  disable:
+    - dupl
+    - goconst
+    - gocyclo
+    - godot
+    - predeclared
+    - unparam
+  settings:
+    dupl:
+      threshold: 100
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      exclude-functions:
+        - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetOutgoingEdges
+        - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetIncomingEdges
+        - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetNode
+        - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.Compactor).CleanupOldSSTables
+        - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.LSMStorage).compact
+        - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.BlockCache).evict
+        - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.BlockCache).Put
+        - encoding/binary.Read
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - appendAssign
+        - elseif
+    gocyclo:
+      min-complexity: 15
+    gosec:
+      excludes:
+        - G404
+        - G114
+        - G115
+      severity: medium
+      confidence: medium
+    govet:
+      disable:
+        - shadow
+        - fieldalignment
+      enable-all: true
+    nakedret:
+      max-func-lines: 30
+    revive:
+      severity: warning
+      rules:
+        - name: exported
+          severity: warning
+        - name: var-naming
+          severity: warning
+        - name: indent-error-flow
+          severity: warning
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - dupl
+          - errcheck
+          - goconst
+          - gocyclo
+          - gosec
+          - ineffassign
+        path: _test\.go
+      - linters:
+          - dupl
+          - errcheck
+          - gocritic
+          - gocyclo
+          - gosec
+          - ineffassign
+          - staticcheck
+          - unused
+        path: cmd/
+      - linters:
+          - errcheck
+          - gocritic
+          - govet
+          - ineffassign
+          - staticcheck
+        path: pkg/query/
+      - linters:
+          - errcheck
+          - gocritic
+          - ineffassign
+          - staticcheck
+        path: pkg/storage/
+      - linters:
+          - errcheck
+        path: pkg/replication/
+      - linters:
+          - lll
+        source: '^//go:generate '
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 3
+  new: false
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/dd0wney/cluso-graphdb
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - cmd/
