@@ -9,11 +9,20 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
-// GenerateSchemaWithAggregation generates a GraphQL schema with aggregation support
+// GenerateSchemaWithAggregation generates a GraphQL schema with
+// aggregation support (tenant-blind). API callers should use
+// GenerateSchemaWithAggregationForTenant per audit A9 (#36).
 func GenerateSchemaWithAggregation(gs *storage.GraphStorage) (graphql.Schema, error) {
-	// Get all unique labels
-	labels := gs.GetAllLabels()
+	return generateSchemaWithAggregationForLabels(gs, gs.GetAllLabels())
+}
 
+// GenerateSchemaWithAggregationForTenant scopes the schema to one
+// tenant's labels. Audit A9.
+func GenerateSchemaWithAggregationForTenant(gs *storage.GraphStorage, tenantID string) (graphql.Schema, error) {
+	return generateSchemaWithAggregationForLabels(gs, gs.GetLabelsForTenant(tenantID))
+}
+
+func generateSchemaWithAggregationForLabels(gs *storage.GraphStorage, labels []string) (graphql.Schema, error) {
 	nodeTypes := make(map[string]*graphql.Object)
 	aggregateTypes := make(map[string]*graphql.Object)
 

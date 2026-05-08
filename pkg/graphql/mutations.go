@@ -9,10 +9,20 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
+// GenerateSchemaWithMutations generates a GraphQL schema with
+// mutation support (tenant-blind). API callers should use
+// GenerateSchemaWithMutationsForTenant per audit A9 (#36).
 func GenerateSchemaWithMutations(gs *storage.GraphStorage) (graphql.Schema, error) {
-	// Discover all node labels
-	labels := gs.GetAllLabels()
+	return generateSchemaWithMutationsForLabels(gs, gs.GetAllLabels())
+}
 
+// GenerateSchemaWithMutationsForTenant scopes the schema to one
+// tenant's labels. Audit A9.
+func GenerateSchemaWithMutationsForTenant(gs *storage.GraphStorage, tenantID string) (graphql.Schema, error) {
+	return generateSchemaWithMutationsForLabels(gs, gs.GetLabelsForTenant(tenantID))
+}
+
+func generateSchemaWithMutationsForLabels(gs *storage.GraphStorage, labels []string) (graphql.Schema, error) {
 	// Create GraphQL types for each node label
 	nodeTypes := make(map[string]*graphql.Object)
 	for _, label := range labels {

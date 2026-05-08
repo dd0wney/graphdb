@@ -9,11 +9,23 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
-// GenerateSchemaWithEdges generates a GraphQL schema with edge traversal capabilities
+// GenerateSchemaWithEdges generates a GraphQL schema with edge
+// traversal capabilities (tenant-blind). API callers should use
+// GenerateSchemaWithEdgesForTenant per audit A9 (#36).
 func GenerateSchemaWithEdges(gs *storage.GraphStorage) (graphql.Schema, error) {
-	// Discover all node labels
-	labels := gs.GetAllLabels()
+	return generateSchemaWithEdgesForLabels(gs, gs.GetAllLabels())
+}
 
+// GenerateSchemaWithEdgesForTenant scopes the schema's type registry
+// to one tenant's labels. Audit A9 (2026-05-08) — closes the
+// introspection metadata leak.
+func GenerateSchemaWithEdgesForTenant(gs *storage.GraphStorage, tenantID string) (graphql.Schema, error) {
+	return generateSchemaWithEdgesForLabels(gs, gs.GetLabelsForTenant(tenantID))
+}
+
+// generateSchemaWithEdgesForLabels is the shared body. Caller picks
+// the label source.
+func generateSchemaWithEdgesForLabels(gs *storage.GraphStorage, labels []string) (graphql.Schema, error) {
 	// Create edge type (shared across schema)
 	edgeType := createEdgeType()
 
