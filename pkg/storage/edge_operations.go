@@ -35,7 +35,17 @@ func (gs *GraphStorage) CreateEdgeWithTenant(tenantID string, fromID, toID uint6
 	return edge.Clone(), nil
 }
 
-// DeleteEdge deletes an edge by ID
+// DeleteEdgeForTenant deletes an edge by ID, scoped to the given tenant.
+// See GetNodeForTenant in node_operations.go for the migration rationale;
+// A3b adds enforcement.
+func (gs *GraphStorage) DeleteEdgeForTenant(edgeID uint64, tenantID string) error {
+	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
+	return gs.DeleteEdge(edgeID)
+}
+
+// DeleteEdge deletes an edge by ID.
+//
+// Tenant-blind. New callers should prefer DeleteEdgeForTenant.
 func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -75,7 +85,17 @@ func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
 	return nil
 }
 
-// GetEdge retrieves an edge by ID
+// GetEdgeForTenant retrieves an edge by ID, scoped to the given tenant.
+// See GetNodeForTenant in node_operations.go for the migration rationale;
+// A3b adds enforcement.
+func (gs *GraphStorage) GetEdgeForTenant(edgeID uint64, tenantID string) (*Edge, error) {
+	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
+	return gs.GetEdge(edgeID)
+}
+
+// GetEdge retrieves an edge by ID.
+//
+// Tenant-blind. New callers should prefer GetEdgeForTenant.
 func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 	defer gs.startQueryTiming()()
 
@@ -91,7 +111,17 @@ func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 	return edge.Clone(), nil
 }
 
-// UpdateEdge updates an edge's properties and/or weight
+// UpdateEdgeForTenant updates an edge's properties and/or weight, scoped
+// to the given tenant. See GetNodeForTenant in node_operations.go for the
+// migration rationale; A3b adds enforcement.
+func (gs *GraphStorage) UpdateEdgeForTenant(edgeID uint64, properties map[string]Value, weight *float64, tenantID string) error {
+	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
+	return gs.UpdateEdge(edgeID, properties, weight)
+}
+
+// UpdateEdge updates an edge's properties and/or weight.
+//
+// Tenant-blind. New callers should prefer UpdateEdgeForTenant.
 func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, weight *float64) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
