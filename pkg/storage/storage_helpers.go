@@ -68,10 +68,37 @@ func (gs *GraphStorage) checkClosed() error {
 	return nil
 }
 
-// verifyNodeExists checks if a node exists and returns an error if not
+// verifyNodeExists checks if a node exists and returns an error if
+// not. Tenant-blind — used by replication and other intentionally
+// tenant-blind callers (CreateEdge, UpsertEdge). New tenant-aware
+// callers should prefer verifyNodeExistsForTenant.
 func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
 	if _, exists := gs.nodes[nodeID]; !exists {
 		return fmt.Errorf("%s node %d not found", nodeType, nodeID)
+	}
+	return nil
+}
+
+// verifyNodeExistsForTenant checks if a node exists AND belongs to
+// the given tenant. Returns ErrNodeNotFound on either condition,
+// matching the unified missing-vs-cross-tenant contract used by
+// GetNodeForTenant — distinguishing them would leak existence to a
+// cross-tenant probe.
+//
+// Audit A6a follow-up (2026-05-08): closes the residual gap from A6a
+// where CreateEdgeWithTenant accepted from/to node IDs owned by
+// another tenant; the resulting edge was stamped with the caller's
+// tenant, enabling tenant-A to write a tenant-A-stamped edge against
+// tenant-B's nodes.
+func (gs *GraphStorage) verifyNodeExistsForTenant(nodeID uint64, nodeType string, tenantID string) error {
+	node, exists := gs.nodes[nodeID]
+	if !exists {
+		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound)
+	}
+	expected := effectiveTenantID(tenantID).String()
+	if node.TenantID != expected {
+		// Cross-tenant: same error as missing to avoid existence leak.
+		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound)
 	}
 	return nil
 }

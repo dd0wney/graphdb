@@ -8,18 +8,18 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
-// CreateEdge creates a new edge between two nodes in the default tenant.
-// For multi-tenant operations, use CreateEdgeWithTenant instead.
+// CreateEdge creates a new edge between two nodes in the default
+// tenant. Tenant-blind on node verification — used by replication
+// (which lands replicated writes in the default tenant; see audit
+// task A8) and by other intentionally tenant-blind callers (temporal
+// snapshots, CLI, examples). Multi-tenant API callers must use
+// CreateEdgeWithTenant.
+//
+// Existence (not tenancy) of the from/to nodes is still validated.
 func (gs *GraphStorage) CreateEdge(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
-	return gs.CreateEdgeWithTenant(DefaultTenantID, fromID, toID, edgeType, properties, weight)
-}
-
-// CreateEdgeWithTenant creates a new edge between two nodes for a specific tenant.
-func (gs *GraphStorage) CreateEdgeWithTenant(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	// Verify nodes exist
 	if err := gs.verifyNodeExists(fromID, "source"); err != nil {
 		return nil, err
 	}
@@ -27,11 +27,45 @@ func (gs *GraphStorage) CreateEdgeWithTenant(tenantID string, fromID, toID uint6
 		return nil, err
 	}
 
+	return gs.createEdgeWithTenantNoVerify(DefaultTenantID, fromID, toID, edgeType, properties, weight)
+}
+
+// CreateEdgeWithTenant creates a new edge between two nodes for a
+// specific tenant. From/to nodes must belong to the same tenant —
+// cross-tenant or missing surfaces as ErrNodeNotFound (unified to
+// avoid existence-leak side channel).
+//
+// Audit A6a follow-up (2026-05-08): closes the residual gap from A6a
+// where this method accepted node IDs owned by other tenants. The
+// /vector-search, /traverse and /shortest-path tenant scoping now
+// rests on this guarantee — see the updated comments in
+// pkg/api/handlers_edges.go and pkg/algorithms/shortest_path.go.
+func (gs *GraphStorage) CreateEdgeWithTenant(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+
+	if err := gs.verifyNodeExistsForTenant(fromID, "source", tenantID); err != nil {
+		return nil, err
+	}
+	if err := gs.verifyNodeExistsForTenant(toID, "target", tenantID); err != nil {
+		return nil, err
+	}
+
+	return gs.createEdgeWithTenantNoVerify(tenantID, fromID, toID, edgeType, properties, weight)
+}
+
+// createEdgeWithTenantNoVerify is the shared edge-creation core. It
+// assumes the caller has already taken gs.mu.Lock and (when relevant)
+// validated tenant ownership of the source/target nodes.
+//
+// CreateEdge calls this directly (tenant-blind) for replication and
+// other legitimately tenant-blind paths; CreateEdgeWithTenant runs
+// the tenant-strict node check first.
+func (gs *GraphStorage) createEdgeWithTenantNoVerify(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
 	edge, err := gs.createEdgeLocked(tenantID, fromID, toID, edgeType, properties, weight)
 	if err != nil {
 		return nil, err
 	}
-
 	return edge.Clone(), nil
 }
 
@@ -324,21 +358,13 @@ func (gs *GraphStorage) FindAllEdgesBetween(fromID, toID uint64) ([]*Edge, error
 	return result, nil
 }
 
-// UpsertEdge creates a new edge or updates an existing one between two nodes in the default tenant.
-// For multi-tenant operations, use UpsertEdgeWithTenant instead.
+// UpsertEdge creates a new edge or updates an existing one between
+// two nodes in the default tenant. Tenant-blind on node verification;
+// see CreateEdge for the rationale. Existence is still validated.
 func (gs *GraphStorage) UpsertEdge(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, bool, error) {
-	return gs.UpsertEdgeWithTenant(DefaultTenantID, fromID, toID, edgeType, properties, weight)
-}
-
-// UpsertEdgeWithTenant creates a new edge or updates an existing one between two nodes for a specific tenant.
-// If an edge of the same type already exists between fromID and toID, it updates
-// the properties and weight. Otherwise, it creates a new edge.
-// Returns the edge (created or updated) and a boolean indicating if it was created (true) or updated (false).
-func (gs *GraphStorage) UpsertEdgeWithTenant(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, bool, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	// Verify nodes exist
 	if err := gs.verifyNodeExists(fromID, "source"); err != nil {
 		return nil, false, err
 	}
@@ -346,7 +372,31 @@ func (gs *GraphStorage) UpsertEdgeWithTenant(tenantID string, fromID, toID uint6
 		return nil, false, err
 	}
 
-	// Check if edge already exists
+	return gs.upsertEdgeWithTenantNoVerify(DefaultTenantID, fromID, toID, edgeType, properties, weight)
+}
+
+// UpsertEdgeWithTenant creates a new edge or updates an existing one
+// between two nodes for a specific tenant. From/to nodes must belong
+// to the same tenant — cross-tenant or missing surfaces as
+// ErrNodeNotFound (audit A6a follow-up; see CreateEdgeWithTenant).
+func (gs *GraphStorage) UpsertEdgeWithTenant(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, bool, error) {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+
+	if err := gs.verifyNodeExistsForTenant(fromID, "source", tenantID); err != nil {
+		return nil, false, err
+	}
+	if err := gs.verifyNodeExistsForTenant(toID, "target", tenantID); err != nil {
+		return nil, false, err
+	}
+
+	return gs.upsertEdgeWithTenantNoVerify(tenantID, fromID, toID, edgeType, properties, weight)
+}
+
+// upsertEdgeWithTenantNoVerify is the shared upsert core. Caller
+// must hold gs.mu.Lock and (when relevant) have validated tenant
+// ownership of the source/target nodes.
+func (gs *GraphStorage) upsertEdgeWithTenantNoVerify(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, bool, error) {
 	existing, err := gs.findEdgeBetweenLocked(fromID, toID, edgeType)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to check existing edge: %w", err)

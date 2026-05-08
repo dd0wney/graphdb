@@ -57,13 +57,10 @@ func (gs *GraphStorage) GetOutgoingEdges(nodeID uint64) ([]*Edge, error) {
 // filter at every call site. The filter is on edge.TenantID; node-side
 // scoping is the caller's responsibility (see GetNodeForTenant).
 //
-// Note: this does *not* close the residual gap from the A6a follow-up
-// — verifyNodeExists in CreateEdgeWithTenant is tenant-blind, so a
-// caller can stamp an edge with their tenant that points at a foreign
-// node ID. This filter still considers that edge legitimate. The
-// follow-up (scoping verifyNodeExists) closes that gap; until then,
-// /traverse callers should also use GetNodeForTenant during BFS to
-// drop any cross-tenant nodes the edge filter let through.
+// Tenant-strict guarantee: as of the A6a follow-up,
+// CreateEdgeWithTenant refuses cross-tenant from/to node references,
+// so a tenant-stamped edge cannot point at a foreign-tenant node.
+// Pure edge-side filtering here is sufficient.
 func (gs *GraphStorage) GetOutgoingEdgesForTenant(nodeID uint64, tenantID string) ([]*Edge, error) {
 	all, err := gs.GetOutgoingEdges(nodeID)
 	if err != nil {
