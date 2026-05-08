@@ -18,26 +18,26 @@ import (
 // Edges: rel_type, node_1, node_2, link, start_date, end_date
 
 type ICIJNode struct {
-	NodeID        string
-	Name          string
-	Jurisdiction  string
-	CountryCodes  string
-	Countries     string
-	NodeType      string // Entity, Officer, Intermediary, Address
-	SourceID      string // panama_papers, paradise_papers, pandora_papers, etc.
-	Address       string
-	ValidUntil    string
-	Note          string
+	NodeID       string
+	Name         string
+	Jurisdiction string
+	CountryCodes string
+	Countries    string
+	NodeType     string // Entity, Officer, Intermediary, Address
+	SourceID     string // panama_papers, paradise_papers, pandora_papers, etc.
+	Address      string
+	ValidUntil   string
+	Note         string
 }
 
 type ICIJEdge struct {
-	RelType       string // officer_of, intermediary_of, registered_address, etc.
-	NodeIDStart   string // ICIJ uses node_id_start
-	NodeIDEnd     string // ICIJ uses node_id_end
-	Link          string
-	Status        string
-	StartDate     string
-	EndDate       string
+	RelType     string // officer_of, intermediary_of, registered_address, etc.
+	NodeIDStart string // ICIJ uses node_id_start
+	NodeIDEnd   string // ICIJ uses node_id_end
+	Link        string
+	Status      string
+	StartDate   string
+	EndDate     string
 }
 
 func main() {
@@ -122,8 +122,8 @@ func importNodes(graph *storage.GraphStorage, filename string, batchSize int, lo
 	defer file.Close()
 
 	reader := csv.NewReader(file)
-	reader.ReuseRecord = true    // Memory optimization
-	reader.FieldsPerRecord = -1  // Allow variable field counts (ICIJ has different schemas per node type)
+	reader.ReuseRecord = true   // Memory optimization
+	reader.FieldsPerRecord = -1 // Allow variable field counts (ICIJ has different schemas per node type)
 
 	// Read header
 	header, err := reader.Read()
@@ -259,8 +259,8 @@ func importEdges(graph *storage.GraphStorage, filename string, batchSize int, lo
 	defer file.Close()
 
 	reader := csv.NewReader(file)
-	reader.ReuseRecord = true    // Memory optimization
-	reader.FieldsPerRecord = -1  // Allow variable field counts
+	reader.ReuseRecord = true   // Memory optimization
+	reader.FieldsPerRecord = -1 // Allow variable field counts
 
 	// Read header
 	header, err := reader.Read()

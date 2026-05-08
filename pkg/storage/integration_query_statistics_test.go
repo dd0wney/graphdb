@@ -363,7 +363,7 @@ func TestQueryStatistics_DifferentQueryTypes(t *testing.T) {
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:            dataDir,
-			UseDiskBackedEdges: true,
+		UseDiskBackedEdges: true,
 		EdgeCacheSize:      100,
 	})
 	if err != nil {

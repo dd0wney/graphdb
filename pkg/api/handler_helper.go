@@ -29,11 +29,11 @@ func sanitizeError(err error, operation string) string {
 // requestDecoder decodes and validates request bodies.
 // It provides a fluent interface for common request handling patterns.
 type requestDecoder struct {
-	r           *http.Request
-	w           http.ResponseWriter
-	server      *Server
-	err         error
-	statusCode  int
+	r          *http.Request
+	w          http.ResponseWriter
+	server     *Server
+	err        error
+	statusCode int
 }
 
 // NewRequestDecoder creates a new request decoder for the given request.

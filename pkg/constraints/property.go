@@ -8,12 +8,12 @@ import (
 
 // PropertyConstraint validates node properties
 type PropertyConstraint struct {
-	NodeLabel    string             // Label to apply constraint to
-	PropertyName string             // Name of the property
-	Type         storage.ValueType  // Expected type (0 = any type)
-	Required     bool               // Whether property must exist
-	Min          *storage.Value     // Minimum value (for int/float)
-	Max          *storage.Value     // Maximum value (for int/float)
+	NodeLabel    string            // Label to apply constraint to
+	PropertyName string            // Name of the property
+	Type         storage.ValueType // Expected type (0 = any type)
+	Required     bool              // Whether property must exist
+	Min          *storage.Value    // Minimum value (for int/float)
+	Max          *storage.Value    // Maximum value (for int/float)
 }
 
 // Name returns the constraint name
@@ -65,9 +65,9 @@ func (pc *PropertyConstraint) Validate(graph GraphReader) ([]Violation, error) {
 				Message: fmt.Sprintf("Node %d property '%s' has wrong type",
 					node.ID, pc.PropertyName),
 				Details: map[string]any{
-					"label":        pc.NodeLabel,
-					"property":     pc.PropertyName,
-					"actual_type":  propValue.Type,
+					"label":         pc.NodeLabel,
+					"property":      pc.PropertyName,
+					"actual_type":   propValue.Type,
 					"expected_type": pc.Type,
 				},
 			})

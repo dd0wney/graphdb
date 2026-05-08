@@ -372,9 +372,9 @@ func TestLoadCAPool_InvalidPEM(t *testing.T) {
 
 func TestCertificateInfo_IsExpired(t *testing.T) {
 	tests := []struct {
-		name      string
-		notAfter  time.Time
-		want      bool
+		name     string
+		notAfter time.Time
+		want     bool
 	}{
 		{
 			name:     "Future expiration",

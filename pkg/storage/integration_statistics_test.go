@@ -417,7 +417,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		stats := gs.stats
-		expectedNodes := 8 // 5 + 3
+		expectedNodes := 8  // 5 + 3
 		expectedEdges := 12 // 7 + 5
 
 		if stats.NodeCount != uint64(expectedNodes) {

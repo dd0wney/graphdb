@@ -22,19 +22,19 @@ type Registry struct {
 	StorageDiskUsageBytes    prometheus.Gauge
 
 	// Query Metrics
-	QueriesTotal        *prometheus.CounterVec
-	QueryDuration       *prometheus.HistogramVec
-	QueryNodesScanned   *prometheus.HistogramVec
-	QueryEdgesScanned   *prometheus.HistogramVec
-	SlowQueries         *prometheus.CounterVec
+	QueriesTotal      *prometheus.CounterVec
+	QueryDuration     *prometheus.HistogramVec
+	QueryNodesScanned *prometheus.HistogramVec
+	QueryEdgesScanned *prometheus.HistogramVec
+	SlowQueries       *prometheus.CounterVec
 
 	// Replication Metrics
-	ReplicationLagLSN             prometheus.Gauge
-	ReplicationLagSeconds         prometheus.Gauge
-	ReplicationThroughputBytes    *prometheus.CounterVec
-	ReplicationConnectedReplicas  prometheus.Gauge
-	ReplicationWALEntriesTotal    *prometheus.CounterVec
-	ReplicationHeartbeatsTotal    *prometheus.CounterVec
+	ReplicationLagLSN            prometheus.Gauge
+	ReplicationLagSeconds        prometheus.Gauge
+	ReplicationThroughputBytes   *prometheus.CounterVec
+	ReplicationConnectedReplicas prometheus.Gauge
+	ReplicationWALEntriesTotal   *prometheus.CounterVec
+	ReplicationHeartbeatsTotal   *prometheus.CounterVec
 
 	// Cluster Metrics (HA)
 	ClusterNodesTotal        prometheus.Gauge

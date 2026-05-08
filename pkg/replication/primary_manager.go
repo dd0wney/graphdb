@@ -180,10 +180,10 @@ type primaryStateProvider struct {
 	provider StateProvider
 }
 
-func (p *primaryStateProvider) GetID() string          { return p.id }
-func (p *primaryStateProvider) GetCurrentLSN() uint64  { return p.provider.GetCurrentLSN() }
-func (p *primaryStateProvider) GetNodeCount() uint64   { return p.provider.GetNodeCount() }
-func (p *primaryStateProvider) GetEdgeCount() uint64   { return p.provider.GetEdgeCount() }
+func (p *primaryStateProvider) GetID() string         { return p.id }
+func (p *primaryStateProvider) GetCurrentLSN() uint64 { return p.provider.GetCurrentLSN() }
+func (p *primaryStateProvider) GetNodeCount() uint64  { return p.provider.GetNodeCount() }
+func (p *primaryStateProvider) GetEdgeCount() uint64  { return p.provider.GetEdgeCount() }
 
 // replicaRegistry tracks replica state.
 type replicaRegistry struct {

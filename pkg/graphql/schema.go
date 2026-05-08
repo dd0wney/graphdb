@@ -49,7 +49,7 @@ func GenerateSchema(gs *storage.GraphStorage) (graphql.Schema, error) {
 		// Plural query: persons: [Person]
 		pluralName := strings.ToLower(label) + "s"
 		queryFields[pluralName] = &graphql.Field{
-			Type: graphql.NewList(nodeType),
+			Type:    graphql.NewList(nodeType),
 			Resolve: createNodesResolver(gs, label),
 		}
 	}

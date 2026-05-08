@@ -9,36 +9,36 @@ import (
 // TestNewHNSWIndex tests index creation
 func TestNewHNSWIndex(t *testing.T) {
 	tests := []struct {
-		name       string
-		dimensions int
-		m          int
+		name           string
+		dimensions     int
+		m              int
 		efConstruction int
-		metric     DistanceMetric
-		wantErr    bool
+		metric         DistanceMetric
+		wantErr        bool
 	}{
 		{
-			name:       "valid index",
-			dimensions: 128,
-			m:          16,
+			name:           "valid index",
+			dimensions:     128,
+			m:              16,
 			efConstruction: 200,
-			metric:     MetricCosine,
-			wantErr:    false,
+			metric:         MetricCosine,
+			wantErr:        false,
 		},
 		{
-			name:       "invalid dimensions",
-			dimensions: 0,
-			m:          16,
+			name:           "invalid dimensions",
+			dimensions:     0,
+			m:              16,
 			efConstruction: 200,
-			metric:     MetricCosine,
-			wantErr:    true,
+			metric:         MetricCosine,
+			wantErr:        true,
 		},
 		{
-			name:       "invalid M",
-			dimensions: 128,
-			m:          0,
+			name:           "invalid M",
+			dimensions:     128,
+			m:              0,
 			efConstruction: 200,
-			metric:     MetricCosine,
-			wantErr:    true,
+			metric:         MetricCosine,
+			wantErr:        true,
 		},
 	}
 
@@ -164,8 +164,8 @@ func TestHNSWSearchTopK(t *testing.T) {
 		{2, []float32{0, 1}},
 		{3, []float32{-1, 0}},
 		{4, []float32{0, -1}},
-		{5, []float32{0.9, 0.1}},  // Close to vector 1
-		{6, []float32{0.1, 0.9}},  // Close to vector 2
+		{5, []float32{0.9, 0.1}}, // Close to vector 1
+		{6, []float32{0.1, 0.9}}, // Close to vector 2
 	}
 
 	for _, v := range vectors {

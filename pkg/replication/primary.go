@@ -26,7 +26,7 @@ type ReplicationManager struct {
 	listener            net.Listener
 	walStream           chan *wal.Entry
 	stopCh              chan struct{}
-	wg                  sync.WaitGroup  // Tracks all goroutines for clean shutdown
+	wg                  sync.WaitGroup // Tracks all goroutines for clean shutdown
 	running             bool
 	runningMu           sync.Mutex
 	heartbeatSeqCounter atomic.Uint64 // Monotonically increasing heartbeat sequence (lock-free)

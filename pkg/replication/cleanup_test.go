@@ -7,8 +7,8 @@ import (
 
 // mockCloser is a test implementation of io.Closer
 type mockCloser struct {
-	closed    bool
-	closeErr  error
+	closed     bool
+	closeErr   error
 	closeCalls int
 }
 

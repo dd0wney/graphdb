@@ -158,10 +158,10 @@ func TestJWTManager_ExtractClaims(t *testing.T) {
 	}
 
 	tests := []struct {
-		name         string
-		userID       string
-		username     string
-		role         string
+		name     string
+		userID   string
+		username string
+		role     string
 	}{
 		{
 			name:     "Admin user claims",

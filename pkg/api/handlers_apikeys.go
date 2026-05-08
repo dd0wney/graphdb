@@ -14,18 +14,18 @@ import (
 type CreateAPIKeyRequest struct {
 	Name        string   `json:"name"`
 	Permissions []string `json:"permissions,omitempty"`
-	ExpiresIn   int64    `json:"expires_in,omitempty"` // seconds, 0 = never expires
+	ExpiresIn   int64    `json:"expires_in,omitempty"`  // seconds, 0 = never expires
 	Environment string   `json:"environment,omitempty"` // "live" or "test" - defaults to server's GRAPHDB_ENV
 }
 
 // CreateAPIKeyResponse represents the response when creating an API key
 type CreateAPIKeyResponse struct {
-	Key     string      `json:"key"` // Only returned once!
-	ID      string      `json:"id"`
-	Name    string      `json:"name"`
-	Prefix  string      `json:"prefix"`
-	Expires *time.Time  `json:"expires,omitempty"`
-	Created time.Time   `json:"created"`
+	Key     string     `json:"key"` // Only returned once!
+	ID      string     `json:"id"`
+	Name    string     `json:"name"`
+	Prefix  string     `json:"prefix"`
+	Expires *time.Time `json:"expires,omitempty"`
+	Created time.Time  `json:"created"`
 }
 
 // APIKeyResponse represents an API key in list responses (without the actual key)

@@ -447,8 +447,8 @@ func TestGraphStorage_DiskBackedEdges_LongRunningStability(t *testing.T) {
 	defer cancel()
 
 	var (
-		totalOps    uint64
-		errorCount  uint64
+		totalOps   uint64
+		errorCount uint64
 	)
 
 	// Spawn continuous workers

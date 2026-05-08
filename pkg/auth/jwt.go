@@ -10,14 +10,14 @@ import (
 )
 
 var (
-	ErrInvalidToken      = errors.New("invalid token")
-	ErrExpiredToken      = errors.New("token has expired")
-	ErrInvalidClaims     = errors.New("invalid token claims")
-	ErrEmptyUserID       = errors.New("userID cannot be empty")
-	ErrEmptyUsername     = errors.New("username cannot be empty")
-	ErrEmptyRole         = errors.New("role cannot be empty")
-	ErrInvalidRole       = errors.New("invalid role")
-	ErrShortSecret       = errors.New("secret must be at least 32 characters")
+	ErrInvalidToken  = errors.New("invalid token")
+	ErrExpiredToken  = errors.New("token has expired")
+	ErrInvalidClaims = errors.New("invalid token claims")
+	ErrEmptyUserID   = errors.New("userID cannot be empty")
+	ErrEmptyUsername = errors.New("username cannot be empty")
+	ErrEmptyRole     = errors.New("role cannot be empty")
+	ErrInvalidRole   = errors.New("invalid role")
+	ErrShortSecret   = errors.New("secret must be at least 32 characters")
 )
 
 // Valid roles
@@ -52,9 +52,9 @@ type RefreshClaims struct {
 
 // JWTManager manages JWT token generation and validation
 type JWTManager struct {
-	secretKey             []byte
-	tokenDuration         time.Duration
-	refreshTokenDuration  time.Duration
+	secretKey            []byte
+	tokenDuration        time.Duration
+	refreshTokenDuration time.Duration
 }
 
 // NewJWTManager creates a new JWT manager.

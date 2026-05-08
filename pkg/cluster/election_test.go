@@ -175,7 +175,7 @@ func TestHandleVoteRequest(t *testing.T) {
 	// Test 4: Reject vote for candidate with stale LSN
 	request4 := VoteRequest{
 		CandidateID: "node-5",
-		Term:        2, // New term
+		Term:        2,  // New term
 		LastLSN:     50, // Lower than our 100
 		Epoch:       0,
 		Priority:    1,

@@ -12,31 +12,31 @@ import (
 
 // TenantCreateRequest represents a request to create a tenant
 type TenantCreateRequest struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
+	ID          string              `json:"id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description,omitempty"`
 	Quota       *tenant.TenantQuota `json:"quota,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	Metadata    map[string]string   `json:"metadata,omitempty"`
 }
 
 // TenantUpdateRequest represents a request to update a tenant
 type TenantUpdateRequest struct {
-	Name        string            `json:"name,omitempty"`
-	Description string            `json:"description,omitempty"`
+	Name        string              `json:"name,omitempty"`
+	Description string              `json:"description,omitempty"`
 	Quota       *tenant.TenantQuota `json:"quota,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	Metadata    map[string]string   `json:"metadata,omitempty"`
 }
 
 // TenantResponse represents a tenant in API responses
 type TenantResponse struct {
-	ID          string               `json:"id"`
-	Name        string               `json:"name"`
-	Description string               `json:"description,omitempty"`
-	Status      tenant.TenantStatus  `json:"status"`
-	Quota       *tenant.TenantQuota  `json:"quota,omitempty"`
-	Metadata    map[string]string    `json:"metadata,omitempty"`
-	CreatedAt   int64                `json:"created_at"`
-	UpdatedAt   int64                `json:"updated_at"`
+	ID          string              `json:"id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description,omitempty"`
+	Status      tenant.TenantStatus `json:"status"`
+	Quota       *tenant.TenantQuota `json:"quota,omitempty"`
+	Metadata    map[string]string   `json:"metadata,omitempty"`
+	CreatedAt   int64               `json:"created_at"`
+	UpdatedAt   int64               `json:"updated_at"`
 }
 
 // TenantListResponse represents the response for listing tenants

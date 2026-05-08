@@ -502,24 +502,24 @@ func TestMemoryCheck(t *testing.T) {
 
 func TestHTTPHandler(t *testing.T) {
 	tests := []struct {
-		name           string
-		checkStatus    Status
-		expectedCode   int
+		name         string
+		checkStatus  Status
+		expectedCode int
 	}{
 		{
-			name:           "healthy returns 200",
-			checkStatus:    StatusHealthy,
-			expectedCode:   http.StatusOK,
+			name:         "healthy returns 200",
+			checkStatus:  StatusHealthy,
+			expectedCode: http.StatusOK,
 		},
 		{
-			name:           "degraded returns 200",
-			checkStatus:    StatusDegraded,
-			expectedCode:   http.StatusOK,
+			name:         "degraded returns 200",
+			checkStatus:  StatusDegraded,
+			expectedCode: http.StatusOK,
 		},
 		{
-			name:           "unhealthy returns 503",
-			checkStatus:    StatusUnhealthy,
-			expectedCode:   http.StatusServiceUnavailable,
+			name:         "unhealthy returns 503",
+			checkStatus:  StatusUnhealthy,
+			expectedCode: http.StatusServiceUnavailable,
 		},
 	}
 
@@ -557,24 +557,24 @@ func TestHTTPHandler(t *testing.T) {
 
 func TestReadinessHandler(t *testing.T) {
 	tests := []struct {
-		name           string
-		checkStatus    Status
-		expectedCode   int
+		name         string
+		checkStatus  Status
+		expectedCode int
 	}{
 		{
-			name:           "healthy returns 200",
-			checkStatus:    StatusHealthy,
-			expectedCode:   http.StatusOK,
+			name:         "healthy returns 200",
+			checkStatus:  StatusHealthy,
+			expectedCode: http.StatusOK,
 		},
 		{
-			name:           "degraded returns 503",
-			checkStatus:    StatusDegraded,
-			expectedCode:   http.StatusServiceUnavailable,
+			name:         "degraded returns 503",
+			checkStatus:  StatusDegraded,
+			expectedCode: http.StatusServiceUnavailable,
 		},
 		{
-			name:           "unhealthy returns 503",
-			checkStatus:    StatusUnhealthy,
-			expectedCode:   http.StatusServiceUnavailable,
+			name:         "unhealthy returns 503",
+			checkStatus:  StatusUnhealthy,
+			expectedCode: http.StatusServiceUnavailable,
 		},
 	}
 
@@ -599,24 +599,24 @@ func TestReadinessHandler(t *testing.T) {
 
 func TestLivenessHandler(t *testing.T) {
 	tests := []struct {
-		name           string
-		checkStatus    Status
-		expectedCode   int
+		name         string
+		checkStatus  Status
+		expectedCode int
 	}{
 		{
-			name:           "healthy returns 200",
-			checkStatus:    StatusHealthy,
-			expectedCode:   http.StatusOK,
+			name:         "healthy returns 200",
+			checkStatus:  StatusHealthy,
+			expectedCode: http.StatusOK,
 		},
 		{
-			name:           "degraded returns 503",
-			checkStatus:    StatusDegraded,
-			expectedCode:   http.StatusServiceUnavailable,
+			name:         "degraded returns 503",
+			checkStatus:  StatusDegraded,
+			expectedCode: http.StatusServiceUnavailable,
 		},
 		{
-			name:           "unhealthy returns 503",
-			checkStatus:    StatusUnhealthy,
-			expectedCode:   http.StatusServiceUnavailable,
+			name:         "unhealthy returns 503",
+			checkStatus:  StatusUnhealthy,
+			expectedCode: http.StatusServiceUnavailable,
 		},
 	}
 

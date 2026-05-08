@@ -7,13 +7,13 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound       = errors.New("API key not found")
-	ErrAPIKeyExpired        = errors.New("API key has expired")
-	ErrAPIKeyRevoked        = errors.New("API key has been revoked")
-	ErrAPIKeyWrongEnv       = errors.New("API key environment mismatch")
-	ErrInvalidPermission    = errors.New("invalid permission")
-	ErrEmptyKeyName         = errors.New("key name cannot be empty")
-	ErrEmptyPermissions     = errors.New("permissions cannot be empty")
+	ErrAPIKeyNotFound    = errors.New("API key not found")
+	ErrAPIKeyExpired     = errors.New("API key has expired")
+	ErrAPIKeyRevoked     = errors.New("API key has been revoked")
+	ErrAPIKeyWrongEnv    = errors.New("API key environment mismatch")
+	ErrInvalidPermission = errors.New("invalid permission")
+	ErrEmptyKeyName      = errors.New("key name cannot be empty")
+	ErrEmptyPermissions  = errors.New("permissions cannot be empty")
 )
 
 // Valid API key permissions

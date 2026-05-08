@@ -9,11 +9,11 @@ import (
 
 func TestScoreText(t *testing.T) {
 	tests := []struct {
-		name      string
-		text      string
-		query     string
-		minScore  float64
-		maxScore  float64
+		name     string
+		text     string
+		query    string
+		minScore float64
+		maxScore float64
 	}{
 		{"full match", "quantum entanglement", "quantum entanglement", 1.0, 1.0},
 		{"partial match", "quantum physics and entanglement", "quantum entanglement", 1.0, 1.0},

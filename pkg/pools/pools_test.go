@@ -9,10 +9,10 @@ func TestBytePool_Get(t *testing.T) {
 	pool := NewBytePool()
 
 	tests := []struct {
-		name     string
-		size     int
-		minCap   int
-		maxCap   int
+		name   string
+		size   int
+		minCap int
+		maxCap int
 	}{
 		{"tiny", 8, 8, TinySize},
 		{"tiny_exact", TinySize, TinySize, TinySize},
