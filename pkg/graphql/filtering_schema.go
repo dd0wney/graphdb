@@ -10,9 +10,20 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
-// GenerateSchemaWithFiltering generates a GraphQL schema with filtering support
+// GenerateSchemaWithFiltering generates a GraphQL schema with
+// filtering support (tenant-blind). API callers should use
+// GenerateSchemaWithFilteringForTenant per audit A9 (#36).
 func GenerateSchemaWithFiltering(gs *storage.GraphStorage) (graphql.Schema, error) {
-	labels := gs.GetAllLabels()
+	return generateSchemaWithFilteringForLabels(gs, gs.GetAllLabels())
+}
+
+// GenerateSchemaWithFilteringForTenant scopes the schema to one
+// tenant's labels. Audit A9.
+func GenerateSchemaWithFilteringForTenant(gs *storage.GraphStorage, tenantID string) (graphql.Schema, error) {
+	return generateSchemaWithFilteringForLabels(gs, gs.GetLabelsForTenant(tenantID))
+}
+
+func generateSchemaWithFilteringForLabels(gs *storage.GraphStorage, labels []string) (graphql.Schema, error) {
 	nodeTypes := make(map[string]*graphql.Object)
 
 	// Create where input type (we'll use a generic JSON-like structure)

@@ -11,10 +11,32 @@ import (
 )
 
 // GenerateSchema generates a GraphQL schema from the storage layer
+// (tenant-blind — discovers labels across every tenant). Used by CLI
+// and single-tenant deployments. API callers should use
+// GenerateSchemaForTenant so introspection (`__schema`) doesn't leak
+// foreign-tenant label names — see audit A9 (#36).
 func GenerateSchema(gs *storage.GraphStorage) (graphql.Schema, error) {
-	// Discover all node labels and edge types
-	labels := gs.GetAllLabels()
+	return generateSchemaWithLabels(gs, gs.GetAllLabels())
+}
 
+// GenerateSchemaForTenant generates a GraphQL schema scoped to the
+// given tenant's labels. Audit A9 (2026-05-08): closes the
+// introspection metadata leak where a tenant-A caller running
+// `{ __schema { types } }` would see every other tenant's labels.
+//
+// Resolver closures inside the schema already extract tenantID from
+// p.Context via A6c-graphql-resolvers (#24), so query-result
+// scoping was already correct; this fix is purely about the
+// introspection / type-registry surface.
+func GenerateSchemaForTenant(gs *storage.GraphStorage, tenantID string) (graphql.Schema, error) {
+	return generateSchemaWithLabels(gs, gs.GetLabelsForTenant(tenantID))
+}
+
+// generateSchemaWithLabels is the shared schema-build core. The
+// caller picks the label source (tenant-blind GetAllLabels vs
+// tenant-scoped GetLabelsForTenant); this function builds the type
+// registry and resolvers from that list.
+func generateSchemaWithLabels(gs *storage.GraphStorage, labels []string) (graphql.Schema, error) {
 	// Create GraphQL types for each node label
 	nodeTypes := make(map[string]*graphql.Object)
 	for _, label := range labels {

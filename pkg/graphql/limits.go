@@ -50,14 +50,26 @@ func applyLimit(requestedLimit int, config *LimitConfig) int {
 	return requestedLimit
 }
 
-// GenerateSchemaWithLimits generates a GraphQL schema with filtering and result limits
+// GenerateSchemaWithLimits generates a GraphQL schema with filtering
+// and result limits (tenant-blind). API callers should use
+// GenerateSchemaWithLimitsForTenant per audit A9 (#36).
 func GenerateSchemaWithLimits(gs *storage.GraphStorage, config *LimitConfig) (graphql.Schema, error) {
-	// Validate config
 	if err := ValidateLimitConfig(config); err != nil {
 		return graphql.Schema{}, err
 	}
+	return generateSchemaWithLimitsForLabels(gs, config, gs.GetAllLabels())
+}
 
-	labels := gs.GetAllLabels()
+// GenerateSchemaWithLimitsForTenant scopes the schema's type
+// registry to one tenant's labels. Audit A9 (2026-05-08).
+func GenerateSchemaWithLimitsForTenant(gs *storage.GraphStorage, config *LimitConfig, tenantID string) (graphql.Schema, error) {
+	if err := ValidateLimitConfig(config); err != nil {
+		return graphql.Schema{}, err
+	}
+	return generateSchemaWithLimitsForLabels(gs, config, gs.GetLabelsForTenant(tenantID))
+}
+
+func generateSchemaWithLimitsForLabels(gs *storage.GraphStorage, config *LimitConfig, labels []string) (graphql.Schema, error) {
 	nodeTypes := make(map[string]*graphql.Object)
 
 	// Create where input type
