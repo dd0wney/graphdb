@@ -79,6 +79,11 @@ func TestCreateEdge(t *testing.T) {
 			expectError:  true,
 		},
 		{
+			// Audit A6a follow-up (2026-05-08): missing-or-cross-tenant
+			// from/to surfaces as ErrNodeNotFound → 404. Pre-fix this
+			// was 500 because the storage error was an unwrapped fmt
+			// string. Same existence-leak rationale as A6a's
+			// TestUpdateNode flip.
 			name: "Invalid - non-existent source node",
 			request: EdgeRequest{
 				FromNodeID: 99999,
@@ -86,7 +91,7 @@ func TestCreateEdge(t *testing.T) {
 				Type:       "INVALID",
 				Weight:     1.0,
 			},
-			expectStatus: http.StatusInternalServerError,
+			expectStatus: http.StatusNotFound,
 			expectError:  true,
 		},
 		{
@@ -97,7 +102,7 @@ func TestCreateEdge(t *testing.T) {
 				Type:       "INVALID",
 				Weight:     1.0,
 			},
-			expectStatus: http.StatusInternalServerError,
+			expectStatus: http.StatusNotFound,
 			expectError:  true,
 		},
 	}

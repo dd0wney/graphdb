@@ -1,9 +1,11 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/validation"
 )
 
@@ -25,15 +27,17 @@ func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
 	converter := newPropertyConverter()
 	props := converter.ConvertAndSanitize(req.Properties, s.convertToValue)
 
-	// Audit A6a: tenant-scoped create. NOTE: storage.verifyNodeExists
-	// is currently tenant-blind, so a caller can reference from/to
-	// node IDs owned by another tenant; the resulting edge is stamped
-	// with this caller's tenant. This is a known gap tracked as an
-	// A6a follow-up — A3b closed cross-tenant *reads* at the storage
-	// layer but the create-side existence check still needs scoping.
+	// Audit A6a (handler) + A6a follow-up (storage): tenant-scoped
+	// create. From/to nodes must belong to the caller's tenant —
+	// CreateEdgeWithTenant refuses cross-tenant references with
+	// ErrNodeNotFound, surfaced here as 404 (no existence-leak).
 	tenantID := getTenantFromContext(r)
 	edge, err := s.graph.CreateEdgeWithTenant(tenantID, req.FromNodeID, req.ToNodeID, req.Type, props, req.Weight)
 	if err != nil {
+		if errors.Is(err, storage.ErrNodeNotFound) {
+			s.respondError(w, http.StatusNotFound, "Source or target node not found")
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create edge"))
 		return
 	}

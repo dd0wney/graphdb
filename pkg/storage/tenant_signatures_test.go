@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -273,4 +274,100 @@ func TestForTenant_CrossTenantWriteIsRefused(t *testing.T) {
 			t.Errorf("cross-tenant edge delete leaked through: %v", err)
 		}
 	})
+}
+
+// TestCreateEdgeWithTenant_CrossTenantNodeRefIsRefused closes the
+// audit A6a follow-up: pre-fix, a tenant-A author could call
+// CreateEdgeWithTenant("tenant-A", ...) referencing nodes owned by
+// tenant-B; the resulting edge was stamped tenant-A but pointed at
+// tenant-B's nodes. Now both endpoints must belong to the caller's
+// tenant — cross-tenant or missing surfaces as ErrNodeNotFound.
+//
+// Without this guard the A6b /shortest-path scoping is incomplete:
+// its edge-only filter relied on an upstream guarantee that
+// cross-tenant edges cannot exist.
+func TestCreateEdgeWithTenant_CrossTenantNodeRefIsRefused(t *testing.T) {
+	gs := mustNewGraphStorage(t)
+
+	aFrom, err := gs.CreateNodeWithTenant("tenant-A", []string{"Doc"}, nil)
+	if err != nil {
+		t.Fatalf("aFrom: %v", err)
+	}
+	aTo, err := gs.CreateNodeWithTenant("tenant-A", []string{"Doc"}, nil)
+	if err != nil {
+		t.Fatalf("aTo: %v", err)
+	}
+	bNode, err := gs.CreateNodeWithTenant("tenant-B", []string{"Doc"}, nil)
+	if err != nil {
+		t.Fatalf("bNode: %v", err)
+	}
+
+	t.Run("source from another tenant", func(t *testing.T) {
+		_, err := gs.CreateEdgeWithTenant("tenant-A", bNode.ID, aTo.ID, "REL", nil, 1.0)
+		if !errors.Is(err, ErrNodeNotFound) {
+			t.Errorf("cross-tenant source: want ErrNodeNotFound, got %v", err)
+		}
+	})
+
+	t.Run("target from another tenant", func(t *testing.T) {
+		_, err := gs.CreateEdgeWithTenant("tenant-A", aFrom.ID, bNode.ID, "REL", nil, 1.0)
+		if !errors.Is(err, ErrNodeNotFound) {
+			t.Errorf("cross-tenant target: want ErrNodeNotFound, got %v", err)
+		}
+	})
+
+	t.Run("missing node ID indistinguishable from cross-tenant", func(t *testing.T) {
+		// A truly-missing node ID (999999) and a cross-tenant node
+		// must produce the same error — no existence-leak side
+		// channel that would let a probe distinguish them.
+		_, errMissing := gs.CreateEdgeWithTenant("tenant-A", aFrom.ID, 999999, "REL", nil, 1.0)
+		_, errCross := gs.CreateEdgeWithTenant("tenant-A", aFrom.ID, bNode.ID, "REL", nil, 1.0)
+		if !errors.Is(errMissing, ErrNodeNotFound) || !errors.Is(errCross, ErrNodeNotFound) {
+			t.Errorf("missing and cross-tenant should both wrap ErrNodeNotFound: missing=%v cross=%v", errMissing, errCross)
+		}
+	})
+
+	t.Run("legitimate same-tenant create still works", func(t *testing.T) {
+		edge, err := gs.CreateEdgeWithTenant("tenant-A", aFrom.ID, aTo.ID, "REL", nil, 1.0)
+		if err != nil {
+			t.Errorf("same-tenant: want ok, got %v", err)
+		}
+		if edge == nil || edge.TenantID != "tenant-A" {
+			t.Errorf("same-tenant edge wrong: %+v", edge)
+		}
+	})
+}
+
+// TestUpsertEdgeWithTenant_CrossTenantNodeRefIsRefused mirrors the
+// CreateEdgeWithTenant test for the upsert path. Same gap, same fix.
+func TestUpsertEdgeWithTenant_CrossTenantNodeRefIsRefused(t *testing.T) {
+	gs := mustNewGraphStorage(t)
+
+	aFrom, _ := gs.CreateNodeWithTenant("tenant-A", []string{"Doc"}, nil)
+	bNode, _ := gs.CreateNodeWithTenant("tenant-B", []string{"Doc"}, nil)
+
+	_, _, err := gs.UpsertEdgeWithTenant("tenant-A", aFrom.ID, bNode.ID, "REL", nil, 1.0)
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Errorf("cross-tenant upsert target: want ErrNodeNotFound, got %v", err)
+	}
+}
+
+// TestCreateEdge_TenantBlindStillWorksForReplication is the
+// regression net for the asymmetry: CreateEdge (tenant-blind, used by
+// replication and CLI) must keep working without tenant matching.
+// Tracked as audit A8 to make replication tenant-aware end-to-end.
+func TestCreateEdge_TenantBlindStillWorksForReplication(t *testing.T) {
+	gs := mustNewGraphStorage(t)
+
+	// Both nodes in default tenant — replication's effective universe.
+	from, _ := gs.CreateNode([]string{"Doc"}, nil)
+	to, _ := gs.CreateNode([]string{"Doc"}, nil)
+
+	edge, err := gs.CreateEdge(from.ID, to.ID, "REL", nil, 1.0)
+	if err != nil {
+		t.Fatalf("CreateEdge: want ok, got %v", err)
+	}
+	if edge == nil || edge.TenantID != DefaultTenantID {
+		t.Errorf("default-tenant edge wrong: %+v", edge)
+	}
 }

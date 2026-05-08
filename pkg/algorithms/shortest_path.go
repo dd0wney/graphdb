@@ -15,13 +15,11 @@ import (
 // rejecting it after the fact would deny paths that *do* exist within
 // the caller's subgraph. The filter must happen at edge expansion.
 //
-// Residual gap from the A6a follow-up: if a tenant-A author created
-// an edge to a foreign-tenant node ID (verifyNodeExists is currently
-// tenant-blind), that edge passes the filter and the BFS will visit
-// the foreign node. Closing that gap is tracked separately. We do not
-// add per-neighbor GetNodeForTenant scoping here because it would
-// inject a map lookup into the inner BFS loop on every neighbor — a
-// real perf hit for what is bounded by an upstream fix.
+// Tenant-strict guarantee: as of the A6a follow-up,
+// CreateEdgeWithTenant refuses cross-tenant from/to node references,
+// so a tenant-stamped edge cannot point at a foreign-tenant node.
+// That means the edge-tenant filter is sufficient — no per-neighbor
+// GetNodeForTenant in the BFS hot loop.
 func ShortestPathForTenant(graph *storage.GraphStorage, startID, endID uint64, tenantID string) ([]uint64, error) {
 	if startID == endID {
 		return []uint64{startID}, nil

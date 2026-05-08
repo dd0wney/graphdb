@@ -82,17 +82,21 @@ func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {
 // cancellation support, scoped to the given tenant.
 //
 // Audit A6b: dual-filter — both edges (GetOutgoingEdgesForTenant) and
-// nodes (GetNodeForTenant) are scoped. The node filter closes the
-// residual gap from the A6a follow-up: even if a foreign-tenant node
-// is reachable through a tenant-stamped edge (because verifyNodeExists
-// is currently tenant-blind), the per-visit GetNodeForTenant drops it
-// from the result set.
+// nodes (GetNodeForTenant) are scoped.
 //
-// Perf note: GetNodeForTenant takes a per-visit shard rlock, so this
-// path acquires roughly 2× the locks of a pre-A6b traversal. Bounded
-// by MaxTraversalDepth (default 10) so it's a non-issue for the
-// /traverse endpoint, but do *not* "optimize" by dropping the node
-// filter — that reopens the A6a follow-up gap.
+// As of the A6a follow-up, the node filter is technically belt-and-
+// braces against the API surface: CreateEdgeWithTenant is now
+// tenant-strict on node verification, so the edge filter alone would
+// suffice for edges created through the HTTP API. The node filter is
+// retained because (a) it costs almost nothing — BFS already fetches
+// each node — and (b) cross-tenant edges can still be created via
+// other code paths the API doesn't go through: replication currently
+// lands every replicated write in the default tenant regardless of
+// original ownership (audit task A8); the LSM-backed storage's
+// CreateEdge is also tenant-blind. If any of those graphs end up
+// in the in-memory GraphStorage instance the API serves, the node
+// filter is the only thing keeping their cross-tenant edges out of
+// /traverse results.
 func (s *Server) traverseFromWithContext(ctx context.Context, tenantID string, nodeID uint64, depth int, maxDepth int, visited map[uint64]bool, nodes *[]*NodeResponse) error {
 	// Check for cancellation
 	select {
