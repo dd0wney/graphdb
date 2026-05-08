@@ -18,6 +18,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
 	"github.com/dd0wney/cluso-graphdb/pkg/queryutil"
+	"github.com/dd0wney/cluso-graphdb/pkg/retrieval"
 	"github.com/dd0wney/cluso-graphdb/pkg/search"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
@@ -240,11 +241,15 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 	// tenant-aware DSL search() is a follow-up.
 	executor, _ := queryutil.WireCapabilities(query.NewExecutor(graph), graph)
 
+	searchIndexes := search.NewTenantIndexes(graph)
+	lsaIndexes := search.NewTenantLSAIndexes()
+
 	server := &Server{
 		graph:               graph,
 		executor:            executor,
-		searchIndexes:       search.NewTenantIndexes(graph),
-		lsaIndexes:          search.NewTenantLSAIndexes(),
+		searchIndexes:       searchIndexes,
+		lsaIndexes:          lsaIndexes,
+		retriever:           retrieval.NewRetriever(graph, searchIndexes, lsaIndexes),
 		graphqlHandler:      graphqlHandler,
 		graphqlSchema:       schema,
 		complexityConfig:    complexityConfig,

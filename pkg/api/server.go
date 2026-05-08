@@ -79,6 +79,11 @@ func (s *Server) Start() error {
 	// Vercel AI SDK, etc.) can drop in by setting api_base.
 	mux.HandleFunc("/v1/embeddings", s.requireAuth(s.withTenant(s.handleEmbeddings)))
 
+	// Graph-augmented retrieval (F2). LangChain BaseRetriever shape;
+	// composes hybrid search + tenant-scoped BFS expansion. See
+	// docs/F2_GRAPHRAG_DESIGN.md.
+	mux.HandleFunc("/v1/retrieve", s.requireAuth(s.withTenant(s.handleRetrieve)))
+
 	// Search index population (admin-only, tenant-scoped)
 	mux.HandleFunc("/search/index", s.requireAdmin(s.withTenant(s.handleSearchIndex)))
 	mux.HandleFunc("/hybrid-search/lsa-index", s.requireAdmin(s.withTenant(s.handleLSAIndex)))
