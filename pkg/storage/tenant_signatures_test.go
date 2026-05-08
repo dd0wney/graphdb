@@ -371,3 +371,148 @@ func TestCreateEdge_TenantBlindStillWorksForReplication(t *testing.T) {
 		t.Errorf("default-tenant edge wrong: %+v", edge)
 	}
 }
+
+// TestGetIncomingEdgesForTenant_FiltersCrossTenant pins the audit
+// A6c-storage contract: incoming-edge iteration must drop edges
+// owned by other tenants. Mirror of A6b's
+// GetOutgoingEdgesForTenant test.
+func TestGetIncomingEdgesForTenant_FiltersCrossTenant(t *testing.T) {
+	gs := mustNewGraphStorage(t)
+
+	// Tenant-A subgraph: aSrc → aDst.
+	aSrc, _ := gs.CreateNodeWithTenant("tenant-A", []string{"N"}, nil)
+	aDst, _ := gs.CreateNodeWithTenant("tenant-A", []string{"N"}, nil)
+	aEdge, err := gs.CreateEdgeWithTenant("tenant-A", aSrc.ID, aDst.ID, "REL", nil, 0)
+	if err != nil {
+		t.Fatalf("aEdge: %v", err)
+	}
+
+	// Tenant-B subgraph (disjoint after A6a follow-up): bSrc → bDst.
+	bSrc, _ := gs.CreateNodeWithTenant("tenant-B", []string{"N"}, nil)
+	bDst, _ := gs.CreateNodeWithTenant("tenant-B", []string{"N"}, nil)
+	if _, err := gs.CreateEdgeWithTenant("tenant-B", bSrc.ID, bDst.ID, "REL", nil, 0); err != nil {
+		t.Fatalf("bEdge: %v", err)
+	}
+
+	t.Run("tenant-A sees its own incoming edge", func(t *testing.T) {
+		got, err := gs.GetIncomingEdgesForTenant(aDst.ID, "tenant-A")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(got) != 1 || got[0].ID != aEdge.ID {
+			t.Errorf("want 1 edge id=%d, got %v", aEdge.ID, got)
+		}
+	})
+
+	t.Run("tenant-B sees no incoming edges into A's node", func(t *testing.T) {
+		// aDst is tenant-A's. Tenant-B asking for incoming edges
+		// against it should get an empty set — there's no leak even
+		// though the underlying tenant-blind index might find none
+		// for unrelated reasons.
+		got, err := gs.GetIncomingEdgesForTenant(aDst.ID, "tenant-B")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("cross-tenant incoming leaked: %v", got)
+		}
+	})
+
+	t.Run("missing nodeID returns empty (no error, no leak)", func(t *testing.T) {
+		got, err := gs.GetIncomingEdgesForTenant(999999, "tenant-A")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("missing node: want empty, got %v", got)
+		}
+	})
+}
+
+// TestFindNodesByPropertyForTenant_FiltersCrossTenant: the same
+// property value can exist in multiple tenants (e.g., status="active"
+// is a common value). The full-scan version must drop foreign-tenant
+// matches.
+func TestFindNodesByPropertyForTenant_FiltersCrossTenant(t *testing.T) {
+	gs := mustNewGraphStorage(t)
+
+	// Both tenants have nodes with name="alice" — common-value case.
+	aNode, _ := gs.CreateNodeWithTenant("tenant-A", []string{"User"}, map[string]Value{
+		"name": StringValue("alice"),
+	})
+	if _, err := gs.CreateNodeWithTenant("tenant-B", []string{"User"}, map[string]Value{
+		"name": StringValue("alice"),
+	}); err != nil {
+		t.Fatalf("seed B: %v", err)
+	}
+
+	got, err := gs.FindNodesByPropertyForTenant("name", StringValue("alice"), "tenant-A")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != aNode.ID {
+		t.Errorf("want only tenant-A's node id=%d, got %v", aNode.ID, got)
+	}
+}
+
+// TestFindNodesByPropertyIndexedForTenant_FiltersCrossTenant: the
+// property index is global (not per-tenant) — it returns nodeIDs
+// across all tenants. The For-Tenant variant must post-filter.
+func TestFindNodesByPropertyIndexedForTenant_FiltersCrossTenant(t *testing.T) {
+	gs := mustNewGraphStorage(t)
+
+	// Build the index first.
+	if err := gs.CreatePropertyIndex("email", TypeString); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+
+	aNode, err := gs.CreateNodeWithTenant("tenant-A", []string{"User"}, map[string]Value{
+		"email": StringValue("dup@example.com"),
+	})
+	if err != nil {
+		t.Fatalf("seed A: %v", err)
+	}
+	bNode, err := gs.CreateNodeWithTenant("tenant-B", []string{"User"}, map[string]Value{
+		"email": StringValue("dup@example.com"),
+	})
+	if err != nil {
+		t.Fatalf("seed B: %v", err)
+	}
+
+	t.Run("tenant-blind index sees both", func(t *testing.T) {
+		got, err := gs.FindNodesByPropertyIndexed("email", StringValue("dup@example.com"))
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(got) != 2 {
+			t.Errorf("tenant-blind: want 2 (both tenants), got %d", len(got))
+		}
+	})
+
+	t.Run("tenant-A sees only A's node", func(t *testing.T) {
+		got, err := gs.FindNodesByPropertyIndexedForTenant("email", StringValue("dup@example.com"), "tenant-A")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(got) != 1 || got[0].ID != aNode.ID {
+			t.Errorf("tenant-A: want 1 (id=%d), got %v", aNode.ID, got)
+		}
+	})
+
+	t.Run("tenant-B sees only B's node", func(t *testing.T) {
+		got, err := gs.FindNodesByPropertyIndexedForTenant("email", StringValue("dup@example.com"), "tenant-B")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(got) != 1 || got[0].ID != bNode.ID {
+			t.Errorf("tenant-B: want 1 (id=%d), got %v", bNode.ID, got)
+		}
+	})
+
+	t.Run("missing index errors", func(t *testing.T) {
+		_, err := gs.FindNodesByPropertyIndexedForTenant("nonexistent", StringValue("x"), "tenant-A")
+		if err == nil {
+			t.Error("want error for missing index, got nil")
+		}
+	})
+}
