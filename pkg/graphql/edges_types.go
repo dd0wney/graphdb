@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	"github.com/graphql-go/graphql"
 )
 
@@ -163,8 +164,9 @@ func createNodeTypeWithEdges(label string, edgeType *graphql.Object, gs *storage
 			"outgoingEdges": &graphql.Field{
 				Type: graphql.NewList(edgeType),
 				Resolve: func(p graphql.ResolveParams) (any, error) {
+					// Audit A6c-graphql-resolvers: tenant-scoped.
 					if node, ok := p.Source.(*storage.Node); ok {
-						return gs.GetOutgoingEdges(node.ID)
+						return gs.GetOutgoingEdgesForTenant(node.ID, tenant.MustFromContext(p.Context))
 					}
 					return nil, nil
 				},
@@ -172,8 +174,9 @@ func createNodeTypeWithEdges(label string, edgeType *graphql.Object, gs *storage
 			"incomingEdges": &graphql.Field{
 				Type: graphql.NewList(edgeType),
 				Resolve: func(p graphql.ResolveParams) (any, error) {
+					// Audit A6c-graphql-resolvers: tenant-scoped.
 					if node, ok := p.Source.(*storage.Node); ok {
-						return gs.GetIncomingEdges(node.ID)
+						return gs.GetIncomingEdgesForTenant(node.ID, tenant.MustFromContext(p.Context))
 					}
 					return nil, nil
 				},

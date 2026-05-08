@@ -2,17 +2,16 @@ package graphql
 
 import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	"github.com/graphql-go/graphql"
 )
 
 // createNodeAggregateResolver creates a resolver for node aggregations
 func createNodeAggregateResolver(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		// Get all nodes with this label
-		nodes, err := gs.FindNodesByLabel(label)
-		if err != nil {
-			return nil, err
-		}
+		// Audit A6c-graphql-resolvers: tenant-scoped label lookup.
+		tenantID := tenant.MustFromContext(p.Context)
+		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
 
 		result := make(map[string]any)
 
@@ -94,17 +93,10 @@ func createNodeAggregateResolver(gs *storage.GraphStorage, label string) graphql
 // createEdgeAggregateResolver creates a resolver for edge aggregations
 func createEdgeAggregateResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		// Get all edges
-		stats := gs.GetStatistics()
-		edges := make([]*storage.Edge, 0)
-
-		for edgeID := uint64(1); edgeID <= stats.EdgeCount; edgeID++ {
-			edge, err := gs.GetEdge(edgeID)
-			if err != nil {
-				continue
-			}
-			edges = append(edges, edge)
-		}
+		// Audit A6c-graphql-resolvers: tenant-scoped edge enumeration
+		// (replaces "1..stats.EdgeCount via GetEdge" cross-tenant scan).
+		tenantID := tenant.MustFromContext(p.Context)
+		edges := gs.GetAllEdgesForTenant(tenantID)
 
 		result := make(map[string]any)
 

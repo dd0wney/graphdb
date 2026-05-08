@@ -2,17 +2,16 @@ package graphql
 
 import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	"github.com/graphql-go/graphql"
 )
 
 // createNodesResolverWithSorting creates a resolver with sorting support
 func createNodesResolverWithSorting(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		// Query nodes by label
-		nodes, err := gs.FindNodesByLabel(label)
-		if err != nil {
-			return nil, err
-		}
+		// Audit A6c-graphql-resolvers: tenant-scoped label query.
+		tenantID := tenant.MustFromContext(p.Context)
+		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
 
 		// Apply sorting if specified
 		orderBy := parseOrderBy(p.Args)
@@ -44,16 +43,9 @@ func createNodesResolverWithSorting(gs *storage.GraphStorage, label string) grap
 // createEdgesResolverWithSorting creates an edge resolver with sorting support
 func createEdgesResolverWithSorting(gs *storage.GraphStorage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		stats := gs.GetStatistics()
-		edges := make([]*storage.Edge, 0)
-
-		for edgeID := uint64(1); edgeID <= stats.EdgeCount; edgeID++ {
-			edge, err := gs.GetEdge(edgeID)
-			if err != nil {
-				continue
-			}
-			edges = append(edges, edge)
-		}
+		// Audit A6c-graphql-resolvers: tenant-scoped enumeration.
+		tenantID := tenant.MustFromContext(p.Context)
+		edges := gs.GetAllEdgesForTenant(tenantID)
 
 		// Apply sorting if specified
 		orderBy := parseOrderBy(p.Args)
@@ -85,11 +77,9 @@ func createEdgesResolverWithSorting(gs *storage.GraphStorage) graphql.FieldResol
 // createNodeConnectionResolverWithSorting creates a connection resolver with sorting
 func createNodeConnectionResolverWithSorting(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		// Fetch all nodes with the label
-		nodes, err := gs.FindNodesByLabel(label)
-		if err != nil {
-			return nil, err
-		}
+		// Audit A6c-graphql-resolvers: tenant-scoped label query.
+		tenantID := tenant.MustFromContext(p.Context)
+		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
 
 		// Apply sorting if specified
 		orderBy := parseOrderBy(p.Args)

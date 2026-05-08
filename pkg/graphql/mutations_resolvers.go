@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	"github.com/graphql-go/graphql"
 )
 
@@ -41,8 +42,10 @@ func createNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 			properties[k] = convertToStorageValue(v)
 		}
 
-		// Create node in storage
-		node, err := gs.CreateNode(labels, properties)
+		// Create node in storage, scoped to caller's tenant.
+		// Audit A6c-graphql-resolvers (2026-05-08).
+		tenantID := tenant.MustFromContext(p.Context)
+		node, err := gs.CreateNodeWithTenant(tenantID, labels, properties)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create node: %w", err)
 		}
@@ -84,13 +87,13 @@ func updateNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 			properties[k] = convertToStorageValue(v)
 		}
 
-		// Update node in storage
-		if err := gs.UpdateNode(id, properties); err != nil {
+		// Audit A6c-graphql-resolvers: tenant-scoped update.
+		tenantID := tenant.MustFromContext(p.Context)
+		if err := gs.UpdateNodeForTenant(id, properties, tenantID); err != nil {
 			return nil, fmt.Errorf("node not found: %w", err)
 		}
 
-		// Fetch and return updated node
-		node, err := gs.GetNode(id)
+		node, err := gs.GetNodeForTenant(id, tenantID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve updated node: %w", err)
 		}
@@ -114,8 +117,9 @@ func deleteNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 			return nil, fmt.Errorf("invalid id %q: %w", idStr, err)
 		}
 
-		// Delete node from storage
-		if err := gs.DeleteNode(id); err != nil {
+		// Audit A6c-graphql-resolvers: tenant-scoped delete.
+		tenantID := tenant.MustFromContext(p.Context)
+		if err := gs.DeleteNodeForTenant(id, tenantID); err != nil {
 			return nil, fmt.Errorf("node not found: %w", err)
 		}
 

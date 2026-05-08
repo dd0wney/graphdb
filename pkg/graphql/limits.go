@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	"github.com/graphql-go/graphql"
 )
 
@@ -175,11 +176,9 @@ func GenerateSchemaWithLimits(gs *storage.GraphStorage, config *LimitConfig) (gr
 // createNodesResolverWithLimits creates a resolver with filtering and limit enforcement
 func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, config *LimitConfig) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		// Get all nodes with this label
-		nodes, err := gs.FindNodesByLabel(label)
-		if err != nil {
-			return nil, err
-		}
+		// Audit A6c-graphql-resolvers: tenant-scoped label query.
+		tenantID := tenant.MustFromContext(p.Context)
+		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
 
 		// Apply filtering
 		filterExpr := parseWhere(p.Args)
@@ -226,17 +225,9 @@ func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, confi
 // createEdgesResolverWithLimits creates an edge resolver with filtering and limit enforcement
 func createEdgesResolverWithLimits(gs *storage.GraphStorage, config *LimitConfig) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		// Get all edges
-		stats := gs.GetStatistics()
-		edges := make([]*storage.Edge, 0)
-
-		for edgeID := uint64(1); edgeID <= stats.EdgeCount; edgeID++ {
-			edge, err := gs.GetEdge(edgeID)
-			if err != nil {
-				continue
-			}
-			edges = append(edges, edge)
-		}
+		// Audit A6c-graphql-resolvers: tenant-scoped enumeration.
+		tenantID := tenant.MustFromContext(p.Context)
+		edges := gs.GetAllEdgesForTenant(tenantID)
 
 		// Apply filtering
 		filterExpr := parseWhere(p.Args)

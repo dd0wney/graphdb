@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
 // NewNodeDataLoader creates a DataLoader for loading nodes by ID
@@ -15,6 +16,8 @@ func NewNodeDataLoader(gs *storage.GraphStorage) *DataLoader {
 		results := make([]any, len(keys))
 		errors := make([]error, len(keys))
 
+		// Audit A6c-graphql-resolvers: tenant-scoped node loads.
+		tenantID := tenant.MustFromContext(ctx)
 		for i, key := range keys {
 			nodeID, err := strconv.ParseUint(key, 10, 64)
 			if err != nil {
@@ -22,7 +25,7 @@ func NewNodeDataLoader(gs *storage.GraphStorage) *DataLoader {
 				continue
 			}
 
-			node, err := gs.GetNode(nodeID)
+			node, err := gs.GetNodeForTenant(nodeID, tenantID)
 			if err != nil {
 				errors[i] = err
 			} else {

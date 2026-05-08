@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	"github.com/graphql-go/graphql"
 )
 
@@ -21,7 +22,9 @@ func createEdgeResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 			return nil, fmt.Errorf("invalid edge id %q: %w", idStr, err)
 		}
 
-		edge, err := gs.GetEdge(id)
+		// Audit A6c-graphql-resolvers: tenant-scoped edge read.
+		tenantID := tenant.MustFromContext(p.Context)
+		edge, err := gs.GetEdgeForTenant(id, tenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -33,16 +36,12 @@ func createEdgeResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 // createEdgesResolver creates a resolver for fetching all edges
 func createEdgesResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		stats := gs.GetStatistics()
-		edges := make([]*storage.Edge, 0)
-
-		for edgeID := uint64(1); edgeID <= stats.EdgeCount; edgeID++ {
-			edge, err := gs.GetEdge(edgeID)
-			if err != nil {
-				continue
-			}
-			edges = append(edges, edge)
-		}
+		// Audit A6c-graphql-resolvers: replace the
+		// "iterate from 1..stats.EdgeCount via GetEdge" anti-pattern
+		// (which leaked edges across tenants) with a single
+		// tenant-scoped enumeration.
+		tenantID := tenant.MustFromContext(p.Context)
+		edges := gs.GetAllEdgesForTenant(tenantID)
 
 		// Apply pagination if specified
 		limit, limitOk := p.Args["limit"].(int)
@@ -114,8 +113,12 @@ func createEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 			}
 		}
 
-		// Create edge in storage
-		edge, err := gs.CreateEdge(fromNodeID, toNodeID, edgeType, properties, weight)
+		// Audit A6c-graphql-resolvers: tenant-scoped edge create.
+		// CreateEdgeWithTenant is tenant-strict on from/to node
+		// verification (audit A6a follow-up #20), so cross-tenant
+		// edge creation surfaces ErrNodeNotFound here.
+		tenantID := tenant.MustFromContext(p.Context)
+		edge, err := gs.CreateEdgeWithTenant(tenantID, fromNodeID, toNodeID, edgeType, properties, weight)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create edge: %w", err)
 		}
@@ -158,13 +161,13 @@ func updateEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 			weight = &w
 		}
 
-		// Update edge in storage
-		if err := gs.UpdateEdge(id, properties, weight); err != nil {
+		// Audit A6c-graphql-resolvers: tenant-scoped update.
+		tenantID := tenant.MustFromContext(p.Context)
+		if err := gs.UpdateEdgeForTenant(id, properties, weight, tenantID); err != nil {
 			return nil, fmt.Errorf("failed to update edge: %w", err)
 		}
 
-		// Fetch and return updated edge
-		edge, err := gs.GetEdge(id)
+		edge, err := gs.GetEdgeForTenant(id, tenantID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve updated edge: %w", err)
 		}
@@ -186,7 +189,9 @@ func deleteEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 			return nil, fmt.Errorf("invalid edge id %q: %w", idStr, err)
 		}
 
-		if err := gs.DeleteEdge(id); err != nil {
+		// Audit A6c-graphql-resolvers: tenant-scoped delete.
+		tenantID := tenant.MustFromContext(p.Context)
+		if err := gs.DeleteEdgeForTenant(id, tenantID); err != nil {
 			return nil, fmt.Errorf("edge not found: %w", err)
 		}
 
