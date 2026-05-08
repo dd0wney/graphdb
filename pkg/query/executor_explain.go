@@ -62,12 +62,7 @@ func buildExplainResult(plan *ExecutionPlan) *ResultSet {
 
 // executeWithProfiling executes the plan while collecting per-step timing and cardinality
 func (e *Executor) executeWithProfiling(ctx context.Context, plan *ExecutionPlan, query *Query) (*ResultSet, error) {
-	execCtx := &ExecutionContext{
-		context:  ctx,
-		graph:    e.graph,
-		bindings: make(map[string]any),
-		results:  make([]*BindingSet, 0),
-	}
+	execCtx := newExecutionContext(ctx, e.graph)
 
 	execCtx.results = append(execCtx.results, &BindingSet{
 		bindings: make(map[string]any),

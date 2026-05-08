@@ -15,10 +15,13 @@ func (ac *AggregationComputer) ComputeGroupedAggregates(ctx *ExecutionContext, r
 	results := make([]map[string]any, 0, len(groups))
 
 	for groupKey, groupBindings := range groups {
-		// Create a temporary execution context for this group
+		// Create a temporary execution context for this group.
+		// Audit A6c-query: inherit tenantID from parent ctx —
+		// aggregation must not run cross-tenant.
 		groupCtx := &ExecutionContext{
-			graph:   ctx.graph,
-			results: groupBindings,
+			graph:    ctx.graph,
+			tenantID: ctx.tenantID,
+			results:  groupBindings,
 		}
 
 		// Compute aggregates for this group

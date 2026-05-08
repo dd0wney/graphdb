@@ -62,7 +62,7 @@ func (ms *MatchStep) traverseFixedPath(ctx *ExecutionContext, currentNode *stora
 
 	for _, edge := range edges {
 		targetNodeID := ms.targetNodeID(edge, rel, currentNode)
-		targetNode, err := ctx.graph.GetNode(targetNodeID)
+		targetNode, err := ctx.graph.GetNodeForTenant(targetNodeID, ctx.tenantID)
 		if err != nil {
 			continue
 		}
@@ -150,7 +150,7 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 				continue
 			}
 
-			neighborNode, err := ctx.graph.GetNode(neighborID)
+			neighborNode, err := ctx.graph.GetNodeForTenant(neighborID, ctx.tenantID)
 			if err != nil {
 				continue
 			}
@@ -182,14 +182,15 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 func (ms *MatchStep) getEdges(ctx *ExecutionContext, node *storage.Node, rel *RelationshipPattern) []*storage.Edge {
 	var edges []*storage.Edge
 
+	// Audit A6c-query: tenant-scoped edge fetching for traversal.
 	switch rel.Direction {
 	case DirectionOutgoing:
-		edges, _ = ctx.graph.GetOutgoingEdges(node.ID)
+		edges, _ = ctx.graph.GetOutgoingEdgesForTenant(node.ID, ctx.tenantID)
 	case DirectionIncoming:
-		edges, _ = ctx.graph.GetIncomingEdges(node.ID)
+		edges, _ = ctx.graph.GetIncomingEdgesForTenant(node.ID, ctx.tenantID)
 	case DirectionBoth:
-		outgoing, _ := ctx.graph.GetOutgoingEdges(node.ID)
-		incoming, _ := ctx.graph.GetIncomingEdges(node.ID)
+		outgoing, _ := ctx.graph.GetOutgoingEdgesForTenant(node.ID, ctx.tenantID)
+		incoming, _ := ctx.graph.GetIncomingEdgesForTenant(node.ID, ctx.tenantID)
 		edges = make([]*storage.Edge, 0, len(outgoing)+len(incoming))
 		edges = append(edges, outgoing...)
 		edges = append(edges, incoming...)

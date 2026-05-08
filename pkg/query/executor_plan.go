@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
 // ExecutionPlan represents a query execution plan
@@ -18,12 +19,34 @@ type ExecutionStep interface {
 	Execute(ctx *ExecutionContext) error
 }
 
-// ExecutionContext holds execution state
+// ExecutionContext holds execution state.
+//
+// Audit A6c-query (2026-05-08): tenantID is read once from the
+// request context at construction time and snapshotted here.
+// Subsequent step executions read ec.tenantID directly rather than
+// parsing the context per call. Step authors must use the *ForTenant
+// graph methods with this tenantID — pre-fix, every executor step
+// called tenant-blind storage methods regardless of the JWT-derived
+// tenant on r.Context().
 type ExecutionContext struct {
 	context  context.Context // For cancellation/timeout
 	graph    *storage.GraphStorage
+	tenantID string         // Snapshotted from context at construction.
 	bindings map[string]any // Variable bindings
 	results  []*BindingSet
+}
+
+// newExecutionContext constructs an ExecutionContext, snapshotting
+// the tenant ID from ctx so step executions can call *ForTenant
+// graph methods without re-parsing ctx on every call.
+func newExecutionContext(ctx context.Context, graph *storage.GraphStorage) *ExecutionContext {
+	return &ExecutionContext{
+		context:  ctx,
+		graph:    graph,
+		tenantID: tenant.MustFromContext(ctx),
+		bindings: make(map[string]any),
+		results:  make([]*BindingSet, 0),
+	}
 }
 
 // IsCancelled checks if the execution context has been cancelled
@@ -148,12 +171,7 @@ func (e *Executor) executePlan(plan *ExecutionPlan, query *Query) (*ResultSet, e
 
 // executePlanWithContext executes an execution plan with context support
 func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPlan, query *Query) (*ResultSet, error) {
-	execCtx := &ExecutionContext{
-		context:  ctx,
-		graph:    e.graph,
-		bindings: make(map[string]any),
-		results:  make([]*BindingSet, 0),
-	}
+	execCtx := newExecutionContext(ctx, e.graph)
 
 	// Use initial bindings if provided (from WITH chaining), otherwise start with empty binding
 	if query.InitialBindings != nil {

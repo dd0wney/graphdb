@@ -28,16 +28,11 @@ func (ms *MatchStep) matchNode(ctx *ExecutionContext, nodePattern *NodePattern, 
 		}
 	}
 
-	// Get all nodes with matching labels
-	stats := ctx.graph.GetStatistics()
-	nodeCount := stats.NodeCount
-
-	for nodeID := uint64(1); nodeID <= nodeCount; nodeID++ {
-		node, err := ctx.graph.GetNode(nodeID)
-		if err != nil {
-			continue
-		}
-
+	// Audit A6c-query: tenant-scoped node enumeration. Replaces the
+	// "iterate 1..stats.NodeCount via GetNode" cross-tenant scan
+	// anti-pattern (same shape as the A6c-graphql-resolvers cleanup).
+	nodes := ctx.graph.GetAllNodesForTenant(ctx.tenantID)
+	for _, node := range nodes {
 		// Check labels
 		if len(nodePattern.Labels) > 0 {
 			if !ms.hasLabels(node, nodePattern.Labels) {
