@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
 func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +166,9 @@ func (s *Server) executePageRank(ctx context.Context, params map[string]any) (ma
 		Tolerance:     1e-6,
 	}
 
-	pageRankResult, err := algorithms.PageRank(s.graph, opts)
+	// Audit A6c-algorithms: tenant-scoped PageRank.
+	tenantID := tenant.MustFromContext(ctx)
+	pageRankResult, err := algorithms.PageRankForTenant(s.graph, opts, tenantID)
 	if err != nil {
 		return nil, wrapForClient(err, "PageRank computation")
 	}
@@ -181,7 +184,8 @@ func (s *Server) executeBetweenness(ctx context.Context) (map[string]any, error)
 	default:
 	}
 
-	centrality, err := algorithms.BetweennessCentrality(s.graph)
+	// Audit A6c-algorithms: tenant-scoped betweenness.
+	centrality, err := algorithms.BetweennessCentralityForTenant(s.graph, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "betweenness centrality")
 	}
@@ -196,7 +200,8 @@ func (s *Server) executeEdgeBetweenness(ctx context.Context) (map[string]any, er
 	default:
 	}
 
-	result, err := algorithms.EdgeBetweennessCentrality(s.graph)
+	// Audit A6c-algorithms: tenant-scoped edge betweenness.
+	result, err := algorithms.EdgeBetweennessCentralityForTenant(s.graph, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "edge betweenness centrality")
 	}
@@ -253,13 +258,14 @@ func (s *Server) executeDetectCycles(ctx context.Context, params map[string]any)
 	default:
 	}
 
-	// Detect cycles
+	// Audit A6c-algorithms: tenant-scoped cycle detection.
+	tenantID := tenant.MustFromContext(ctx)
 	var cycles []algorithms.Cycle
 	var err error
 	if opts.MinCycleLength > 0 || opts.MaxCycleLength > 0 {
-		cycles, err = algorithms.DetectCyclesWithOptions(s.graph, opts)
+		cycles, err = algorithms.DetectCyclesWithOptionsForTenant(s.graph, opts, tenantID)
 	} else {
-		cycles, err = algorithms.DetectCycles(s.graph)
+		cycles, err = algorithms.DetectCyclesForTenant(s.graph, tenantID)
 	}
 	if err != nil {
 		return nil, wrapForClient(err, "cycle detection")
@@ -289,7 +295,8 @@ func (s *Server) executeHasCycle(ctx context.Context) (map[string]any, error) {
 	default:
 	}
 
-	hasCycle, err := algorithms.HasCycle(s.graph)
+	// Audit A6c-algorithms: tenant-scoped cycle existence check.
+	hasCycle, err := algorithms.HasCycleForTenant(s.graph, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "cycle check")
 	}
@@ -304,7 +311,8 @@ func (s *Server) executeTriangles(ctx context.Context) (map[string]any, error) {
 	default:
 	}
 
-	result, err := algorithms.CountTriangles(s.graph)
+	// Audit A6c-algorithms: tenant-scoped triangle counting.
+	result, err := algorithms.CountTrianglesForTenant(s.graph, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "triangle counting")
 	}
@@ -323,7 +331,8 @@ func (s *Server) executeSCC(ctx context.Context) (map[string]any, error) {
 	default:
 	}
 
-	result, err := algorithms.StronglyConnectedComponents(s.graph)
+	// Audit A6c-algorithms: tenant-scoped SCC.
+	result, err := algorithms.StronglyConnectedComponentsForTenant(s.graph, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "SCC")
 	}
@@ -383,7 +392,8 @@ func (s *Server) executeNodeSimilarity(ctx context.Context, params map[string]an
 		if !ok1 || !ok2 {
 			return nil, fmt.Errorf("node_a and node_b must be numeric IDs")
 		}
-		score, err := algorithms.NodeSimilarityPair(s.graph, uint64(a), uint64(b), opts)
+		// Audit A6c-algorithms: tenant-scoped pair similarity.
+		score, err := algorithms.NodeSimilarityPairForTenant(s.graph, uint64(a), uint64(b), opts, tenant.MustFromContext(ctx))
 		if err != nil {
 			return nil, wrapForClient(err, "node similarity")
 		}
@@ -396,7 +406,8 @@ func (s *Server) executeNodeSimilarity(ctx context.Context, params map[string]an
 		if !ok {
 			return nil, fmt.Errorf("node_a must be a numeric ID")
 		}
-		result, err := algorithms.NodeSimilarityFor(s.graph, uint64(a), opts)
+		// Audit A6c-algorithms: tenant-scoped per-source similarity.
+		result, err := algorithms.NodeSimilarityForForTenant(s.graph, uint64(a), opts, tenant.MustFromContext(ctx))
 		if err != nil {
 			return nil, wrapForClient(err, "node similarity")
 		}
@@ -406,8 +417,8 @@ func (s *Server) executeNodeSimilarity(ctx context.Context, params map[string]an
 		}, nil
 	}
 
-	// All-pairs mode
-	results, err := algorithms.NodeSimilarityAll(s.graph, opts)
+	// All-pairs mode (tenant-scoped).
+	results, err := algorithms.NodeSimilarityAllForTenant(s.graph, opts, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "node similarity")
 	}
@@ -461,7 +472,8 @@ func (s *Server) executeLinkPrediction(ctx context.Context, params map[string]an
 		if !ok1 || !ok2 {
 			return nil, fmt.Errorf("from_node and to_node must be numeric IDs")
 		}
-		score, err := algorithms.PredictLinkScore(s.graph, uint64(f), uint64(t), opts)
+		// Audit A6c-algorithms: tenant-scoped pair link prediction.
+		score, err := algorithms.PredictLinkScoreForTenant(s.graph, uint64(f), uint64(t), opts, tenant.MustFromContext(ctx))
 		if err != nil {
 			return nil, wrapForClient(err, "link prediction")
 		}
@@ -474,7 +486,8 @@ func (s *Server) executeLinkPrediction(ctx context.Context, params map[string]an
 		if !ok {
 			return nil, fmt.Errorf("from_node must be a numeric ID")
 		}
-		result, err := algorithms.PredictLinksFor(s.graph, uint64(f), opts)
+		// Audit A6c-algorithms: tenant-scoped per-source link prediction.
+		result, err := algorithms.PredictLinksForForTenant(s.graph, uint64(f), opts, tenant.MustFromContext(ctx))
 		if err != nil {
 			return nil, wrapForClient(err, "link prediction")
 		}

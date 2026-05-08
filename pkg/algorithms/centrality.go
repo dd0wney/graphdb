@@ -15,18 +15,15 @@ type predEdge struct {
 	edgeID uint64
 }
 
-// brandesCentrality runs a single O(VE) Brandes pass and returns both node and
-// edge betweenness centrality (raw, unnormalised). The caller is responsible for
-// normalisation so that BetweennessCentrality and EdgeBetweennessCentrality can
-// each apply the appropriate factor.
-func brandesCentrality(graph *storage.GraphStorage) (nodeBetweenness map[uint64]float64, edgeBetweenness map[uint64]float64, nodeIDs []uint64, err error) {
-	stats := graph.GetStatistics()
-
-	nodeIDs = make([]uint64, 0, stats.NodeCount)
-	for i := uint64(1); i <= stats.NodeCount; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
+// brandesCentrality runs a single O(VE) Brandes pass and returns
+// both node and edge betweenness centrality (raw, unnormalised).
+// Operates against a graphView so tenant-blind and tenant-scoped
+// callers share the implementation.
+func brandesCentrality(view graphView) (nodeBetweenness map[uint64]float64, edgeBetweenness map[uint64]float64, nodeIDs []uint64, err error) {
+	allNodes := view.AllNodes()
+	nodeIDs = make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
 	nodeBetweenness = make(map[uint64]float64, len(nodeIDs))
@@ -60,7 +57,7 @@ func brandesCentrality(graph *storage.GraphStorage) (nodeBetweenness map[uint64]
 			}
 			stack = append(stack, v)
 
-			edges, edgeErr := graph.GetOutgoingEdges(v)
+			edges, edgeErr := view.OutgoingEdges(v)
 			if edgeErr != nil {
 				continue
 			}
@@ -105,10 +102,20 @@ func brandesCentrality(graph *storage.GraphStorage) (nodeBetweenness map[uint64]
 	return nodeBetweenness, edgeBetweenness, nodeIDs, nil
 }
 
-// BetweennessCentrality computes betweenness centrality for all nodes.
-// Measures how often a node appears on shortest paths between other nodes.
+// BetweennessCentrality computes betweenness centrality for all nodes
+// (tenant-blind). Measures how often a node appears on shortest paths.
 func BetweennessCentrality(graph *storage.GraphStorage) (map[uint64]float64, error) {
-	nodeBetweenness, _, nodeIDs, err := brandesCentrality(graph)
+	return betweennessCentralityView(newTenantBlindView(graph))
+}
+
+// BetweennessCentralityForTenant restricts computation to the
+// caller's tenant subgraph. Audit A6c-algorithms.
+func BetweennessCentralityForTenant(graph *storage.GraphStorage, tenantID string) (map[uint64]float64, error) {
+	return betweennessCentralityView(newTenantScopedView(graph, tenantID))
+}
+
+func betweennessCentralityView(view graphView) (map[uint64]float64, error) {
+	nodeBetweenness, _, nodeIDs, err := brandesCentrality(view)
 	if err != nil {
 		return nil, err
 	}
@@ -142,11 +149,21 @@ type EdgeBetweennessResult struct {
 	TopEdges []RankedEdge `json:"top_edges"`
 }
 
-// EdgeBetweennessCentrality computes betweenness centrality for all edges.
-// Measures how often an edge appears on shortest paths between all node pairs.
-// Uses the same O(VE) Brandes pass as BetweennessCentrality.
+// EdgeBetweennessCentrality computes betweenness centrality for all
+// edges (tenant-blind). Measures how often an edge appears on
+// shortest paths between all node pairs.
 func EdgeBetweennessCentrality(graph *storage.GraphStorage) (*EdgeBetweennessResult, error) {
-	_, edgeBetweenness, nodeIDs, err := brandesCentrality(graph)
+	return edgeBetweennessCentralityView(newTenantBlindView(graph))
+}
+
+// EdgeBetweennessCentralityForTenant restricts computation to the
+// caller's tenant subgraph. Audit A6c-algorithms.
+func EdgeBetweennessCentralityForTenant(graph *storage.GraphStorage, tenantID string) (*EdgeBetweennessResult, error) {
+	return edgeBetweennessCentralityView(newTenantScopedView(graph, tenantID))
+}
+
+func edgeBetweennessCentralityView(view graphView) (*EdgeBetweennessResult, error) {
+	_, edgeBetweenness, nodeIDs, err := brandesCentrality(view)
 	if err != nil {
 		return nil, err
 	}
@@ -164,14 +181,14 @@ func EdgeBetweennessCentrality(graph *storage.GraphStorage) (*EdgeBetweennessRes
 	// Build ByNodePair by looking up each edge's endpoints
 	byNodePair := make(map[[2]uint64]float64, len(edgeBetweenness))
 	for edgeID, score := range edgeBetweenness {
-		edge, edgeErr := graph.GetEdge(edgeID)
+		edge, edgeErr := view.Edge(edgeID)
 		if edgeErr != nil {
 			continue
 		}
 		byNodePair[[2]uint64{edge.FromNodeID, edge.ToNodeID}] = score
 	}
 
-	topEdges := findTopEdges(graph, edgeBetweenness, 10)
+	topEdges := findTopEdgesView(view, edgeBetweenness, 10)
 
 	return &EdgeBetweennessResult{
 		ByEdgeID:   edgeBetweenness,
@@ -199,8 +216,9 @@ func (h *rankedEdgeHeap) Pop() any {
 	return x
 }
 
-// findTopEdges returns the top n edges by score using a min-heap.
-func findTopEdges(graph *storage.GraphStorage, scores map[uint64]float64, n int) []RankedEdge {
+// findTopEdgesView returns the top n edges by score using a min-heap,
+// fetching edge data via the supplied graphView.
+func findTopEdgesView(view graphView, scores map[uint64]float64, n int) []RankedEdge {
 	if n <= 0 {
 		return nil
 	}
@@ -209,7 +227,7 @@ func findTopEdges(graph *storage.GraphStorage, scores map[uint64]float64, n int)
 	heap.Init(&h)
 
 	for edgeID, score := range scores {
-		edge, err := graph.GetEdge(edgeID)
+		edge, err := view.Edge(edgeID)
 		if err != nil {
 			continue
 		}
@@ -260,7 +278,8 @@ type CentralityResult struct {
 // ComputeAllCentrality computes all centrality measures in a single pass where
 // possible. Node and edge betweenness share one Brandes traversal.
 func ComputeAllCentrality(graph *storage.GraphStorage) (*CentralityResult, error) {
-	nodeBetweenness, edgeBetweennessRaw, nodeIDs, err := brandesCentrality(graph)
+	view := newTenantBlindView(graph)
+	nodeBetweenness, edgeBetweennessRaw, nodeIDs, err := brandesCentrality(view)
 	if err != nil {
 		return nil, err
 	}
@@ -285,13 +304,13 @@ func ComputeAllCentrality(graph *storage.GraphStorage) (*CentralityResult, error
 	// Build edge BC result
 	byNodePair := make(map[[2]uint64]float64, len(edgeBetweennessRaw))
 	for edgeID, score := range edgeBetweennessRaw {
-		edge, edgeErr := graph.GetEdge(edgeID)
+		edge, edgeErr := view.Edge(edgeID)
 		if edgeErr != nil {
 			continue
 		}
 		byNodePair[[2]uint64{edge.FromNodeID, edge.ToNodeID}] = score
 	}
-	topEdges := findTopEdges(graph, edgeBetweennessRaw, 10)
+	topEdges := findTopEdgesView(view, edgeBetweennessRaw, 10)
 
 	edgeBCResult := &EdgeBetweennessResult{
 		ByEdgeID:   edgeBetweennessRaw,

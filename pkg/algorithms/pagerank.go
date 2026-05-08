@@ -39,25 +39,38 @@ type RankedNode struct {
 }
 
 // PageRank computes PageRank scores for all nodes in the graph
+// (tenant-blind — runs across every tenant). Used by CLI, demos, and
+// single-tenant deployments. Multi-tenant API callers must use
+// PageRankForTenant.
 func PageRank(graph *storage.GraphStorage, opts PageRankOptions) (*PageRankResult, error) {
-	// Get all nodes
-	stats := graph.GetStatistics()
+	return pageRankView(newTenantBlindView(graph), opts)
+}
 
-	// Use uint64 directly to avoid overflow on 32-bit systems
-	if stats.NodeCount == 0 {
+// PageRankForTenant computes PageRank scores for nodes owned by the
+// given tenant. Audit A6c-algorithms (2026-05-08): same algorithm
+// body as PageRank, but the underlying graph access is restricted to
+// the tenant — foreign-tenant nodes are excluded from the scoring
+// graph and edges to foreign-tenant nodes are dropped at expansion.
+func PageRankForTenant(graph *storage.GraphStorage, opts PageRankOptions, tenantID string) (*PageRankResult, error) {
+	return pageRankView(newTenantScopedView(graph, tenantID), opts)
+}
+
+// pageRankView is the shared algorithm body. Operates against a
+// graphView so tenant-blind and tenant-scoped public functions can
+// share one implementation — see pkg/algorithms/view.go.
+func pageRankView(view graphView, opts PageRankOptions) (*PageRankResult, error) {
+	allNodes := view.AllNodes()
+
+	if len(allNodes) == 0 {
 		return &PageRankResult{
 			Scores:    make(map[uint64]float64),
 			Converged: true,
 		}, nil
 	}
 
-	// Get all node IDs (need to iterate through graph)
-	// For now, assume sequential IDs from 1 to nodeCount
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	for i := uint64(1); i <= stats.NodeCount; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
+	nodeIDs := make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
 	// Initialize PageRank scores (uniform distribution)
@@ -70,7 +83,7 @@ func PageRank(graph *storage.GraphStorage, opts PageRankOptions) (*PageRankResul
 	// Get outgoing edge counts for each node
 	outDegree := make(map[uint64]int)
 	for _, nodeID := range nodeIDs {
-		edges, err := graph.GetOutgoingEdges(nodeID)
+		edges, err := view.OutgoingEdges(nodeID)
 		if err == nil {
 			outDegree[nodeID] = len(edges)
 		}
@@ -84,13 +97,10 @@ func PageRank(graph *storage.GraphStorage, opts PageRankOptions) (*PageRankResul
 	for iterations < opts.MaxIterations {
 		iterations++
 
-		// Calculate new scores
 		for _, nodeID := range nodeIDs {
-			// Start with random jump probability
 			newScore := (1.0 - opts.DampingFactor) / float64(len(nodeIDs))
 
-			// Add contributions from incoming edges
-			incomingEdges, err := graph.GetIncomingEdges(nodeID)
+			incomingEdges, err := view.IncomingEdges(nodeID)
 			if err == nil {
 				for _, edge := range incomingEdges {
 					fromNode := edge.FromNodeID
@@ -103,7 +113,6 @@ func PageRank(graph *storage.GraphStorage, opts PageRankOptions) (*PageRankResul
 			newScores[nodeID] = newScore
 		}
 
-		// Check for convergence
 		maxDiff := 0.0
 		for nodeID := range scores {
 			diff := math.Abs(newScores[nodeID] - scores[nodeID])
@@ -117,7 +126,6 @@ func PageRank(graph *storage.GraphStorage, opts PageRankOptions) (*PageRankResul
 			break
 		}
 
-		// Swap scores
 		scores, newScores = newScores, scores
 	}
 
@@ -132,8 +140,7 @@ func PageRank(graph *storage.GraphStorage, opts PageRankOptions) (*PageRankResul
 		}
 	}
 
-	// Find top nodes
-	topNodes := findTopNodes(graph, scores, 10)
+	topNodes := findTopNodesView(view, scores, 10)
 
 	return &PageRankResult{
 		Scores:     scores,
@@ -167,21 +174,31 @@ func (h *rankedNodeHeap) Pop() any {
 	return x
 }
 
-// findTopNodes finds the top N nodes by score using a min-heap.
+// findTopNodes is the tenant-blind wrapper kept for callers that
+// haven't yet been migrated to the graphView pattern (centrality,
+// triangles). New callers should construct a graphView and use
+// findTopNodesView directly.
+func findTopNodes(graph *storage.GraphStorage, scores map[uint64]float64, n int) []RankedNode {
+	return findTopNodesView(newTenantBlindView(graph), scores, n)
+}
+
+// findTopNodesView finds the top N nodes by score using a min-heap,
+// fetching node data via the supplied graphView. The view-level
+// indirection lets tenant-blind and tenant-scoped algorithm callers
+// share this helper — see pkg/algorithms/view.go.
+//
 // Time complexity: O(n log k) where n = len(scores) and k = n
 // Space complexity: O(k)
-func findTopNodes(graph *storage.GraphStorage, scores map[uint64]float64, n int) []RankedNode {
+func findTopNodesView(view graphView, scores map[uint64]float64, n int) []RankedNode {
 	if n <= 0 {
 		return nil
 	}
 
-	// Use a min-heap to track top N elements
-	// By using a min-heap, we can efficiently discard elements smaller than the minimum
 	h := make(rankedNodeHeap, 0, n)
 	heap.Init(&h)
 
 	for nodeID, score := range scores {
-		node, err := graph.GetNode(nodeID)
+		node, err := view.Node(nodeID)
 		if err != nil {
 			continue
 		}
@@ -193,17 +210,13 @@ func findTopNodes(graph *storage.GraphStorage, scores map[uint64]float64, n int)
 		}
 
 		if h.Len() < n {
-			// Heap not full yet, just add
 			heap.Push(&h, rn)
 		} else if score > h[0].Score {
-			// New element is larger than current minimum, replace
 			heap.Pop(&h)
 			heap.Push(&h, rn)
 		}
-		// Otherwise, this element is smaller than all top N, skip it
 	}
 
-	// Extract elements from heap (will be in ascending order)
 	result := make([]RankedNode, h.Len())
 	for i := h.Len() - 1; i >= 0; i-- {
 		result[i] = heap.Pop(&h).(RankedNode)

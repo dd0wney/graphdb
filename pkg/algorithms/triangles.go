@@ -11,26 +11,29 @@ type TriangleCountResult struct {
 	TopNodes               []RankedNode
 }
 
-// CountTriangles counts triangles in the graph, treating all edges as undirected.
-// For each node u, it iterates over pairs (v,w) in u's neighbor set; if v and w
-// are also neighbors, that's a triangle. Each triangle is counted once per
-// participating node, so GlobalCount = sum(PerNode) / 3.
-// Clustering coefficients are computed in the same pass.
+// CountTriangles counts triangles in the graph, treating all edges
+// as undirected (tenant-blind). Multi-tenant API callers must use
+// CountTrianglesForTenant.
 func CountTriangles(graph *storage.GraphStorage) (*TriangleCountResult, error) {
-	stats := graph.GetStatistics()
+	return countTrianglesView(newTenantBlindView(graph))
+}
 
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	maxID := stats.NodeCount + 10
-	if maxID < 100 {
-		maxID = 100
-	}
-	for i := uint64(1); i <= maxID; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
-		if uint64(len(nodeIDs)) >= stats.NodeCount && stats.NodeCount > 0 {
-			break
-		}
+// CountTrianglesForTenant counts triangles within the caller's
+// tenant subgraph. Audit A6c-algorithms (2026-05-08).
+func CountTrianglesForTenant(graph *storage.GraphStorage, tenantID string) (*TriangleCountResult, error) {
+	return countTrianglesView(newTenantScopedView(graph, tenantID))
+}
+
+// countTrianglesView is the shared algorithm body. For each node u
+// it iterates over pairs (v,w) in u's neighbor set; if v and w are
+// also neighbors, that's a triangle. Each triangle is counted once
+// per participating node, so GlobalCount = sum(PerNode) / 3.
+// Clustering coefficients are computed in the same pass.
+func countTrianglesView(view graphView) (*TriangleCountResult, error) {
+	allNodes := view.AllNodes()
+	nodeIDs := make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
 	// Build undirected neighbor sets for all nodes
@@ -38,12 +41,12 @@ func CountTriangles(graph *storage.GraphStorage) (*TriangleCountResult, error) {
 	for _, nodeID := range nodeIDs {
 		neighbors := make(map[uint64]bool)
 
-		outEdges, _ := graph.GetOutgoingEdges(nodeID)
+		outEdges, _ := view.OutgoingEdges(nodeID)
 		for _, e := range outEdges {
 			neighbors[e.ToNodeID] = true
 		}
 
-		inEdges, _ := graph.GetIncomingEdges(nodeID)
+		inEdges, _ := view.IncomingEdges(nodeID)
 		for _, e := range inEdges {
 			neighbors[e.FromNodeID] = true
 		}
@@ -74,14 +77,12 @@ func CountTriangles(graph *storage.GraphStorage) (*TriangleCountResult, error) {
 		perNode[u] = count
 	}
 
-	// GlobalCount: each triangle counted 3 times (once per vertex)
 	total := 0
 	for _, c := range perNode {
 		total += c
 	}
 	globalCount := total / 3
 
-	// Clustering coefficients
 	coefficients := make(map[uint64]float64, len(nodeIDs))
 	for _, u := range nodeIDs {
 		k := len(neighborSets[u])
@@ -93,12 +94,12 @@ func CountTriangles(graph *storage.GraphStorage) (*TriangleCountResult, error) {
 		coefficients[u] = float64(perNode[u]) / float64(possible)
 	}
 
-	// TopNodes via findTopNodes (convert int counts to float64)
+	// TopNodes (convert int counts to float64)
 	floatScores := make(map[uint64]float64, len(perNode))
 	for id, c := range perNode {
 		floatScores[id] = float64(c)
 	}
-	topNodes := findTopNodes(graph, floatScores, 10)
+	topNodes := findTopNodesView(view, floatScores, 10)
 
 	return &TriangleCountResult{
 		PerNode:                perNode,
