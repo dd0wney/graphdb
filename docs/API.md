@@ -688,6 +688,91 @@ curl -X POST http://localhost:8080/vector-search \
   }'
 ```
 
+### OpenAI-Compatible Embeddings (`/v1/embeddings`)
+
+A drop-in OpenAI-compatible endpoint backed by the per-tenant LSA index.
+Apps that already speak the OpenAI Embeddings API (LangChain, Vercel AI SDK,
+llamaindex, etc.) can integrate by setting `api_base` to your graphdb URL.
+
+**Endpoint**: `POST /v1/embeddings` (auth + tenant required)
+
+**Request** — accepts the OpenAI shape:
+
+```json
+{
+  "input": "graph databases store nodes and relationships",
+  "model": "text-embedding-ada-002",
+  "encoding_format": "float"
+}
+```
+
+`input` accepts either a single string or an array of strings. `model` is
+recorded but not validated (the only backend is LSA). `encoding_format`
+must be `"float"` or omitted; base64 is not supported in v1. `dimensions`,
+if provided, must match the LSA index's actual dimension or the request
+returns 400.
+
+**Response** — mirrors OpenAI's `/v1/embeddings`:
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "object": "embedding",
+      "embedding": [0.012, -0.034, ...],
+      "index": 0
+    }
+  ],
+  "model": "graphdb-lsa-v1",
+  "usage": { "prompt_tokens": 5, "total_tokens": 5 }
+}
+```
+
+**LangChain example** (Python):
+
+```python
+from langchain_openai import OpenAIEmbeddings
+embeddings = OpenAIEmbeddings(
+    base_url="https://your-graphdb-host/v1",
+    api_key="your-graphdb-jwt-or-api-key",
+    model="graphdb-lsa-v1",
+)
+vec = embeddings.embed_query("graph databases")
+```
+
+**Trade-offs vs. OpenAI's neural models** (read before integrating):
+
+- **Vocabulary-bound.** LSA can only embed terms that appeared in the
+  corpus the index was built on. Out-of-vocab queries return **400**, not
+  a fallback vector. OpenAI's neural models always return *some* vector;
+  LSA cannot. For LLM retrieval flows, this means failed embeddings should
+  surface as user-facing "no semantic context for that query," not as
+  silent zero-vector matches.
+- **Scale ceiling**: ~100K-500K documents at default 200 dims on a single
+  modern CPU core. LSA's `TopKByVector` is a single-threaded O(D×k) scan
+  with no SIMD. Above that ceiling P99 latency degrades; consider an
+  external embedding service.
+- **Build-first**: the LSA index is built per-tenant via the admin endpoint
+  `POST /hybrid-search/lsa-index`. A tenant that hasn't built one yet gets
+  **503** with a message pointing at that endpoint.
+- **Deterministic.** Same query, same index → bit-identical vectors. Good
+  for cache keys, reproducible benchmarks, regression tests.
+- **No external API calls, no GPU.** Air-gapped deployments work; vectors
+  never leave the process boundary.
+
+**Curl example**:
+
+```bash
+curl -X POST http://localhost:8080/v1/embeddings \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": ["graph databases", "vector search"],
+    "model": "graphdb-lsa-v1"
+  }'
+```
+
 ## Rate Limits
 
 Rate limits vary by edition:

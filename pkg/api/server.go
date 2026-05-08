@@ -66,6 +66,11 @@ func (s *Server) Start() error {
 	// Hybrid (FTS + LSA) search (protected, tenant-scoped)
 	mux.HandleFunc("/hybrid-search", s.requireAuth(s.withTenant(s.handleHybridSearch)))
 
+	// OpenAI-compatible embeddings (protected, tenant-scoped). Backed by the
+	// per-tenant LSA index so apps that already speak OpenAI (LangChain,
+	// Vercel AI SDK, etc.) can drop in by setting api_base.
+	mux.HandleFunc("/v1/embeddings", s.requireAuth(s.withTenant(s.handleEmbeddings)))
+
 	// Search index population (admin-only, tenant-scoped)
 	mux.HandleFunc("/search/index", s.requireAdmin(s.withTenant(s.handleSearchIndex)))
 	mux.HandleFunc("/hybrid-search/lsa-index", s.requireAdmin(s.withTenant(s.handleLSAIndex)))
