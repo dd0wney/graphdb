@@ -1,6 +1,7 @@
 package graphql
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -46,7 +47,7 @@ func TestExecuteQuerySingleNode(t *testing.T) {
 		}
 	}`
 
-	result := ExecuteQuery(query, schema)
+	result := ExecuteQuery(context.Background(), query, schema)
 	if result.HasErrors() {
 		t.Fatalf("Query execution failed: %v", result.Errors)
 	}
@@ -116,7 +117,7 @@ func TestExecuteQueryMultipleNodes(t *testing.T) {
 		}
 	}`
 
-	result := ExecuteQuery(query, schema)
+	result := ExecuteQuery(context.Background(), query, schema)
 	if result.HasErrors() {
 		t.Fatalf("Query execution failed: %v", result.Errors)
 	}
@@ -172,7 +173,7 @@ func TestExecuteQueryWithProperties(t *testing.T) {
 		}
 	}`
 
-	result := ExecuteQuery(query, schema)
+	result := ExecuteQuery(context.Background(), query, schema)
 	if result.HasErrors() {
 		t.Fatalf("Query execution failed: %v", result.Errors)
 	}
@@ -232,7 +233,7 @@ func TestExecuteQueryNotFound(t *testing.T) {
 		}
 	}`
 
-	result := ExecuteQuery(query, schema)
+	result := ExecuteQuery(context.Background(), query, schema)
 
 	// Should not error, but return null
 	if result.HasErrors() {
@@ -271,7 +272,7 @@ func TestExecuteQueryInvalidSyntax(t *testing.T) {
 		person(id: "1"
 	}`
 
-	result := ExecuteQuery(query, schema)
+	result := ExecuteQuery(context.Background(), query, schema)
 
 	// Should have errors
 	if !result.HasErrors() {
@@ -308,7 +309,7 @@ func TestExecuteQueryEmptyDatabase(t *testing.T) {
 		}
 	}`
 
-	result := ExecuteQuery(query, schema)
+	result := ExecuteQuery(context.Background(), query, schema)
 	if result.HasErrors() {
 		t.Fatalf("Query execution failed: %v", result.Errors)
 	}
