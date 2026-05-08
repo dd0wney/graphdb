@@ -114,26 +114,64 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 
 // GetNodeForTenant retrieves a node by ID, scoped to the given tenant.
 //
-// In A3a (this commit) tenantID is accepted but not enforced — behaviour
-// is identical to GetNode. A3b will add the matchesTenant check that
-// returns ErrNodeNotFound on cross-tenant access (Security CRIT #1 from
-// docs/AUDIT_security_2026-05-06.md). Empty tenantID defaults to
-// tenantid.Default.
+// Returns ErrNodeNotFound if the node does not exist OR belongs to a
+// different tenant. The same error in both cases is intentional — a
+// distinct ErrCrossTenant would let an attacker enumerate "this ID
+// exists in *some* tenant" via response-shape inference.
 //
-// Why two methods: the legacy GetNode has 70+ call sites in this
-// codebase. A breaking-change migration would interleave mechanical
-// caller updates with the security-critical enforcement diff. Splitting
-// keeps each commit reviewable.
+// Empty tenantID defaults to tenantid.Default ("default"). This matches
+// CreateNode's default-tenant fallback so single-tenant deployments and
+// tests that don't supply a tenant continue to work transparently.
+//
+// Closes Security CRIT #1 from docs/AUDIT_security_2026-05-06.md.
 func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node, error) {
-	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
-	return gs.GetNode(nodeID)
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+	node, err := gs.getNodeRefForTenant(nodeID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return node.Clone(), nil
+}
+
+// getNodeRefForTenant returns the live node pointer (NO clone) after
+// validating tenant ownership. Caller MUST hold gs.mu.RLock for the
+// duration that the returned pointer is used.
+//
+// Internal use only — package-private. Hot-path callers (post-filter
+// loops in vector search etc.) avoid the per-iteration clone cost via
+// this helper. Public callers must use GetNodeForTenant which clones
+// for safety.
+//
+// Returns ErrNodeNotFound on missing or cross-tenant. See
+// GetNodeForTenant for the rationale on the unified error response.
+func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*Node, error) {
+	node, exists := gs.nodes[nodeID]
+	if !exists {
+		return nil, ErrNodeNotFound
+	}
+	expectedTenant := effectiveTenantID(tenantID).String()
+	if node.TenantID != expectedTenant {
+		// Cross-tenant access: same error as missing to avoid an
+		// existence-leak side channel.
+		return nil, ErrNodeNotFound
+	}
+	return node, nil
 }
 
 // UpdateNodeForTenant updates a node's properties, scoped to the given
-// tenant. See GetNodeForTenant for the migration rationale; A3b adds
-// enforcement.
+// tenant. Returns ErrNodeNotFound on missing or cross-tenant (same
+// rationale as GetNodeForTenant).
 func (gs *GraphStorage) UpdateNodeForTenant(nodeID uint64, properties map[string]Value, tenantID string) error {
-	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
+	// Validate tenant ownership *before* delegating to UpdateNode.
+	// We hold the read lock just long enough for the check, then drop
+	// it so UpdateNode can acquire the write lock without deadlocking.
+	gs.mu.RLock()
+	if _, err := gs.getNodeRefForTenant(nodeID, tenantID); err != nil {
+		gs.mu.RUnlock()
+		return err
+	}
+	gs.mu.RUnlock()
 	return gs.UpdateNode(nodeID, properties)
 }
 
@@ -219,10 +257,21 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 }
 
 // DeleteNodeForTenant deletes a node and all its edges, scoped to the
-// given tenant. See GetNodeForTenant for the migration rationale; A3b
-// adds enforcement.
+// given tenant. Returns ErrNodeNotFound on missing or cross-tenant
+// (same rationale as GetNodeForTenant).
 func (gs *GraphStorage) DeleteNodeForTenant(nodeID uint64, tenantID string) error {
-	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
+	// Tenant check under read lock, then delegate to DeleteNode which
+	// acquires the write lock. The brief lock-drop window between the
+	// two is benign: tenant IDs are immutable after node creation (no
+	// API to change them) and node IDs don't get recycled, so the only
+	// race is "node deleted by another goroutine before our delete" —
+	// which DeleteNode handles correctly by returning ErrNodeNotFound.
+	gs.mu.RLock()
+	if _, err := gs.getNodeRefForTenant(nodeID, tenantID); err != nil {
+		gs.mu.RUnlock()
+		return err
+	}
+	gs.mu.RUnlock()
 	return gs.DeleteNode(nodeID)
 }
 
@@ -318,9 +367,20 @@ func (gs *GraphStorage) GetAllNodeIDs() []uint64 {
 	return nodeIDs
 }
 
-// GetAllNodes returns all nodes in the storage.
-// Returns cloned nodes to prevent modification of internal data.
-func (gs *GraphStorage) GetAllNodes() []*Node {
+// GetAllNodesAcrossTenants returns every node from every tenant.
+//
+// Use ONLY for legitimate cross-tenant operations: replication, full
+// backup, admin reports. The name is deliberately verbose so that
+// reaching for it is a deliberate decision; calling it from any HTTP
+// handler is almost certainly the wrong choice — use
+// GetAllNodesForTenant(getTenantFromContext(r)) instead.
+//
+// Replaced the previous GetAllNodes (removed 2026-05-08, audit A3b)
+// which had identical semantics under a name that made it easy to call
+// accidentally from request-scoped code paths. That accidental misuse
+// in pkg/api/handlers_nodes.go was Security CRIT #2 in the
+// 2026-05-06 audit.
+func (gs *GraphStorage) GetAllNodesAcrossTenants() []*Node {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 

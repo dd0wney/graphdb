@@ -15,7 +15,15 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
-	allNodes := s.graph.GetAllNodes()
+	// Tenant-scoped per audit Security CRIT #2 (2026-05-06). Previously this
+	// called GetAllNodes which dumped every tenant's nodes — any
+	// authenticated user could read the full multi-tenant corpus in a single
+	// request. The endpoint is registered with requireAuth (server.go:42)
+	// but not yet withTenant (audit task A5); getTenantFromContext returns
+	// the default tenant when no context is set, which matches existing
+	// single-tenant deployment behaviour.
+	tenantID := getTenantFromContext(r)
+	allNodes := s.graph.GetAllNodesForTenant(tenantID)
 	nodes := make([]*NodeResponse, 0, len(allNodes))
 
 	for _, node := range allNodes {

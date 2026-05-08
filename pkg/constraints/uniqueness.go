@@ -89,8 +89,10 @@ func (c *UniquePropertyConstraint) validateGlobal(graph GraphReader) []Violation
 			}}
 		}
 	} else {
-		// Check all nodes
-		nodes = graph.GetAllNodes()
+		// Constraint validation runs across all tenants. Per-tenant
+		// validation is a separate follow-up; the explicit name makes
+		// the cross-tenant scope visible (audit A3b, 2026-05-08).
+		nodes = graph.GetAllNodesAcrossTenants()
 	}
 
 	// Build map of values to node IDs
