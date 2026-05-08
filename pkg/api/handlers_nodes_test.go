@@ -224,6 +224,10 @@ func TestUpdateNode(t *testing.T) {
 			expectError:  false,
 		},
 		{
+			// Audit A6a (2026-05-08): missing-or-cross-tenant collapses to
+			// 404 via ErrNodeNotFound. Pre-A6a this was 500. The unified
+			// error is intentional — distinguishing them would leak
+			// existence to a cross-tenant probe.
 			name:   "Update non-existent node",
 			nodeID: 99999,
 			request: NodeRequest{
@@ -231,7 +235,7 @@ func TestUpdateNode(t *testing.T) {
 					"name": "NonExistent",
 				},
 			},
-			expectStatus: http.StatusInternalServerError,
+			expectStatus: http.StatusNotFound,
 			expectError:  true,
 		},
 	}

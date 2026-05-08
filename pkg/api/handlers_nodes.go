@@ -1,9 +1,11 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/validation"
 )
 
@@ -54,7 +56,12 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	converter := newPropertyConverter()
 	props := converter.ConvertAndSanitize(req.Properties, s.convertToValue)
 
-	node, err := s.graph.CreateNode(req.Labels, props)
+	// Audit A6a: create with the request's tenant context. Without this,
+	// every create lands in the default tenant regardless of the caller's
+	// JWT claim — re-introducing the cross-tenant write the audit closed
+	// at the storage layer.
+	tenantID := getTenantFromContext(r)
+	node, err := s.graph.CreateNodeWithTenant(tenantID, req.Labels, props)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create node"))
 		return
@@ -80,8 +87,12 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getNode(w http.ResponseWriter, r *http.Request, nodeID uint64) {
-	node, err := s.graph.GetNode(nodeID)
+	tenantID := getTenantFromContext(r)
+	node, err := s.graph.GetNodeForTenant(nodeID, tenantID)
 	if err != nil {
+		// ErrNodeNotFound covers both "doesn't exist" and "exists in
+		// another tenant" — the unified error is intentional (no
+		// existence-leak side channel). 404 is the right status either way.
 		s.respondError(w, http.StatusNotFound, "Node not found")
 		return
 	}
@@ -114,14 +125,23 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 	converter := newPropertyConverter()
 	props := converter.ConvertAndSanitize(req.Properties, s.convertToValue)
 
-	if err := s.graph.UpdateNode(nodeID, props); err != nil {
+	tenantID := getTenantFromContext(r)
+	if err := s.graph.UpdateNodeForTenant(nodeID, props, tenantID); err != nil {
+		// Cross-tenant update or genuinely-missing node both surface as
+		// ErrNodeNotFound — return 404 to avoid an existence-leak side
+		// channel. Only true storage errors should 500.
+		if errors.Is(err, storage.ErrNodeNotFound) {
+			s.respondError(w, http.StatusNotFound, "Node not found")
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "update node"))
 		return
 	}
 
-	node, err := s.graph.GetNode(nodeID)
+	node, err := s.graph.GetNodeForTenant(nodeID, tenantID)
 	if err != nil {
-		// Update succeeded but couldn't retrieve the updated node - unusual but not fatal
+		// Update succeeded but couldn't retrieve the updated node — unusual
+		// but not fatal. Don't leak the cause; return success-with-id.
 		s.respondJSON(w, http.StatusOK, map[string]any{"updated": nodeID})
 		return
 	}
@@ -130,7 +150,13 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 }
 
 func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request, nodeID uint64) {
-	if err := s.graph.DeleteNode(nodeID); err != nil {
+	tenantID := getTenantFromContext(r)
+	if err := s.graph.DeleteNodeForTenant(nodeID, tenantID); err != nil {
+		// Cross-tenant or missing → 404 (no existence leak).
+		if errors.Is(err, storage.ErrNodeNotFound) {
+			s.respondError(w, http.StatusNotFound, "Node not found")
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete node"))
 		return
 	}
@@ -158,6 +184,7 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	start := time.Now()
+	tenantID := getTenantFromContext(r)
 	nodes := make([]*NodeResponse, 0, len(req.Nodes))
 	converter := newPropertyConverter()
 
@@ -174,7 +201,8 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 		// Convert and sanitize properties
 		props := converter.ConvertAndSanitize(nodeReq.Properties, s.convertToValue)
 
-		node, err := s.graph.CreateNode(nodeReq.Labels, props)
+		// Audit A6a: scoped create.
+		node, err := s.graph.CreateNodeWithTenant(tenantID, nodeReq.Labels, props)
 		if err != nil {
 			continue
 		}

@@ -25,7 +25,14 @@ func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
 	converter := newPropertyConverter()
 	props := converter.ConvertAndSanitize(req.Properties, s.convertToValue)
 
-	edge, err := s.graph.CreateEdge(req.FromNodeID, req.ToNodeID, req.Type, props, req.Weight)
+	// Audit A6a: tenant-scoped create. NOTE: storage.verifyNodeExists
+	// is currently tenant-blind, so a caller can reference from/to
+	// node IDs owned by another tenant; the resulting edge is stamped
+	// with this caller's tenant. This is a known gap tracked as an
+	// A6a follow-up — A3b closed cross-tenant *reads* at the storage
+	// layer but the create-side existence check still needs scoping.
+	tenantID := getTenantFromContext(r)
+	edge, err := s.graph.CreateEdgeWithTenant(tenantID, req.FromNodeID, req.ToNodeID, req.Type, props, req.Weight)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create edge"))
 		return
@@ -48,8 +55,11 @@ func (s *Server) handleEdge(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getEdge(w http.ResponseWriter, r *http.Request, edgeID uint64) {
-	edge, err := s.graph.GetEdge(edgeID)
+	tenantID := getTenantFromContext(r)
+	edge, err := s.graph.GetEdgeForTenant(edgeID, tenantID)
 	if err != nil {
+		// ErrEdgeNotFound covers both "doesn't exist" and "exists in
+		// another tenant" — unified error to avoid existence-leak.
 		s.respondError(w, http.StatusNotFound, "Edge not found")
 		return
 	}
@@ -78,6 +88,7 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 	}
 
 	start := time.Now()
+	tenantID := getTenantFromContext(r)
 	edges := make([]*EdgeResponse, 0, len(req.Edges))
 	converter := newPropertyConverter()
 
@@ -101,7 +112,8 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 		// Convert and sanitize properties
 		props := converter.ConvertAndSanitize(edgeReq.Properties, s.convertToValue)
 
-		edge, err := s.graph.CreateEdge(edgeReq.FromNodeID, edgeReq.ToNodeID, edgeReq.Type, props, edgeReq.Weight)
+		// Audit A6a: scoped create.
+		edge, err := s.graph.CreateEdgeWithTenant(tenantID, edgeReq.FromNodeID, edgeReq.ToNodeID, edgeReq.Type, props, edgeReq.Weight)
 		if err != nil {
 			continue
 		}
