@@ -65,12 +65,18 @@ func (h *GraphQLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Execute GraphQL query
+	// Execute GraphQL query.
+	//
+	// Audit A6c-graphql-ctx (2026-05-08): pre-fix this dropped
+	// r.Context() — resolvers ran with context.Background(), so
+	// JWT-derived tenant scoping was invisible. Now r.Context() is
+	// threaded into graphql.Params; the next PR migrates resolvers
+	// to read tenantID via tenant.GetTenant(p.Context).
 	var result *graphql.Result
 	if len(req.Variables) > 0 {
-		result = ExecuteQueryWithVariables(req.Query, h.schema, req.Variables)
+		result = ExecuteQueryWithVariables(r.Context(), req.Query, h.schema, req.Variables)
 	} else {
-		result = ExecuteQuery(req.Query, h.schema)
+		result = ExecuteQuery(r.Context(), req.Query, h.schema)
 	}
 
 	// Build response
