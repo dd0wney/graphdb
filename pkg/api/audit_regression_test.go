@@ -13,11 +13,12 @@ import (
 )
 
 // TestAuditRegressionSuite_CrossTenantIsolation is the consolidated
-// security gate for audit Track A (PRs #17-#26). It pins every
-// cross-tenant guardrail introduced over the audit's lifetime in one
-// readable matrix — each subtest names the audit task that
-// introduced the contract. CI runs this as a single-shot regression
-// check; if any row fails, a Track A guarantee has regressed.
+// security gate for audit Track A (PRs #17-#26) plus F2 retrieval
+// (PR #31). It pins every cross-tenant guardrail introduced across
+// audit + feature work in one readable matrix — each subtest names
+// the task that introduced the contract. CI runs this as a
+// single-shot regression check; if any row fails, a guarantee has
+// regressed.
 //
 // This is *defense in depth*: each row has a corresponding
 // per-package test (see references below). Those package tests stay
@@ -38,6 +39,7 @@ import (
 //	A6c-graphql → pkg/graphql/http_tenant_test.go       (/graphql)
 //	A6c-query   → pkg/api/handlers_query_a6c_test.go    (/query)
 //	A6c-algorithms → pkg/api/handlers_algorithms_a6c_test.go (/algorithms)
+//	F2          → pkg/api/handlers_retrieve_test.go     (/v1/retrieve)
 //
 // Open follow-ups (NOT exercised here — separate audit tasks):
 //
@@ -306,6 +308,53 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 			t.Errorf("tenant-A triangles: want 0 (fixture has none), got %d", int(gc))
 		}
 	})
+
+	// ---- F2 graph-augmented retrieval — PR #31 ----
+
+	t.Run("F2/retrieve-only-returns-caller-tenant", func(t *testing.T) {
+		// PR #31: /v1/retrieve composes hybrid search + tenant-scoped
+		// BFS expansion. Both tenants have a User node named
+		// "alice-{A,B}" and a Doc node titled "doc-{A,B}". A query
+		// for "alice" matches both tenants at the FTS level — but
+		// each caller must see only its own results.
+		//
+		// This row is the umbrella gate. The dedicated
+		// TestRetrieveHTTP_TenantIsolation in handlers_retrieve_test.go
+		// stays authoritative for fine-grained debugging.
+		rr := httptest.NewRecorder()
+		fix.server.handleRetrieve(rr, fix.req(t, http.MethodPost, "/v1/retrieve", RetrieveRequest{
+			Query:   "alice",
+			K:       10,
+			MaxHops: 2,
+		}, "tenant-A"))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status %d body=%s", rr.Code, rr.Body.String())
+		}
+		var resp RetrieveResponse
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		// Tenant-B's IDs must not appear in tenant-A's result.
+		for _, doc := range resp.Documents {
+			if doc.Metadata.NodeID == fix.b.userID || doc.Metadata.NodeID == fix.b.docID {
+				t.Errorf("retrieve leaked tenant-B node %d into tenant-A result", doc.Metadata.NodeID)
+			}
+			// Source.Path is the load-bearing graph signal — pin it
+			// here too. Empty path or path not ending at NodeID =
+			// the F2 spike §2 Q6 contract regressed.
+			if len(doc.Metadata.Source.Path) == 0 {
+				t.Errorf("doc %d: empty Source.Path (graph signal missing)", doc.Metadata.NodeID)
+				continue
+			}
+			if last := doc.Metadata.Source.Path[len(doc.Metadata.Source.Path)-1]; last != doc.Metadata.NodeID {
+				t.Errorf("doc %d: Source.Path must end at NodeID, got %v", doc.Metadata.NodeID, doc.Metadata.Source.Path)
+			}
+		}
+		// Sanity: at least one doc returned (proves the query worked).
+		if len(resp.Documents) == 0 {
+			t.Errorf("tenant-A: expected ≥1 document for query 'alice', got 0 — fixture or search broken")
+		}
+	})
 }
 
 // auditRegressionFixture sets up two parallel tenants with
@@ -351,12 +400,27 @@ func setupAuditRegressionFixture(t *testing.T) *auditRegressionFixture {
 		return fixtureTenant{userID: user.ID, docID: doc.ID, edgeID: edge.ID}
 	}
 
-	return &auditRegressionFixture{
+	fix := &auditRegressionFixture{
 		server:  server,
 		cleanup: cleanup,
 		a:       mkTenant("tenant-A", "A"),
 		b:       mkTenant("tenant-B", "B"),
 	}
+
+	// Audit F2 #5: build per-tenant FTS indexes so the
+	// /v1/retrieve subtest below has searchable seeds. Purely
+	// additive — doesn't affect the storage / handler / query /
+	// algorithms subtests above (they don't touch the search index).
+	if err := server.searchIndexes.IndexForTenant("tenant-A", []string{"User", "Doc"}, []string{"name", "title"}); err != nil {
+		cleanup()
+		t.Fatalf("FTS index tenant-A: %v", err)
+	}
+	if err := server.searchIndexes.IndexForTenant("tenant-B", []string{"User", "Doc"}, []string{"name", "title"}); err != nil {
+		cleanup()
+		t.Fatalf("FTS index tenant-B: %v", err)
+	}
+
+	return fix
 }
 
 // req builds a JSON-body POST/PUT/GET/DELETE with the tenant context
