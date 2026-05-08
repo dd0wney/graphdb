@@ -26,6 +26,29 @@ func sanitizeError(err error, operation string) string {
 	return fmt.Sprintf("%s failed", operation)
 }
 
+// clientError carries a user-safe message in Error() while preserving the
+// original error chain via Unwrap(). Use when the returned error will be
+// serialized into an HTTP response body (so callers cannot leak internals)
+// but downstream code may still need errors.Is / errors.As.
+type clientError struct {
+	operation string
+	inner     error
+}
+
+func (e *clientError) Error() string { return e.operation + " failed" }
+func (e *clientError) Unwrap() error { return e.inner }
+
+// wrapForClient logs the inner error with operation context and returns a
+// *clientError. Replaces the deprecated `fmt.Errorf("%s", sanitizeError(...))`
+// pattern, which threw away the wrap chain.
+func wrapForClient(err error, operation string) error {
+	if err == nil {
+		return nil
+	}
+	log.Printf("ERROR [%s]: %v", operation, err)
+	return &clientError{operation: operation, inner: err}
+}
+
 // requestDecoder decodes and validates request bodies.
 // It provides a fluent interface for common request handling patterns.
 type requestDecoder struct {
@@ -147,6 +170,46 @@ func (pe *pathIDExtractor) ExtractUint64(prefix string) (uint64, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+// ExtractString extracts a string segment from the path after the given
+// prefix, trimming any trailing slash. Returns the segment and true on
+// success. If the path does not have the prefix or the segment is empty
+// after trimming, sends a 400 response and returns ("", false).
+//
+// Use this for string identifiers (property names, tenant slugs, API key
+// names) where ExtractUint64 doesn't fit.
+func (pe *pathIDExtractor) ExtractString(prefix string) (string, bool) {
+	if !strings.HasPrefix(pe.path, prefix) {
+		pe.server.respondError(pe.w, http.StatusBadRequest, "Invalid path")
+		return "", false
+	}
+	segment := strings.TrimSuffix(pe.path[len(prefix):], "/")
+	if segment == "" {
+		pe.server.respondError(pe.w, http.StatusBadRequest, "Path segment is required")
+		return "", false
+	}
+	return segment, true
+}
+
+// ExtractParts trims the prefix from the path and returns the remaining
+// segments split by "/". Returns the segments and true on success. If
+// the prefix doesn't match, sends 400 and returns (nil, false). A
+// trailing slash is trimmed before splitting (so "a/b/" yields ["a", "b"]).
+//
+// Use this for multi-segment subpaths like "/api/v1/tenants/{id}/usage"
+// where the caller needs to inspect the trailing action segment.
+func (pe *pathIDExtractor) ExtractParts(prefix string) ([]string, bool) {
+	if !strings.HasPrefix(pe.path, prefix) {
+		pe.server.respondError(pe.w, http.StatusBadRequest, "Invalid path")
+		return nil, false
+	}
+	rest := strings.TrimSuffix(pe.path[len(prefix):], "/")
+	if rest == "" {
+		pe.server.respondError(pe.w, http.StatusBadRequest, "Path segment is required")
+		return nil, false
+	}
+	return strings.Split(rest, "/"), true
 }
 
 // propertyConverter converts and sanitizes properties.

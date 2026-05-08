@@ -167,7 +167,7 @@ func (s *Server) executePageRank(ctx context.Context, params map[string]any) (ma
 
 	pageRankResult, err := algorithms.PageRank(s.graph, opts)
 	if err != nil {
-		return nil, fmt.Errorf("%s", sanitizeError(err, "PageRank computation"))
+		return nil, wrapForClient(err, "PageRank computation")
 	}
 	return map[string]any{"scores": pageRankResult.Scores}, nil
 }
@@ -183,7 +183,7 @@ func (s *Server) executeBetweenness(ctx context.Context) (map[string]any, error)
 
 	centrality, err := algorithms.BetweennessCentrality(s.graph)
 	if err != nil {
-		return nil, fmt.Errorf("%s", sanitizeError(err, "betweenness centrality"))
+		return nil, wrapForClient(err, "betweenness centrality")
 	}
 	return map[string]any{"centrality": centrality}, nil
 }
@@ -198,7 +198,7 @@ func (s *Server) executeEdgeBetweenness(ctx context.Context) (map[string]any, er
 
 	result, err := algorithms.EdgeBetweennessCentrality(s.graph)
 	if err != nil {
-		return nil, fmt.Errorf("%s", sanitizeError(err, "edge betweenness centrality"))
+		return nil, wrapForClient(err, "edge betweenness centrality")
 	}
 
 	// Convert ByNodePair to JSON-friendly string keys
@@ -262,7 +262,7 @@ func (s *Server) executeDetectCycles(ctx context.Context, params map[string]any)
 		cycles, err = algorithms.DetectCycles(s.graph)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%s", sanitizeError(err, "cycle detection"))
+		return nil, wrapForClient(err, "cycle detection")
 	}
 
 	// Compute statistics
@@ -291,7 +291,7 @@ func (s *Server) executeHasCycle(ctx context.Context) (map[string]any, error) {
 
 	hasCycle, err := algorithms.HasCycle(s.graph)
 	if err != nil {
-		return nil, fmt.Errorf("%s", sanitizeError(err, "cycle check"))
+		return nil, wrapForClient(err, "cycle check")
 	}
 	return map[string]any{"has_cycle": hasCycle}, nil
 }
@@ -306,7 +306,7 @@ func (s *Server) executeTriangles(ctx context.Context) (map[string]any, error) {
 
 	result, err := algorithms.CountTriangles(s.graph)
 	if err != nil {
-		return nil, fmt.Errorf("%s", sanitizeError(err, "triangle counting"))
+		return nil, wrapForClient(err, "triangle counting")
 	}
 	return map[string]any{
 		"per_node":                result.PerNode,
@@ -325,7 +325,7 @@ func (s *Server) executeSCC(ctx context.Context) (map[string]any, error) {
 
 	result, err := algorithms.StronglyConnectedComponents(s.graph)
 	if err != nil {
-		return nil, fmt.Errorf("%s", sanitizeError(err, "SCC"))
+		return nil, wrapForClient(err, "SCC")
 	}
 
 	var largestSize int
@@ -385,7 +385,7 @@ func (s *Server) executeNodeSimilarity(ctx context.Context, params map[string]an
 		}
 		score, err := algorithms.NodeSimilarityPair(s.graph, uint64(a), uint64(b), opts)
 		if err != nil {
-			return nil, fmt.Errorf("%s", sanitizeError(err, "node similarity"))
+			return nil, wrapForClient(err, "node similarity")
 		}
 		return map[string]any{"score": score}, nil
 	}
@@ -398,7 +398,7 @@ func (s *Server) executeNodeSimilarity(ctx context.Context, params map[string]an
 		}
 		result, err := algorithms.NodeSimilarityFor(s.graph, uint64(a), opts)
 		if err != nil {
-			return nil, fmt.Errorf("%s", sanitizeError(err, "node similarity"))
+			return nil, wrapForClient(err, "node similarity")
 		}
 		return map[string]any{
 			"source_node_id": result.SourceNodeID,
@@ -409,7 +409,7 @@ func (s *Server) executeNodeSimilarity(ctx context.Context, params map[string]an
 	// All-pairs mode
 	results, err := algorithms.NodeSimilarityAll(s.graph, opts)
 	if err != nil {
-		return nil, fmt.Errorf("%s", sanitizeError(err, "node similarity"))
+		return nil, wrapForClient(err, "node similarity")
 	}
 	return map[string]any{"results": results}, nil
 }
@@ -463,7 +463,7 @@ func (s *Server) executeLinkPrediction(ctx context.Context, params map[string]an
 		}
 		score, err := algorithms.PredictLinkScore(s.graph, uint64(f), uint64(t), opts)
 		if err != nil {
-			return nil, fmt.Errorf("%s", sanitizeError(err, "link prediction"))
+			return nil, wrapForClient(err, "link prediction")
 		}
 		return map[string]any{"score": score}, nil
 	}
@@ -476,7 +476,7 @@ func (s *Server) executeLinkPrediction(ctx context.Context, params map[string]an
 		}
 		result, err := algorithms.PredictLinksFor(s.graph, uint64(f), opts)
 		if err != nil {
-			return nil, fmt.Errorf("%s", sanitizeError(err, "link prediction"))
+			return nil, wrapForClient(err, "link prediction")
 		}
 		return map[string]any{
 			"source_node_id": result.SourceNodeID,
@@ -522,7 +522,7 @@ func (s *Server) executeKHop(ctx context.Context, params map[string]any) (map[st
 
 	result, err := algorithms.KHopNeighbours(s.graph, uint64(src), opts)
 	if err != nil {
-		return nil, fmt.Errorf("%s", sanitizeError(err, "k-hop neighbours"))
+		return nil, wrapForClient(err, "k-hop neighbours")
 	}
 	return map[string]any{
 		"source_node_id":  result.SourceNodeID,
