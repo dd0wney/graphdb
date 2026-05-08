@@ -488,7 +488,7 @@ func TestEdgeCase_BinaryData(t *testing.T) {
 		{0x00, 0x00, 0x00, 0x00},                   // All zeros
 		{0xFF, 0xFF, 0xFF, 0xFF},                   // All ones
 		make([]byte, 1024),                         // Large zero array
-		[]byte{0xDE, 0xAD, 0xBE, 0xEF},             // Classic hex pattern
+		{0xDE, 0xAD, 0xBE, 0xEF},                   // Classic hex pattern
 	}
 
 	for i, pattern := range binaryPatterns {

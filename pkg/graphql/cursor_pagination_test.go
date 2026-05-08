@@ -3,8 +3,9 @@ package graphql
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/graphql-go/graphql"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // TestCursorPaginationForward tests forward cursor-based pagination (first + after)

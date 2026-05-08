@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"go.nanomsg.org/mangos/v3"
+
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
-	"go.nanomsg.org/mangos/v3"
 )
 
 // NNGReplicationManager manages replication using NNG/mangos (pure Go)

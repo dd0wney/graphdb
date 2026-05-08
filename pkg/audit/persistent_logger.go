@@ -2,7 +2,6 @@ package audit
 
 import (
 	"bufio"
-	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,7 +17,6 @@ type PersistentAuditLogger struct {
 	logDir        string
 	currentFile   *os.File
 	writer        *bufio.Writer
-	gzipWriter    *gzip.Writer
 	lastHash      string
 	eventCount    int64
 	bytesWritten  int64

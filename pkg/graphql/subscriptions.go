@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/graphql-go/graphql"
+
 	"github.com/dd0wney/cluso-graphdb/pkg/pubsub"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/graphql-go/graphql"
 )
 
 // NodeEvent represents a node change event

@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/graphql-go/graphql"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // TestDataLoaderIntegrationN1Problem tests that DataLoader solves the N+1 query problem

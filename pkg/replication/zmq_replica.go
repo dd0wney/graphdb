@@ -8,8 +8,9 @@ import (
 	"log"
 	"sync"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	zmq "github.com/pebbe/zmq4"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // ZMQReplicaNode represents a ZeroMQ-based replica instance

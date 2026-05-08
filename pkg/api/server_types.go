@@ -4,6 +4,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/graphql-go/graphql"
+
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth/oidc"
@@ -17,7 +19,6 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
-	"github.com/graphql-go/graphql"
 )
 
 // Server represents the HTTP API server

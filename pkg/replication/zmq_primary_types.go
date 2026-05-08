@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
+	zmq "github.com/pebbe/zmq4"
+
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
-	zmq "github.com/pebbe/zmq4"
 )
 
 // ZMQReplicationManager manages replication using ZeroMQ

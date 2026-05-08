@@ -3,8 +3,9 @@ package graphql
 import (
 	"sort"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/graphql-go/graphql"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // OrderByInput represents sorting criteria

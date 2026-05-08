@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"log"
 
+	zmq "github.com/pebbe/zmq4"
+
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
-	zmq "github.com/pebbe/zmq4"
 )
 
 // NewZMQReplicationManager creates a new ZeroMQ-based replication manager

@@ -69,7 +69,6 @@ type Registry struct {
 	MemorySysBytes   prometheus.Gauge
 
 	registry *prometheus.Registry
-	mu       sync.RWMutex
 }
 
 var (

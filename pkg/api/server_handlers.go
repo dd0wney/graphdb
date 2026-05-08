@@ -14,11 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/dd0wney/cluso-graphdb/pkg/editions"
 	"github.com/dd0wney/cluso-graphdb/pkg/graphql"
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
-	"gopkg.in/yaml.v3"
 )
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
