@@ -127,9 +127,9 @@ func TestRangePartition_GetPartition(t *testing.T) {
 	rp := NewRangePartition(4, 1000) // 250 nodes per partition
 
 	tests := []struct {
-		name      string
-		nodeID    uint64
-		wantPart  int
+		name     string
+		nodeID   uint64
+		wantPart int
 	}{
 		{"first in partition 0", 0, 0},
 		{"last in partition 0", 249, 0},

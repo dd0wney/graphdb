@@ -42,18 +42,18 @@ const (
 
 // Event represents a single audit log entry
 type Event struct {
-	ID           string                 `json:"id"`
-	Timestamp    time.Time              `json:"timestamp"`
-	TenantID     string                 `json:"tenant_id,omitempty"` // Multi-tenancy: empty defaults to "default"
-	UserID       string                 `json:"user_id,omitempty"`
-	Username     string                 `json:"username,omitempty"`
-	Action       Action                 `json:"action"`
-	ResourceType ResourceType           `json:"resource_type"`
-	ResourceID   string                 `json:"resource_id,omitempty"`
-	Status       Status                 `json:"status"`
-	ErrorMessage string                 `json:"error_message,omitempty"`
-	IPAddress    string                 `json:"ip_address,omitempty"`
-	UserAgent    string                 `json:"user_agent,omitempty"`
+	ID           string         `json:"id"`
+	Timestamp    time.Time      `json:"timestamp"`
+	TenantID     string         `json:"tenant_id,omitempty"` // Multi-tenancy: empty defaults to "default"
+	UserID       string         `json:"user_id,omitempty"`
+	Username     string         `json:"username,omitempty"`
+	Action       Action         `json:"action"`
+	ResourceType ResourceType   `json:"resource_type"`
+	ResourceID   string         `json:"resource_id,omitempty"`
+	Status       Status         `json:"status"`
+	ErrorMessage string         `json:"error_message,omitempty"`
+	IPAddress    string         `json:"ip_address,omitempty"`
+	UserAgent    string         `json:"user_agent,omitempty"`
 	Metadata     map[string]any `json:"metadata,omitempty"`
 }
 

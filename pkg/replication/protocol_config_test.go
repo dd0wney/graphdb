@@ -387,12 +387,12 @@ func TestGetSendBufferSize(t *testing.T) {
 		bufferSize int
 		expected   int
 	}{
-		{"zero_returns_default_clamped", 0, 100},  // default is 100
-		{"below_minimum_returns_minimum", 5, 10},  // min is 10
-		{"at_minimum_returns_value", 10, 10},      // min is 10
+		{"zero_returns_default_clamped", 0, 100}, // default is 100
+		{"below_minimum_returns_minimum", 5, 10}, // min is 10
+		{"at_minimum_returns_value", 10, 10},     // min is 10
 		{"normal_value_returns_value", 50, 50},
 		{"default_value_returns_value", 100, 100},
-		{"above_max_returns_max", 20000, 10000},   // max is 10000
+		{"above_max_returns_max", 20000, 10000}, // max is 10000
 		{"at_max_returns_value", 10000, 10000},
 	}
 

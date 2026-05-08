@@ -13,16 +13,16 @@ var (
 	validate *validator.Validate
 
 	// Validation constants
-	MaxLabels        = 10
-	MaxLabelLength   = 50
-	MaxProperties    = 100
-	MaxPropertyKey   = 100
-	MaxBatchSize     = 1000
-	MinBatchSize     = 1
+	MaxLabels      = 10
+	MaxLabelLength = 50
+	MaxProperties  = 100
+	MaxPropertyKey = 100
+	MaxBatchSize   = 1000
+	MinBatchSize   = 1
 
 	// Regular expressions
-	labelPattern    = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
-	propKeyPattern  = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+	labelPattern   = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	propKeyPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 )
 
 func init() {
@@ -31,17 +31,17 @@ func init() {
 
 // NodeRequest represents a request to create or update a node
 type NodeRequest struct {
-	Labels     []string               `json:"labels" validate:"required,min=1,max=10,dive,max=50"`
+	Labels     []string       `json:"labels" validate:"required,min=1,max=10,dive,max=50"`
 	Properties map[string]any `json:"properties" validate:"omitempty,max=100"`
 }
 
 // EdgeRequest represents a request to create or update an edge
 type EdgeRequest struct {
-	FromNodeID uint64                  `json:"fromNodeId" validate:"required,min=1"`
-	ToNodeID   uint64                  `json:"toNodeId" validate:"required,min=1"`
-	Type       string                  `json:"type" validate:"required,min=1,max=50"`
-	Weight     *float64                `json:"weight" validate:"omitempty"`
-	Properties map[string]any  `json:"properties" validate:"omitempty,max=100"`
+	FromNodeID uint64         `json:"fromNodeId" validate:"required,min=1"`
+	ToNodeID   uint64         `json:"toNodeId" validate:"required,min=1"`
+	Type       string         `json:"type" validate:"required,min=1,max=50"`
+	Weight     *float64       `json:"weight" validate:"omitempty"`
+	Properties map[string]any `json:"properties" validate:"omitempty,max=100"`
 }
 
 // ValidateNodeRequest validates a node creation/update request
@@ -57,27 +57,27 @@ func ValidateNodeRequest(req *NodeRequest) error {
 
 	// Additional label validation
 	if len(req.Labels) > MaxLabels {
-		return fmt.Errorf("Labels: maximum %d labels allowed, got %d", MaxLabels, len(req.Labels))
+		return fmt.Errorf("labels: maximum %d allowed, got %d", MaxLabels, len(req.Labels))
 	}
 
 	for i, label := range req.Labels {
 		if len(label) > MaxLabelLength {
-			return fmt.Errorf("Labels: label at index %d exceeds maximum length of %d characters", i, MaxLabelLength)
+			return fmt.Errorf("labels: label at index %d exceeds maximum length of %d characters", i, MaxLabelLength)
 		}
 		if !labelPattern.MatchString(label) {
-			return fmt.Errorf("Labels: label '%s' contains invalid characters (only alphanumeric and underscore allowed)", label)
+			return fmt.Errorf("labels: label %q contains invalid characters (only alphanumeric and underscore allowed)", label)
 		}
 	}
 
 	// Additional properties validation
 	if len(req.Properties) > MaxProperties {
-		return fmt.Errorf("Properties: maximum %d properties allowed, got %d", MaxProperties, len(req.Properties))
+		return fmt.Errorf("properties: maximum %d properties allowed, got %d", MaxProperties, len(req.Properties))
 	}
 
 	// Validate property keys
 	for key := range req.Properties {
 		if err := ValidatePropertyKey(key); err != nil {
-			return fmt.Errorf("Properties: %w", err)
+			return fmt.Errorf("properties: %w", err)
 		}
 	}
 
@@ -97,21 +97,21 @@ func ValidateEdgeRequest(req *EdgeRequest) error {
 
 	// Additional type validation
 	if len(req.Type) > MaxLabelLength {
-		return fmt.Errorf("Type: exceeds maximum length of %d characters", MaxLabelLength)
+		return fmt.Errorf("type: exceeds maximum length of %d characters", MaxLabelLength)
 	}
 	if !labelPattern.MatchString(req.Type) {
-		return fmt.Errorf("Type: '%s' contains invalid characters (only alphanumeric and underscore allowed)", req.Type)
+		return fmt.Errorf("type: %q contains invalid characters (only alphanumeric and underscore allowed)", req.Type)
 	}
 
 	// Additional properties validation
 	if len(req.Properties) > MaxProperties {
-		return fmt.Errorf("Properties: maximum %d properties allowed, got %d", MaxProperties, len(req.Properties))
+		return fmt.Errorf("properties: maximum %d properties allowed, got %d", MaxProperties, len(req.Properties))
 	}
 
 	// Validate property keys
 	for key := range req.Properties {
 		if err := ValidatePropertyKey(key); err != nil {
-			return fmt.Errorf("Properties: %w", err)
+			return fmt.Errorf("properties: %w", err)
 		}
 	}
 

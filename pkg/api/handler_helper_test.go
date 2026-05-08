@@ -130,11 +130,11 @@ func TestPathIDExtractor_ExtractUint64(t *testing.T) {
 	defer cleanup()
 
 	tests := []struct {
-		name      string
-		path      string
-		prefix    string
-		expectID  uint64
-		expectOK  bool
+		name     string
+		path     string
+		prefix   string
+		expectID uint64
+		expectOK bool
 	}{
 		{
 			name:     "valid ID",
@@ -267,9 +267,9 @@ func TestMethodRouter(t *testing.T) {
 	defer cleanup()
 
 	tests := []struct {
-		name           string
-		method         string
-		expectHandled  string
+		name          string
+		method        string
+		expectHandled string
 	}{
 		{"GET request", http.MethodGet, "get"},
 		{"POST request", http.MethodPost, "post"},

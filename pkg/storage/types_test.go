@@ -791,9 +791,9 @@ func TestArrayInNodeProperties(t *testing.T) {
 		ID:     1,
 		Labels: []string{"User"},
 		Properties: map[string]Value{
-			"tags":       StringArrayValue([]string{"admin", "active", "verified"}),
-			"scores":     IntArrayValue([]int64{95, 87, 92}),
-			"weights":    FloatArrayValue([]float64{0.5, 0.3, 0.2}),
+			"tags":        StringArrayValue([]string{"admin", "active", "verified"}),
+			"scores":      IntArrayValue([]int64{95, 87, 92}),
+			"weights":     FloatArrayValue([]float64{0.5, 0.3, 0.2}),
 			"permissions": BoolArrayValue([]bool{true, true, false, true}),
 		},
 	}

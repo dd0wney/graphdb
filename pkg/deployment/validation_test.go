@@ -12,23 +12,23 @@ import (
 
 // DockerComposeConfig represents a Docker Compose file structure
 type DockerComposeConfig struct {
-	Version  string                       `yaml:"version"`
-	Services map[string]ServiceConfig     `yaml:"services"`
-	Networks map[string]NetworkConfig     `yaml:"networks"`
-	Volumes  map[string]VolumeConfig      `yaml:"volumes"`
+	Version  string                   `yaml:"version"`
+	Services map[string]ServiceConfig `yaml:"services"`
+	Networks map[string]NetworkConfig `yaml:"networks"`
+	Volumes  map[string]VolumeConfig  `yaml:"volumes"`
 }
 
 type ServiceConfig struct {
-	Image       string            `yaml:"image"`
-	Build       *BuildConfig      `yaml:"build,omitempty"`
-	Container   string            `yaml:"container_name,omitempty"`
-	Ports       []string          `yaml:"ports,omitempty"`
-	Environment []string          `yaml:"environment,omitempty"`
-	Volumes     []string          `yaml:"volumes,omitempty"`
-	Networks    []string          `yaml:"networks,omitempty"`
-	DependsOn   any       `yaml:"depends_on,omitempty"`
+	Image       string             `yaml:"image"`
+	Build       *BuildConfig       `yaml:"build,omitempty"`
+	Container   string             `yaml:"container_name,omitempty"`
+	Ports       []string           `yaml:"ports,omitempty"`
+	Environment []string           `yaml:"environment,omitempty"`
+	Volumes     []string           `yaml:"volumes,omitempty"`
+	Networks    []string           `yaml:"networks,omitempty"`
+	DependsOn   any                `yaml:"depends_on,omitempty"`
 	HealthCheck *HealthCheckConfig `yaml:"healthcheck,omitempty"`
-	Command     any       `yaml:"command,omitempty"`
+	Command     any                `yaml:"command,omitempty"`
 }
 
 type BuildConfig struct {
@@ -37,11 +37,11 @@ type BuildConfig struct {
 }
 
 type HealthCheckConfig struct {
-	Test        any `yaml:"test"`
-	Interval    string      `yaml:"interval,omitempty"`
-	Timeout     string      `yaml:"timeout,omitempty"`
-	Retries     int         `yaml:"retries,omitempty"`
-	StartPeriod string      `yaml:"start_period,omitempty"`
+	Test        any    `yaml:"test"`
+	Interval    string `yaml:"interval,omitempty"`
+	Timeout     string `yaml:"timeout,omitempty"`
+	Retries     int    `yaml:"retries,omitempty"`
+	StartPeriod string `yaml:"start_period,omitempty"`
 }
 
 type NetworkConfig struct {
@@ -417,7 +417,7 @@ func TestDockerComposeSecurityConfiguration(t *testing.T) {
 		service := config.Services[check.service]
 		for _, env := range service.Environment {
 			if strings.Contains(env, check.envVar) &&
-			   (strings.Contains(env, "admin") || strings.Contains(env, "dev-secret")) {
+				(strings.Contains(env, "admin") || strings.Contains(env, "dev-secret")) {
 				t.Logf("⚠ SECURITY: %s - change for production!", check.warning)
 			}
 		}

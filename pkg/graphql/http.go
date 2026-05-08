@@ -10,15 +10,15 @@ import (
 
 // GraphQLRequest represents a GraphQL HTTP request
 type GraphQLRequest struct {
-	Query         string                 `json:"query"`
+	Query         string         `json:"query"`
 	Variables     map[string]any `json:"variables,omitempty"`
-	OperationName string                 `json:"operationName,omitempty"`
+	OperationName string         `json:"operationName,omitempty"`
 }
 
 // GraphQLResponse represents a GraphQL HTTP response
 type GraphQLResponse struct {
 	Data   any            `json:"data,omitempty"`
-	Errors []GraphQLError         `json:"errors,omitempty"`
+	Errors []GraphQLError `json:"errors,omitempty"`
 }
 
 // GraphQLError represents a GraphQL error

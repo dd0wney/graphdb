@@ -64,7 +64,7 @@ func main() {
 		NodeLabel: "User",
 		EdgeType:  "FRIEND",
 		Direction: constraints.Any,
-		Min:       0,  // Friends are optional
+		Min:       0,   // Friends are optional
 		Max:       100, // But limited to 100
 	})
 

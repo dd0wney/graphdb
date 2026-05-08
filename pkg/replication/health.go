@@ -25,10 +25,10 @@ type HealthCheck struct {
 
 // CheckResult represents the result of a health check
 type CheckResult struct {
-	Name      string                 `json:"name"`
-	Status    HealthStatus           `json:"status"`
-	Message   string                 `json:"message"`
-	CheckedAt time.Time              `json:"checked_at"`
+	Name      string         `json:"name"`
+	Status    HealthStatus   `json:"status"`
+	Message   string         `json:"message"`
+	CheckedAt time.Time      `json:"checked_at"`
 	Details   map[string]any `json:"details,omitempty"`
 }
 

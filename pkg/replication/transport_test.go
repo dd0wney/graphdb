@@ -52,6 +52,11 @@ func TestWriteOperation(t *testing.T) {
 	if len(nodeOp.Labels) != 2 {
 		t.Errorf("Labels count = %d, want 2", len(nodeOp.Labels))
 	}
+	// Asserting Properties is what the field write was for; the previous
+	// version set it but never read — govet's unusedwrite flagged that.
+	if nodeOp.Properties["name"] != "Alice" {
+		t.Errorf("Properties[name] = %v, want %q", nodeOp.Properties["name"], "Alice")
+	}
 
 	// Test create edge operation
 	edgeOp := WriteOperation{

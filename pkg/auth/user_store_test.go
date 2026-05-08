@@ -469,12 +469,12 @@ func TestUserStore_CreateOrUpdateOIDCUser(t *testing.T) {
 	now := time.Now().Unix()
 
 	tests := []struct {
-		name              string
-		info              *OIDCUserInfo
-		expectNew         bool
-		expectErr         bool
-		expectedUsername  string
-		expectedRole      string
+		name             string
+		info             *OIDCUserInfo
+		expectNew        bool
+		expectErr        bool
+		expectedUsername string
+		expectedRole     string
 	}{
 		{
 			name: "Create new OIDC user with preferred_username",

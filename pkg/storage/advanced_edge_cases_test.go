@@ -484,11 +484,11 @@ func TestEdgeCase_BinaryData(t *testing.T) {
 
 	// Create various binary patterns
 	binaryPatterns := [][]byte{
-		{0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD},           // Mixed bytes
-		{0x00, 0x00, 0x00, 0x00},                             // All zeros
-		{0xFF, 0xFF, 0xFF, 0xFF},                             // All ones
-		make([]byte, 1024),                                   // Large zero array
-		[]byte{0xDE, 0xAD, 0xBE, 0xEF},                      // Classic hex pattern
+		{0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD}, // Mixed bytes
+		{0x00, 0x00, 0x00, 0x00},                   // All zeros
+		{0xFF, 0xFF, 0xFF, 0xFF},                   // All ones
+		make([]byte, 1024),                         // Large zero array
+		[]byte{0xDE, 0xAD, 0xBE, 0xEF},             // Classic hex pattern
 	}
 
 	for i, pattern := range binaryPatterns {

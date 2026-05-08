@@ -330,10 +330,10 @@ func TestLicenseInfo_HasFeature(t *testing.T) {
 // TestFeaturesByTier tests tier-based feature enumeration
 func TestFeaturesByTier(t *testing.T) {
 	tests := []struct {
-		name         string
-		tier         LicenseTier
-		wantCount    int
-		shouldHave   []Feature
+		name          string
+		tier          LicenseTier
+		wantCount     int
+		shouldHave    []Feature
 		shouldNotHave []Feature
 	}{
 		{

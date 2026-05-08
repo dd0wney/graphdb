@@ -82,7 +82,7 @@ func TestGraphStorage_DiskBackedEdges_Persistence(t *testing.T) {
 	// Phase 1: Create data with disk-backed edges
 	{
 		gs, err := NewGraphStorageWithConfig(StorageConfig{
-		DataDir:            dataDir,
+			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})
@@ -104,7 +104,7 @@ func TestGraphStorage_DiskBackedEdges_Persistence(t *testing.T) {
 	// Phase 2: Reopen and verify edges persisted
 	{
 		gs, err := NewGraphStorageWithConfig(StorageConfig{
-		DataDir:            dataDir,
+			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
 		})

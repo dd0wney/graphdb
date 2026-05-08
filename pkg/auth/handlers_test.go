@@ -402,11 +402,11 @@ func TestAuthHandler_Routes(t *testing.T) {
 		path           string
 		expectedStatus int
 	}{
-		{http.MethodPost, "/auth/login", http.StatusBadRequest}, // No body
-		{http.MethodPost, "/auth/refresh", http.StatusBadRequest}, // No body
+		{http.MethodPost, "/auth/login", http.StatusBadRequest},      // No body
+		{http.MethodPost, "/auth/refresh", http.StatusBadRequest},    // No body
 		{http.MethodPost, "/auth/register", http.StatusUnauthorized}, // No auth
-		{http.MethodGet, "/auth/me", http.StatusUnauthorized}, // No auth
-		{http.MethodGet, "/auth/unknown", http.StatusNotFound}, // Unknown route
+		{http.MethodGet, "/auth/me", http.StatusUnauthorized},        // No auth
+		{http.MethodGet, "/auth/unknown", http.StatusNotFound},       // Unknown route
 	}
 
 	for _, tt := range tests {

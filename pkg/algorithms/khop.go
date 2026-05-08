@@ -8,10 +8,10 @@ import (
 
 // KHopOptions configures the k-hop neighbourhood traversal.
 type KHopOptions struct {
-	MaxHops    int               // must be >= 1
+	MaxHops    int // must be >= 1
 	Direction  NeighborDirection
-	EdgeTypes  []string          // nil means all edge types
-	MaxResults int               // 0 = unlimited; BFS order gives closer nodes priority
+	EdgeTypes  []string // nil means all edge types
+	MaxResults int      // 0 = unlimited; BFS order gives closer nodes priority
 }
 
 // KHopResult holds the BFS neighbourhood of a source node.

@@ -62,20 +62,21 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 			limitConfig.MaxLimit, limitConfig.DefaultLimit, complexityConfig.MaxComplexity)
 	}
 
-	// Initialize authentication components
+	// Initialize authentication components.
+	//
+	// JWT_SECRET is required in every environment. The previous behaviour
+	// (silently generating a random secret unless GRAPHDB_ENV=="production")
+	// was a security finding from the 2026-05-06 audit: a misconfigured
+	// staging/pre-prod environment would silently rotate the secret on every
+	// restart, invalidating all active sessions, rather than refusing to
+	// start. Fail-closed prevents that misconfiguration class.
+	//
+	// For local development, set any non-empty value in your .env or shell
+	// environment (e.g. `export JWT_SECRET=dev-only-secret-not-for-production`).
+	// Tests set this via TestMain in each test package.
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		// In production, JWT_SECRET must be set
-		if os.Getenv("GRAPHDB_ENV") == "production" {
-			return nil, fmt.Errorf("JWT_SECRET environment variable is required in production")
-		}
-		// Generate a random secret for development only
-		randomBytes := make([]byte, 32)
-		if _, err := rand.Read(randomBytes); err != nil {
-			return nil, fmt.Errorf("failed to generate JWT secret: %w", err)
-		}
-		jwtSecret = fmt.Sprintf("%x", randomBytes)
-		log.Printf("⚠️  WARNING: Generated random JWT secret for development. Set JWT_SECRET for production!")
+		return nil, fmt.Errorf("JWT_SECRET environment variable is required (set any non-empty value for local development; tests set it via TestMain)")
 	}
 
 	userStore := auth.NewUserStore()

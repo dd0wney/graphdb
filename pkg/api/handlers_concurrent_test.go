@@ -333,7 +333,7 @@ func TestConcurrent_MixedOperations(t *testing.T) {
 			go func(id int) {
 				defer wg.Done()
 				req := NodeRequest{
-					Labels: []string{"Mixed"},
+					Labels:     []string{"Mixed"},
 					Properties: map[string]any{"id": id},
 				}
 				body, _ := json.Marshal(req)
