@@ -52,10 +52,10 @@ type GraphStorage struct {
 	nextEdgeID uint64
 
 	// Concurrency control
-	mu         sync.RWMutex        // Global lock for operations spanning multiple shards
-	shardLocks [256]*sync.RWMutex  // Shard-specific locks for fine-grained concurrency
-	shardMask  uint64              // Mask for efficient shard calculation (255 for 256 shards)
-	closed     bool                // Indicates if storage has been closed
+	mu         sync.RWMutex       // Global lock for operations spanning multiple shards
+	shardLocks [256]*sync.RWMutex // Shard-specific locks for fine-grained concurrency
+	shardMask  uint64             // Mask for efficient shard calculation (255 for 256 shards)
+	closed     bool               // Indicates if storage has been closed
 
 	// Persistence
 	dataDir        string

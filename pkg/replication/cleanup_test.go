@@ -7,8 +7,8 @@ import (
 
 // mockCloser is a test implementation of io.Closer
 type mockCloser struct {
-	closed    bool
-	closeErr  error
+	closed     bool
+	closeErr   error
 	closeCalls int
 }
 
@@ -74,10 +74,10 @@ func TestResourceCleanup_ReverseOrder(t *testing.T) {
 		t.Error("Not all resources were closed")
 	}
 
-	// Verify slice is cleared
-	if len(closeOrder) != 0 {
-		// This is just checking our test setup
-	}
+	// Verify slice is cleared. Empty branch was a placeholder; cleanup
+	// state is asserted by the closer1.closed checks above. Removed the
+	// no-op branch to satisfy SA9003.
+	_ = closeOrder
 }
 
 func TestResourceCleanup_Clear(t *testing.T) {

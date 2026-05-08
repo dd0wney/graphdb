@@ -555,7 +555,7 @@ func TestPerformanceRegression_LargePropertyHandling(t *testing.T) {
 	defer func() { _ = gs.Close() }()
 
 	// Create nodes with varying property sizes
-	nodeCount := 100                          // Reduced from 1000 for reasonable test time
+	nodeCount := 100                         // Reduced from 1000 for reasonable test time
 	propertySizes := []int{100, 1000, 10000} // bytes
 
 	t.Log("Testing large property handling performance...")

@@ -56,16 +56,16 @@ func TestHealthCheck_CheckPrimaryHealth_Healthy(t *testing.T) {
 		CurrentLSN: 1000,
 		Replicas: []ReplicaStatus{
 			{
-				ReplicaID:       "replica1",
-				Connected:       true,
-				LastAppliedLSN:  995,
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica1",
+				Connected:      true,
+				LastAppliedLSN: 995,
+				LastSeen:       time.Now(),
 			},
 			{
-				ReplicaID:       "replica2",
-				Connected:       true,
-				LastAppliedLSN:  998,
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica2",
+				Connected:      true,
+				LastAppliedLSN: 998,
+				LastSeen:       time.Now(),
 			},
 		},
 	}
@@ -92,10 +92,10 @@ func TestHealthCheck_CheckPrimaryHealth_DegradedLag(t *testing.T) {
 		CurrentLSN: 1000,
 		Replicas: []ReplicaStatus{
 			{
-				ReplicaID:       "replica1",
-				Connected:       true,
-				LastAppliedLSN:  850, // 150 LSN behind (exceeds threshold of 100)
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica1",
+				Connected:      true,
+				LastAppliedLSN: 850, // 150 LSN behind (exceeds threshold of 100)
+				LastSeen:       time.Now(),
 			},
 		},
 	}
@@ -136,10 +136,10 @@ func TestHealthCheck_CheckPrimaryHealth_DegradedHeartbeat(t *testing.T) {
 		CurrentLSN: 1000,
 		Replicas: []ReplicaStatus{
 			{
-				ReplicaID:       "replica1",
-				Connected:       true,
-				LastAppliedLSN:  998,
-				LastSeen:        time.Now().Add(-3 * time.Second), // 3s ago (exceeds 1s timeout)
+				ReplicaID:      "replica1",
+				Connected:      true,
+				LastAppliedLSN: 998,
+				LastSeen:       time.Now().Add(-3 * time.Second), // 3s ago (exceeds 1s timeout)
 			},
 		},
 	}
@@ -171,16 +171,16 @@ func TestHealthCheck_CheckPrimaryHealth_UnhealthyDisconnected(t *testing.T) {
 		CurrentLSN: 1000,
 		Replicas: []ReplicaStatus{
 			{
-				ReplicaID:       "replica1",
-				Connected:       false, // Disconnected
-				LastAppliedLSN:  900,
-				LastSeen:        time.Now().Add(-10 * time.Second),
+				ReplicaID:      "replica1",
+				Connected:      false, // Disconnected
+				LastAppliedLSN: 900,
+				LastSeen:       time.Now().Add(-10 * time.Second),
 			},
 			{
-				ReplicaID:       "replica2",
-				Connected:       true,
-				LastAppliedLSN:  998,
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica2",
+				Connected:      true,
+				LastAppliedLSN: 998,
+				LastSeen:       time.Now(),
 			},
 		},
 	}
@@ -224,7 +224,7 @@ func TestHealthCheck_CheckReplicaHealth_Healthy(t *testing.T) {
 	hc := NewHealthCheck(DefaultHealthThresholds())
 
 	state := ReplicationState{
-		CurrentLSN:995, // Replica's current LSN
+		CurrentLSN: 995, // Replica's current LSN
 	}
 
 	primaryLSN := uint64(1000)
@@ -253,7 +253,7 @@ func TestHealthCheck_CheckReplicaHealth_Degraded(t *testing.T) {
 	hc := NewHealthCheck(thresholds)
 
 	state := ReplicationState{
-		CurrentLSN:850, // Replica's current LSN
+		CurrentLSN: 850, // Replica's current LSN
 	}
 
 	primaryLSN := uint64(1000) // 150 LSN behind
@@ -303,10 +303,10 @@ func TestHealthCheck_GetAllChecks(t *testing.T) {
 		CurrentLSN: 1000,
 		Replicas: []ReplicaStatus{
 			{
-				ReplicaID:       "replica1",
-				Connected:       true,
-				LastAppliedLSN:  850, // 150 LSN behind (exceeds threshold)
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica1",
+				Connected:      true,
+				LastAppliedLSN: 850, // 150 LSN behind (exceeds threshold)
+				LastSeen:       time.Now(),
 			},
 		},
 	}
@@ -339,10 +339,10 @@ func TestHealthCheck_GetCheckResult(t *testing.T) {
 		CurrentLSN: 1000,
 		Replicas: []ReplicaStatus{
 			{
-				ReplicaID:       "replica1",
-				Connected:       true,
-				LastAppliedLSN:  850,
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica1",
+				Connected:      true,
+				LastAppliedLSN: 850,
+				LastSeen:       time.Now(),
 			},
 		},
 	}
@@ -371,7 +371,7 @@ func TestHealthCheck_ClearChecks(t *testing.T) {
 	hc := NewHealthCheck(DefaultHealthThresholds())
 
 	state := ReplicationState{
-		CurrentLSN:995,
+		CurrentLSN: 995,
 	}
 
 	hc.CheckReplicaHealth(state, 1000)
@@ -402,7 +402,7 @@ func TestHealthCheck_GenerateHealthReport_Healthy(t *testing.T) {
 	hc := NewHealthCheck(DefaultHealthThresholds())
 
 	state := ReplicationState{
-		CurrentLSN:995,
+		CurrentLSN: 995,
 	}
 
 	status := hc.CheckReplicaHealth(state, 1000)
@@ -435,7 +435,7 @@ func TestHealthCheck_GenerateHealthReport_Degraded(t *testing.T) {
 	hc := NewHealthCheck(thresholds)
 
 	state := ReplicationState{
-		CurrentLSN:850,
+		CurrentLSN: 850,
 	}
 
 	status := hc.CheckReplicaHealth(state, 1000)
@@ -475,22 +475,22 @@ func TestHealthCheck_GenerateHealthReport_Mixed(t *testing.T) {
 		CurrentLSN: 1000,
 		Replicas: []ReplicaStatus{
 			{
-				ReplicaID:       "replica1",
-				Connected:       true,
-				LastAppliedLSN:  998, // Healthy
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica1",
+				Connected:      true,
+				LastAppliedLSN: 998, // Healthy
+				LastSeen:       time.Now(),
 			},
 			{
-				ReplicaID:       "replica2",
-				Connected:       true,
-				LastAppliedLSN:  850, // Degraded (150 LSN behind)
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica2",
+				Connected:      true,
+				LastAppliedLSN: 850, // Degraded (150 LSN behind)
+				LastSeen:       time.Now(),
 			},
 			{
-				ReplicaID:       "replica3",
-				Connected:       false, // Unhealthy
-				LastAppliedLSN:  900,
-				LastSeen:        time.Now().Add(-10 * time.Second),
+				ReplicaID:      "replica3",
+				Connected:      false, // Unhealthy
+				LastAppliedLSN: 900,
+				LastSeen:       time.Now().Add(-10 * time.Second),
 			},
 		},
 	}
@@ -564,22 +564,22 @@ func TestHealthCheck_CheckPrimaryHealth_MultipleReplicas(t *testing.T) {
 		CurrentLSN: 1000,
 		Replicas: []ReplicaStatus{
 			{
-				ReplicaID:       "replica1",
-				Connected:       true,
-				LastAppliedLSN:  998,
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica1",
+				Connected:      true,
+				LastAppliedLSN: 998,
+				LastSeen:       time.Now(),
 			},
 			{
-				ReplicaID:       "replica2",
-				Connected:       true,
-				LastAppliedLSN:  997,
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica2",
+				Connected:      true,
+				LastAppliedLSN: 997,
+				LastSeen:       time.Now(),
 			},
 			{
-				ReplicaID:       "replica3",
-				Connected:       true,
-				LastAppliedLSN:  999,
-				LastSeen:        time.Now(),
+				ReplicaID:      "replica3",
+				Connected:      true,
+				LastAppliedLSN: 999,
+				LastSeen:       time.Now(),
 			},
 		},
 	}

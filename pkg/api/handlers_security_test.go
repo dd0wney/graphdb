@@ -752,8 +752,8 @@ func TestHandleSecurityAuditLogs_InvalidTimeFormat(t *testing.T) {
 			wantStatus: http.StatusOK, // Currently silently ignores - should still return events
 		},
 		{
-			name:      "Invalid end_time format",
-			endTime:   "2024-13-45",
+			name:       "Invalid end_time format",
+			endTime:    "2024-13-45",
 			wantStatus: http.StatusOK,
 		},
 		{

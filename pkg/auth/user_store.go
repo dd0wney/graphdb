@@ -11,11 +11,11 @@ import (
 )
 
 var (
-	ErrUserNotFound      = errors.New("user not found")
-	ErrUserExists        = errors.New("user already exists")
-	ErrEmptyPassword     = errors.New("password cannot be empty")
-	ErrWeakPassword      = errors.New("password must be at least 8 characters")
-	ErrInvalidUsername   = errors.New("username must be 3-50 alphanumeric characters")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrUserExists         = errors.New("user already exists")
+	ErrEmptyPassword      = errors.New("password cannot be empty")
+	ErrWeakPassword       = errors.New("password must be at least 8 characters")
+	ErrInvalidUsername    = errors.New("username must be 3-50 alphanumeric characters")
 	ErrPasswordHashFailed = errors.New("failed to hash password")
 )
 
@@ -45,14 +45,14 @@ type User struct {
 	CreatedAt    int64  `json:"created_at"`
 
 	// OIDC-specific fields (populated for OIDC users)
-	AuthProvider AuthProvider `json:"auth_provider,omitempty"`
-	OIDCSubject  string       `json:"oidc_subject,omitempty"`  // OIDC 'sub' claim - unique per issuer
-	OIDCIssuer   string       `json:"oidc_issuer,omitempty"`   // OIDC issuer URL
-	Email        string       `json:"email,omitempty"`         // User's email (from OIDC or manual)
-	EmailVerified bool        `json:"email_verified,omitempty"`
-	DisplayName  string       `json:"display_name,omitempty"`  // Full name from OIDC
-	Picture      string       `json:"picture,omitempty"`       // Profile picture URL
-	LastLoginAt  int64        `json:"last_login_at,omitempty"` // Last successful login timestamp
+	AuthProvider  AuthProvider `json:"auth_provider,omitempty"`
+	OIDCSubject   string       `json:"oidc_subject,omitempty"` // OIDC 'sub' claim - unique per issuer
+	OIDCIssuer    string       `json:"oidc_issuer,omitempty"`  // OIDC issuer URL
+	Email         string       `json:"email,omitempty"`        // User's email (from OIDC or manual)
+	EmailVerified bool         `json:"email_verified,omitempty"`
+	DisplayName   string       `json:"display_name,omitempty"`  // Full name from OIDC
+	Picture       string       `json:"picture,omitempty"`       // Profile picture URL
+	LastLoginAt   int64        `json:"last_login_at,omitempty"` // Last successful login timestamp
 }
 
 // IsOIDCUser returns true if the user was provisioned via OIDC
@@ -62,9 +62,9 @@ func (u *User) IsOIDCUser() bool {
 
 // UserStore manages user storage and authentication
 type UserStore struct {
-	users       map[string]*User   // userID -> User
-	usernameMap map[string]string  // username -> userID
-	oidcSubMap  map[string]string  // "issuer|subject" -> userID (for OIDC user lookup)
+	users       map[string]*User  // userID -> User
+	usernameMap map[string]string // username -> userID
+	oidcSubMap  map[string]string // "issuer|subject" -> userID (for OIDC user lookup)
 	mu          sync.RWMutex
 }
 

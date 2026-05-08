@@ -120,7 +120,7 @@ func TestGraphStorage_DiskBackedEdges_DeleteEdgeCrashRecovery(t *testing.T) {
 		node2, _ := gs.CreateNode([]string{"Node"}, nil)
 
 		node1ID = node1.ID
-		_ = node2.ID  // node2 is needed for edge creation
+		_ = node2.ID // node2 is needed for edge creation
 
 		edge1, _ := gs.CreateEdge(node1.ID, node2.ID, "EDGE1", nil, 1.0)
 		edge2, _ := gs.CreateEdge(node1.ID, node2.ID, "EDGE2", nil, 1.0)
@@ -210,7 +210,7 @@ func TestGraphStorage_DiskBackedEdges_MultipleDeletesWAL(t *testing.T) {
 		node2, _ := gs.CreateNode([]string{"Node"}, nil)
 
 		node1ID = node1.ID
-		_ = node2.ID  // node2 is needed for edge creation
+		_ = node2.ID // node2 is needed for edge creation
 
 		// Create 10 edges
 		edgeIDs := make([]uint64, 10)

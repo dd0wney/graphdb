@@ -18,12 +18,12 @@ var (
 
 // StorageError provides structured error information for storage operations.
 type StorageError struct {
-	Op      string      // Operation that failed (e.g., "CreateNode", "DeleteEdge")
-	Entity  string      // Entity type (e.g., "node", "edge", "index")
-	ID      uint64      // Entity ID (if applicable)
-	Field   string      // Field name (for property operations)
-	Cause   error       // Underlying error
-	Context string      // Additional context
+	Op      string // Operation that failed (e.g., "CreateNode", "DeleteEdge")
+	Entity  string // Entity type (e.g., "node", "edge", "index")
+	ID      uint64 // Entity ID (if applicable)
+	Field   string // Field name (for property operations)
+	Cause   error  // Underlying error
+	Context string // Additional context
 }
 
 // Error implements the error interface.

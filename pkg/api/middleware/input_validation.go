@@ -11,9 +11,9 @@ import (
 
 // InputValidationConfig configures input validation middleware
 type InputValidationConfig struct {
-	SkipPaths      []string // Paths to skip validation for
-	MaxBodySize    int      // Maximum body size to validate (default: 10MB)
-	ValidateAll    bool     // If true, validate all methods (not just POST/PUT/PATCH)
+	SkipPaths   []string // Paths to skip validation for
+	MaxBodySize int      // Maximum body size to validate (default: 10MB)
+	ValidateAll bool     // If true, validate all methods (not just POST/PUT/PATCH)
 }
 
 // DefaultInputValidationConfig returns default configuration

@@ -82,8 +82,8 @@ func (s *Server) InitRateLimiterFromEnv() {
 // This helps prevent brute-force password attacks on login/register endpoints.
 func (s *Server) initAuthRateLimiter() {
 	config := &middleware.RateLimitConfig{
-		RequestsPerSecond: 5,                // Much stricter than general API
-		BurstSize:         10,               // Allow small bursts
+		RequestsPerSecond: 5,  // Much stricter than general API
+		BurstSize:         10, // Allow small bursts
 		CleanupInterval:   5 * time.Minute,
 		ClientExpiration:  30 * time.Minute, // Longer expiration for auth tracking
 		MaxClients:        50000,            // Lower than general limiter

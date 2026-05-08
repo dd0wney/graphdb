@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
@@ -14,18 +13,18 @@ import (
 type CreateAPIKeyRequest struct {
 	Name        string   `json:"name"`
 	Permissions []string `json:"permissions,omitempty"`
-	ExpiresIn   int64    `json:"expires_in,omitempty"` // seconds, 0 = never expires
+	ExpiresIn   int64    `json:"expires_in,omitempty"`  // seconds, 0 = never expires
 	Environment string   `json:"environment,omitempty"` // "live" or "test" - defaults to server's GRAPHDB_ENV
 }
 
 // CreateAPIKeyResponse represents the response when creating an API key
 type CreateAPIKeyResponse struct {
-	Key     string      `json:"key"` // Only returned once!
-	ID      string      `json:"id"`
-	Name    string      `json:"name"`
-	Prefix  string      `json:"prefix"`
-	Expires *time.Time  `json:"expires,omitempty"`
-	Created time.Time   `json:"created"`
+	Key     string     `json:"key"` // Only returned once!
+	ID      string     `json:"id"`
+	Name    string     `json:"name"`
+	Prefix  string     `json:"prefix"`
+	Expires *time.Time `json:"expires,omitempty"`
+	Created time.Time  `json:"created"`
 }
 
 // APIKeyResponse represents an API key in list responses (without the actual key)
@@ -61,12 +60,8 @@ func (s *Server) handleAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 // handleAPIKey handles DELETE for /api/v1/apikeys/{id}
 func (s *Server) handleAPIKey(w http.ResponseWriter, r *http.Request) {
-	// Extract key ID from path
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/apikeys/")
-	keyID := strings.TrimSuffix(path, "/")
-
-	if keyID == "" {
-		s.respondError(w, http.StatusBadRequest, "API key ID required")
+	keyID, ok := s.NewPathExtractor(w, r).ExtractString("/api/v1/apikeys/")
+	if !ok {
 		return
 	}
 

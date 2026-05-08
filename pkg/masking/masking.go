@@ -8,7 +8,7 @@ import (
 // Masker handles data masking operations
 type Masker struct {
 	config   *MaskingConfig
-	tokens   map[string]string          // For tokenization
+	tokens   map[string]string // For tokenization
 	patterns map[FieldType]*regexp.Regexp
 }
 

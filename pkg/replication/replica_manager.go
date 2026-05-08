@@ -11,15 +11,15 @@ import (
 // ReplicaManager coordinates replication components for a replica node.
 // It composes WALSubscriber, HealthRespondent, and WriteForwarder.
 type ReplicaManager struct {
-	id              string
-	primaryID       string
-	walSubscriber   *WALSubscriber
-	healthRespond   *HealthRespondent
-	writeForwarder  *WriteForwarder
-	lastAppliedLSN  uint64
-	lsnMu           sync.RWMutex
-	running         bool
-	runningMu       sync.Mutex
+	id             string
+	primaryID      string
+	walSubscriber  *WALSubscriber
+	healthRespond  *HealthRespondent
+	writeForwarder *WriteForwarder
+	lastAppliedLSN uint64
+	lsnMu          sync.RWMutex
+	running        bool
+	runningMu      sync.Mutex
 }
 
 // ReplicaManagerConfig configures the replica manager.

@@ -283,11 +283,11 @@ func TestCursorPaginationEdgeCases(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                 string
-		query                string
-		expectedEdgeCount    int
-		expectedHasNext      bool
-		expectedHasPrevious  bool
+		name                string
+		query               string
+		expectedEdgeCount   int
+		expectedHasNext     bool
+		expectedHasPrevious bool
 	}{
 		{
 			name: "first larger than total",

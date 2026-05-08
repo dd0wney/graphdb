@@ -157,9 +157,9 @@ func TestMaskIPAddress(t *testing.T) {
 
 func TestMaskString_Strategies(t *testing.T) {
 	tests := []struct {
-		name     string
-		strategy MaskingStrategy
-		input    string
+		name      string
+		strategy  MaskingStrategy
+		input     string
 		checkFunc func(string, string) bool
 	}{
 		{

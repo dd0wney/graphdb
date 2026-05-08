@@ -33,7 +33,7 @@ func TestGraphStorage_NodePropertyUpdateDurable(t *testing.T) {
 
 		// Update node properties
 		err = gs.UpdateNode(nodeID, map[string]Value{
-			"age":     IntValue(26),      // Update existing
+			"age":     IntValue(26),       // Update existing
 			"city":    StringValue("SF"),  // Update existing
 			"country": StringValue("USA"), // Add new
 		})
