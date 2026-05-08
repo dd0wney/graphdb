@@ -53,7 +53,7 @@ func TestAggregateCount(t *testing.T) {
 
 	data := result.Data.(map[string]any)
 	aggregate := data["personsAggregate"].(map[string]any)
-	count := int(aggregate["count"].(int))
+	count := aggregate["count"].(int)
 
 	if count != 5 {
 		t.Errorf("Expected count to be 5, got %d", count)
@@ -312,7 +312,7 @@ func TestAggregateMultipleFields(t *testing.T) {
 	data := result.Data.(map[string]any)
 	aggregate := data["personsAggregate"].(map[string]any)
 
-	count := int(aggregate["count"].(int))
+	count := aggregate["count"].(int)
 	if count != 2 {
 		t.Errorf("Expected count to be 2, got %d", count)
 	}
@@ -389,7 +389,7 @@ func TestAggregateEdges(t *testing.T) {
 	data := result.Data.(map[string]any)
 	aggregate := data["edgesAggregate"].(map[string]any)
 
-	count := int(aggregate["count"].(int))
+	count := aggregate["count"].(int)
 	if count != 3 {
 		t.Errorf("Expected count to be 3, got %d", count)
 	}
@@ -458,7 +458,7 @@ func TestAggregateEmptyResult(t *testing.T) {
 
 	data := result.Data.(map[string]any)
 	aggregate := data["personsAggregate"].(map[string]any)
-	count := int(aggregate["count"].(int))
+	count := aggregate["count"].(int)
 
 	if count != 0 {
 		t.Errorf("Expected count to be 0, got %d", count)

@@ -218,10 +218,10 @@ func TestRequireEnterprise(t *testing.T) {
 				t.Errorf("RequireEnterprise(%q) error = %v, wantError %v", tt.feature, err, tt.wantError)
 			}
 
-			// Verify error message contains feature name
-			if gotError && err != nil {
-				errMsg := err.Error()
-				if len(errMsg) == 0 {
+			// Verify error message contains feature name. gotError == (err != nil)
+			// from the line above, so checking gotError alone is sufficient.
+			if gotError {
+				if errMsg := err.Error(); len(errMsg) == 0 {
 					t.Error("Error message is empty")
 				}
 			}
