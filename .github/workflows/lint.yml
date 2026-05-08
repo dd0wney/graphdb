@@ -22,18 +22,13 @@ jobs:
         cache: false  # golangci-lint-action has its own cache
 
     - name: Run golangci-lint
-      # @v4 resolved to golangci-lint v1.x, which rejects the
-      # v2-format .golangci.yml in this repo. @v6 supports v2.
-      # Pin to v2.11.4 — the dev environment's version. "latest"
-      # bumps to v2.x.y with stricter schema validation that
-      # rejects fields the repo's config uses. When upgrading the
-      # pin, run `golangci-lint config verify` locally first.
-      #
-      # install-mode: binary (default) downloads the prebuilt
-      # release. goinstall is broken for v2 because Go modules
-      # require the /v2/ major-version suffix in the install path,
-      # which the action doesn't synthesize.
-      uses: golangci/golangci-lint-action@v6
+      # @v4-@v6 only support golangci-lint v1. The repo's
+      # .golangci.yml is v2 format, so we need @v7+ which added
+      # golangci-lint v2 support. Pin to v2.11.4 — the dev
+      # environment's version, verified with `config verify`
+      # locally. "latest" bumps to v2.x.y with stricter schema
+      # validation that rejects fields the repo's config uses.
+      uses: golangci/golangci-lint-action@v7
       with:
         version: v2.11.4
         args: --timeout=5m
