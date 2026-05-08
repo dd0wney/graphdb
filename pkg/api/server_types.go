@@ -12,6 +12,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
+	"github.com/dd0wney/cluso-graphdb/pkg/retrieval"
 	"github.com/dd0wney/cluso-graphdb/pkg/search"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
@@ -25,6 +26,7 @@ type Server struct {
 	executor            *query.Executor
 	searchIndexes       *search.TenantIndexes    // Per-tenant full-text indexes; empty until IndexForTenant is called for a given tenant
 	lsaIndexes          *search.TenantLSAIndexes // Per-tenant LSA indexes for /hybrid-search; nil entry means LSA unavailable for that tenant
+	retriever           *retrieval.Retriever     // Graph-augmented retrieval (F2 GraphRAG); composes searchIndexes + lsaIndexes + graph
 	graphqlHandler      *gqlpkg.GraphQLHandler
 	graphqlSchema       graphql.Schema           // Current GraphQL schema (protected by schemaLock)
 	schemaLock          sync.RWMutex             // Protects graphqlSchema during regeneration
