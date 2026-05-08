@@ -76,7 +76,10 @@ func (gs *GraphStorage) GetOutgoingEdgesForTenant(nodeID uint64, tenantID string
 	return out, nil
 }
 
-// GetIncomingEdges gets all incoming edges to a node
+// GetIncomingEdges gets all incoming edges to a node.
+//
+// Tenant-blind. New callers in tenant-scoped code paths should prefer
+// GetIncomingEdgesForTenant.
 func (gs *GraphStorage) GetIncomingEdges(nodeID uint64) ([]*Edge, error) {
 	defer gs.startQueryTiming()()
 
@@ -94,6 +97,29 @@ func (gs *GraphStorage) GetIncomingEdges(nodeID uint64) ([]*Edge, error) {
 	edges := gs.buildEdgeListFromIDs(edgeIDs)
 
 	return edges, nil
+}
+
+// GetIncomingEdgesForTenant returns the subset of incoming edges to
+// nodeID that are owned by the given tenant. Audit A6c-storage
+// (2026-05-08); mirror of A6b's GetOutgoingEdgesForTenant.
+//
+// As of the A6a follow-up, cross-tenant edges cannot be created via
+// the API path (CreateEdgeWithTenant refuses foreign-tenant from/to
+// references), so the edge-tenant filter is sufficient for callers
+// in /query and /algorithms hot paths.
+func (gs *GraphStorage) GetIncomingEdgesForTenant(nodeID uint64, tenantID string) ([]*Edge, error) {
+	all, err := gs.GetIncomingEdges(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	expected := effectiveTenantID(tenantID).String()
+	out := make([]*Edge, 0, len(all))
+	for _, e := range all {
+		if e.TenantID == expected {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 // GetAllLabels returns all unique node labels in the graph
@@ -124,7 +150,10 @@ func (gs *GraphStorage) FindNodesByLabel(label string) ([]*Node, error) {
 	return gs.buildNodeListFromIDs(nodeIDs), nil
 }
 
-// FindNodesByProperty finds nodes with a specific property value
+// FindNodesByProperty finds nodes with a specific property value.
+//
+// Tenant-blind. New callers in tenant-scoped code paths should prefer
+// FindNodesByPropertyForTenant.
 func (gs *GraphStorage) FindNodesByProperty(key string, value Value) ([]*Node, error) {
 	defer gs.startQueryTiming()()
 
@@ -136,6 +165,35 @@ func (gs *GraphStorage) FindNodesByProperty(key string, value Value) ([]*Node, e
 	for _, node := range gs.nodes {
 		if prop, exists := node.Properties[key]; exists {
 			// Simple byte comparison for now (could be optimized)
+			if string(prop.Data) == string(value.Data) && prop.Type == value.Type {
+				nodes = append(nodes, node.Clone())
+			}
+		}
+	}
+
+	return nodes, nil
+}
+
+// FindNodesByPropertyForTenant returns the subset of nodes with the
+// given property value that are owned by the given tenant.
+// Audit A6c-storage (2026-05-08).
+//
+// Performs a single full scan filtered by both property and tenant —
+// avoids the wasted work of scanning all-tenants then filtering.
+func (gs *GraphStorage) FindNodesByPropertyForTenant(key string, value Value, tenantID string) ([]*Node, error) {
+	defer gs.startQueryTiming()()
+
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+
+	expected := effectiveTenantID(tenantID).String()
+	nodes := make([]*Node, 0)
+
+	for _, node := range gs.nodes {
+		if node.TenantID != expected {
+			continue
+		}
+		if prop, exists := node.Properties[key]; exists {
 			if string(prop.Data) == string(value.Data) && prop.Type == value.Type {
 				nodes = append(nodes, node.Clone())
 			}

@@ -65,7 +65,12 @@ func (gs *GraphStorage) DropPropertyIndex(propertyKey string) error {
 	return nil
 }
 
-// FindNodesByPropertyIndexed uses an index to find nodes (O(1) lookup)
+// FindNodesByPropertyIndexed uses an index to find nodes (O(1) lookup).
+//
+// Tenant-blind. The property index is global (not per-tenant), so
+// this returns matches across every tenant. New callers in
+// tenant-scoped code paths should prefer
+// FindNodesByPropertyIndexedForTenant.
 func (gs *GraphStorage) FindNodesByPropertyIndexed(key string, value Value) ([]*Node, error) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
@@ -84,6 +89,46 @@ func (gs *GraphStorage) FindNodesByPropertyIndexed(key string, value Value) ([]*
 
 	// Fetch nodes
 	return gs.buildNodeListFromIDs(nodeIDs), nil
+}
+
+// FindNodesByPropertyIndexedForTenant uses an index for the property
+// lookup, then post-filters by tenant ownership.
+// Audit A6c-storage (2026-05-08).
+//
+// The property index is global — keyed by property value, not
+// (value, tenant). Per-tenant indexes would halve the scan work in
+// the common case but are deferred: changes the on-disk index format
+// (the audit's scope is correctness first, perf later). Until then,
+// the post-index filter pays one extra pass per result set, which is
+// acceptable because the index already collapses to O(matches), not
+// O(nodes).
+func (gs *GraphStorage) FindNodesByPropertyIndexedForTenant(key string, value Value, tenantID string) ([]*Node, error) {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+
+	idx, exists := gs.propertyIndexes[key]
+	if !exists {
+		return nil, fmt.Errorf("no index on property %s", key)
+	}
+
+	nodeIDs, err := idx.Lookup(value)
+	if err != nil {
+		return nil, err
+	}
+
+	expected := effectiveTenantID(tenantID).String()
+	out := make([]*Node, 0, len(nodeIDs))
+	for _, nodeID := range nodeIDs {
+		node, exists := gs.nodes[nodeID]
+		if !exists {
+			continue
+		}
+		if node.TenantID != expected {
+			continue
+		}
+		out = append(out, node.Clone())
+	}
+	return out, nil
 }
 
 // FindNodesByPropertyRange uses an index to find nodes in a range
