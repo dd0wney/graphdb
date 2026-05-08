@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
 // TestA5_WithTenantOnNodesAndEdgesRoutes pins the contract that audit
@@ -82,6 +83,56 @@ func TestA5_WithTenantOnNodesAndEdgesRoutes(t *testing.T) {
 				t.Errorf("got 500 with tenant-related error (chain broken?): %s", rr.Body.String())
 			}
 		})
+	}
+}
+
+// TestA5_TenantContextPropagatesFromJWT pins the tighter contract that
+// audit task A6 will rely on: a JWT minted with a specific tenantID
+// claim must reach the handler with getTenantFromContext returning
+// that exact tenantID — not the default. Without this assertion, A5
+// only proves "withTenant doesn't 500"; A6's correctness would depend
+// on a propagation property that A5 didn't pin.
+//
+// The test wires a probe handler into a test mux, mints a JWT with
+// tenantID="acme-corp", and asserts the probe sees "acme-corp" via
+// getTenantFromContext.
+func TestA5_TenantContextPropagatesFromJWT(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	const wantTenant = "acme-corp"
+	// withTenant validates against tenantStore — pre-create the tenant
+	// so the middleware doesn't reject with 403 "tenant not found".
+	if server.tenantStore != nil {
+		if err := server.tenantStore.Create(&tenant.Tenant{
+			ID:     wantTenant,
+			Name:   "Acme Corp (test)",
+			Status: tenant.TenantStatusActive,
+		}); err != nil {
+			t.Fatalf("create tenant: %v", err)
+		}
+	}
+	token := mintTestToken(t, server, auth.RoleAdmin, "a5-propagation-user", wantTenant)
+
+	var observed string
+	probe := func(_ http.ResponseWriter, r *http.Request) {
+		observed = getTenantFromContext(r)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/_a5_probe", server.requireAuth(server.withTenant(probe)))
+
+	req := httptest.NewRequest(http.MethodGet, "/_a5_probe", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("probe: status %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if observed != wantTenant {
+		t.Errorf("getTenantFromContext: want %q (from JWT), got %q — A6 will malfunction if this isn't fixed",
+			wantTenant, observed)
 	}
 }
 
