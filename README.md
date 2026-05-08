@@ -548,6 +548,59 @@ curl -X DELETE http://localhost:8080/vector-indexes/embedding \
 | `euclidean` | Spatial data, image features | 0 to 1 |
 | `dot_product` | Maximum inner product search | unbounded |
 
+### Graph-Augmented Retrieval (`/v1/retrieve`)
+
+`/v1/retrieve` composes hybrid search (FTS + LSA via RRF) with graph traversal to return ranked context chunks for LLM prompts. Each result includes a `source.path` array — the BFS path from the contributing seed — so downstream code can cite *why* a chunk is in context. Tenant-scoped end-to-end.
+
+The endpoint shape matches LangChain's `BaseRetriever`, so it drops into existing RAG pipelines. See `examples/retrieve-curl.sh` and `examples/retrieve-langchain.py`.
+
+```bash
+curl -X POST http://localhost:8080/v1/retrieve \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What does Alice know about graph databases?",
+    "k": 10,
+    "max_hops": 2,
+    "max_tokens": 4096
+  }'
+
+# Response:
+# {
+#   "documents": [
+#     {
+#       "page_content": "Alice authored a paper on graph database internals...",
+#       "metadata": {
+#         "node_id": 42,
+#         "score": 0.87,
+#         "source": {
+#           "node_id": 42,
+#           "label": "Doc",
+#           "path": [17, 23, 42]   // seed → Person Alice → this Doc
+#         }
+#       }
+#     }
+#   ],
+#   "took_ms": 124
+# }
+```
+
+**Request fields** (defaults in parentheses):
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `query` | string | (required) | Free-text query, FTS + LSA seed retrieval |
+| `k` | int | 10 | Max chunks returned (after token-budget drop) |
+| `max_hops` | int | 2 | BFS depth from seeds; 0 = seeds only |
+| `max_tokens` | int | 4096 | Token budget; chunks dropped whole, lowest score first |
+| `alpha` | float | 0.7 | Weight on normalized seed score |
+| `beta` | float | 0.3 | Weight on `exp(-d/τ)` graph-distance term |
+| `tau` | float | 2.0 | Decay constant for distance falloff |
+| `labels` | string[] | — | Optional seed-stage label filter |
+| `include_node` | bool | false | Hydrate full node into `metadata.node` |
+
+A hard 50-node cap prevents pathological expansion in dense graphs. See [`docs/F2_GRAPHRAG_DESIGN.md`](docs/F2_GRAPHRAG_DESIGN.md) for the design rationale and [`pkg/retrieval/retrieval_bench_test.go`](pkg/retrieval/retrieval_bench_test.go) for measured latency (p95=82µs on 1k nodes).
+
 ## Benchmarks
 
 ### Performance Results
