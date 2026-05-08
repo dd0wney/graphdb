@@ -6,6 +6,94 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
+// ShortestPathForTenant finds the shortest path between two nodes
+// using bidirectional BFS, restricted to edges owned by the given
+// tenant. Audit A6b (2026-05-08).
+//
+// Critical: do not post-filter the path returned by ShortestPath —
+// the bidirectional BFS may pick a shorter cross-tenant route, and
+// rejecting it after the fact would deny paths that *do* exist within
+// the caller's subgraph. The filter must happen at edge expansion.
+//
+// Residual gap from the A6a follow-up: if a tenant-A author created
+// an edge to a foreign-tenant node ID (verifyNodeExists is currently
+// tenant-blind), that edge passes the filter and the BFS will visit
+// the foreign node. Closing that gap is tracked separately. We do not
+// add per-neighbor GetNodeForTenant scoping here because it would
+// inject a map lookup into the inner BFS loop on every neighbor — a
+// real perf hit for what is bounded by an upstream fix.
+func ShortestPathForTenant(graph *storage.GraphStorage, startID, endID uint64, tenantID string) ([]uint64, error) {
+	if startID == endID {
+		return []uint64{startID}, nil
+	}
+
+	forwardQueue := list.New()
+	forwardVisited := make(map[uint64]uint64)
+	forwardQueue.PushBack(startID)
+	forwardVisited[startID] = startID
+
+	backwardQueue := list.New()
+	backwardVisited := make(map[uint64]uint64)
+	backwardQueue.PushBack(endID)
+	backwardVisited[endID] = endID
+
+	for forwardQueue.Len() > 0 || backwardQueue.Len() > 0 {
+		if forwardQueue.Len() > 0 {
+			meetingNode := expandFrontierForTenant(graph, forwardQueue, forwardVisited, backwardVisited, tenantID)
+			if meetingNode != 0 {
+				return reconstructPath(meetingNode, forwardVisited, backwardVisited), nil
+			}
+		}
+		if backwardQueue.Len() > 0 {
+			meetingNode := expandFrontierForTenant(graph, backwardQueue, backwardVisited, forwardVisited, tenantID)
+			if meetingNode != 0 {
+				return reconstructPath(meetingNode, forwardVisited, backwardVisited), nil
+			}
+		}
+	}
+
+	return nil, nil
+}
+
+// expandFrontierForTenant mirrors expandFrontier but only follows
+// edges owned by tenantID.
+func expandFrontierForTenant(
+	graph *storage.GraphStorage,
+	queue *list.List,
+	visited map[uint64]uint64,
+	otherVisited map[uint64]uint64,
+	tenantID string,
+) uint64 {
+	levelSize := queue.Len()
+	for i := 0; i < levelSize; i++ {
+		currentID, ok := queue.Remove(queue.Front()).(uint64)
+		if !ok {
+			continue
+		}
+
+		edges, err := graph.GetOutgoingEdgesForTenant(currentID, tenantID)
+		if err != nil {
+			continue
+		}
+
+		for _, edge := range edges {
+			neighborID := edge.ToNodeID
+
+			if _, found := otherVisited[neighborID]; found {
+				visited[neighborID] = currentID
+				return neighborID
+			}
+
+			if _, seen := visited[neighborID]; !seen {
+				visited[neighborID] = currentID
+				queue.PushBack(neighborID)
+			}
+		}
+	}
+
+	return 0
+}
+
 // ShortestPath finds the shortest path between two nodes using bidirectional BFS
 // This is 2x faster than unidirectional BFS for large graphs
 func ShortestPath(graph *storage.GraphStorage, startID, endID uint64) ([]uint64, error) {
