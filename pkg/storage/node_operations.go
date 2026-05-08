@@ -216,7 +216,9 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 }
 
 // RemoveNodeProperties removes specified properties from a node.
-// Unlike UpdateNode (which merges), this deletes keys from the properties map.
+// Unlike UpdateNode (which merges), this deletes keys from the
+// properties map. Tenant-blind — new callers in tenant-scoped code
+// paths should prefer RemoveNodePropertiesForTenant.
 func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
@@ -254,6 +256,27 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	})
 
 	return nil
+}
+
+// RemoveNodePropertiesForTenant removes specified properties from a
+// node, scoped to the given tenant. Returns ErrNodeNotFound on
+// missing or cross-tenant. Audit A6c-query (2026-05-08).
+//
+// Mirrors UpdateNodeForTenant's lock-then-delegate pattern: tenant
+// validation under read lock, brief lock-drop window before
+// RemoveNodeProperties acquires the write lock. Race window is
+// benign — tenant IDs are immutable after node creation and node IDs
+// don't recycle, so the only race is "node deleted by another
+// goroutine before ours" which RemoveNodeProperties handles via
+// ErrNodeNotFound.
+func (gs *GraphStorage) RemoveNodePropertiesForTenant(nodeID uint64, keys []string, tenantID string) error {
+	gs.mu.RLock()
+	if _, err := gs.getNodeRefForTenant(nodeID, tenantID); err != nil {
+		gs.mu.RUnlock()
+		return err
+	}
+	gs.mu.RUnlock()
+	return gs.RemoveNodeProperties(nodeID, keys)
 }
 
 // DeleteNodeForTenant deletes a node and all its edges, scoped to the

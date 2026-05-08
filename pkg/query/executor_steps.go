@@ -77,8 +77,9 @@ type IndexLookupStep struct {
 }
 
 func (ils *IndexLookupStep) Execute(ctx *ExecutionContext) error {
-	// Use index for O(1) lookup
-	nodes, err := ctx.graph.FindNodesByPropertyIndexed(ils.propertyKey, ils.value)
+	// Use index for O(1) lookup, scoped to caller's tenant.
+	// Audit A6c-query (2026-05-08).
+	nodes, err := ctx.graph.FindNodesByPropertyIndexedForTenant(ils.propertyKey, ils.value, ctx.tenantID)
 	if err != nil {
 		// Index lookup failed, this shouldn't happen if optimizer did its job
 		return fmt.Errorf("index lookup failed: %w", err)
@@ -150,8 +151,8 @@ func (cs *CreateStep) createNodes(ctx *ExecutionContext, pattern *Pattern) error
 			props[key] = convertToStorageValue(val)
 		}
 
-		// Create node
-		node, err := ctx.graph.CreateNode(nodePattern.Labels, props)
+		// Audit A6c-query: tenant-scoped node create.
+		node, err := ctx.graph.CreateNodeWithTenant(ctx.tenantID, nodePattern.Labels, props)
 		if err != nil {
 			return err
 		}
@@ -189,7 +190,12 @@ func (cs *CreateStep) createRelationships(ctx *ExecutionContext, pattern *Patter
 			props[key] = convertToStorageValue(val)
 		}
 
-		_, err = ctx.graph.CreateEdge(fromNode.ID, toNode.ID, relPattern.Type, props, 1.0)
+		// Audit A6c-query: tenant-scoped edge create. Uses
+		// CreateEdgeWithTenant which is tenant-strict on from/to
+		// node verification (A6a follow-up #20), so a Cypher CREATE
+		// referencing a foreign-tenant node ID surfaces
+		// ErrNodeNotFound.
+		_, err = ctx.graph.CreateEdgeWithTenant(ctx.tenantID, fromNode.ID, toNode.ID, relPattern.Type, props, 1.0)
 		if err != nil {
 			return err
 		}
@@ -255,8 +261,8 @@ func (ss *SetStep) executeAssignment(ctx *ExecutionContext, binding *BindingSet,
 	}
 	updatedProps[assignment.Property] = convertToStorageValue(val)
 
-	// Update in storage
-	if err := ctx.graph.UpdateNode(node.ID, updatedProps); err != nil {
+	// Audit A6c-query: tenant-scoped update.
+	if err := ctx.graph.UpdateNodeForTenant(node.ID, updatedProps, ctx.tenantID); err != nil {
 		return fmt.Errorf("failed to update node %d: %w", node.ID, err)
 	}
 
@@ -292,7 +298,8 @@ func (rs *RemoveStep) removeProperty(ctx *ExecutionContext, binding *BindingSet,
 		return nil
 	}
 
-	return ctx.graph.RemoveNodeProperties(node.ID, []string{item.Property})
+	// Audit A6c-query: tenant-scoped property removal.
+	return ctx.graph.RemoveNodePropertiesForTenant(node.ID, []string{item.Property}, ctx.tenantID)
 }
 
 func (rs *RemoveStep) StepName() string   { return "RemoveStep" }
@@ -327,8 +334,8 @@ func (ds *DeleteStep) deleteVariable(ctx *ExecutionContext, binding *BindingSet,
 		return nil // Not a node, skip
 	}
 
-	// Delete node (DeleteNode automatically handles edge deletion)
-	if err := ctx.graph.DeleteNode(node.ID); err != nil {
+	// Audit A6c-query: tenant-scoped delete (handles edge deletion).
+	if err := ctx.graph.DeleteNodeForTenant(node.ID, ctx.tenantID); err != nil {
 		return fmt.Errorf("failed to delete node %d: %w", node.ID, err)
 	}
 
@@ -344,11 +351,14 @@ func (ms *MergeStep) Execute(ctx *ExecutionContext) error {
 	// Try to match the pattern
 	matchStep := &MatchStep{match: &MatchClause{Patterns: []*Pattern{ms.merge.Pattern}}}
 
-	// Save current results, try matching
+	// Save current results, try matching. Inherit tenantID from
+	// parent ctx (audit A6c-query) — sub-context must scope to the
+	// same tenant.
 	savedResults := ctx.results
 	matchCtx := &ExecutionContext{
 		context:  ctx.context,
 		graph:    ctx.graph,
+		tenantID: ctx.tenantID,
 		bindings: make(map[string]any),
 		results: []*BindingSet{
 			{bindings: make(map[string]any)},

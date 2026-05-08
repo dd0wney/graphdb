@@ -127,12 +127,7 @@ func (e *Executor) ExecuteWithContext(ctx context.Context, query *Query) (result
 
 // executeWithChain handles WITH clause chaining between query segments
 func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, query *Query) (*ResultSet, error) {
-	execCtx := &ExecutionContext{
-		context:  ctx,
-		graph:    e.graph,
-		bindings: make(map[string]any),
-		results:  make([]*BindingSet, 0),
-	}
+	execCtx := newExecutionContext(ctx, e.graph)
 
 	// Use initial bindings if provided, otherwise start with empty binding
 	if query.InitialBindings != nil {
