@@ -24,7 +24,12 @@ func (gs *GraphStorage) buildEdgeListFromIDs(edgeIDs []uint64) []*Edge {
 	return edges
 }
 
-// GetOutgoingEdges gets all outgoing edges from a node
+// GetOutgoingEdges gets all outgoing edges from a node.
+//
+// Tenant-blind. Returns edges across all tenants — used by replication,
+// snapshotting, and legitimately tenant-blind callers (CLI, examples).
+// New callers in tenant-scoped code paths should prefer
+// GetOutgoingEdgesForTenant.
 func (gs *GraphStorage) GetOutgoingEdges(nodeID uint64) ([]*Edge, error) {
 	defer gs.startQueryTiming()()
 
@@ -42,6 +47,36 @@ func (gs *GraphStorage) GetOutgoingEdges(nodeID uint64) ([]*Edge, error) {
 	edges := gs.buildEdgeListFromIDs(edgeIDs)
 
 	return edges, nil
+}
+
+// GetOutgoingEdgesForTenant returns the subset of outgoing edges from
+// nodeID that are owned by the given tenant. Audit A6b (2026-05-08).
+//
+// Filters at the storage layer rather than at the handler so the
+// algorithm package can scope traversals without re-implementing the
+// filter at every call site. The filter is on edge.TenantID; node-side
+// scoping is the caller's responsibility (see GetNodeForTenant).
+//
+// Note: this does *not* close the residual gap from the A6a follow-up
+// — verifyNodeExists in CreateEdgeWithTenant is tenant-blind, so a
+// caller can stamp an edge with their tenant that points at a foreign
+// node ID. This filter still considers that edge legitimate. The
+// follow-up (scoping verifyNodeExists) closes that gap; until then,
+// /traverse callers should also use GetNodeForTenant during BFS to
+// drop any cross-tenant nodes the edge filter let through.
+func (gs *GraphStorage) GetOutgoingEdgesForTenant(nodeID uint64, tenantID string) ([]*Edge, error) {
+	all, err := gs.GetOutgoingEdges(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	expected := effectiveTenantID(tenantID).String()
+	out := make([]*Edge, 0, len(all))
+	for _, e := range all {
+		if e.TenantID == expected {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 // GetIncomingEdges gets all incoming edges to a node

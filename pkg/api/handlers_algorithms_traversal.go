@@ -42,8 +42,11 @@ func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {
 		req.MaxDepth = DefaultTraversalDepth
 	}
 
-	// Verify start node exists
-	if _, err := s.graph.GetNode(req.StartNodeID); err != nil {
+	// Audit A6b: scope start-node check to caller's tenant. A
+	// cross-tenant or missing start-node both surface as 404 — same
+	// existence-leak guard as A6a's getNode.
+	tenantID := getTenantFromContext(r)
+	if _, err := s.graph.GetNodeForTenant(req.StartNodeID, tenantID); err != nil {
 		s.respondError(w, http.StatusNotFound, fmt.Sprintf("Start node %d not found", req.StartNodeID))
 		return
 	}
@@ -54,10 +57,10 @@ func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 
-	// Simple BFS traversal with context
+	// Simple BFS traversal with context, scoped to caller's tenant.
 	visited := make(map[uint64]bool)
 	nodes := make([]*NodeResponse, 0)
-	if err := s.traverseFromWithContext(ctx, req.StartNodeID, 0, req.MaxDepth, visited, &nodes); err != nil {
+	if err := s.traverseFromWithContext(ctx, tenantID, req.StartNodeID, 0, req.MaxDepth, visited, &nodes); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			s.respondError(w, http.StatusRequestTimeout, "Traversal timed out")
 			return
@@ -75,8 +78,22 @@ func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, response)
 }
 
-// traverseFromWithContext performs BFS traversal with context cancellation support
-func (s *Server) traverseFromWithContext(ctx context.Context, nodeID uint64, depth int, maxDepth int, visited map[uint64]bool, nodes *[]*NodeResponse) error {
+// traverseFromWithContext performs BFS traversal with context
+// cancellation support, scoped to the given tenant.
+//
+// Audit A6b: dual-filter — both edges (GetOutgoingEdgesForTenant) and
+// nodes (GetNodeForTenant) are scoped. The node filter closes the
+// residual gap from the A6a follow-up: even if a foreign-tenant node
+// is reachable through a tenant-stamped edge (because verifyNodeExists
+// is currently tenant-blind), the per-visit GetNodeForTenant drops it
+// from the result set.
+//
+// Perf note: GetNodeForTenant takes a per-visit shard rlock, so this
+// path acquires roughly 2× the locks of a pre-A6b traversal. Bounded
+// by MaxTraversalDepth (default 10) so it's a non-issue for the
+// /traverse endpoint, but do *not* "optimize" by dropping the node
+// filter — that reopens the A6a follow-up gap.
+func (s *Server) traverseFromWithContext(ctx context.Context, tenantID string, nodeID uint64, depth int, maxDepth int, visited map[uint64]bool, nodes *[]*NodeResponse) error {
 	// Check for cancellation
 	select {
 	case <-ctx.Done():
@@ -90,20 +107,20 @@ func (s *Server) traverseFromWithContext(ctx context.Context, nodeID uint64, dep
 
 	visited[nodeID] = true
 
-	node, err := s.graph.GetNode(nodeID)
+	node, err := s.graph.GetNodeForTenant(nodeID, tenantID)
 	if err != nil {
-		return nil // Skip missing nodes
+		return nil // Skip missing or cross-tenant nodes (no leak).
 	}
 
 	*nodes = append(*nodes, s.nodeToResponse(node))
 
-	edges, err := s.graph.GetOutgoingEdges(nodeID)
+	edges, err := s.graph.GetOutgoingEdgesForTenant(nodeID, tenantID)
 	if err != nil {
 		return nil // Skip on edge retrieval error
 	}
 
 	for _, edge := range edges {
-		if err := s.traverseFromWithContext(ctx, edge.ToNodeID, depth+1, maxDepth, visited, nodes); err != nil {
+		if err := s.traverseFromWithContext(ctx, tenantID, edge.ToNodeID, depth+1, maxDepth, visited, nodes); err != nil {
 			return err
 		}
 	}
@@ -133,12 +150,16 @@ func (s *Server) handleShortestPath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify both nodes exist
-	if _, err := s.graph.GetNode(req.StartNodeID); err != nil {
+	// Audit A6b: both endpoints must be visible to the caller's
+	// tenant. Cross-tenant or missing → 404 (same existence-leak
+	// guard as A6a). Easy to forget the second of a pair: see the
+	// equivalent A6a TestUpdateNode regression for why.
+	tenantID := getTenantFromContext(r)
+	if _, err := s.graph.GetNodeForTenant(req.StartNodeID, tenantID); err != nil {
 		s.respondError(w, http.StatusNotFound, fmt.Sprintf("Start node %d not found", req.StartNodeID))
 		return
 	}
-	if _, err := s.graph.GetNode(req.EndNodeID); err != nil {
+	if _, err := s.graph.GetNodeForTenant(req.EndNodeID, tenantID); err != nil {
 		s.respondError(w, http.StatusNotFound, fmt.Sprintf("End node %d not found", req.EndNodeID))
 		return
 	}
@@ -157,7 +178,12 @@ func (s *Server) handleShortestPath(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 
-	path, err := algorithms.ShortestPath(s.graph, req.StartNodeID, req.EndNodeID)
+	// Audit A6b: tenant-scoped traversal. The algorithm filters at
+	// edge expansion (cannot post-filter the path — the BFS may
+	// otherwise pick a shorter cross-tenant route and rejecting it
+	// after the fact would deny a path that *does* exist within the
+	// caller's subgraph).
+	path, err := algorithms.ShortestPathForTenant(s.graph, req.StartNodeID, req.EndNodeID, tenantID)
 	if err != nil {
 		// Log the error but still return a valid response indicating no path found
 		log.Printf("ShortestPath algorithm error: %v", err)
