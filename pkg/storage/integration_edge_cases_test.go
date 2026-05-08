@@ -488,16 +488,16 @@ func TestEdgeCase_PropertyKeyVariations(t *testing.T) {
 	t.Log("Testing property key variations...")
 
 	propertyKeys := map[string]Value{
-		"simple":                             StringValue("value1"),
-		"with_underscore":                    StringValue("value2"),
-		"with-dash":                          StringValue("value3"),
-		"with.dot":                           StringValue("value4"),
-		"with:colon":                         StringValue("value5"),
-		"with space":                         StringValue("value6"),
-		"UPPERCASE":                          StringValue("value7"),
-		"数字key":                              StringValue("value8"),
-		"emoji_key_🔑":                       StringValue("value9"),
-		"very_long_property_key_name_here":   StringValue("value10"),
+		"simple":                           StringValue("value1"),
+		"with_underscore":                  StringValue("value2"),
+		"with-dash":                        StringValue("value3"),
+		"with.dot":                         StringValue("value4"),
+		"with:colon":                       StringValue("value5"),
+		"with space":                       StringValue("value6"),
+		"UPPERCASE":                        StringValue("value7"),
+		"数字key":                            StringValue("value8"),
+		"emoji_key_🔑":                      StringValue("value9"),
+		"very_long_property_key_name_here": StringValue("value10"),
 	}
 
 	node, err := gs.CreateNode([]string{"PropKeyTest"}, propertyKeys)

@@ -216,9 +216,9 @@ func TestDefaultReplicationConfig(t *testing.T) {
 // TestHeartbeatTimeout tests heartbeat timeout calculation
 func TestHeartbeatTimeout(t *testing.T) {
 	tests := []struct {
-		name             string
-		heartbeatInt     time.Duration
-		expectedTimeout  time.Duration
+		name            string
+		heartbeatInt    time.Duration
+		expectedTimeout time.Duration
 	}{
 		{
 			name:            "1 second interval",

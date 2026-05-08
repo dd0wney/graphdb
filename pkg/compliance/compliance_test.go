@@ -564,8 +564,8 @@ func TestComplianceScoreFormula(t *testing.T) {
 		{
 			name: "Mixed",
 			controls: []Control{
-				{Status: StatusCompliant},  // 100
-				{Status: StatusPartial},    // 50
+				{Status: StatusCompliant},    // 100
+				{Status: StatusPartial},      // 50
 				{Status: StatusNonCompliant}, // 0
 			},
 			expectedScore: 50.0, // (100 + 50 + 0) / 3

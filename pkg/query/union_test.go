@@ -8,9 +8,9 @@ import (
 
 func TestLexer_UnionTokens(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  string
-		types  []TokenType
+		name  string
+		input string
+		types []TokenType
 	}{
 		{
 			name:  "UNION",

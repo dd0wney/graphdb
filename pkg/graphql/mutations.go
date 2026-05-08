@@ -47,7 +47,7 @@ func GenerateSchemaWithMutations(gs *storage.GraphStorage) (graphql.Schema, erro
 		// Plural query
 		pluralName := strings.ToLower(label) + "s"
 		queryFields[pluralName] = &graphql.Field{
-			Type: graphql.NewList(nodeType),
+			Type:    graphql.NewList(nodeType),
 			Resolve: createNodesResolver(gs, label),
 		}
 	}

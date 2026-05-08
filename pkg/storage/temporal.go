@@ -171,8 +171,8 @@ func ComputeTemporalMetrics(graph *GraphStorage, startTime, endTime int64) (*Tem
 	nodeCount := int(stats.NodeCount)
 
 	totalLifetime := int64(0)
-	edgeCount := 0       // edges with temporal data created in range
-	deletedCount := 0    // edges with valid_to in range (tombstoned)
+	edgeCount := 0    // edges with temporal data created in range
+	deletedCount := 0 // edges with valid_to in range (tombstoned)
 
 	duration := endTime - startTime
 	if duration <= 0 {

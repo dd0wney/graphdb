@@ -41,7 +41,7 @@ func TestAuditLogDurability(t *testing.T) {
 		Status:       StatusSuccess,
 		IPAddress:    "192.168.1.1",
 		Metadata: map[string]any{
-			"test_id": "durability-test",
+			"test_id":   "durability-test",
 			"operation": "critical-operation",
 		},
 	}

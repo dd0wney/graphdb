@@ -17,12 +17,12 @@ import (
 // TestBodySizeLimitMiddleware tests the request body size limiting middleware
 func TestBodySizeLimitMiddleware(t *testing.T) {
 	tests := []struct {
-		name           string
-		bodySize       int
-		maxSize        int64
-		expectStatus   int
-		expectError    bool
-		contentType    string
+		name         string
+		bodySize     int
+		maxSize      int64
+		expectStatus int
+		expectError  bool
+		contentType  string
 	}{
 		{
 			name:         "Small request within limit",

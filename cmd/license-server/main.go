@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/licensing"
@@ -67,7 +67,7 @@ func (s *Server) requireAuth(handler http.HandlerFunc) http.HandlerFunc {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{
-				"error": "unauthorized",
+				"error":   "unauthorized",
 				"message": "invalid or missing API key (set X-API-Key header or Authorization: Bearer <key>)",
 			})
 			return

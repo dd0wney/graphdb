@@ -62,14 +62,14 @@ func DefaultReplicationConfig() ReplicationConfig {
 		WALBufferSize:     1000,
 
 		// Connection pool defaults
-		ConnectTimeout:   10 * time.Second,  // 10s to establish connection
-		ReadTimeout:      30 * time.Second,  // 30s read timeout
-		WriteTimeout:     10 * time.Second,  // 10s write timeout
-		MaxPendingConns:  100,               // Max 100 pending connections
-		SendBufferSize:   100,               // 100 messages per replica
-		IdleTimeout:      5 * time.Minute,   // Close after 5 min idle
-		MaxConnectionAge: 24 * time.Hour,    // Force reconnect after 24 hours
-		HandshakeTimeout: 30 * time.Second,  // 30s for handshake
+		ConnectTimeout:   10 * time.Second, // 10s to establish connection
+		ReadTimeout:      30 * time.Second, // 30s read timeout
+		WriteTimeout:     10 * time.Second, // 10s write timeout
+		MaxPendingConns:  100,              // Max 100 pending connections
+		SendBufferSize:   100,              // 100 messages per replica
+		IdleTimeout:      5 * time.Minute,  // Close after 5 min idle
+		MaxConnectionAge: 24 * time.Hour,   // Force reconnect after 24 hours
+		HandshakeTimeout: 30 * time.Second, // 30s for handshake
 	}
 }
 

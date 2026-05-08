@@ -26,7 +26,7 @@ var tenantIDRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 // to avoid mass migration of HTTP handlers; conversion happens at the
 // boundary inside each method. A3 will migrate the public surface.
 type TenantStore struct {
-	tenants map[tenantid.TenantID]*Tenant     // tenantID -> Tenant
+	tenants map[tenantid.TenantID]*Tenant      // tenantID -> Tenant
 	usage   map[tenantid.TenantID]*TenantUsage // tenantID -> TenantUsage
 	mu      sync.RWMutex
 }

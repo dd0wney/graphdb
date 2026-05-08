@@ -359,5 +359,5 @@ func distance(p1, p2 Position) float64 {
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) &&
 		(s == substr || len(s) > len(substr) &&
-		(s[:len(substr)] == substr || contains(s[1:], substr)))
+			(s[:len(substr)] == substr || contains(s[1:], substr)))
 }

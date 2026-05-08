@@ -236,9 +236,9 @@ func TestLoadEmailConfigFromEnv(t *testing.T) {
 func TestGenerateLicenseEmailHTML(t *testing.T) {
 	now := time.Now()
 	tests := []struct {
-		name        string
-		license     *License
-		wantErr     bool
+		name         string
+		license      *License
+		wantErr      bool
 		checkStrings []string
 	}{
 		{

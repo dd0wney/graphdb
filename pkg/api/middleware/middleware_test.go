@@ -411,11 +411,11 @@ func TestSecurityHeaders_AllHeaders(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	expectedHeaders := map[string]string{
-		"X-Frame-Options":         "DENY",
-		"X-Content-Type-Options":  "nosniff",
-		"X-XSS-Protection":        "1; mode=block",
+		"X-Frame-Options":           "DENY",
+		"X-Content-Type-Options":    "nosniff",
+		"X-XSS-Protection":          "1; mode=block",
 		"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-		"Referrer-Policy":         "strict-origin-when-cross-origin",
+		"Referrer-Policy":           "strict-origin-when-cross-origin",
 	}
 
 	for header, expected := range expectedHeaders {

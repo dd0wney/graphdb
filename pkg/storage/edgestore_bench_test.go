@@ -59,7 +59,7 @@ func BenchmarkEdgeStore_CacheMiss(b *testing.B) {
 	const numNodes = 100
 	for i := 0; i < numNodes; i++ {
 		nodeID := uint64(i + 1)
-		edges := []uint64{uint64(i * 10), uint64(i * 10 + 1)}
+		edges := []uint64{uint64(i * 10), uint64(i*10 + 1)}
 		err = es.StoreOutgoingEdges(nodeID, edges)
 		if err != nil {
 			b.Fatalf("StoreOutgoingEdges failed: %v", err)
@@ -310,7 +310,7 @@ func BenchmarkEdgeStore_Throughput(b *testing.B) {
 	const numNodes = 1000
 	for i := 0; i < numNodes; i++ {
 		nodeID := uint64(i + 1)
-		edges := []uint64{uint64(i * 10), uint64(i * 10 + 1)}
+		edges := []uint64{uint64(i * 10), uint64(i*10 + 1)}
 		_ = es.StoreOutgoingEdges(nodeID, edges)
 	}
 

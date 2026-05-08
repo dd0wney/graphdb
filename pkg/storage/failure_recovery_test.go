@@ -67,7 +67,7 @@ func TestCorruptedDataFileRecovery(t *testing.T) {
 
 				// Corrupt the middle of the file
 				if len(data) > 100 {
-					for i := len(data)/2; i < len(data)/2+50; i++ {
+					for i := len(data) / 2; i < len(data)/2+50; i++ {
 						data[i] = 0xFF
 					}
 
@@ -278,8 +278,8 @@ func TestSplitBrainRecovery(t *testing.T) {
 
 		for i := 0; i < 50; i++ {
 			props := map[string]Value{
-				"source":  StringValue("instance1"),
-				"id":      IntValue(int64(i)),
+				"source": StringValue("instance1"),
+				"id":     IntValue(int64(i)),
 			}
 			_, err := gs1.CreateNode([]string{"SplitBrain"}, props)
 			if err != nil {
@@ -303,8 +303,8 @@ func TestSplitBrainRecovery(t *testing.T) {
 
 		for i := 0; i < 50; i++ {
 			props := map[string]Value{
-				"source":  StringValue("instance2"),
-				"id":      IntValue(int64(i + 100)),
+				"source": StringValue("instance2"),
+				"id":     IntValue(int64(i + 100)),
 			}
 			_, err := gs2.CreateNode([]string{"SplitBrain"}, props)
 			if err != nil {
@@ -353,7 +353,7 @@ func TestDiskFullRecovery(t *testing.T) {
 	successCount := 0
 	for i := 0; i < 1000; i++ {
 		props := map[string]Value{
-			"id": IntValue(int64(i)),
+			"id":   IntValue(int64(i)),
 			"data": StringValue(fmt.Sprintf("Data_%d", i)),
 		}
 

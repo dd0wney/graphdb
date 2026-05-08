@@ -350,9 +350,9 @@ func BenchmarkRestoreTime(b *testing.B) {
 // ImportExportTest verifies bulk data round-trip
 func (ts *TestSuite) TestImportExport(t *testing.T) {
 	tests := []struct {
-		name       string
-		format     string
-		recordCount int
+		name           string
+		format         string
+		recordCount    int
 		checkRoundTrip bool
 	}{
 		{
@@ -435,12 +435,12 @@ func BenchmarkImportRate(b *testing.B) {
 // ScaleTest verifies linear scaling up to 10M nodes
 func BenchmarkScaleTest(b *testing.B) {
 	scales := []struct {
-		nodes       int
+		nodes        int
 		maxLatencyMs int64 // max acceptable latency
 	}{
-		{1_000_000, 10},      // 1M: <10ms
-		{5_000_000, 15},      // 5M: <15ms (1.5x)
-		{10_000_000, 20},     // 10M: <20ms (2x)
+		{1_000_000, 10},  // 1M: <10ms
+		{5_000_000, 15},  // 5M: <15ms (1.5x)
+		{10_000_000, 20}, // 10M: <20ms (2x)
 	}
 
 	for _, s := range scales {
@@ -633,12 +633,12 @@ func BenchmarkConcurrentWrites(b *testing.B) {
 
 // ValidatePerformanceBudget ensures metrics meet SLOs
 type PerformanceBudget struct {
-	QueryP95Ms         int64
-	WriteLatencyP99Ms  int64
-	MemoryLeakPerHour  int64
-	GCPauseMaxMs       int64
-	LockFreeRatio      float64
-	DeadlockCount      int64
+	QueryP95Ms        int64
+	WriteLatencyP99Ms int64
+	MemoryLeakPerHour int64
+	GCPauseMaxMs      int64
+	LockFreeRatio     float64
+	DeadlockCount     int64
 }
 
 // CheckBudget validates actual metrics against requirements
@@ -686,9 +686,9 @@ func BenchmarkComparison(b *testing.B) {
 	// Expected: <2x degradation from 1M to 10M nodes
 
 	results := map[string]time.Duration{
-		"1M_nodes":  10 * time.Millisecond,  // baseline
-		"5M_nodes":  12 * time.Millisecond,  // 1.2x
-		"10M_nodes": 20 * time.Millisecond,  // 2.0x
+		"1M_nodes":  10 * time.Millisecond, // baseline
+		"5M_nodes":  12 * time.Millisecond, // 1.2x
+		"10M_nodes": 20 * time.Millisecond, // 2.0x
 	}
 
 	baseline := results["1M_nodes"]

@@ -30,10 +30,10 @@ func TestVectorSearchStep_ThresholdFiltering(t *testing.T) {
 	}
 
 	step := &VectorSearchStep{
-		variable:     "c",
-		propertyName: "embedding",
-		threshold:    0.8,
-		labels:       []string{"Concept"},
+		variable:             "c",
+		propertyName:         "embedding",
+		threshold:            0.8,
+		labels:               []string{"Concept"},
 		queryVectorParamName: "query_embedding",
 		searchFn: func(prop string, q []float32, k, ef int) ([]VectorSearchResult, error) {
 			return searchResults, nil
@@ -93,10 +93,10 @@ func TestVectorSearchStep_LabelFiltering(t *testing.T) {
 	}
 
 	step := &VectorSearchStep{
-		variable:     "c",
-		propertyName: "embedding",
-		threshold:    0.5,
-		labels:       []string{"Concept"},
+		variable:             "c",
+		propertyName:         "embedding",
+		threshold:            0.5,
+		labels:               []string{"Concept"},
 		queryVectorParamName: "query_embedding",
 		searchFn: func(prop string, q []float32, k, ef int) ([]VectorSearchResult, error) {
 			return searchResults, nil
@@ -137,9 +137,9 @@ func TestVectorSearchStep_LabelFiltering(t *testing.T) {
 
 func TestVectorSearchStep_EmptyResults(t *testing.T) {
 	step := &VectorSearchStep{
-		variable:     "c",
-		propertyName: "embedding",
-		threshold:    0.99,
+		variable:             "c",
+		propertyName:         "embedding",
+		threshold:            0.99,
 		queryVectorParamName: "q",
 		searchFn: func(prop string, q []float32, k, ef int) ([]VectorSearchResult, error) {
 			return []VectorSearchResult{}, nil
@@ -176,9 +176,9 @@ func TestVectorSearchStep_CarriesForwardBindings(t *testing.T) {
 	}
 
 	step := &VectorSearchStep{
-		variable:     "c",
-		propertyName: "embedding",
-		threshold:    0.5,
+		variable:             "c",
+		propertyName:         "embedding",
+		threshold:            0.5,
 		queryVectorParamName: "q",
 		searchFn: func(prop string, q []float32, k, ef int) ([]VectorSearchResult, error) {
 			return searchResults, nil

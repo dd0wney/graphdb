@@ -19,10 +19,10 @@ type Config struct {
 	ValidFor     time.Duration // Certificate validity duration (default 1 year)
 
 	// TLS security settings
-	MinVersion         uint16               // Minimum TLS version (default TLS 1.2)
-	CipherSuites       []uint16             // Allowed cipher suites (default secure subset)
-	ClientAuth         tls.ClientAuthType   // Client certificate requirement
-	InsecureSkipVerify bool                 // Skip certificate verification (NOT for production)
+	MinVersion         uint16             // Minimum TLS version (default TLS 1.2)
+	CipherSuites       []uint16           // Allowed cipher suites (default secure subset)
+	ClientAuth         tls.ClientAuthType // Client certificate requirement
+	InsecureSkipVerify bool               // Skip certificate verification (NOT for production)
 }
 
 // DefaultConfig returns a secure TLS configuration with recommended defaults

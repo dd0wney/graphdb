@@ -121,8 +121,8 @@ func TestConcurrentLargeScaleOperations(t *testing.T) {
 	}
 	defer func() { _ = gs.Close() }()
 
-	workers := 4                             // Fixed count to avoid excessive contention
-	nodesPerWorker := 10                     // Reduced from 100 for reasonable test time (WAL sync limited)
+	workers := 4         // Fixed count to avoid excessive contention
+	nodesPerWorker := 10 // Reduced from 100 for reasonable test time (WAL sync limited)
 	totalNodes := workers * nodesPerWorker
 
 	t.Logf("Running concurrent operations with %d workers...", workers)

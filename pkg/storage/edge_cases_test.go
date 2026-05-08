@@ -236,15 +236,15 @@ func TestEdgeCase_SpecialCharacters(t *testing.T) {
 	t.Log("Testing special characters...")
 
 	specialStrings := []string{
-		"Hello\nWorld",           // Newline
-		"Tab\tSeparated",         // Tab
-		"Quote\"Test",            // Quote
-		"Backslash\\Test",        // Backslash
-		"Unicode: 你好世界",        // Unicode
-		"Emoji: 🚀🎉",            // Emoji
-		"NULL\x00Byte",           // Null byte
+		"Hello\nWorld",                  // Newline
+		"Tab\tSeparated",                // Tab
+		"Quote\"Test",                   // Quote
+		"Backslash\\Test",               // Backslash
+		"Unicode: 你好世界",                 // Unicode
+		"Emoji: 🚀🎉",                     // Emoji
+		"NULL\x00Byte",                  // Null byte
 		"<script>alert('xss')</script>", // HTML/JS
-		"'; DROP TABLE nodes; --", // SQL injection attempt
+		"'; DROP TABLE nodes; --",       // SQL injection attempt
 	}
 
 	for i, special := range specialStrings {
@@ -539,9 +539,9 @@ func TestEdgeCase_InvalidNodeIDs(t *testing.T) {
 	t.Log("Testing invalid node IDs...")
 
 	invalidIDs := []uint64{
-		0,                    // Zero
-		^uint64(0),          // Max uint64
-		999999999,           // Very large
+		0,          // Zero
+		^uint64(0), // Max uint64
+		999999999,  // Very large
 	}
 
 	for _, id := range invalidIDs {

@@ -72,11 +72,11 @@ func (cc *CardinalityConstraint) Validate(graph GraphReader) ([]Violation, error
 				Message: fmt.Sprintf("Node %d has %d %s edge(s) of type '%s', minimum is %d",
 					node.ID, edgeCount, cc.Direction, cc.EdgeType, cc.Min),
 				Details: map[string]any{
-					"label":      cc.NodeLabel,
-					"edge_type":  cc.EdgeType,
-					"direction":  cc.Direction.String(),
-					"count":      edgeCount,
-					"min":        cc.Min,
+					"label":     cc.NodeLabel,
+					"edge_type": cc.EdgeType,
+					"direction": cc.Direction.String(),
+					"count":     edgeCount,
+					"min":       cc.Min,
 				},
 			})
 		}
@@ -92,11 +92,11 @@ func (cc *CardinalityConstraint) Validate(graph GraphReader) ([]Violation, error
 				Message: fmt.Sprintf("Node %d has %d %s edge(s) of type '%s', maximum is %d",
 					node.ID, edgeCount, cc.Direction, cc.EdgeType, cc.Max),
 				Details: map[string]any{
-					"label":      cc.NodeLabel,
-					"edge_type":  cc.EdgeType,
-					"direction":  cc.Direction.String(),
-					"count":      edgeCount,
-					"max":        cc.Max,
+					"label":     cc.NodeLabel,
+					"edge_type": cc.EdgeType,
+					"direction": cc.Direction.String(),
+					"count":     edgeCount,
+					"max":       cc.Max,
 				},
 			})
 		}

@@ -4,24 +4,24 @@ package query
 
 // Query represents a complete query statement
 type Query struct {
-	Match   *MatchClause
-	Where   *WhereClause
-	Return  *ReturnClause
-	Create  *CreateClause
-	Delete  *DeleteClause
-	Set     *SetClause
-	Remove  *RemoveClause
-	Unwind  *UnwindClause
-	Merge   *MergeClause
-	With    *WithClause
+	Match           *MatchClause
+	Where           *WhereClause
+	Return          *ReturnClause
+	Create          *CreateClause
+	Delete          *DeleteClause
+	Set             *SetClause
+	Remove          *RemoveClause
+	Unwind          *UnwindClause
+	Merge           *MergeClause
+	With            *WithClause
 	OptionalMatches []*OptionalMatchClause
 	Union           *UnionClause
 	UnionNext       *Query // For UNION chaining
 	Next            *Query // For WITH chaining
 	Limit           int
-	Skip    int
-	Explain bool
-	Profile bool
+	Skip            int
+	Explain         bool
+	Profile         bool
 
 	// InitialBindings are injected by WITH clause chaining
 	InitialBindings []*BindingSet

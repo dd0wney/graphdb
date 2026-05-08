@@ -90,8 +90,8 @@ func (ms *MatchStep) traverseFixedPath(ctx *ExecutionContext, currentNode *stora
 type bfsEntry struct {
 	node    *storage.Node
 	depth   int
-	edges   []*storage.Edge    // path of edges taken to reach this node
-	visited map[uint64]bool    // per-path visited set (prevents cycles within a single path)
+	edges   []*storage.Edge // path of edges taken to reach this node
+	visited map[uint64]bool // per-path visited set (prevents cycles within a single path)
 }
 
 // traverseVariablePath uses BFS to find all paths within [MinHops, MaxHops].

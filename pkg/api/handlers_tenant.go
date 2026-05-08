@@ -12,31 +12,31 @@ import (
 
 // TenantCreateRequest represents a request to create a tenant
 type TenantCreateRequest struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
+	ID          string              `json:"id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description,omitempty"`
 	Quota       *tenant.TenantQuota `json:"quota,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	Metadata    map[string]string   `json:"metadata,omitempty"`
 }
 
 // TenantUpdateRequest represents a request to update a tenant
 type TenantUpdateRequest struct {
-	Name        string            `json:"name,omitempty"`
-	Description string            `json:"description,omitempty"`
+	Name        string              `json:"name,omitempty"`
+	Description string              `json:"description,omitempty"`
 	Quota       *tenant.TenantQuota `json:"quota,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	Metadata    map[string]string   `json:"metadata,omitempty"`
 }
 
 // TenantResponse represents a tenant in API responses
 type TenantResponse struct {
-	ID          string               `json:"id"`
-	Name        string               `json:"name"`
-	Description string               `json:"description,omitempty"`
-	Status      tenant.TenantStatus  `json:"status"`
-	Quota       *tenant.TenantQuota  `json:"quota,omitempty"`
-	Metadata    map[string]string    `json:"metadata,omitempty"`
-	CreatedAt   int64                `json:"created_at"`
-	UpdatedAt   int64                `json:"updated_at"`
+	ID          string              `json:"id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description,omitempty"`
+	Status      tenant.TenantStatus `json:"status"`
+	Quota       *tenant.TenantQuota `json:"quota,omitempty"`
+	Metadata    map[string]string   `json:"metadata,omitempty"`
+	CreatedAt   int64               `json:"created_at"`
+	UpdatedAt   int64               `json:"updated_at"`
 }
 
 // TenantListResponse represents the response for listing tenants
@@ -296,8 +296,10 @@ func (s *Server) handleGetTenantUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract tenant ID from path like /api/v1/tenants/{id}/usage
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
-	parts := strings.Split(path, "/")
+	parts, ok := s.NewPathExtractor(w, r).ExtractParts("/api/v1/tenants/")
+	if !ok {
+		return
+	}
 	if len(parts) < 2 || parts[1] != "usage" {
 		s.respondError(w, http.StatusBadRequest, "Invalid path")
 		return
@@ -352,8 +354,10 @@ func (s *Server) handleSuspendTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract tenant ID
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
-	parts := strings.Split(path, "/")
+	parts, ok := s.NewPathExtractor(w, r).ExtractParts("/api/v1/tenants/")
+	if !ok {
+		return
+	}
 	if len(parts) < 2 || parts[1] != "suspend" {
 		s.respondError(w, http.StatusBadRequest, "Invalid path")
 		return
@@ -399,8 +403,10 @@ func (s *Server) handleActivateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract tenant ID
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
-	parts := strings.Split(path, "/")
+	parts, ok := s.NewPathExtractor(w, r).ExtractParts("/api/v1/tenants/")
+	if !ok {
+		return
+	}
 	if len(parts) < 2 || parts[1] != "activate" {
 		s.respondError(w, http.StatusBadRequest, "Invalid path")
 		return
@@ -474,10 +480,13 @@ func (s *Server) handleTenantsEndpoint(w http.ResponseWriter, r *http.Request) {
 
 // handleTenantEndpoint routes /api/v1/tenants/{id}[/action] based on HTTP method and path
 func (s *Server) handleTenantEndpoint(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
-	parts := strings.Split(path, "/")
-
-	if len(parts) == 0 || parts[0] == "" {
+	parts, ok := s.NewPathExtractor(w, r).ExtractParts("/api/v1/tenants/")
+	if !ok {
+		return
+	}
+	if parts[0] == "" {
+		// Defensive: catches double-slash URLs like /api/v1/tenants//abc
+		// where ExtractParts returns ["", "abc"] but the tenant ID is empty.
 		s.respondError(w, http.StatusBadRequest, "Tenant ID is required")
 		return
 	}

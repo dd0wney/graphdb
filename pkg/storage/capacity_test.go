@@ -251,7 +251,7 @@ func TestEdgeStoreMemoryScaling(t *testing.T) {
 			// Write nodes
 			for i := 0; i < scale.nodes; i++ {
 				nodeID := uint64(i + 1)
-				edges := []uint64{nodeID * 10, nodeID * 10 + 1, nodeID * 10 + 2}
+				edges := []uint64{nodeID * 10, nodeID*10 + 1, nodeID*10 + 2}
 				err = es.StoreOutgoingEdges(nodeID, edges)
 				if err != nil {
 					t.Fatalf("Failed to store edges: %v", err)

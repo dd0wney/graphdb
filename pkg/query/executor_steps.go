@@ -512,8 +512,10 @@ func (oms *OptionalMatchStep) Execute(ctx *ExecutionContext) error {
 	return nil
 }
 
-func (oms *OptionalMatchStep) StepName() string   { return "OptionalMatchStep" }
-func (oms *OptionalMatchStep) StepDetail() string  { return fmt.Sprintf("patterns=%d", len(oms.match.Patterns)) }
+func (oms *OptionalMatchStep) StepName() string { return "OptionalMatchStep" }
+func (oms *OptionalMatchStep) StepDetail() string {
+	return fmt.Sprintf("patterns=%d", len(oms.match.Patterns))
+}
 
 // ReturnStep executes a RETURN clause
 type ReturnStep struct {

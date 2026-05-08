@@ -49,8 +49,8 @@ func TestTenantStore_Create(t *testing.T) {
 				ID:   "tenant-2",
 				Name: "Quota Tenant",
 				Quota: &TenantQuota{
-					MaxNodes:       1000,
-					MaxEdges:       5000,
+					MaxNodes:        1000,
+					MaxEdges:        5000,
 					MaxStorageBytes: 1073741824, // 1GB
 				},
 			},
@@ -666,6 +666,10 @@ func TestMustFromContext(t *testing.T) {
 }
 
 func TestFromContext_NilContext(t *testing.T) {
+	// Deliberately pass nil to assert FromContext defends against it.
+	// The SA1012 lint rule warns against nil contexts in general use; this
+	// test is the exception — we're testing the defensive code path.
+	//nolint:staticcheck // SA1012: testing nil-context defensive behaviour
 	tenantID, ok := FromContext(nil)
 	if ok {
 		t.Error("Expected ok to be false for nil context")
@@ -754,8 +758,8 @@ func TestNewQuotaUsage(t *testing.T) {
 	}
 
 	quota := &TenantQuota{
-		MaxNodes:       100,
-		MaxEdges:       500,
+		MaxNodes:        100,
+		MaxEdges:        500,
 		MaxStorageBytes: 10737418240, // 10GB
 	}
 
