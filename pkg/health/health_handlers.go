@@ -22,7 +22,8 @@ func (hc *HealthChecker) HTTPHandler() http.HandlerFunc {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 
-		json.NewEncoder(w).Encode(response)
+		// Encode error after WriteHeader is unrecoverable; log and move on.
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
@@ -40,7 +41,8 @@ func (hc *HealthChecker) ReadinessHandler() http.HandlerFunc {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 
-		json.NewEncoder(w).Encode(response)
+		// Encode error after WriteHeader is unrecoverable; log and move on.
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
@@ -58,6 +60,7 @@ func (hc *HealthChecker) LivenessHandler() http.HandlerFunc {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 
-		json.NewEncoder(w).Encode(response)
+		// Encode error after WriteHeader is unrecoverable; log and move on.
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }

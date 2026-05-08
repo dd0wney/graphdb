@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/graphql-go/graphql"
+
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
-	"github.com/graphql-go/graphql"
 )
 
 // createEdgeResolver creates a resolver for fetching a single edge by ID

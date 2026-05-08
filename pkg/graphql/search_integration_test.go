@@ -3,9 +3,10 @@ package graphql
 import (
 	"testing"
 
+	"github.com/graphql-go/graphql"
+
 	"github.com/dd0wney/cluso-graphdb/pkg/search"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/graphql-go/graphql"
 )
 
 // TestGraphQLSearchIntegration tests full-text search through GraphQL

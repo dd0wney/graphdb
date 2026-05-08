@@ -1,8 +1,9 @@
 package graphql
 
 import (
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/graphql-go/graphql"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // DataLoaderContext holds all DataLoaders for a request

@@ -159,13 +159,6 @@ func (sw *SafeWriter) Flush() error {
 	return sw.writer.Flush()
 }
 
-// ChecksumWriter calculates CRC32 while writing.
-// This can be used to verify WAL entry integrity.
-type ChecksumWriter struct {
-	writer   *bufio.Writer
-	checksum uint32
-}
-
 // EnsureDir creates a directory if it doesn't exist.
 func EnsureDir(path string) error {
 	return os.MkdirAll(path, 0755)

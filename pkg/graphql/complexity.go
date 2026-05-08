@@ -5,11 +5,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/graphql/gqlerrors"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // ComplexityConfig defines configuration for query complexity analysis

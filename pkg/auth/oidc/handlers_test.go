@@ -1,11 +1,6 @@
 package oidc
 
 import (
-	"crypto"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -612,27 +607,4 @@ func TestStateStore_DoSProtection(t *testing.T) {
 	if store.Len() > store.maxSize {
 		t.Errorf("Store size %d exceeds maxSize %d", store.Len(), store.maxSize)
 	}
-}
-
-// Helper to create a signed token (copy from token_validator_test.go)
-func createSignedTokenFromKeyPair(kp *testKeyPair, claims map[string]any) string {
-	header := map[string]string{
-		"alg": "RS256",
-		"typ": "JWT",
-		"kid": kp.kid,
-	}
-
-	headerJSON, _ := json.Marshal(header)
-	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
-
-	claimsJSON, _ := json.Marshal(claims)
-	claimsB64 := base64.RawURLEncoding.EncodeToString(claimsJSON)
-
-	signingInput := headerB64 + "." + claimsB64
-
-	hash := sha256.Sum256([]byte(signingInput))
-	signature, _ := rsa.SignPKCS1v15(rand.Reader, kp.privateKey, crypto.SHA256, hash[:])
-	signatureB64 := base64.RawURLEncoding.EncodeToString(signature)
-
-	return signingInput + "." + signatureB64
 }

@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/graphql/gqlerrors"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // DepthLimitedSchema wraps a schema with automatic depth validation

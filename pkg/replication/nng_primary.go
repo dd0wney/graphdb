@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 	"go.nanomsg.org/mangos/v3/protocol/pub"
 	"go.nanomsg.org/mangos/v3/protocol/pull"
 	"go.nanomsg.org/mangos/v3/protocol/surveyor"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 
 	// Register transports
 	_ "go.nanomsg.org/mangos/v3/transport/all"

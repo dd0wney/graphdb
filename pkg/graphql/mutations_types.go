@@ -3,8 +3,9 @@ package graphql
 import (
 	"fmt"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/graphql-go/graphql"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // createGenericNodeType creates a generic MutationNode type for mutation responses

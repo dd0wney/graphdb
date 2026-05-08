@@ -8,11 +8,12 @@ import (
 	"log"
 	"sync"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/push"
 	"go.nanomsg.org/mangos/v3/protocol/respondent"
 	"go.nanomsg.org/mangos/v3/protocol/sub"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 
 	// Register transports
 	_ "go.nanomsg.org/mangos/v3/transport/all"

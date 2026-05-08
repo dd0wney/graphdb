@@ -2,7 +2,6 @@ package query
 
 import (
 	"fmt"
-	"strconv"
 )
 
 // parseMatch parses a MATCH clause
@@ -492,37 +491,4 @@ func (p *Parser) parseUnwind() (*UnwindClause, error) {
 		Expression: propExpr,
 		Alias:      aliasToken.Value,
 	}, nil
-}
-
-// parseLimitSkip parses LIMIT and SKIP values
-func (p *Parser) parseLimitSkip(query *Query) error {
-	token := p.peek()
-
-	if token.Type == TokenLimit {
-		p.advance() // consume LIMIT
-		limitToken, err := p.expect(TokenNumber)
-		if err != nil {
-			return err
-		}
-		if limit, err := strconv.Atoi(limitToken.Value); err == nil {
-			query.Limit = limit
-		} else {
-			return fmt.Errorf("invalid LIMIT value: %s", limitToken.Value)
-		}
-	}
-
-	if p.peek().Type == TokenSkip {
-		p.advance() // consume SKIP
-		skipToken, err := p.expect(TokenNumber)
-		if err != nil {
-			return err
-		}
-		if skip, err := strconv.Atoi(skipToken.Value); err == nil {
-			query.Skip = skip
-		} else {
-			return fmt.Errorf("invalid SKIP value: %s", skipToken.Value)
-		}
-	}
-
-	return nil
 }

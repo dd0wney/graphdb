@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/graphql-go/graphql"
+
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
-	"github.com/graphql-go/graphql"
 )
 
 // GenerateSchemaWithFiltering generates a GraphQL schema with filtering support

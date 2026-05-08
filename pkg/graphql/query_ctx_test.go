@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	"github.com/graphql-go/graphql"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
 // TestExecuteQuery_ContextFlowsToResolver is the audit A6c-graphql-ctx
