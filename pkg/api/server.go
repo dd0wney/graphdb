@@ -6,8 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
 )
 
 // Start starts the HTTP server
@@ -32,28 +33,35 @@ func (s *Server) Start() error {
 	// Metrics endpoint (JSON format for dashboard, protected)
 	mux.HandleFunc("/api/metrics", s.requireAuth(s.handleMetrics))
 
-	// Query endpoints (protected)
-	mux.HandleFunc("/query", s.requireAuth(s.handleQuery))
+	// Query endpoints (protected, tenant-scoped — audit A5).
+	// withTenant injects request-scoped tenant context so the executor
+	// (when migrated in audit task A6) can scope MATCH iteration to the
+	// caller's tenant rather than the global graph.
+	mux.HandleFunc("/query", s.requireAuth(s.withTenant(s.handleQuery)))
 
-	// GraphQL endpoint (protected)
-	mux.HandleFunc("/graphql", s.requireAuth(s.handleGraphQL))
+	// GraphQL endpoint (protected, tenant-scoped — audit A5).
+	mux.HandleFunc("/graphql", s.requireAuth(s.withTenant(s.handleGraphQL)))
 
-	// Node endpoints (protected)
-	mux.HandleFunc("/nodes", s.requireAuth(s.handleNodes))
-	mux.HandleFunc("/nodes/", s.requireAuth(s.handleNode)) // /nodes/{id}
-	mux.HandleFunc("/nodes/batch", s.requireAuth(s.handleBatchNodes))
+	// Node endpoints (protected, tenant-scoped — audit A5). Closes the
+	// route-level half of Security CRIT #1+#2: the storage layer enforces
+	// tenant ownership (A3b), but handlers must pass the tenant from
+	// request context. withTenant ensures the context is populated; A6
+	// migrates the handlers to use *ForTenant variants.
+	mux.HandleFunc("/nodes", s.requireAuth(s.withTenant(s.handleNodes)))
+	mux.HandleFunc("/nodes/", s.requireAuth(s.withTenant(s.handleNode))) // /nodes/{id}
+	mux.HandleFunc("/nodes/batch", s.requireAuth(s.withTenant(s.handleBatchNodes)))
 
-	// Edge endpoints (protected)
-	mux.HandleFunc("/edges", s.requireAuth(s.handleEdges))
-	mux.HandleFunc("/edges/", s.requireAuth(s.handleEdge)) // /edges/{id}
-	mux.HandleFunc("/edges/batch", s.requireAuth(s.handleBatchEdges))
+	// Edge endpoints (protected, tenant-scoped — audit A5).
+	mux.HandleFunc("/edges", s.requireAuth(s.withTenant(s.handleEdges)))
+	mux.HandleFunc("/edges/", s.requireAuth(s.withTenant(s.handleEdge))) // /edges/{id}
+	mux.HandleFunc("/edges/batch", s.requireAuth(s.withTenant(s.handleBatchEdges)))
 
-	// Traversal endpoints (protected)
-	mux.HandleFunc("/traverse", s.requireAuth(s.handleTraversal))
-	mux.HandleFunc("/shortest-path", s.requireAuth(s.handleShortestPath))
+	// Traversal endpoints (protected, tenant-scoped — audit A5).
+	mux.HandleFunc("/traverse", s.requireAuth(s.withTenant(s.handleTraversal)))
+	mux.HandleFunc("/shortest-path", s.requireAuth(s.withTenant(s.handleShortestPath)))
 
-	// Algorithm endpoints (protected)
-	mux.HandleFunc("/algorithms", s.requireAuth(s.handleAlgorithm))
+	// Algorithm endpoints (protected, tenant-scoped — audit A5).
+	mux.HandleFunc("/algorithms", s.requireAuth(s.withTenant(s.handleAlgorithm)))
 
 	// Vector search endpoints (protected, tenant-scoped)
 	mux.HandleFunc("/vector-indexes", s.requireAuth(s.withTenant(s.handleVectorIndexes)))
