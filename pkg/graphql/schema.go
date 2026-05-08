@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	"github.com/graphql-go/graphql"
 )
 
@@ -155,8 +156,9 @@ func createNodeResolver(gs *storage.GraphStorage, label string) graphql.FieldRes
 			return nil, fmt.Errorf("invalid id %q: %w", idStr, err)
 		}
 
-		// Fetch node from storage
-		node, err := gs.GetNode(id)
+		// Audit A6c-graphql-resolvers: tenant-scoped fetch.
+		tenantID := tenant.MustFromContext(p.Context)
+		node, err := gs.GetNodeForTenant(id, tenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -173,11 +175,9 @@ func createNodeResolver(gs *storage.GraphStorage, label string) graphql.FieldRes
 // createNodesResolver creates a resolver for fetching all nodes with a label
 func createNodesResolver(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		// Query nodes by label
-		nodes, err := gs.FindNodesByLabel(label)
-		if err != nil {
-			return nil, err
-		}
+		// Audit A6c-graphql-resolvers: tenant-scoped label query.
+		tenantID := tenant.MustFromContext(p.Context)
+		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
 
 		// Apply pagination if specified
 		limit, limitOk := p.Args["limit"].(int)

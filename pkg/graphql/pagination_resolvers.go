@@ -2,17 +2,16 @@ package graphql
 
 import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	"github.com/graphql-go/graphql"
 )
 
 // createNodeConnectionResolver creates a resolver for node connections with cursor pagination
 func createNodeConnectionResolver(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		// Fetch all nodes with the label
-		nodes, err := gs.FindNodesByLabel(label)
-		if err != nil {
-			return nil, err
-		}
+		// Audit A6c-graphql-resolvers: tenant-scoped label lookup.
+		tenantID := tenant.MustFromContext(p.Context)
+		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
 
 		// Parse pagination arguments
 		first, firstOk := p.Args["first"].(int)
@@ -118,17 +117,9 @@ func createNodeConnectionResolver(gs *storage.GraphStorage, label string) graphq
 // createEdgeConnectionResolver creates a resolver for edge connections with cursor pagination
 func createEdgeConnectionResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
-		// Fetch all edges
-		stats := gs.GetStatistics()
-		edges := make([]*storage.Edge, 0)
-
-		for edgeID := uint64(1); edgeID <= stats.EdgeCount; edgeID++ {
-			edge, err := gs.GetEdge(edgeID)
-			if err != nil {
-				continue
-			}
-			edges = append(edges, edge)
-		}
+		// Audit A6c-graphql-resolvers: tenant-scoped edge enumeration.
+		tenantID := tenant.MustFromContext(p.Context)
+		edges := gs.GetAllEdgesForTenant(tenantID)
 
 		// Parse pagination arguments
 		first, firstOk := p.Args["first"].(int)

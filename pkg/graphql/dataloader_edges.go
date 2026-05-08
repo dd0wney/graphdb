@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
 // NewOutgoingEdgesDataLoader creates a DataLoader for loading outgoing edges
@@ -29,11 +30,12 @@ func NewOutgoingEdgesDataLoader(gs *storage.GraphStorage) *DataLoader {
 			keyToIndex[nodeID] = i
 		}
 
-		// Batch load all outgoing edges for all nodes
-		// This is more efficient than loading one by one
+		// Batch load all outgoing edges for all nodes, scoped to the
+		// caller's tenant (audit A6c-graphql-resolvers).
+		tenantID := tenant.MustFromContext(ctx)
 		edgesByNode := make(map[uint64][]*storage.Edge)
 		for _, nodeID := range nodeIDs {
-			edges, err := gs.GetOutgoingEdges(nodeID)
+			edges, err := gs.GetOutgoingEdgesForTenant(nodeID, tenantID)
 			if err != nil {
 				idx := keyToIndex[nodeID]
 				errors[idx] = err
@@ -77,9 +79,11 @@ func NewIncomingEdgesDataLoader(gs *storage.GraphStorage) *DataLoader {
 			keyToIndex[nodeID] = i
 		}
 
+		// Audit A6c-graphql-resolvers: tenant-scoped incoming edges.
+		tenantID := tenant.MustFromContext(ctx)
 		edgesByNode := make(map[uint64][]*storage.Edge)
 		for _, nodeID := range nodeIDs {
-			edges, err := gs.GetIncomingEdges(nodeID)
+			edges, err := gs.GetIncomingEdgesForTenant(nodeID, tenantID)
 			if err != nil {
 				idx := keyToIndex[nodeID]
 				errors[idx] = err
