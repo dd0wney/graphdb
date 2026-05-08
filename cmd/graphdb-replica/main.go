@@ -94,7 +94,12 @@ func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication
 			return
 		}
 
-		nodes := graph.GetAllNodes()
+		// Replica is a read-only mirror of the primary's full state
+		// across all tenants — replication legitimately needs the
+		// cross-tenant view. GetAllNodesAcrossTenants is the explicit
+		// entry point; the previous GetAllNodes was deleted to prevent
+		// accidental misuse from tenant-scoped paths (audit A3b).
+		nodes := graph.GetAllNodesAcrossTenants()
 		json.NewEncoder(w).Encode(nodes)
 	})
 

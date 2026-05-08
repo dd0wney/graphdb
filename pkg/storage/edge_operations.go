@@ -36,11 +36,42 @@ func (gs *GraphStorage) CreateEdgeWithTenant(tenantID string, fromID, toID uint6
 }
 
 // DeleteEdgeForTenant deletes an edge by ID, scoped to the given tenant.
-// See GetNodeForTenant in node_operations.go for the migration rationale;
-// A3b adds enforcement.
+// Returns ErrEdgeNotFound on missing or cross-tenant.
+//
+// See GetNodeForTenant in node_operations.go for the rationale on the
+// unified missing-vs-cross-tenant error.
 func (gs *GraphStorage) DeleteEdgeForTenant(edgeID uint64, tenantID string) error {
-	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
+	// Tenant validation under shard read lock; release before delegating
+	// to DeleteEdge which acquires the global write lock. The lock-drop
+	// window is benign — tenant IDs are immutable after creation, and
+	// "edge deleted by another goroutine" surfaces as ErrEdgeNotFound
+	// from DeleteEdge.
+	gs.rlockShard(edgeID)
+	if _, err := gs.getEdgeRefForTenant(edgeID, tenantID); err != nil {
+		gs.runlockShard(edgeID)
+		return err
+	}
+	gs.runlockShard(edgeID)
 	return gs.DeleteEdge(edgeID)
+}
+
+// getEdgeRefForTenant returns the live edge pointer (NO clone) after
+// validating tenant ownership. Caller MUST hold the appropriate shard
+// read lock for the duration the returned pointer is used.
+//
+// Internal use only — package-private. Mirrors getNodeRefForTenant in
+// node_operations.go.
+func (gs *GraphStorage) getEdgeRefForTenant(edgeID uint64, tenantID string) (*Edge, error) {
+	edge, exists := gs.edges[edgeID]
+	if !exists {
+		return nil, ErrEdgeNotFound
+	}
+	expectedTenant := effectiveTenantID(tenantID).String()
+	if edge.TenantID != expectedTenant {
+		// Cross-tenant: same error as missing to avoid existence leak.
+		return nil, ErrEdgeNotFound
+	}
+	return edge, nil
 }
 
 // DeleteEdge deletes an edge by ID.
@@ -86,11 +117,15 @@ func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
 }
 
 // GetEdgeForTenant retrieves an edge by ID, scoped to the given tenant.
-// See GetNodeForTenant in node_operations.go for the migration rationale;
-// A3b adds enforcement.
+// Returns ErrEdgeNotFound on missing or cross-tenant.
 func (gs *GraphStorage) GetEdgeForTenant(edgeID uint64, tenantID string) (*Edge, error) {
-	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
-	return gs.GetEdge(edgeID)
+	gs.rlockShard(edgeID)
+	defer gs.runlockShard(edgeID)
+	edge, err := gs.getEdgeRefForTenant(edgeID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return edge.Clone(), nil
 }
 
 // GetEdge retrieves an edge by ID.
@@ -112,10 +147,17 @@ func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 }
 
 // UpdateEdgeForTenant updates an edge's properties and/or weight, scoped
-// to the given tenant. See GetNodeForTenant in node_operations.go for the
-// migration rationale; A3b adds enforcement.
+// to the given tenant. Returns ErrEdgeNotFound on missing or cross-tenant.
 func (gs *GraphStorage) UpdateEdgeForTenant(edgeID uint64, properties map[string]Value, weight *float64, tenantID string) error {
-	_ = tenantID // A3b will enforce; A3a is signature plumbing only.
+	// Tenant validation under shard read lock; release before delegating
+	// to UpdateEdge (which acquires the global write lock). Same lock-drop
+	// rationale as DeleteEdgeForTenant.
+	gs.rlockShard(edgeID)
+	if _, err := gs.getEdgeRefForTenant(edgeID, tenantID); err != nil {
+		gs.runlockShard(edgeID)
+		return err
+	}
+	gs.runlockShard(edgeID)
 	return gs.UpdateEdge(edgeID, properties, weight)
 }
 

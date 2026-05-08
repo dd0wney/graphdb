@@ -10,7 +10,14 @@ import (
 type GraphReader interface {
 	// Node operations
 	GetNode(nodeID uint64) (*storage.Node, error)
-	GetAllNodes() []*storage.Node
+	// GetAllNodesAcrossTenants returns every node from every tenant.
+	// Constraint validation currently runs across all tenants — for
+	// uniqueness/cardinality constraints, this means a violation in one
+	// tenant fires even when the duplicate lives in a different tenant.
+	// Per-tenant constraint validation is a separate follow-up; the
+	// audit-A3b rename surfaces the cross-tenant semantic at the call
+	// site so the limitation is visible in code review.
+	GetAllNodesAcrossTenants() []*storage.Node
 	FindNodesByLabel(label string) ([]*storage.Node, error)
 	GetAllLabels() []string
 
