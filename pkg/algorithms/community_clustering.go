@@ -3,30 +3,13 @@ package algorithms
 import "github.com/dd0wney/cluso-graphdb/pkg/storage"
 
 // ClusteringCoefficient computes local clustering coefficient for all nodes
-// Measures how close a node's neighbors are to being a complete graph
+// Measures how close a node's neighbors are to being a complete graph.
+//
+// Enumerates nodes via GetAllNodeIDs rather than scanning IDs 1..NodeCount+buffer.
+// The previous scan-based approach was both fragile (relied on stats.NodeCount
+// being accurate at call time) and slow (one GetNode call per scanned ID).
 func ClusteringCoefficient(graph *storage.GraphStorage) (map[uint64]float64, error) {
-	stats := graph.GetStatistics()
-
-	// Get all node IDs - use uint64 to avoid overflow
-	// Note: Node IDs start from 1 and are sequential, but we need to scan
-	// up to at least NodeCount + some buffer to handle any timing issues
-	// with stats updates. The actual upper bound should be NodeCount * 2 or
-	// the actual nextNodeID, but we don't have direct access to that.
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	maxID := stats.NodeCount + 10 // Small buffer for timing
-	if maxID < 100 {
-		maxID = 100 // Minimum scan range
-	}
-	for i := uint64(1); i <= maxID; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
-		// Stop early if we've found all expected nodes
-		if uint64(len(nodeIDs)) >= stats.NodeCount && stats.NodeCount > 0 {
-			break
-		}
-	}
-
+	nodeIDs := graph.GetAllNodeIDs()
 	coefficients := make(map[uint64]float64)
 
 	for _, nodeID := range nodeIDs {
