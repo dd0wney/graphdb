@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
 )
 
 const (
@@ -17,23 +19,28 @@ const (
 // tenantIDRegex validates tenant IDs (alphanumeric, hyphens, underscores)
 var tenantIDRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 
-// TenantStore manages tenant storage and operations
+// TenantStore manages tenant storage and operations.
+//
+// Internal maps are keyed by tenantid.TenantID since audit task A1
+// (2026-05-06). Public method signatures still take "tenantID string"
+// to avoid mass migration of HTTP handlers; conversion happens at the
+// boundary inside each method. A3 will migrate the public surface.
 type TenantStore struct {
-	tenants map[string]*Tenant      // tenantID -> Tenant
-	usage   map[string]*TenantUsage // tenantID -> TenantUsage
+	tenants map[tenantid.TenantID]*Tenant      // tenantID -> Tenant
+	usage   map[tenantid.TenantID]*TenantUsage // tenantID -> TenantUsage
 	mu      sync.RWMutex
 }
 
 // NewTenantStore creates a new tenant store with a default tenant
 func NewTenantStore() *TenantStore {
 	store := &TenantStore{
-		tenants: make(map[string]*Tenant),
-		usage:   make(map[string]*TenantUsage),
+		tenants: make(map[tenantid.TenantID]*Tenant),
+		usage:   make(map[tenantid.TenantID]*TenantUsage),
 	}
 
 	// Create the default tenant for backward compatibility
 	now := time.Now().UnixMilli()
-	store.tenants[DefaultTenantID] = &Tenant{
+	store.tenants[tenantid.Default] = &Tenant{
 		ID:          DefaultTenantID,
 		Name:        "Default Tenant",
 		Description: "Default tenant for backward compatibility",
@@ -42,7 +49,7 @@ func NewTenantStore() *TenantStore {
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	store.usage[DefaultTenantID] = NewTenantUsage(DefaultTenantID)
+	store.usage[tenantid.Default] = NewTenantUsage(DefaultTenantID)
 
 	return store
 }
@@ -57,7 +64,7 @@ func (s *TenantStore) Create(tenant *Tenant) error {
 	defer s.mu.Unlock()
 
 	// Check for duplicate ID
-	if _, exists := s.tenants[tenant.ID]; exists {
+	if _, exists := s.tenants[tenantid.TenantID(tenant.ID)]; exists {
 		return fmt.Errorf("%w: %s", ErrTenantExists, tenant.ID)
 	}
 
@@ -72,8 +79,8 @@ func (s *TenantStore) Create(tenant *Tenant) error {
 	}
 
 	// Store tenant
-	s.tenants[tenant.ID] = tenant
-	s.usage[tenant.ID] = NewTenantUsage(tenant.ID)
+	s.tenants[tenantid.TenantID(tenant.ID)] = tenant
+	s.usage[tenantid.TenantID(tenant.ID)] = NewTenantUsage(tenant.ID)
 
 	return nil
 }
@@ -87,7 +94,7 @@ func (s *TenantStore) Get(tenantID string) (*Tenant, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	tenant, exists := s.tenants[tenantID]
+	tenant, exists := s.tenants[tenantid.TenantID(tenantID)]
 	if !exists {
 		return nil, fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
@@ -149,7 +156,7 @@ func (s *TenantStore) Update(tenant *Tenant) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	existing, exists := s.tenants[tenant.ID]
+	existing, exists := s.tenants[tenantid.TenantID(tenant.ID)]
 	if !exists {
 		return fmt.Errorf("%w: %s", ErrTenantNotFound, tenant.ID)
 	}
@@ -186,7 +193,7 @@ func (s *TenantStore) Delete(tenantID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tenant, exists := s.tenants[tenantID]
+	tenant, exists := s.tenants[tenantid.TenantID(tenantID)]
 	if !exists {
 		return fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
@@ -206,7 +213,7 @@ func (s *TenantStore) Suspend(tenantID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tenant, exists := s.tenants[tenantID]
+	tenant, exists := s.tenants[tenantid.TenantID(tenantID)]
 	if !exists {
 		return fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
@@ -226,7 +233,7 @@ func (s *TenantStore) Activate(tenantID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tenant, exists := s.tenants[tenantID]
+	tenant, exists := s.tenants[tenantid.TenantID(tenantID)]
 	if !exists {
 		return fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
@@ -250,7 +257,7 @@ func (s *TenantStore) GetUsage(tenantID string) (*TenantUsage, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	usage, exists := s.usage[tenantID]
+	usage, exists := s.usage[tenantid.TenantID(tenantID)]
 	if !exists {
 		return nil, fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
@@ -267,7 +274,7 @@ func (s *TenantStore) UpdateUsage(tenantID string, nodeCount, edgeCount, storage
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	usage, exists := s.usage[tenantID]
+	usage, exists := s.usage[tenantid.TenantID(tenantID)]
 	if !exists {
 		return fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
@@ -285,11 +292,11 @@ func (s *TenantStore) IncrementNodeCount(tenantID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	usage, exists := s.usage[tenantID]
+	usage, exists := s.usage[tenantid.TenantID(tenantID)]
 	if !exists {
 		// Auto-create usage for backward compatibility
 		usage = NewTenantUsage(tenantID)
-		s.usage[tenantID] = usage
+		s.usage[tenantid.TenantID(tenantID)] = usage
 	}
 
 	usage.NodeCount++
@@ -303,7 +310,7 @@ func (s *TenantStore) DecrementNodeCount(tenantID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	usage, exists := s.usage[tenantID]
+	usage, exists := s.usage[tenantid.TenantID(tenantID)]
 	if !exists {
 		return nil // Nothing to decrement
 	}
@@ -321,11 +328,11 @@ func (s *TenantStore) IncrementEdgeCount(tenantID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	usage, exists := s.usage[tenantID]
+	usage, exists := s.usage[tenantid.TenantID(tenantID)]
 	if !exists {
 		// Auto-create usage for backward compatibility
 		usage = NewTenantUsage(tenantID)
-		s.usage[tenantID] = usage
+		s.usage[tenantid.TenantID(tenantID)] = usage
 	}
 
 	usage.EdgeCount++
@@ -339,7 +346,7 @@ func (s *TenantStore) DecrementEdgeCount(tenantID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	usage, exists := s.usage[tenantID]
+	usage, exists := s.usage[tenantid.TenantID(tenantID)]
 	if !exists {
 		return nil // Nothing to decrement
 	}
@@ -357,7 +364,7 @@ func (s *TenantStore) CheckNodeQuota(tenantID string) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	tenant, exists := s.tenants[tenantID]
+	tenant, exists := s.tenants[tenantid.TenantID(tenantID)]
 	if !exists {
 		// Allow for backward compatibility (default tenant)
 		if tenantID == DefaultTenantID {
@@ -366,7 +373,7 @@ func (s *TenantStore) CheckNodeQuota(tenantID string) error {
 		return fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
 
-	usage, exists := s.usage[tenantID]
+	usage, exists := s.usage[tenantid.TenantID(tenantID)]
 	if !exists {
 		return nil // No usage tracked yet
 	}
@@ -379,7 +386,7 @@ func (s *TenantStore) CheckEdgeQuota(tenantID string) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	tenant, exists := s.tenants[tenantID]
+	tenant, exists := s.tenants[tenantid.TenantID(tenantID)]
 	if !exists {
 		// Allow for backward compatibility (default tenant)
 		if tenantID == DefaultTenantID {
@@ -388,7 +395,7 @@ func (s *TenantStore) CheckEdgeQuota(tenantID string) error {
 		return fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
 
-	usage, exists := s.usage[tenantID]
+	usage, exists := s.usage[tenantid.TenantID(tenantID)]
 	if !exists {
 		return nil // No usage tracked yet
 	}
@@ -401,7 +408,7 @@ func (s *TenantStore) Exists(tenantID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	_, exists := s.tenants[tenantID]
+	_, exists := s.tenants[tenantid.TenantID(tenantID)]
 	return exists
 }
 
@@ -448,12 +455,12 @@ func (s *TenantStore) GetTenantInfo(tenantID string) (*TenantInfo, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	tenant, exists := s.tenants[tenantID]
+	tenant, exists := s.tenants[tenantid.TenantID(tenantID)]
 	if !exists {
 		return nil, fmt.Errorf("%w: %s", ErrTenantNotFound, tenantID)
 	}
 
-	usage := s.usage[tenantID]
+	usage := s.usage[tenantid.TenantID(tenantID)]
 	if usage == nil {
 		usage = NewTenantUsage(tenantID)
 	}

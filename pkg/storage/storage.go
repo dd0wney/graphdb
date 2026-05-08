@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
@@ -36,10 +37,11 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		incomingEdges:   make(map[uint64][]uint64),
 		propertyIndexes: make(map[string]*PropertyIndex),
 		vectorIndex:     NewVectorIndex(),
-		// Tenant-scoped indexes for multi-tenancy
-		tenantNodesByLabel: make(map[string]map[string][]uint64),
-		tenantEdgesByType:  make(map[string]map[string][]uint64),
-		tenantStats:        make(map[string]*TenantStats),
+		// Tenant-scoped indexes for multi-tenancy.
+		// Keyed by tenantid.TenantID since audit task A1 (2026-05-06).
+		tenantNodesByLabel: make(map[tenantid.TenantID]map[string][]uint64),
+		tenantEdgesByType:  make(map[tenantid.TenantID]map[string][]uint64),
+		tenantStats:        make(map[tenantid.TenantID]*TenantStats),
 		compressedOutgoing: make(map[uint64]*CompressedEdgeList),
 		compressedIncoming: make(map[uint64]*CompressedEdgeList),
 		useEdgeCompression: config.EnableEdgeCompression,

@@ -129,8 +129,10 @@ func (gs *GraphStorage) createEdgeLocked(tenantID string, fromID, toID uint64, e
 	gs.nextEdgeID++
 
 	edge := &Edge{
-		ID:         edgeID,
-		TenantID:   effectiveTenantID(tenantID),
+		ID: edgeID,
+		// Edge.TenantID is still string — A3 will migrate it. For now,
+		// .String() preserves the existing wire format.
+		TenantID:   effectiveTenantID(tenantID).String(),
 		FromNodeID: fromID,
 		ToNodeID:   toID,
 		Type:       edgeType,

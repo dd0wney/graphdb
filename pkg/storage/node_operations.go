@@ -38,8 +38,10 @@ func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, p
 
 	now := time.Now().Unix()
 	node := &Node{
-		ID:         nodeID,
-		TenantID:   effectiveTenantID(tenantID),
+		ID: nodeID,
+		// Node.TenantID is still string — A3 will migrate it. For now,
+		// .String() preserves the existing wire format.
+		TenantID:   effectiveTenantID(tenantID).String(),
 		Labels:     labels,
 		Properties: properties,
 		CreatedAt:  now,

@@ -2,17 +2,23 @@ package storage
 
 import (
 	"time"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
 )
 
-// DefaultTenantID is used when no tenant is specified (backward compatibility)
+// DefaultTenantID is used when no tenant is specified (backward compatibility).
+// String form for use with public APIs that still take "tenantID string"
+// parameters; mirrors tenantid.Default for the typed code paths.
 const DefaultTenantID = "default"
 
-// effectiveTenantID returns the tenant ID to use, defaulting to DefaultTenantID if empty
-func effectiveTenantID(tenantID string) string {
+// effectiveTenantID returns the tenant ID to use, defaulting to
+// tenantid.Default if the input is empty. Internal helper; converts at
+// the boundary so internal map accesses use the typed form.
+func effectiveTenantID(tenantID string) tenantid.TenantID {
 	if tenantID == "" {
-		return DefaultTenantID
+		return tenantid.Default
 	}
-	return tenantID
+	return tenantid.TenantID(tenantID)
 }
 
 // addNodeToTenantIndex adds a node to the tenant-scoped label indexes.
@@ -129,9 +135,9 @@ func (gs *GraphStorage) GetNodesByLabelForTenant(tenantID, label string) []*Node
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenantID = effectiveTenantID(tenantID)
+	tid := effectiveTenantID(tenantID)
 
-	labelMap := gs.tenantNodesByLabel[tenantID]
+	labelMap := gs.tenantNodesByLabel[tid]
 	if labelMap == nil {
 		return nil
 	}
@@ -156,9 +162,9 @@ func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Ed
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenantID = effectiveTenantID(tenantID)
+	tid := effectiveTenantID(tenantID)
 
-	typeMap := gs.tenantEdgesByType[tenantID]
+	typeMap := gs.tenantEdgesByType[tid]
 	if typeMap == nil {
 		return nil
 	}
@@ -183,12 +189,12 @@ func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenantID = effectiveTenantID(tenantID)
+	tid := effectiveTenantID(tenantID)
 
 	var nodes []*Node
 	for _, node := range gs.nodes {
 		nodeTenant := effectiveTenantID(node.TenantID)
-		if nodeTenant == tenantID {
+		if nodeTenant == tid {
 			nodes = append(nodes, node.Clone())
 		}
 	}
@@ -201,12 +207,12 @@ func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) []*Edge {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenantID = effectiveTenantID(tenantID)
+	tid := effectiveTenantID(tenantID)
 
 	var edges []*Edge
 	for _, edge := range gs.edges {
 		edgeTenant := effectiveTenantID(edge.TenantID)
-		if edgeTenant == tenantID {
+		if edgeTenant == tid {
 			edges = append(edges, edge.Clone())
 		}
 	}
@@ -219,9 +225,9 @@ func (gs *GraphStorage) GetTenantStats(tenantID string) *TenantStats {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenantID = effectiveTenantID(tenantID)
+	tid := effectiveTenantID(tenantID)
 
-	stats := gs.tenantStats[tenantID]
+	stats := gs.tenantStats[tid]
 	if stats == nil {
 		return &TenantStats{} // Return empty stats if not tracked
 	}
@@ -240,26 +246,27 @@ func (gs *GraphStorage) ListTenants() []string {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenants := make(map[string]bool)
+	tenants := make(map[tenantid.TenantID]bool)
 
 	// Collect tenants from stats
-	for tenantID := range gs.tenantStats {
-		tenants[tenantID] = true
+	for tid := range gs.tenantStats {
+		tenants[tid] = true
 	}
 
 	// Collect tenants from node indexes
-	for tenantID := range gs.tenantNodesByLabel {
-		tenants[tenantID] = true
+	for tid := range gs.tenantNodesByLabel {
+		tenants[tid] = true
 	}
 
 	// Collect tenants from edge indexes
-	for tenantID := range gs.tenantEdgesByType {
-		tenants[tenantID] = true
+	for tid := range gs.tenantEdgesByType {
+		tenants[tid] = true
 	}
 
+	// Convert to []string for the public API (deferred to A3 to migrate to []TenantID).
 	result := make([]string, 0, len(tenants))
-	for tenantID := range tenants {
-		result = append(result, tenantID)
+	for tid := range tenants {
+		result = append(result, tid.String())
 	}
 
 	return result
@@ -267,7 +274,7 @@ func (gs *GraphStorage) ListTenants() []string {
 
 // incrementTenantNodeCount increments the node count for a tenant.
 // Must be called with appropriate lock held.
-func (gs *GraphStorage) incrementTenantNodeCount(tenantID string) {
+func (gs *GraphStorage) incrementTenantNodeCount(tenantID tenantid.TenantID) {
 	if gs.tenantStats[tenantID] == nil {
 		gs.tenantStats[tenantID] = &TenantStats{}
 	}
@@ -277,7 +284,7 @@ func (gs *GraphStorage) incrementTenantNodeCount(tenantID string) {
 
 // decrementTenantNodeCount decrements the node count for a tenant.
 // Must be called with appropriate lock held.
-func (gs *GraphStorage) decrementTenantNodeCount(tenantID string) {
+func (gs *GraphStorage) decrementTenantNodeCount(tenantID tenantid.TenantID) {
 	stats := gs.tenantStats[tenantID]
 	if stats == nil {
 		return
@@ -290,7 +297,7 @@ func (gs *GraphStorage) decrementTenantNodeCount(tenantID string) {
 
 // incrementTenantEdgeCount increments the edge count for a tenant.
 // Must be called with appropriate lock held.
-func (gs *GraphStorage) incrementTenantEdgeCount(tenantID string) {
+func (gs *GraphStorage) incrementTenantEdgeCount(tenantID tenantid.TenantID) {
 	if gs.tenantStats[tenantID] == nil {
 		gs.tenantStats[tenantID] = &TenantStats{}
 	}
@@ -300,7 +307,7 @@ func (gs *GraphStorage) incrementTenantEdgeCount(tenantID string) {
 
 // decrementTenantEdgeCount decrements the edge count for a tenant.
 // Must be called with appropriate lock held.
-func (gs *GraphStorage) decrementTenantEdgeCount(tenantID string) {
+func (gs *GraphStorage) decrementTenantEdgeCount(tenantID tenantid.TenantID) {
 	stats := gs.tenantStats[tenantID]
 	if stats == nil {
 		return
@@ -316,9 +323,9 @@ func (gs *GraphStorage) CountNodesForTenant(tenantID string) uint64 {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenantID = effectiveTenantID(tenantID)
+	tid := effectiveTenantID(tenantID)
 
-	stats := gs.tenantStats[tenantID]
+	stats := gs.tenantStats[tid]
 	if stats == nil {
 		return 0
 	}
@@ -330,9 +337,9 @@ func (gs *GraphStorage) CountEdgesForTenant(tenantID string) uint64 {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenantID = effectiveTenantID(tenantID)
+	tid := effectiveTenantID(tenantID)
 
-	stats := gs.tenantStats[tenantID]
+	stats := gs.tenantStats[tid]
 	if stats == nil {
 		return 0
 	}
@@ -344,9 +351,9 @@ func (gs *GraphStorage) GetLabelsForTenant(tenantID string) []string {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenantID = effectiveTenantID(tenantID)
+	tid := effectiveTenantID(tenantID)
 
-	labelMap := gs.tenantNodesByLabel[tenantID]
+	labelMap := gs.tenantNodesByLabel[tid]
 	if labelMap == nil {
 		return nil
 	}
@@ -364,9 +371,9 @@ func (gs *GraphStorage) GetEdgeTypesForTenant(tenantID string) []string {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenantID = effectiveTenantID(tenantID)
+	tid := effectiveTenantID(tenantID)
 
-	typeMap := gs.tenantEdgesByType[tenantID]
+	typeMap := gs.tenantEdgesByType[tid]
 	if typeMap == nil {
 		return nil
 	}
