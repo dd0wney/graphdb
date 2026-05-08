@@ -59,39 +59,49 @@ func DefaultLinkPredictionOptions() LinkPredictionOptions {
 	}
 }
 
-// PredictLinkScore computes the link prediction score between two specific nodes.
+// PredictLinkScore computes the link prediction score between two
+// specific nodes (tenant-blind).
 func PredictLinkScore(graph *storage.GraphStorage, fromNodeID, toNodeID uint64, opts LinkPredictionOptions) (float64, error) {
-	setFrom := getNeighborSet(graph, fromNodeID, opts.Direction, opts.EdgeTypes)
-	setTo := getNeighborSet(graph, toNodeID, opts.Direction, opts.EdgeTypes)
-
-	return computeLinkScore(graph, setFrom, setTo, opts), nil
+	return predictLinkScoreView(newTenantBlindView(graph), fromNodeID, toNodeID, opts)
 }
 
-// PredictLinksFor predicts links for a source node against all other nodes.
-// Results are sorted descending by score; zero-score pairs are excluded.
+// PredictLinkScoreForTenant restricts to the caller's tenant.
+// Audit A6c-algorithms.
+func PredictLinkScoreForTenant(graph *storage.GraphStorage, fromNodeID, toNodeID uint64, opts LinkPredictionOptions, tenantID string) (float64, error) {
+	return predictLinkScoreView(newTenantScopedView(graph, tenantID), fromNodeID, toNodeID, opts)
+}
+
+func predictLinkScoreView(view graphView, fromNodeID, toNodeID uint64, opts LinkPredictionOptions) (float64, error) {
+	setFrom := getNeighborSet(view, fromNodeID, opts.Direction, opts.EdgeTypes)
+	setTo := getNeighborSet(view, toNodeID, opts.Direction, opts.EdgeTypes)
+	return computeLinkScore(view, setFrom, setTo, opts), nil
+}
+
+// PredictLinksFor predicts links for a source node against all other
+// nodes (tenant-blind).
 func PredictLinksFor(graph *storage.GraphStorage, sourceNodeID uint64, opts LinkPredictionOptions) (*LinkPredictionResult, error) {
-	stats := graph.GetStatistics()
+	return predictLinksForView(newTenantBlindView(graph), sourceNodeID, opts)
+}
 
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	maxID := stats.NodeCount + 10
-	if maxID < 100 {
-		maxID = 100
-	}
-	for i := uint64(1); i <= maxID; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
-		if uint64(len(nodeIDs)) >= stats.NodeCount && stats.NodeCount > 0 {
-			break
-		}
+// PredictLinksForForTenant restricts to caller's tenant.
+// Audit A6c-algorithms.
+func PredictLinksForForTenant(graph *storage.GraphStorage, sourceNodeID uint64, opts LinkPredictionOptions, tenantID string) (*LinkPredictionResult, error) {
+	return predictLinksForView(newTenantScopedView(graph, tenantID), sourceNodeID, opts)
+}
+
+func predictLinksForView(view graphView, sourceNodeID uint64, opts LinkPredictionOptions) (*LinkPredictionResult, error) {
+	allNodes := view.AllNodes()
+	nodeIDs := make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
-	sourceSet := getNeighborSet(graph, sourceNodeID, opts.Direction, opts.EdgeTypes)
+	sourceSet := getNeighborSet(view, sourceNodeID, opts.Direction, opts.EdgeTypes)
 
 	// Build set of existing neighbors for exclusion check
 	var existingNeighbors map[uint64]bool
 	if opts.ExcludeExisting {
-		existingNeighbors = getNeighborSet(graph, sourceNodeID, DirectionBoth, nil)
+		existingNeighbors = getNeighborSet(view, sourceNodeID, DirectionBoth, nil)
 	}
 
 	var predictions []LinkPrediction
@@ -103,8 +113,8 @@ func PredictLinksFor(graph *storage.GraphStorage, sourceNodeID uint64, opts Link
 			continue
 		}
 
-		otherSet := getNeighborSet(graph, otherID, opts.Direction, opts.EdgeTypes)
-		score := computeLinkScore(graph, sourceSet, otherSet, opts)
+		otherSet := getNeighborSet(view, otherID, opts.Direction, opts.EdgeTypes)
+		score := computeLinkScore(view, sourceSet, otherSet, opts)
 		if score > 0 {
 			predictions = append(predictions, LinkPrediction{
 				FromNodeID: sourceNodeID,
@@ -128,7 +138,7 @@ func PredictLinksFor(graph *storage.GraphStorage, sourceNodeID uint64, opts Link
 }
 
 // computeLinkScore calculates the prediction score for a pair of neighbor sets.
-func computeLinkScore(graph *storage.GraphStorage, setA, setB map[uint64]bool, opts LinkPredictionOptions) float64 {
+func computeLinkScore(view graphView, setA, setB map[uint64]bool, opts LinkPredictionOptions) float64 {
 	switch opts.Method {
 	case LinkPredPreferentialAttachment:
 		return float64(len(setA)) * float64(len(setB))
@@ -155,11 +165,10 @@ func computeLinkScore(graph *storage.GraphStorage, setA, setB map[uint64]bool, o
 		for id := range small {
 			if big[id] {
 				// Degree of the common neighbor
-				degree := len(getNeighborSet(graph, id, opts.Direction, opts.EdgeTypes))
+				degree := len(getNeighborSet(view, id, opts.Direction, opts.EdgeTypes))
 				if degree > 1 {
 					sum += 1.0 / math.Log(float64(degree))
 				}
-				// degree <= 1: skip (log(1)=0 causes division by zero, log(<1) is negative)
 			}
 		}
 		return sum

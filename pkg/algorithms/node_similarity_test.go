@@ -35,7 +35,7 @@ func TestGetNeighborSet_DirectionOut(t *testing.T) {
 	_, _ = gs.CreateEdge(a.ID, c.ID, "LINKS", nil, 1.0)
 	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0) // incoming, should be excluded
 
-	neighbors := getNeighborSet(gs, a.ID, DirectionOut, nil)
+	neighbors := getNeighborSet(newTenantBlindView(gs), a.ID, DirectionOut, nil)
 	if len(neighbors) != 2 {
 		t.Errorf("Expected 2 outgoing neighbors, got %d", len(neighbors))
 	}
@@ -55,7 +55,7 @@ func TestGetNeighborSet_DirectionIn(t *testing.T) {
 	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
 	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0) // outgoing, should be excluded
 
-	neighbors := getNeighborSet(gs, a.ID, DirectionIn, nil)
+	neighbors := getNeighborSet(newTenantBlindView(gs), a.ID, DirectionIn, nil)
 	if len(neighbors) != 2 {
 		t.Errorf("Expected 2 incoming neighbors, got %d", len(neighbors))
 	}
@@ -71,7 +71,7 @@ func TestGetNeighborSet_DirectionBoth(t *testing.T) {
 	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
 	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
 
-	neighbors := getNeighborSet(gs, a.ID, DirectionBoth, nil)
+	neighbors := getNeighborSet(newTenantBlindView(gs), a.ID, DirectionBoth, nil)
 	if len(neighbors) != 2 {
 		t.Errorf("Expected 2 total neighbors, got %d", len(neighbors))
 	}
@@ -87,7 +87,7 @@ func TestGetNeighborSet_EdgeTypeFilter(t *testing.T) {
 	_, _ = gs.CreateEdge(a.ID, b.ID, "FRIEND", nil, 1.0)
 	_, _ = gs.CreateEdge(a.ID, c.ID, "ENEMY", nil, 1.0)
 
-	neighbors := getNeighborSet(gs, a.ID, DirectionOut, []string{"FRIEND"})
+	neighbors := getNeighborSet(newTenantBlindView(gs), a.ID, DirectionOut, []string{"FRIEND"})
 	if len(neighbors) != 1 {
 		t.Errorf("Expected 1 FRIEND neighbor, got %d", len(neighbors))
 	}

@@ -26,23 +26,26 @@ type tarjanState struct {
 	onStack bool
 }
 
-// StronglyConnectedComponents finds all SCCs using Tarjan's algorithm in O(V+E) time.
-// Only outgoing edges are followed (directed graph semantics).
+// StronglyConnectedComponents finds all SCCs using Tarjan's algorithm
+// in O(V+E) time, tenant-blind. Only outgoing edges are followed
+// (directed graph semantics). Multi-tenant API callers must use
+// StronglyConnectedComponentsForTenant.
 func StronglyConnectedComponents(graph *storage.GraphStorage) (*SCCResult, error) {
-	stats := graph.GetStatistics()
+	return sccView(newTenantBlindView(graph))
+}
 
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	maxID := stats.NodeCount + 10
-	if maxID < 100 {
-		maxID = 100
-	}
-	for i := uint64(1); i <= maxID; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
-		if uint64(len(nodeIDs)) >= stats.NodeCount && stats.NodeCount > 0 {
-			break
-		}
+// StronglyConnectedComponentsForTenant computes SCCs within the
+// caller's tenant subgraph. Audit A6c-algorithms (2026-05-08).
+func StronglyConnectedComponentsForTenant(graph *storage.GraphStorage, tenantID string) (*SCCResult, error) {
+	return sccView(newTenantScopedView(graph, tenantID))
+}
+
+// sccView is the shared algorithm body operating against a graphView.
+func sccView(view graphView) (*SCCResult, error) {
+	allNodes := view.AllNodes()
+	nodeIDs := make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
 	state := make(map[uint64]*tarjanState, len(nodeIDs))
@@ -61,7 +64,7 @@ func StronglyConnectedComponents(graph *storage.GraphStorage) (*SCCResult, error
 		indexCounter++
 		stack = append(stack, u)
 
-		outEdges, _ := graph.GetOutgoingEdges(u)
+		outEdges, _ := view.OutgoingEdges(u)
 		for _, edge := range outEdges {
 			v := edge.ToNodeID
 			if _, exists := state[v]; !exists {

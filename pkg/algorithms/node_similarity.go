@@ -55,10 +55,12 @@ func DefaultNodeSimilarityOptions() NodeSimilarityOptions {
 	}
 }
 
-// getNeighborSet builds the set of neighbor node IDs reachable from nodeID
-// in the given direction, optionally filtered by edge types.
-// Excludes self-loops. Used by Node Similarity, Link Prediction, and K-hop.
-func getNeighborSet(graph *storage.GraphStorage, nodeID uint64, direction NeighborDirection, edgeTypes []string) map[uint64]bool {
+// getNeighborSet builds the set of neighbor node IDs reachable from
+// nodeID in the given direction, optionally filtered by edge types.
+// Operates against a graphView so the same helper supports both
+// tenant-blind (Node Similarity, Link Prediction, K-hop legacy) and
+// tenant-scoped (audit A6c-algorithms) callers.
+func getNeighborSet(view graphView, nodeID uint64, direction NeighborDirection, edgeTypes []string) map[uint64]bool {
 	neighbors := make(map[uint64]bool)
 
 	edgeTypeSet := make(map[string]bool, len(edgeTypes))
@@ -68,7 +70,7 @@ func getNeighborSet(graph *storage.GraphStorage, nodeID uint64, direction Neighb
 	filterByType := len(edgeTypes) > 0
 
 	if direction == DirectionOut || direction == DirectionBoth {
-		outEdges, _ := graph.GetOutgoingEdges(nodeID)
+		outEdges, _ := view.OutgoingEdges(nodeID)
 		for _, e := range outEdges {
 			if filterByType && !edgeTypeSet[e.Type] {
 				continue
@@ -80,7 +82,7 @@ func getNeighborSet(graph *storage.GraphStorage, nodeID uint64, direction Neighb
 	}
 
 	if direction == DirectionIn || direction == DirectionBoth {
-		inEdges, _ := graph.GetIncomingEdges(nodeID)
+		inEdges, _ := view.IncomingEdges(nodeID)
 		for _, e := range inEdges {
 			if filterByType && !edgeTypeSet[e.Type] {
 				continue
@@ -134,40 +136,51 @@ func computeSimilarity(setA, setB map[uint64]bool, metric SimilarityMetric) floa
 	}
 }
 
-// NodeSimilarityPair computes the similarity between two specific nodes.
+// NodeSimilarityPair computes similarity between two nodes (tenant-blind).
 func NodeSimilarityPair(graph *storage.GraphStorage, nodeA, nodeB uint64, opts NodeSimilarityOptions) (float64, error) {
-	setA := getNeighborSet(graph, nodeA, opts.Direction, opts.EdgeTypes)
-	setB := getNeighborSet(graph, nodeB, opts.Direction, opts.EdgeTypes)
+	return nodeSimilarityPairView(newTenantBlindView(graph), nodeA, nodeB, opts)
+}
+
+// NodeSimilarityPairForTenant computes similarity restricted to the
+// caller's tenant. Audit A6c-algorithms.
+func NodeSimilarityPairForTenant(graph *storage.GraphStorage, nodeA, nodeB uint64, opts NodeSimilarityOptions, tenantID string) (float64, error) {
+	return nodeSimilarityPairView(newTenantScopedView(graph, tenantID), nodeA, nodeB, opts)
+}
+
+func nodeSimilarityPairView(view graphView, nodeA, nodeB uint64, opts NodeSimilarityOptions) (float64, error) {
+	setA := getNeighborSet(view, nodeA, opts.Direction, opts.EdgeTypes)
+	setB := getNeighborSet(view, nodeB, opts.Direction, opts.EdgeTypes)
 	return computeSimilarity(setA, setB, opts.Metric), nil
 }
 
-// NodeSimilarityFor computes similarity of sourceNodeID against all other nodes.
-// Results are sorted descending by score; zero-score pairs are excluded.
+// NodeSimilarityFor computes similarity of sourceNodeID against all
+// other nodes (tenant-blind). Multi-tenant API callers must use
+// NodeSimilarityForTenant.
 func NodeSimilarityFor(graph *storage.GraphStorage, sourceNodeID uint64, opts NodeSimilarityOptions) (*NodeSimilarityResult, error) {
-	stats := graph.GetStatistics()
+	return nodeSimilarityForView(newTenantBlindView(graph), sourceNodeID, opts)
+}
 
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	maxID := stats.NodeCount + 10
-	if maxID < 100 {
-		maxID = 100
-	}
-	for i := uint64(1); i <= maxID; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
-		if uint64(len(nodeIDs)) >= stats.NodeCount && stats.NodeCount > 0 {
-			break
-		}
+// NodeSimilarityForForTenant restricts to caller's tenant.
+// Audit A6c-algorithms.
+func NodeSimilarityForForTenant(graph *storage.GraphStorage, sourceNodeID uint64, opts NodeSimilarityOptions, tenantID string) (*NodeSimilarityResult, error) {
+	return nodeSimilarityForView(newTenantScopedView(graph, tenantID), sourceNodeID, opts)
+}
+
+func nodeSimilarityForView(view graphView, sourceNodeID uint64, opts NodeSimilarityOptions) (*NodeSimilarityResult, error) {
+	allNodes := view.AllNodes()
+	nodeIDs := make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
-	sourceSet := getNeighborSet(graph, sourceNodeID, opts.Direction, opts.EdgeTypes)
+	sourceSet := getNeighborSet(view, sourceNodeID, opts.Direction, opts.EdgeTypes)
 
 	var scores []NodeSimilarityScore
 	for _, otherID := range nodeIDs {
 		if otherID == sourceNodeID {
 			continue
 		}
-		otherSet := getNeighborSet(graph, otherID, opts.Direction, opts.EdgeTypes)
+		otherSet := getNeighborSet(view, otherID, opts.Direction, opts.EdgeTypes)
 		score := computeSimilarity(sourceSet, otherSet, opts.Metric)
 		if score > 0 {
 			scores = append(scores, NodeSimilarityScore{
@@ -192,29 +205,29 @@ func NodeSimilarityFor(graph *storage.GraphStorage, sourceNodeID uint64, opts No
 	}, nil
 }
 
-// NodeSimilarityAll computes similarity for every node against every other node.
-// Returns one result per node, each with up to TopK similar nodes.
+// NodeSimilarityAll computes similarity for every node against every
+// other node (tenant-blind).
 func NodeSimilarityAll(graph *storage.GraphStorage, opts NodeSimilarityOptions) ([]NodeSimilarityResult, error) {
-	stats := graph.GetStatistics()
+	return nodeSimilarityAllView(newTenantBlindView(graph), opts)
+}
 
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	maxID := stats.NodeCount + 10
-	if maxID < 100 {
-		maxID = 100
-	}
-	for i := uint64(1); i <= maxID; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
-		if uint64(len(nodeIDs)) >= stats.NodeCount && stats.NodeCount > 0 {
-			break
-		}
+// NodeSimilarityAllForTenant restricts to caller's tenant.
+// Audit A6c-algorithms.
+func NodeSimilarityAllForTenant(graph *storage.GraphStorage, opts NodeSimilarityOptions, tenantID string) ([]NodeSimilarityResult, error) {
+	return nodeSimilarityAllView(newTenantScopedView(graph, tenantID), opts)
+}
+
+func nodeSimilarityAllView(view graphView, opts NodeSimilarityOptions) ([]NodeSimilarityResult, error) {
+	allNodes := view.AllNodes()
+	nodeIDs := make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
 	// Pre-compute all neighbor sets
 	neighborSets := make(map[uint64]map[uint64]bool, len(nodeIDs))
 	for _, id := range nodeIDs {
-		neighborSets[id] = getNeighborSet(graph, id, opts.Direction, opts.EdgeTypes)
+		neighborSets[id] = getNeighborSet(view, id, opts.Direction, opts.EdgeTypes)
 	}
 
 	results := make([]NodeSimilarityResult, 0, len(nodeIDs))
