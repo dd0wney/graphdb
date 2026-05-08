@@ -117,8 +117,8 @@ func TestSanitizeStringValue(t *testing.T) {
 // TestSanitizeStringValue_Length tests string length enforcement
 func TestSanitizeStringValue_Length(t *testing.T) {
 	tests := []struct {
-		name       string
-		inputLen   int
+		name        string
+		inputLen    int
 		expectedLen int
 	}{
 		{"100 chars", 100, 100},

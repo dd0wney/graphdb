@@ -64,9 +64,9 @@ func TestListQueryComplexity(t *testing.T) {
 	}
 
 	schema, err := GenerateSchemaWithComplexity(gs, &ComplexityConfig{
-		MaxComplexity:     100,
-		ListMultiplier:    10, // Default list cost
-		DefaultListLimit:  100,
+		MaxComplexity:    100,
+		ListMultiplier:   10, // Default list cost
+		DefaultListLimit: 100,
 	})
 	if err != nil {
 		t.Fatalf("GenerateSchemaWithComplexity() error = %v", err)

@@ -12,22 +12,22 @@ import (
 
 // mockPlugin implements EnterprisePlugin for testing
 type mockPlugin struct {
-	name            string
-	version         string
-	features        []string
-	initError       error
-	startError      error
-	stopError       error
-	healthError     error
-	initialized     bool
-	started         bool
-	stopped         bool
-	healthChecked   bool
+	name          string
+	version       string
+	features      []string
+	initError     error
+	startError    error
+	stopError     error
+	healthError   error
+	initialized   bool
+	started       bool
+	stopped       bool
+	healthChecked bool
 }
 
-func (m *mockPlugin) Name() string                    { return m.name }
-func (m *mockPlugin) Version() string                 { return m.version }
-func (m *mockPlugin) RequiredFeatures() []string      { return m.features }
+func (m *mockPlugin) Name() string               { return m.name }
+func (m *mockPlugin) Version() string            { return m.version }
+func (m *mockPlugin) RequiredFeatures() []string { return m.features }
 
 func (m *mockPlugin) Initialize(ctx context.Context, license *licensing.License, config map[string]any) error {
 	m.initialized = true
@@ -381,9 +381,9 @@ func TestGetPluginConfig(t *testing.T) {
 			name:       "multiple configs",
 			pluginName: "backup",
 			envVars: map[string]string{
-				"PLUGIN_BACKUP_INTERVAL":   "3600",
+				"PLUGIN_BACKUP_INTERVAL":    "3600",
 				"PLUGIN_BACKUP_DESTINATION": "/var/backup",
-				"PLUGIN_BACKUP_COMPRESS":   "true",
+				"PLUGIN_BACKUP_COMPRESS":    "true",
 			},
 			expected: map[string]string{
 				"INTERVAL":    "3600",
@@ -395,9 +395,9 @@ func TestGetPluginConfig(t *testing.T) {
 			name:       "ignores other plugins",
 			pluginName: "audit",
 			envVars: map[string]string{
-				"PLUGIN_AUDIT_LOG_LEVEL":   "debug",
-				"PLUGIN_BACKUP_INTERVAL":   "3600",
-				"OTHER_VAR":                "value",
+				"PLUGIN_AUDIT_LOG_LEVEL": "debug",
+				"PLUGIN_BACKUP_INTERVAL": "3600",
+				"OTHER_VAR":              "value",
 			},
 			expected: map[string]string{
 				"LOG_LEVEL": "debug",

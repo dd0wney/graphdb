@@ -24,15 +24,15 @@ type TelemetryData struct {
 	LicenseHash string `json:"license_hash"`
 
 	// Version information
-	Version    string `json:"version"`
-	GoVersion  string `json:"go_version"`
-	OS         string `json:"os"`
-	Arch       string `json:"arch"`
+	Version   string `json:"version"`
+	GoVersion string `json:"go_version"`
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
 
 	// Usage metrics (anonymous)
-	NodeCount     int64  `json:"node_count,omitempty"`
-	EdgeCount     int64  `json:"edge_count,omitempty"`
-	Uptime        int64  `json:"uptime_seconds,omitempty"`
+	NodeCount int64 `json:"node_count,omitempty"`
+	EdgeCount int64 `json:"edge_count,omitempty"`
+	Uptime    int64 `json:"uptime_seconds,omitempty"`
 
 	// Deployment type
 	DeploymentType string `json:"deployment_type,omitempty"` // docker, binary, kubernetes
@@ -59,11 +59,11 @@ func NewTelemetryReporter(enabled bool, interval time.Duration) *TelemetryReport
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &TelemetryReporter{
-		endpoint:   TelemetryEndpoint,
-		interval:   interval,
-		enabled:    enabled,
-		ctx:        ctx,
-		cancel:     cancel,
+		endpoint: TelemetryEndpoint,
+		interval: interval,
+		enabled:  enabled,
+		ctx:      ctx,
+		cancel:   cancel,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -140,7 +140,7 @@ func (t *TelemetryReporter) buildTelemetryData(license *License, getMetrics func
 
 	return &TelemetryData{
 		LicenseHash:    licenseHash[:16], // Truncate for brevity
-		Version:        "", // Set by caller
+		Version:        "",               // Set by caller
 		GoVersion:      runtime.Version(),
 		OS:             runtime.GOOS,
 		Arch:           runtime.GOARCH,

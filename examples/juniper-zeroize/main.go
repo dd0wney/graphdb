@@ -863,11 +863,11 @@ func analyseRecoveryParadox(_ *ISPModel) {
 	accessSwitch := degraded.Nodes["Access_Switch_PoP1"]
 
 	toolDescriptions := map[string]string{
-		"TACACS_Server":  "Can't authenticate to remaining devices",
+		"TACACS_Server":   "Can't authenticate to remaining devices",
 		"Oxidized_Server": "Can't pull backup configs for replacement hardware",
-		"SNMP_Monitor":   "Can't see what's happening on the network",
-		"Syslog_Server":  "Can't see attack logs or forensic evidence",
-		"Jump_Host":      "Can't SSH to any surviving network device",
+		"SNMP_Monitor":    "Can't see what's happening on the network",
+		"Syslog_Server":   "Can't see attack logs or forensic evidence",
+		"Jump_Host":       "Can't SSH to any surviving network device",
 	}
 
 	allUnreachable := true

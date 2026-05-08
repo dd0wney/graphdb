@@ -7,9 +7,9 @@ import (
 
 // DataLoaderContext holds all DataLoaders for a request
 type DataLoaderContext struct {
-	Nodes          *DataLoader
-	OutgoingEdges  *DataLoader
-	IncomingEdges  *DataLoader
+	Nodes         *DataLoader
+	OutgoingEdges *DataLoader
+	IncomingEdges *DataLoader
 }
 
 // GenerateSchemaWithDataLoader creates a GraphQL schema with DataLoader integration

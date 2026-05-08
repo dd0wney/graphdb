@@ -18,13 +18,13 @@ import (
 )
 
 var (
-	ErrTokenMalformed    = errors.New("token is malformed")
-	ErrTokenExpired      = errors.New("token has expired")
-	ErrInvalidSignature  = errors.New("invalid token signature")
-	ErrInvalidIssuer     = errors.New("invalid token issuer")
-	ErrInvalidAudience   = errors.New("invalid token audience")
-	ErrMissingSubject    = errors.New("token missing subject claim")
-	ErrUnsupportedAlg    = errors.New("unsupported signing algorithm")
+	ErrTokenMalformed   = errors.New("token is malformed")
+	ErrTokenExpired     = errors.New("token has expired")
+	ErrInvalidSignature = errors.New("invalid token signature")
+	ErrInvalidIssuer    = errors.New("invalid token issuer")
+	ErrInvalidAudience  = errors.New("invalid token audience")
+	ErrMissingSubject   = errors.New("token missing subject claim")
+	ErrUnsupportedAlg   = errors.New("unsupported signing algorithm")
 )
 
 // OIDCTokenValidator validates OIDC ID tokens using RS256/384/512

@@ -30,13 +30,13 @@ type ValidateRequest struct {
 
 // ValidateResponse is received from the license server
 type ValidateResponse struct {
-	Valid     bool           `json:"valid"`
-	Tier      LicenseTier    `json:"tier,omitempty"`
-	Status    LicenseStatus  `json:"status,omitempty"`
-	Error     string         `json:"error,omitempty"`
-	ExpiresAt *time.Time     `json:"expiresAt,omitempty"`
-	MaxNodes  *int           `json:"maxNodes,omitempty"`
-	Timestamp time.Time      `json:"timestamp"`
+	Valid     bool          `json:"valid"`
+	Tier      LicenseTier   `json:"tier,omitempty"`
+	Status    LicenseStatus `json:"status,omitempty"`
+	Error     string        `json:"error,omitempty"`
+	ExpiresAt *time.Time    `json:"expiresAt,omitempty"`
+	MaxNodes  *int          `json:"maxNodes,omitempty"`
+	Timestamp time.Time     `json:"timestamp"`
 }
 
 // LicenseInfo represents a validated license with caching info

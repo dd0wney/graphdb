@@ -45,8 +45,8 @@ func (fdl *ForceDirectedLayout) ComputeLayout(gs *storage.GraphStorage, nodeIDs 
 
 	for _, nodeID := range nodeIDs {
 		positions[nodeID] = Position{
-			X: rand.Float64() * (fdl.config.Width - 2*fdl.config.Padding) + fdl.config.Padding,
-			Y: rand.Float64() * (fdl.config.Height - 2*fdl.config.Padding) + fdl.config.Padding,
+			X: rand.Float64()*(fdl.config.Width-2*fdl.config.Padding) + fdl.config.Padding,
+			Y: rand.Float64()*(fdl.config.Height-2*fdl.config.Padding) + fdl.config.Padding,
 		}
 		velocities[nodeID] = Position{X: 0, Y: 0}
 	}

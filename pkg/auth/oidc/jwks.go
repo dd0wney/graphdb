@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	ErrKeyNotFound   = errors.New("key not found in JWKS")
-	ErrInvalidKeyUse = errors.New("key is not for signature verification")
+	ErrKeyNotFound    = errors.New("key not found in JWKS")
+	ErrInvalidKeyUse  = errors.New("key is not for signature verification")
 	ErrUnsupportedKty = errors.New("unsupported key type")
 )
 

@@ -201,8 +201,8 @@ func TestStorageVectorSearchIntegration(t *testing.T) {
 
 	for _, doc := range documents {
 		node := &Node{
-			ID:         doc.id,
-			Labels:     []string{doc.label},
+			ID:     doc.id,
+			Labels: []string{doc.label},
 			Properties: map[string]Value{
 				"text":      StringValue(doc.text),
 				"embedding": VectorValue(doc.vec),

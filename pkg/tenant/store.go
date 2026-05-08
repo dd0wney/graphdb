@@ -19,7 +19,7 @@ var tenantIDRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 
 // TenantStore manages tenant storage and operations
 type TenantStore struct {
-	tenants map[string]*Tenant     // tenantID -> Tenant
+	tenants map[string]*Tenant      // tenantID -> Tenant
 	usage   map[string]*TenantUsage // tenantID -> TenantUsage
 	mu      sync.RWMutex
 }

@@ -25,9 +25,9 @@ type NNGReplicaNode struct {
 	storage   *storage.GraphStorage
 
 	// NNG sockets
-	walSubscriber     mangos.Socket // SUB socket for WAL streaming
-	healthRespondent  mangos.Socket // RESPONDENT socket for health surveys
-	writePusher       mangos.Socket // PUSH socket for write forwarding
+	walSubscriber    mangos.Socket // SUB socket for WAL streaming
+	healthRespondent mangos.Socket // RESPONDENT socket for health surveys
+	writePusher      mangos.Socket // PUSH socket for write forwarding
 
 	// State
 	lastAppliedLSN uint64

@@ -206,8 +206,8 @@ func (s *Server) handleSecurityHealth(w http.ResponseWriter, r *http.Request) {
 				"enabled": s.tlsConfig != nil && s.tlsConfig.Enabled,
 			},
 			"audit": map[string]any{
-				"enabled":      true,
-				"event_count":  s.auditLogger.GetEventCount(),
+				"enabled":     true,
+				"event_count": s.auditLogger.GetEventCount(),
 			},
 			"authentication": map[string]any{
 				"jwt_enabled":    true,

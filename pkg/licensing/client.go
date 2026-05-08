@@ -64,8 +64,8 @@ type Client struct {
 	instanceID string
 
 	// Cache
-	mu            sync.RWMutex
-	currentLicense *LicenseInfo
+	mu              sync.RWMutex
+	currentLicense  *LicenseInfo
 	fallbackLicense *LicenseInfo
 
 	// Background validation

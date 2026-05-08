@@ -14,7 +14,7 @@ type StepDescriber interface {
 
 // Implement StepDescriber on all step types
 
-func (ms *MatchStep) StepName() string   { return "MatchStep" }
+func (ms *MatchStep) StepName() string    { return "MatchStep" }
 func (ms *MatchStep) StepDetail() string  { return fmt.Sprintf("patterns=%d", len(ms.match.Patterns)) }
 func (fs *FilterStep) StepName() string   { return "FilterStep" }
 func (fs *FilterStep) StepDetail() string { return "WHERE filter" }
@@ -22,11 +22,13 @@ func (cs *CreateStep) StepName() string   { return "CreateStep" }
 func (cs *CreateStep) StepDetail() string {
 	return fmt.Sprintf("patterns=%d", len(cs.create.Patterns))
 }
-func (ss *SetStep) StepName() string   { return "SetStep" }
-func (ss *SetStep) StepDetail() string { return fmt.Sprintf("assignments=%d", len(ss.set.Assignments)) }
-func (ds *DeleteStep) StepName() string   { return "DeleteStep" }
-func (ds *DeleteStep) StepDetail() string { return fmt.Sprintf("variables=%d", len(ds.delete.Variables)) }
-func (rs *ReturnStep) StepName() string   { return "ReturnStep" }
+func (ss *SetStep) StepName() string    { return "SetStep" }
+func (ss *SetStep) StepDetail() string  { return fmt.Sprintf("assignments=%d", len(ss.set.Assignments)) }
+func (ds *DeleteStep) StepName() string { return "DeleteStep" }
+func (ds *DeleteStep) StepDetail() string {
+	return fmt.Sprintf("variables=%d", len(ds.delete.Variables))
+}
+func (rs *ReturnStep) StepName() string { return "ReturnStep" }
 func (rs *ReturnStep) StepDetail() string {
 	return fmt.Sprintf("items=%d limit=%d skip=%d", len(rs.returnClause.Items), rs.limit, rs.skip)
 }

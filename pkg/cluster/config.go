@@ -12,10 +12,10 @@ type ClusterConfig struct {
 	SeedNodes []string // List of seed node addresses for bootstrapping
 
 	// Election configuration
-	ElectionTimeout    time.Duration // Time without heartbeat before starting election (default: 5s)
-	HeartbeatInterval  time.Duration // Interval between heartbeats (default: 1s)
-	MinQuorumSize      int           // Minimum nodes for quorum (typically N/2 + 1)
-	Priority           int           // Election priority (higher wins ties)
+	ElectionTimeout   time.Duration // Time without heartbeat before starting election (default: 5s)
+	HeartbeatInterval time.Duration // Interval between heartbeats (default: 1s)
+	MinQuorumSize     int           // Minimum nodes for quorum (typically N/2 + 1)
+	Priority          int           // Election priority (higher wins ties)
 
 	// Feature flags for gradual rollout
 	EnableAutoFailover bool // Enable automatic failover (default: false)
