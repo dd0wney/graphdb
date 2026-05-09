@@ -144,9 +144,7 @@ func (bgm *BlueGreenManager) Switch(ctx context.Context, req SwitchRequest) (*Sw
 
 	// Perform the switch
 	bgm.currentColor = req.TargetColor
-	oldStandby := bgm.standbyPort
-	bgm.standbyPort = bgm.activePort
-	bgm.activePort = oldStandby
+	bgm.standbyPort, bgm.activePort = bgm.activePort, bgm.standbyPort
 
 	response.Success = true
 	response.NewColor = req.TargetColor

@@ -287,7 +287,8 @@ func IsBipartite(graph *storage.GraphStorage) (bool, []uint64, []uint64, error) 
 			}
 
 			for _, neighbor := range neighbors {
-				if color[neighbor] == -1 {
+				switch color[neighbor] {
+				case -1:
 					// Uncolored, assign opposite color
 					color[neighbor] = nextColor
 					queue = append(queue, neighbor)
@@ -297,7 +298,7 @@ func IsBipartite(graph *storage.GraphStorage) (bool, []uint64, []uint64, error) 
 					} else {
 						partition2 = append(partition2, neighbor)
 					}
-				} else if color[neighbor] == currentColor {
+				case currentColor:
 					// Same color as current - not bipartite!
 					return false, nil, nil, nil
 				}

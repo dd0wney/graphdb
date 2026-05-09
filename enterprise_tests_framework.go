@@ -87,14 +87,20 @@ func (ts *TestSuite) TestMultiTenantIsolation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup: Create nodes in tenant1
-			node1, _ := ts.storage.CreateNode(tt.node1Labels, map[string]storage.Value{
+			node1, err := ts.storage.CreateNode(tt.node1Labels, map[string]storage.Value{
 				"tenant_id": storage.StringValue(tt.tenant1ID),
 			})
+			if err != nil {
+				t.Fatalf("create node1 failed: %v", err)
+			}
 
 			// Setup: Create nodes in tenant2
-			node2, _ := ts.storage.CreateNode(tt.node2Labels, map[string]storage.Value{
+			node2, err := ts.storage.CreateNode(tt.node2Labels, map[string]storage.Value{
 				"tenant_id": storage.StringValue(tt.tenant2ID),
 			})
+			if err != nil {
+				t.Fatalf("create node2 failed: %v", err)
+			}
 
 			// Test: Verify isolation
 			if !tt.verify(t, node1.ID, node2.ID) {
@@ -291,7 +297,9 @@ func (ts *TestSuite) TestBackupRestoreCycle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Step 1: Create test data
 			for i := 0; i < tt.nodeCount; i++ {
-				ts.storage.CreateNode([]string{"Test"}, nil)
+				if _, err := ts.storage.CreateNode([]string{"Test"}, nil); err != nil {
+					t.Fatalf("create test node %d failed: %v", i, err)
+				}
 			}
 			for i := 0; i < tt.edgeCount; i++ {
 				// Create edges between random nodes

@@ -186,11 +186,12 @@ func TestTopologicalSort_LinearChain(t *testing.T) {
 	// Verify A comes before B, and B comes before C
 	posA, posB, posC := -1, -1, -1
 	for i, id := range sorted {
-		if id == nodeA.ID {
+		switch id {
+		case nodeA.ID:
 			posA = i
-		} else if id == nodeB.ID {
+		case nodeB.ID:
 			posB = i
-		} else if id == nodeC.ID {
+		case nodeC.ID:
 			posC = i
 		}
 	}

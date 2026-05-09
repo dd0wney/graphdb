@@ -1185,7 +1185,9 @@ func TestEdgeBetweennessCentrality_StevesUtility(t *testing.T) {
 	topTo := result.TopEdges[0].ToNodeID
 	steveID := nameToID["Steve"]
 	itAdminID := nameToID["IT_Admin"]
-	if !((topFrom == steveID && topTo == itAdminID) || (topFrom == itAdminID && topTo == steveID)) {
+	matchesSteveITAdmin := (topFrom == steveID && topTo == itAdminID) ||
+		(topFrom == itAdminID && topTo == steveID)
+	if !matchesSteveITAdmin {
 		t.Errorf("Expected top edge to be Steve<->IT_Admin, got %d->%d", topFrom, topTo)
 	}
 }
