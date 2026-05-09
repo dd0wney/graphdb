@@ -13,12 +13,12 @@ import (
 )
 
 // TestAuditRegressionSuite_CrossTenantIsolation is the consolidated
-// security gate for audit Track A (PRs #17-#26) plus F2 retrieval
-// (PR #31). It pins every cross-tenant guardrail introduced across
-// audit + feature work in one readable matrix — each subtest names
-// the task that introduced the contract. CI runs this as a
-// single-shot regression check; if any row fails, a guarantee has
-// regressed.
+// security gate for audit Track A (PRs #17-#26), F2 retrieval
+// (PR #31), and A9 GraphQL introspection (PR #36-#39). It pins every
+// cross-tenant guardrail introduced across audit + feature work in
+// one readable matrix — each subtest names the task that introduced
+// the contract. CI runs this as a single-shot regression check; if
+// any row fails, a guarantee has regressed.
 //
 // This is *defense in depth*: each row has a corresponding
 // per-package test (see references below). Those package tests stay
@@ -36,15 +36,15 @@ import (
 //	A6a  → pkg/api/handlers_a6a_tenant_test.go          (/nodes /edges)
 //	A6a-fu → pkg/storage/tenant_signatures_test.go      (verifyNodeExists strict)
 //	A6b  → pkg/api/handlers_a6b_traverse_test.go        (/traverse /shortest-path)
-//	A6c-graphql → pkg/graphql/http_tenant_test.go       (/graphql)
+//	A6c-graphql → pkg/graphql/http_tenant_test.go       (/graphql resolver scope)
 //	A6c-query   → pkg/api/handlers_query_a6c_test.go    (/query)
 //	A6c-algorithms → pkg/api/handlers_algorithms_a6c_test.go (/algorithms)
-//	F2          → pkg/api/handlers_retrieve_test.go     (/v1/retrieve)
+//	A9   → pkg/api/handlers_graphql_introspection_a9_test.go (/graphql introspection)
+//	F2   → pkg/api/handlers_retrieve_test.go            (/v1/retrieve)
 //
 // Open follow-ups (NOT exercised here — separate audit tasks):
 //
 //	A8 — replication tenancy (WriteOperation has no TenantID)
-//	A9 — GraphQL schema introspection metadata leak
 func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 	fix := setupAuditRegressionFixture(t)
 	defer fix.cleanup()
@@ -353,6 +353,43 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 		// Sanity: at least one doc returned (proves the query worked).
 		if len(resp.Documents) == 0 {
 			t.Errorf("tenant-A: expected ≥1 document for query 'alice', got 0 — fixture or search broken")
+		}
+	})
+
+	// ---- /graphql introspection — A9 #4 ----
+
+	t.Run("A9/graphql-introspection-cant-see-other-tenant-labels", func(t *testing.T) {
+		// PR #36-#39: per-tenant GraphQL schema (built lazily from
+		// gs.GetLabelsForTenant) closes the introspection metadata
+		// leak. Pre-fix, GenerateSchema(gs) used GetAllLabels() and a
+		// single shared schema, so any /graphql caller could
+		// enumerate every tenant's label set via __schema.
+		//
+		// The fixture's shared "User" / "Doc" labels appear in both
+		// tenants' schemas — that's correct, those aren't a leak.
+		// Seed an *exclusive* label per tenant inside this subtest so
+		// the assertion is unambiguous: tenant-A's introspection must
+		// reveal "ASecret" but never "BSecret".
+		if _, err := fix.server.graph.CreateNodeWithTenant("tenant-A", []string{"ASecret"}, nil); err != nil {
+			t.Fatalf("seed A: %v", err)
+		}
+		if _, err := fix.server.graph.CreateNodeWithTenant("tenant-B", []string{"BSecret"}, nil); err != nil {
+			t.Fatalf("seed B: %v", err)
+		}
+
+		rr := httptest.NewRecorder()
+		fix.server.handleGraphQL(rr, fix.req(t, http.MethodPost, "/graphql", map[string]string{
+			"query": `{ __schema { types { name } } }`,
+		}, "tenant-A"))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status %d body=%s", rr.Code, rr.Body.String())
+		}
+		typeNames := extractIntrospectedTypeNames(t, rr.Body.Bytes())
+		if !containsString(typeNames, "ASecret") {
+			t.Errorf("tenant-A introspection missing own type 'ASecret' (got: %v)", typeNames)
+		}
+		if containsString(typeNames, "BSecret") {
+			t.Errorf("tenant-A introspection LEAKED tenant-B type 'BSecret' (A9 regression; got: %v)", typeNames)
 		}
 	})
 }
