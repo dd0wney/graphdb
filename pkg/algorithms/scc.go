@@ -64,7 +64,14 @@ func sccView(view graphView) (*SCCResult, error) {
 		indexCounter++
 		stack = append(stack, u)
 
-		outEdges, _ := view.OutgoingEdges(u)
+		// Defensive: if a future graphView implementation (LSM, snapshot)
+		// returns an error here, proceed as if u has no outgoing edges.
+		// u still gets the SCC root check below and pops as a singleton
+		// component rather than corrupting traversal state.
+		outEdges, err := view.OutgoingEdges(u)
+		if err != nil {
+			outEdges = nil
+		}
 		for _, edge := range outEdges {
 			v := edge.ToNodeID
 			if _, exists := state[v]; !exists {

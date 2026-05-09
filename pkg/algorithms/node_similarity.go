@@ -69,8 +69,14 @@ func getNeighborSet(view graphView, nodeID uint64, direction NeighborDirection, 
 	}
 	filterByType := len(edgeTypes) > 0
 
+	// Defensive: if a future graphView implementation returns an error,
+	// proceed with whatever edges we did read. Similarity scores against
+	// this node will be underestimated, never inflated.
 	if direction == DirectionOut || direction == DirectionBoth {
-		outEdges, _ := view.OutgoingEdges(nodeID)
+		outEdges, err := view.OutgoingEdges(nodeID)
+		if err != nil {
+			outEdges = nil
+		}
 		for _, e := range outEdges {
 			if filterByType && !edgeTypeSet[e.Type] {
 				continue
@@ -82,7 +88,10 @@ func getNeighborSet(view graphView, nodeID uint64, direction NeighborDirection, 
 	}
 
 	if direction == DirectionIn || direction == DirectionBoth {
-		inEdges, _ := view.IncomingEdges(nodeID)
+		inEdges, err := view.IncomingEdges(nodeID)
+		if err != nil {
+			inEdges = nil
+		}
 		for _, e := range inEdges {
 			if filterByType && !edgeTypeSet[e.Type] {
 				continue

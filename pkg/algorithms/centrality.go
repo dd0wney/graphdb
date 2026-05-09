@@ -205,7 +205,15 @@ func (h rankedEdgeHeap) Less(i, j int) bool { return h[i].Score < h[j].Score }
 func (h rankedEdgeHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
 func (h *rankedEdgeHeap) Push(x any) {
-	*h = append(*h, x.(RankedEdge))
+	// heap.Interface.Push contract: callers always pass the heap's
+	// element type. The explicit comma-ok + panic preserves the same
+	// fail-loud behavior as the single-value assertion while satisfying
+	// errcheck's check-type-assertions.
+	e, ok := x.(RankedEdge)
+	if !ok {
+		panic("rankedEdgeHeap.Push: expected RankedEdge")
+	}
+	*h = append(*h, e)
 }
 
 func (h *rankedEdgeHeap) Pop() any {
@@ -249,7 +257,14 @@ func findTopEdgesView(view graphView, scores map[uint64]float64, n int) []Ranked
 
 	result := make([]RankedEdge, h.Len())
 	for i := h.Len() - 1; i >= 0; i-- {
-		result[i] = heap.Pop(&h).(RankedEdge)
+		// The heap is populated only via rankedEdgeHeap.Push above, so
+		// every element is RankedEdge. Comma-ok + panic preserves
+		// fail-loud behavior under errcheck's check-type-assertions.
+		e, ok := heap.Pop(&h).(RankedEdge)
+		if !ok {
+			panic("findTopEdgesView: heap returned non-RankedEdge")
+		}
+		result[i] = e
 	}
 
 	// Stable sort by score descending, then edge ID ascending for determinism
