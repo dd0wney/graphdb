@@ -84,10 +84,11 @@ func dfsDetectCycleView(
 			continue
 		}
 
-		if color[neighborID] == WHITE {
+		switch color[neighborID] {
+		case WHITE:
 			parent[neighborID] = nodeID
 			dfsDetectCycleView(view, neighborID, color, parent, cycles)
-		} else if color[neighborID] == GRAY {
+		case GRAY:
 			cycle := extractCycle(neighborID, nodeID, parent)
 			*cycles = append(*cycles, cycle)
 		}
@@ -271,11 +272,12 @@ func hasCycleDFSView(view graphView, nodeID uint64, color map[uint64]int) bool {
 			return true
 		}
 
-		if color[neighborID] == WHITE {
+		switch color[neighborID] {
+		case WHITE:
 			if hasCycleDFSView(view, neighborID, color) {
 				return true
 			}
-		} else if color[neighborID] == GRAY {
+		case GRAY:
 			return true
 		}
 	}

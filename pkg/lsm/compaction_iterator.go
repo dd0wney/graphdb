@@ -65,7 +65,7 @@ func NewMergeIterator(sstables []*SSTable) (*MergeIterator, error) {
 // Next returns the next entry in sorted order across all iterators
 func (mi *MergeIterator) Next() (*Entry, bool) {
 	var minEntry *Entry
-	var minIdx int = -1
+	minIdx := -1
 
 	// Find minimum key across all iterators
 	for i, it := range mi.iterators {

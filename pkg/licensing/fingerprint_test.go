@@ -28,7 +28,8 @@ func TestGenerateFingerprint(t *testing.T) {
 
 	// Verify all hex characters
 	for _, c := range fingerprint.Hash {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		isHexChar := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
+		if !isHexChar {
 			t.Errorf("Fingerprint hash contains non-hex character: %c", c)
 		}
 	}
