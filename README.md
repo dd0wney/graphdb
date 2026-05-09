@@ -277,6 +277,13 @@ go build -o bin/tui ./cmd/tui
 go build -o bin/tui-demo ./cmd/tui-demo
 ```
 
+> **Note on `cmd/graphdb-{primary,replica}` and the `nng`/`zmq` variants:**
+> These are legacy standalone-replication binaries that pre-date the
+> multi-tenancy work. They route writes to the default tenant and serve
+> unauthenticated cross-tenant reads — not safe for production. They
+> refuse to start unless `GRAPHDB_LEGACY_BINARY=1` is set. Use
+> `cmd/server` for any real deployment. Tracked under audit A8.
+
 ### Try the Interactive TUI Demo
 
 ```bash
