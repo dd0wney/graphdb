@@ -64,8 +64,15 @@ func (l *JSONLogger) log(level Level, msg string, fields ...Field) {
 		return
 	}
 
-	l.writer.Write(data)
-	l.writer.Write([]byte("\n"))
+	// Write errors are intentionally discarded: the only actionable
+	// response would be to log the failure — into the same writer that
+	// just failed. The fmt.Fprintf marshal-fallback above makes the same
+	// trade-off implicitly. If a caller wires up a writer where failure
+	// observability matters (e.g., a network sink), expose an atomic
+	// failure counter on JSONLogger and surface it via a getter rather
+	// than reintroducing recursion here.
+	l.writer.Write(data)         //nolint:errcheck // see comment above
+	l.writer.Write([]byte("\n")) //nolint:errcheck // see comment above
 }
 
 // Debug logs a debug-level message
