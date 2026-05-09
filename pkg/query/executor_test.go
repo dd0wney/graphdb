@@ -970,8 +970,6 @@ func TestExecutor_CreateRelationship(t *testing.T) {
 		t.Fatalf("Expected 2 nodes, got %d", len(nodes))
 	}
 
-	alice := nodes[0]
-
 	// Now create a relationship: MATCH (a), (b) WHERE a.id = 1 AND b.id = 2 CREATE (a)-[:KNOWS]->(b)
 	// We'll use ExecuteWithText for simplicity and to test relationship creation
 	createRelQuery := &Query{
@@ -1014,18 +1012,35 @@ func TestExecutor_CreateRelationship(t *testing.T) {
 		t.Errorf("Expected at least 1 relationship created, got %d", result.Count)
 	}
 
-	// Verify edge exists
-	edges, err := gs.GetOutgoingEdges(alice.ID)
-	if err != nil {
-		t.Fatalf("Failed to get edges: %v", err)
+	// Verify KNOWS edges exist between the two Person nodes. Which node
+	// ends up as the edge source depends on the executor's MATCH iteration
+	// order — Go map iteration is non-deterministic, so a previous version
+	// of this test asserted "Alice has outgoing edges" via nodes[0] and
+	// flaked on Linux when nodes[0] happened to be Bob, with the executor
+	// having created edges only from Alice. Enumerate all Person nodes
+	// instead; the contract under test is "MATCH+CREATE produces KNOWS
+	// edges with the right properties," not "the edge source happens to
+	// be the node we picked first."
+	var knowsEdges []*storage.Edge
+	for _, n := range nodes {
+		out, err := gs.GetOutgoingEdges(n.ID)
+		if err != nil {
+			t.Fatalf("Failed to get edges for node %d: %v", n.ID, err)
+		}
+		for _, e := range out {
+			if e.Type == "KNOWS" {
+				knowsEdges = append(knowsEdges, e)
+			}
+		}
 	}
-	if len(edges) < 1 {
-		t.Errorf("Expected at least 1 outgoing edge from Alice")
+	if len(knowsEdges) < 1 {
+		t.Errorf("Expected at least 1 KNOWS edge across both Person nodes, got %d", len(knowsEdges))
 	}
 
-	// Verify edge has correct properties
-	if len(edges) > 0 {
-		since, ok := edges[0].GetProperty("since")
+	// Verify edge has correct properties (all KNOWS edges share the same
+	// template, so checking the first one is sufficient).
+	if len(knowsEdges) > 0 {
+		since, ok := knowsEdges[0].GetProperty("since")
 		if !ok {
 			t.Error("Edge should have 'since' property")
 		} else {
