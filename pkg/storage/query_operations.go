@@ -5,7 +5,7 @@ package storage
 func (gs *GraphStorage) buildNodeListFromIDs(nodeIDs []uint64) []*Node {
 	nodes := make([]*Node, 0, len(nodeIDs))
 	for _, nodeID := range nodeIDs {
-		if node, exists := gs.nodes[nodeID]; exists {
+		if node, exists := gs.lookupNodeShard(nodeID); exists {
 			nodes = append(nodes, node.Clone())
 		}
 	}
@@ -162,14 +162,15 @@ func (gs *GraphStorage) FindNodesByProperty(key string, value Value) ([]*Node, e
 
 	nodes := make([]*Node, 0)
 
-	for _, node := range gs.nodes {
+	gs.forEachNodeUnlocked(func(node *Node) bool {
 		if prop, exists := node.Properties[key]; exists {
 			// Simple byte comparison for now (could be optimized)
 			if string(prop.Data) == string(value.Data) && prop.Type == value.Type {
 				nodes = append(nodes, node.Clone())
 			}
 		}
-	}
+		return true
+	})
 
 	return nodes, nil
 }
@@ -189,16 +190,17 @@ func (gs *GraphStorage) FindNodesByPropertyForTenant(key string, value Value, te
 	expected := effectiveTenantID(tenantID).String()
 	nodes := make([]*Node, 0)
 
-	for _, node := range gs.nodes {
+	gs.forEachNodeUnlocked(func(node *Node) bool {
 		if node.TenantID != expected {
-			continue
+			return true
 		}
 		if prop, exists := node.Properties[key]; exists {
 			if string(prop.Data) == string(value.Data) && prop.Type == value.Type {
 				nodes = append(nodes, node.Clone())
 			}
 		}
-	}
+		return true
+	})
 
 	return nodes, nil
 }

@@ -29,7 +29,6 @@ func NewGraphStorage(dataDir string) (*GraphStorage, error) {
 // NewGraphStorageWithConfig creates a new graph storage engine with custom config
 func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 	gs := &GraphStorage{
-		nodes:           make(map[uint64]*Node),
 		edges:           make(map[uint64]*Edge),
 		nodesByLabel:    make(map[string][]uint64),
 		edgesByType:     make(map[string][]uint64),
@@ -57,6 +56,12 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 	// Initialize shard locks for fine-grained concurrency
 	for i := range gs.shardLocks {
 		gs.shardLocks[i] = &sync.RWMutex{}
+	}
+
+	// Initialize the partitioned node shards. Each shard is a distinct
+	// map; nodeShards[i & shardMask] holds the node for ID i.
+	for i := range gs.nodeShards {
+		gs.nodeShards[i] = make(map[uint64]*Node)
 	}
 
 	// Create data directory if it doesn't exist

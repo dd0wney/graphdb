@@ -43,7 +43,7 @@ func (b *Batch) executeCreateNode(op batchOp) error {
 		Properties: op.properties,
 	}
 
-	b.graph.nodes[node.ID] = node
+	b.graph.storeNodeInShard(node)
 	atomic.AddUint64(&b.graph.stats.NodeCount, 1)
 
 	// Update label indexes
@@ -109,7 +109,7 @@ func (b *Batch) executeCreateEdge(op batchOp) error {
 }
 
 func (b *Batch) executeUpdateNode(op batchOp) error {
-	node, exists := b.graph.nodes[op.nodeID]
+	node, exists := b.graph.lookupNodeShard(op.nodeID)
 	if !exists {
 		return fmt.Errorf("node %d not found", op.nodeID)
 	}
@@ -158,7 +158,7 @@ func (b *Batch) executeUpdateNode(op batchOp) error {
 }
 
 func (b *Batch) executeDeleteNode(op batchOp) error {
-	node, exists := b.graph.nodes[op.nodeID]
+	node, exists := b.graph.lookupNodeShard(op.nodeID)
 	if !exists {
 		return nil // Skip non-existent nodes
 	}
@@ -194,7 +194,7 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 	delete(b.graph.incomingEdges, op.nodeID)
 
 	// Delete node with atomic decrement
-	delete(b.graph.nodes, op.nodeID)
+	b.graph.deleteNodeShardEntry(op.nodeID)
 	atomicDecrementWithUnderflowProtection(&b.graph.stats.NodeCount)
 
 	// Write to WAL for durability

@@ -165,6 +165,31 @@ func (gs *GraphStorage) GetEdgeForTenant(edgeID uint64, tenantID string) (*Edge,
 // GetEdge retrieves an edge by ID.
 //
 // Tenant-blind. New callers should prefer GetEdgeForTenant.
+//
+// A4 follow-up: this is one instance of a wider lock-disagreement
+// bug class — code in pkg/storage takes shard locks for some
+// operations while mutating the same shared maps under gs.mu.Lock
+// elsewhere. The three currently-known surfaces are:
+//
+//  1. GetEdge (shard.RLock) vs CreateEdge / UpdateEdge / DeleteEdge
+//     (gs.mu.Lock) — this method.
+//  2. transaction_commit.applyNodeUpdates mutates node.Properties
+//     under shard.Lock alone, while UpdateNode mutates the same
+//     node.Properties under gs.mu.Lock. Same root cause; the
+//     transaction-layer write doesn't coordinate with the
+//     global-lock write path.
+//  3. DeleteNode cascade mutates gs.edges / adjacency under
+//     gs.mu.Lock while GetEdge reads under shard.RLock — symmetric
+//     to (1).
+//
+// Audit task A4 (2026-05-10) closed the equivalent race for nodes by
+// partitioning gs.nodes into [256]map shards. The unified fix is
+// either to (a) partition gs.edges the same way and have
+// transaction-commit re-acquire gs.mu where needed, or (b) tighten
+// the transaction layer to coordinate with global-lock writers. Both
+// are tracked as a single follow-up scope rather than three separate
+// fixes; landing only one of (1)/(2)/(3) leaves the other two
+// windows open. See the 2026-05-10 planning checkpoint.
 func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 	defer gs.startQueryTiming()()
 

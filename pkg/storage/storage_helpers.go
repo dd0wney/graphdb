@@ -60,9 +60,11 @@ func (gs *GraphStorage) hasWAL() bool {
 	return gs.batchedWAL != nil || gs.compressedWAL != nil || gs.wal != nil
 }
 
-// checkClosed returns an error if the storage is closed
+// checkClosed returns an error if the storage is closed. Uses an atomic
+// load so callers on the per-shard hot path don't need to take gs.mu just
+// to read a single bool (audit task A4).
 func (gs *GraphStorage) checkClosed() error {
-	if gs.closed {
+	if gs.closed.Load() {
 		return fmt.Errorf("storage is closed")
 	}
 	return nil
@@ -73,7 +75,7 @@ func (gs *GraphStorage) checkClosed() error {
 // tenant-blind callers (CreateEdge, UpsertEdge). New tenant-aware
 // callers should prefer verifyNodeExistsForTenant.
 func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
-	if _, exists := gs.nodes[nodeID]; !exists {
+	if _, exists := gs.lookupNodeShard(nodeID); !exists {
 		return fmt.Errorf("%s node %d not found", nodeType, nodeID)
 	}
 	return nil
@@ -91,7 +93,7 @@ func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
 // tenant, enabling tenant-A to write a tenant-A-stamped edge against
 // tenant-B's nodes.
 func (gs *GraphStorage) verifyNodeExistsForTenant(nodeID uint64, nodeType string, tenantID string) error {
-	node, exists := gs.nodes[nodeID]
+	node, exists := gs.lookupNodeShard(nodeID)
 	if !exists {
 		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound)
 	}
@@ -193,6 +195,109 @@ func (gs *GraphStorage) rlockShard(id uint64) {
 // runlockShard releases a read lock on the shard for the given ID
 func (gs *GraphStorage) runlockShard(id uint64) {
 	gs.shardLocks[gs.getShardIndex(id)].RUnlock()
+}
+
+// lockShard acquires the write lock on the shard for the given ID.
+// Used by writers (CreateNode, UpdateNode, DeleteNode etc.) during the
+// brief window when they mutate nodeShards[shardOf(id)] or fields of
+// the Node struct stored there.
+func (gs *GraphStorage) lockShard(id uint64) {
+	gs.shardLocks[gs.getShardIndex(id)].Lock()
+}
+
+// unlockShard releases the write lock on the shard for the given ID.
+func (gs *GraphStorage) unlockShard(id uint64) {
+	gs.shardLocks[gs.getShardIndex(id)].Unlock()
+}
+
+// Partitioned-node-map helpers (audit task A4, 2026-05-10).
+//
+// nodeShards is a [256]map[uint64]*Node array; helpers below hide the
+// shard-index arithmetic from call sites. Locking rules: callers must
+// hold either gs.mu (read or write, depending on op) or — once A4-T4
+// flips the lock-grain — the appropriate shardLocks entry.
+
+// lookupNodeShard returns the node for the given ID. Caller must hold
+// the appropriate read lock.
+func (gs *GraphStorage) lookupNodeShard(id uint64) (*Node, bool) {
+	n, ok := gs.nodeShards[gs.getShardIndex(id)][id]
+	return n, ok
+}
+
+// storeNodeInShard writes node into its owning shard. Caller must hold
+// the appropriate write lock.
+func (gs *GraphStorage) storeNodeInShard(node *Node) {
+	gs.nodeShards[gs.getShardIndex(node.ID)][node.ID] = node
+}
+
+// deleteNodeShardEntry removes the entry for id from its owning shard.
+// Caller must hold the appropriate write lock.
+func (gs *GraphStorage) deleteNodeShardEntry(id uint64) {
+	delete(gs.nodeShards[gs.getShardIndex(id)], id)
+}
+
+// nodeCount returns the total number of nodes across all shards. Caller
+// must hold gs.mu.RLock or all shard read locks for a consistent count.
+func (gs *GraphStorage) nodeCount() int {
+	total := 0
+	for i := range gs.nodeShards {
+		total += len(gs.nodeShards[i])
+	}
+	return total
+}
+
+// forEachNodeUnlocked invokes fn for every node across all shards.
+// Iteration stops early if fn returns false. Caller must hold gs.mu.RLock
+// (or all shard read locks) for the duration; concurrent map writes
+// during iteration will trip the Go runtime's map-race check.
+func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
+	for i := range gs.nodeShards {
+		for _, node := range gs.nodeShards[i] {
+			if !fn(node) {
+				return
+			}
+		}
+	}
+}
+
+// forEachNodeIDUnlocked invokes fn for every node ID across all shards.
+// Iteration stops early if fn returns false. Same locking contract as
+// forEachNodeUnlocked.
+func (gs *GraphStorage) forEachNodeIDUnlocked(fn func(uint64) bool) {
+	for i := range gs.nodeShards {
+		for id := range gs.nodeShards[i] {
+			if !fn(id) {
+				return
+			}
+		}
+	}
+}
+
+// flattenNodesForSnapshot collects every node from every shard into a
+// single map for serialization. Used by the snapshot writer to preserve
+// the on-disk format (a flat map[uint64]*Node) across the partition
+// migration. Caller must hold gs.mu.RLock for the duration.
+func (gs *GraphStorage) flattenNodesForSnapshot() map[uint64]*Node {
+	out := make(map[uint64]*Node, gs.nodeCount())
+	for i := range gs.nodeShards {
+		for id, node := range gs.nodeShards[i] {
+			out[id] = node
+		}
+	}
+	return out
+}
+
+// rebucketSnapshotNodes redistributes a flat snapshot map across the
+// partitioned shards. Used by the snapshot loader. Caller must hold
+// gs.mu.Lock for the duration. Replaces (does not merge with) any
+// existing shard contents.
+func (gs *GraphStorage) rebucketSnapshotNodes(flat map[uint64]*Node) {
+	for i := range gs.nodeShards {
+		gs.nodeShards[i] = make(map[uint64]*Node)
+	}
+	for id, node := range flat {
+		gs.nodeShards[gs.getShardIndex(id)][id] = node
+	}
 }
 
 // allocateNodeID allocates a new node ID in a thread-safe manner using atomic operations.

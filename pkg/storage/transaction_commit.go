@@ -50,7 +50,7 @@ func (tx *Transaction) applyCreatedNodes() {
 	for shardIdx, nodes := range nodesByShard {
 		tx.gs.shardLocks[shardIdx].Lock()
 		for _, node := range nodes {
-			tx.gs.nodes[node.ID] = node
+			tx.gs.storeNodeInShard(node)
 			// Update indexes
 			for _, label := range node.Labels {
 				tx.gs.nodesByLabel[label] = append(tx.gs.nodesByLabel[label], node.ID)
@@ -110,7 +110,7 @@ func (tx *Transaction) applyNodeUpdates() {
 	for shardIdx, updates := range updatesByShard {
 		tx.gs.shardLocks[shardIdx].Lock()
 		for _, update := range updates {
-			if node, exists := tx.gs.nodes[update.nodeID]; exists {
+			if node, exists := tx.gs.lookupNodeShard(update.nodeID); exists {
 				for k, v := range update.properties {
 					node.Properties[k] = v
 				}

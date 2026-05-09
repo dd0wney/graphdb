@@ -20,14 +20,20 @@ func (gs *GraphStorage) CreatePropertyIndex(propertyKey string, valueType ValueT
 	idx := NewPropertyIndex(propertyKey, valueType)
 
 	// Populate index with existing nodes
-	for nodeID, node := range gs.nodes {
+	var insertErr error
+	gs.forEachNodeUnlocked(func(node *Node) bool {
 		if prop, exists := node.Properties[propertyKey]; exists {
 			if prop.Type == valueType {
-				if err := idx.Insert(nodeID, prop); err != nil {
-					return fmt.Errorf("failed to insert node %d into property index %s: %w", nodeID, propertyKey, err)
+				if err := idx.Insert(node.ID, prop); err != nil {
+					insertErr = fmt.Errorf("failed to insert node %d into property index %s: %w", node.ID, propertyKey, err)
+					return false
 				}
 			}
 		}
+		return true
+	})
+	if insertErr != nil {
+		return insertErr
 	}
 
 	gs.propertyIndexes[propertyKey] = idx
@@ -119,7 +125,7 @@ func (gs *GraphStorage) FindNodesByPropertyIndexedForTenant(key string, value Va
 	expected := effectiveTenantID(tenantID).String()
 	out := make([]*Node, 0, len(nodeIDs))
 	for _, nodeID := range nodeIDs {
-		node, exists := gs.nodes[nodeID]
+		node, exists := gs.lookupNodeShard(nodeID)
 		if !exists {
 			continue
 		}

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
@@ -19,8 +20,16 @@ const (
 // GraphStorage is the core in-memory graph storage engine
 type GraphStorage struct {
 	// Core data structures
-	nodes map[uint64]*Node
-	edges map[uint64]*Edge
+	//
+	// nodeShards partitions all nodes across 256 disjoint maps, indexed
+	// by `id & shardMask`. Each shard is guarded by shardLocks[i]; this
+	// lets concurrent readers on different shards proceed without
+	// contending on a single global lock and avoids the Go runtime
+	// "concurrent map read and map write" panic that a single shared
+	// map would risk under shard-grained locking. Audit task A4
+	// (2026-05-10).
+	nodeShards [256]map[uint64]*Node
+	edges      map[uint64]*Edge
 
 	// Indexes for fast lookups
 	nodesByLabel    map[string][]uint64       // label -> node IDs
@@ -52,10 +61,13 @@ type GraphStorage struct {
 	nextEdgeID uint64
 
 	// Concurrency control
-	mu         sync.RWMutex       // Global lock for operations spanning multiple shards
-	shardLocks [256]*sync.RWMutex // Shard-specific locks for fine-grained concurrency
+	mu         sync.RWMutex       // Global lock for global indexes (label/property/vector/tenant)
+	shardLocks [256]*sync.RWMutex // Per-shard locks; shardLocks[i] guards nodeShards[i]
 	shardMask  uint64             // Mask for efficient shard calculation (255 for 256 shards)
-	closed     bool               // Indicates if storage has been closed
+	// closed is read on the GetNode hot path which now takes only the
+	// per-shard read lock (audit task A4, 2026-05-10); using atomic.Bool
+	// avoids the previous gs.mu.RLock/RUnlock dance just to read a bool.
+	closed atomic.Bool
 
 	// Persistence
 	dataDir        string

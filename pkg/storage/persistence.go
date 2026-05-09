@@ -60,7 +60,7 @@ func (gs *GraphStorage) Snapshot() error {
 		NextEdgeID      uint64
 		Stats           Statistics
 	}{
-		Nodes:           gs.nodes,
+		Nodes:           gs.flattenNodesForSnapshot(),
 		Edges:           gs.edges,
 		NodesByLabel:    gs.nodesByLabel,
 		EdgesByType:     gs.edgesByType,
@@ -149,7 +149,7 @@ func (gs *GraphStorage) loadFromDisk() error {
 		return fmt.Errorf("failed to unmarshal snapshot: %w", err)
 	}
 
-	gs.nodes = snapshot.Nodes
+	gs.rebucketSnapshotNodes(snapshot.Nodes)
 	gs.edges = snapshot.Edges
 	gs.nodesByLabel = snapshot.NodesByLabel
 	gs.edgesByType = snapshot.EdgesByType
@@ -186,14 +186,12 @@ func (gs *GraphStorage) SetEncryption(engine encryption.EncryptDecrypter, keyMan
 
 // Close performs cleanup
 func (gs *GraphStorage) Close() error {
-	// Check and mark as closed atomically
-	gs.mu.Lock()
-	if gs.closed {
-		gs.mu.Unlock()
+	// Check and mark as closed atomically. CompareAndSwap returns false
+	// if closed was already true, giving us the "already closed" branch
+	// without holding gs.mu.
+	if !gs.closed.CompareAndSwap(false, true) {
 		return fmt.Errorf("storage already closed")
 	}
-	gs.closed = true
-	gs.mu.Unlock()
 
 	// Save snapshot on close (without holding the lock to avoid deadlock)
 	if err := gs.Snapshot(); err != nil {

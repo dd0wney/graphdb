@@ -50,12 +50,12 @@ func (gs *GraphStorage) replayCreateNode(entry *wal.Entry) error {
 	}
 
 	// Skip if node already exists (already in snapshot)
-	if _, exists := gs.nodes[node.ID]; exists {
+	if _, exists := gs.lookupNodeShard(node.ID); exists {
 		return nil
 	}
 
 	// Replay node creation
-	gs.nodes[node.ID] = &node
+	gs.storeNodeInShard(&node)
 	for _, label := range node.Labels {
 		gs.nodesByLabel[label] = append(gs.nodesByLabel[label], node.ID)
 	}
@@ -92,7 +92,7 @@ func (gs *GraphStorage) replayUpdateNode(entry *wal.Entry) error {
 	}
 
 	// Skip if node doesn't exist
-	node, exists := gs.nodes[updateInfo.NodeID]
+	node, exists := gs.lookupNodeShard(updateInfo.NodeID)
 	if !exists {
 		return nil
 	}
@@ -182,7 +182,7 @@ func (gs *GraphStorage) replayDeleteNode(entry *wal.Entry) error {
 	}
 
 	// Skip if node doesn't exist (already deleted or never existed)
-	if _, exists := gs.nodes[node.ID]; !exists {
+	if _, exists := gs.lookupNodeShard(node.ID); !exists {
 		return nil
 	}
 
@@ -228,7 +228,7 @@ func (gs *GraphStorage) replayDeleteNode(entry *wal.Entry) error {
 	}
 
 	// Delete node
-	delete(gs.nodes, node.ID)
+	gs.deleteNodeShardEntry(node.ID)
 
 	// Delete adjacency lists (disk-backed or in-memory)
 	if err := gs.clearNodeAdjacency(node.ID); err != nil {
@@ -257,14 +257,20 @@ func (gs *GraphStorage) replayCreatePropertyIndex(entry *wal.Entry) error {
 
 	// Create index and populate with existing nodes
 	idx := NewPropertyIndex(indexInfo.PropertyKey, indexInfo.ValueType)
-	for nodeID, node := range gs.nodes {
+	var insertErr error
+	gs.forEachNodeUnlocked(func(node *Node) bool {
 		if prop, exists := node.Properties[indexInfo.PropertyKey]; exists {
 			if prop.Type == indexInfo.ValueType {
-				if err := idx.Insert(nodeID, prop); err != nil {
-					return fmt.Errorf("failed to insert node %d into property index %s during replay: %w", nodeID, indexInfo.PropertyKey, err)
+				if err := idx.Insert(node.ID, prop); err != nil {
+					insertErr = fmt.Errorf("failed to insert node %d into property index %s during replay: %w", node.ID, indexInfo.PropertyKey, err)
+					return false
 				}
 			}
 		}
+		return true
+	})
+	if insertErr != nil {
+		return insertErr
 	}
 	gs.propertyIndexes[indexInfo.PropertyKey] = idx
 

@@ -79,8 +79,8 @@ func TestIDAllocation_NodeIDsNeverReused(t *testing.T) {
 		}
 
 		// Verify all 20 nodes exist with unique IDs
-		if len(gs.nodes) != 20 {
-			t.Errorf("Expected 20 nodes after crash, got %d", len(gs.nodes))
+		if gs.nodeCount() != 20 {
+			t.Errorf("Expected 20 nodes after crash, got %d", gs.nodeCount())
 		}
 
 		t.Log("After crash: No ID collisions detected - all IDs unique")
@@ -227,11 +227,12 @@ func TestIDAllocation_LargeIDGaps(t *testing.T) {
 
 		// Find highest existing node ID
 		var maxExistingID uint64
-		for id := range gs.nodes {
+		gs.forEachNodeIDUnlocked(func(id uint64) bool {
 			if id > maxExistingID && id != newNode.ID {
 				maxExistingID = id
 			}
-		}
+			return true
+		})
 
 		if newNode.ID <= maxExistingID {
 			t.Errorf("New node ID %d is NOT greater than max existing ID %d (ID REUSE RISK!)",
@@ -562,8 +563,8 @@ func TestIDAllocation_ConcurrentCreation(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify all nodes have unique IDs
-		if len(gs.nodes) != 50 {
-			t.Errorf("Expected 50 nodes after crash, got %d", len(gs.nodes))
+		if gs.nodeCount() != 50 {
+			t.Errorf("Expected 50 nodes after crash, got %d", gs.nodeCount())
 		}
 
 		// Create more nodes and verify no collisions
@@ -581,8 +582,8 @@ func TestIDAllocation_ConcurrentCreation(t *testing.T) {
 		}
 
 		// Final verification: All 100 nodes exist with unique IDs
-		if len(gs.nodes) != 100 {
-			t.Errorf("Expected 100 total nodes, got %d", len(gs.nodes))
+		if gs.nodeCount() != 100 {
+			t.Errorf("Expected 100 total nodes, got %d", gs.nodeCount())
 		}
 
 		t.Logf("After crash: All 100 nodes have unique IDs")

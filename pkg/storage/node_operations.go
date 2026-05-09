@@ -48,7 +48,13 @@ func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, p
 		UpdatedAt:  now,
 	}
 
-	gs.nodes[nodeID] = node
+	// Per-shard write lock (A4) excludes shard.RLock readers during the
+	// nodeShards mutation. Brief hold — released as soon as the new node
+	// is in the shard map. The remaining global-index updates below run
+	// under gs.mu.Lock only.
+	gs.lockShard(nodeID)
+	gs.storeNodeInShard(node)
+	gs.unlockShard(nodeID)
 
 	// Update global label indexes (for backward compatibility)
 	for _, label := range labels {
@@ -92,17 +98,19 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 	start := time.Now()
 	defer gs.startQueryTiming()()
 
-	// Use global read lock to properly synchronize with CreateNode's write lock
-	gs.mu.RLock()
-	defer gs.mu.RUnlock()
-
-	// Check if storage is closed
+	// Closed-check uses atomic load (A4); no global lock required.
 	if err := gs.checkClosed(); err != nil {
 		gs.recordOperation("get_node", "error", start)
 		return nil, err
 	}
 
-	node, exists := gs.nodes[nodeID]
+	// Per-shard read lock (A4). Concurrent readers on different shards
+	// proceed in parallel; readers on the same shard contend only with
+	// writers actively mutating that shard's nodeShards entry.
+	gs.rlockShard(nodeID)
+	defer gs.runlockShard(nodeID)
+
+	node, exists := gs.lookupNodeShard(nodeID)
 	if !exists {
 		gs.recordOperation("get_node", "error", start)
 		return nil, ErrNodeNotFound
@@ -125,8 +133,9 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 //
 // Closes Security CRIT #1 from docs/AUDIT_security_2026-05-06.md.
 func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node, error) {
-	gs.mu.RLock()
-	defer gs.mu.RUnlock()
+	// Per-shard read lock (A4) — see GetNode for the rationale.
+	gs.rlockShard(nodeID)
+	defer gs.runlockShard(nodeID)
 	node, err := gs.getNodeRefForTenant(nodeID, tenantID)
 	if err != nil {
 		return nil, err
@@ -134,9 +143,37 @@ func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node,
 	return node.Clone(), nil
 }
 
+// WithNodeRefForTenant invokes fn with the live node pointer for the
+// given (id, tenantID), holding the per-shard read lock for the
+// duration of fn. Returns ErrNodeNotFound if the node does not exist
+// or belongs to a different tenant (same unified-error rationale as
+// GetNodeForTenant).
+//
+// Caller contract: fn MUST NOT escape the *Node pointer past its own
+// return — the shard lock is released as soon as fn finishes, and a
+// concurrent writer may mutate the node's fields immediately after.
+// To retain a snapshot beyond fn, call node.Clone() before returning.
+//
+// Designed for hot-path filter loops (vector search post-filter, etc.)
+// where most candidates are rejected before any escape is needed; the
+// per-iteration clone of GetNodeForTenant is wasted work for rejected
+// candidates. Audit task A4 clone-elision (2026-05-10) — closes
+// Performance HIGH-1 from docs/AUDIT_performance_2026-05-06.md.
+func (gs *GraphStorage) WithNodeRefForTenant(nodeID uint64, tenantID string, fn func(*Node) error) error {
+	gs.rlockShard(nodeID)
+	defer gs.runlockShard(nodeID)
+	node, err := gs.getNodeRefForTenant(nodeID, tenantID)
+	if err != nil {
+		return err
+	}
+	return fn(node)
+}
+
 // getNodeRefForTenant returns the live node pointer (NO clone) after
-// validating tenant ownership. Caller MUST hold gs.mu.RLock for the
-// duration that the returned pointer is used.
+// validating tenant ownership. Caller MUST hold the per-shard read
+// lock for nodeID (gs.rlockShard/runlockShard) for the duration that
+// the returned pointer is used. Audit task A4 (2026-05-10) migrated
+// the locking contract from gs.mu.RLock to per-shard.
 //
 // Internal use only — package-private. Hot-path callers (post-filter
 // loops in vector search etc.) avoid the per-iteration clone cost via
@@ -146,7 +183,7 @@ func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node,
 // Returns ErrNodeNotFound on missing or cross-tenant. See
 // GetNodeForTenant for the rationale on the unified error response.
 func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*Node, error) {
-	node, exists := gs.nodes[nodeID]
+	node, exists := gs.lookupNodeShard(nodeID)
 	if !exists {
 		return nil, ErrNodeNotFound
 	}
@@ -163,15 +200,16 @@ func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*No
 // tenant. Returns ErrNodeNotFound on missing or cross-tenant (same
 // rationale as GetNodeForTenant).
 func (gs *GraphStorage) UpdateNodeForTenant(nodeID uint64, properties map[string]Value, tenantID string) error {
-	// Validate tenant ownership *before* delegating to UpdateNode.
-	// We hold the read lock just long enough for the check, then drop
-	// it so UpdateNode can acquire the write lock without deadlocking.
-	gs.mu.RLock()
+	// Validate tenant ownership *before* delegating to UpdateNode. We
+	// hold the per-shard read lock just long enough for the check (A4),
+	// then drop it so UpdateNode can acquire the write lock without
+	// deadlocking.
+	gs.rlockShard(nodeID)
 	if _, err := gs.getNodeRefForTenant(nodeID, tenantID); err != nil {
-		gs.mu.RUnlock()
+		gs.runlockShard(nodeID)
 		return err
 	}
-	gs.mu.RUnlock()
+	gs.runlockShard(nodeID)
 	return gs.UpdateNode(nodeID, properties)
 }
 
@@ -182,21 +220,24 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	node, exists := gs.nodes[nodeID]
+	node, exists := gs.lookupNodeShard(nodeID)
 	if !exists {
 		return ErrNodeNotFound
 	}
 
-	// Update property indexes
+	// Update property indexes (global structures — under gs.mu.Lock).
 	if err := gs.updatePropertyIndexes(nodeID, node, properties); err != nil {
 		return err
 	}
 
-	// Update properties
+	// Per-shard write lock (A4) excludes shard.RLock readers during
+	// the in-place Node-struct mutation that follows.
+	gs.lockShard(nodeID)
 	for k, v := range properties {
 		node.Properties[k] = v
 	}
 	node.UpdatedAt = time.Now().Unix()
+	gs.unlockShard(nodeID)
 
 	// Update vector indexes for any vector properties
 	if err := gs.UpdateNodeVectorIndexes(node); err != nil {
@@ -223,11 +264,18 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	node, exists := gs.nodes[nodeID]
+	node, exists := gs.lookupNodeShard(nodeID)
 	if !exists {
 		return ErrNodeNotFound
 	}
 
+	// Per-shard write lock (A4) covers the property-map mutations and
+	// the live-map snapshot that follows. The propertyIndexes lookups
+	// touch a global map under gs.mu, but the index Remove calls walk
+	// node.Properties (read) before mutation — keep those inside the
+	// shard.Lock window so a concurrent reader on this shard never sees
+	// a torn state.
+	gs.lockShard(nodeID)
 	for _, key := range keys {
 		// Remove from property indexes
 		if idx, exists := gs.propertyIndexes[key]; exists {
@@ -247,6 +295,7 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	for k, v := range node.Properties {
 		walProps[k] = v
 	}
+	gs.unlockShard(nodeID)
 	gs.writeToWAL(wal.OpUpdateNode, struct {
 		NodeID     uint64
 		Properties map[string]Value
@@ -270,12 +319,12 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 // goroutine before ours" which RemoveNodeProperties handles via
 // ErrNodeNotFound.
 func (gs *GraphStorage) RemoveNodePropertiesForTenant(nodeID uint64, keys []string, tenantID string) error {
-	gs.mu.RLock()
+	gs.rlockShard(nodeID)
 	if _, err := gs.getNodeRefForTenant(nodeID, tenantID); err != nil {
-		gs.mu.RUnlock()
+		gs.runlockShard(nodeID)
 		return err
 	}
-	gs.mu.RUnlock()
+	gs.runlockShard(nodeID)
 	return gs.RemoveNodeProperties(nodeID, keys)
 }
 
@@ -283,18 +332,19 @@ func (gs *GraphStorage) RemoveNodePropertiesForTenant(nodeID uint64, keys []stri
 // given tenant. Returns ErrNodeNotFound on missing or cross-tenant
 // (same rationale as GetNodeForTenant).
 func (gs *GraphStorage) DeleteNodeForTenant(nodeID uint64, tenantID string) error {
-	// Tenant check under read lock, then delegate to DeleteNode which
-	// acquires the write lock. The brief lock-drop window between the
-	// two is benign: tenant IDs are immutable after node creation (no
-	// API to change them) and node IDs don't get recycled, so the only
-	// race is "node deleted by another goroutine before our delete" —
-	// which DeleteNode handles correctly by returning ErrNodeNotFound.
-	gs.mu.RLock()
+	// Tenant check under per-shard read lock (A4), then delegate to
+	// DeleteNode which acquires the write lock. The brief lock-drop
+	// window between the two is benign: tenant IDs are immutable after
+	// node creation (no API to change them) and node IDs don't get
+	// recycled, so the only race is "node deleted by another goroutine
+	// before our delete" — which DeleteNode handles correctly by
+	// returning ErrNodeNotFound.
+	gs.rlockShard(nodeID)
 	if _, err := gs.getNodeRefForTenant(nodeID, tenantID); err != nil {
-		gs.mu.RUnlock()
+		gs.runlockShard(nodeID)
 		return err
 	}
-	gs.mu.RUnlock()
+	gs.runlockShard(nodeID)
 	return gs.DeleteNode(nodeID)
 }
 
@@ -305,7 +355,7 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	node, exists := gs.nodes[nodeID]
+	node, exists := gs.lookupNodeShard(nodeID)
 	if !exists {
 		return ErrNodeNotFound
 	}
@@ -359,8 +409,14 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 		return err
 	}
 
-	// Delete node
-	delete(gs.nodes, nodeID)
+	// Delete node — per-shard write lock (A4) excludes shard.RLock
+	// readers during the nodeShards delete. The cascade work above
+	// (label/property/vector index removal, edge cascades) all touches
+	// global structures under the gs.mu.Lock that's held throughout
+	// this function.
+	gs.lockShard(nodeID)
+	gs.deleteNodeShardEntry(nodeID)
+	gs.unlockShard(nodeID)
 
 	// Delete adjacency lists (disk-backed or in-memory)
 	if err := gs.clearNodeAdjacency(nodeID); err != nil {
@@ -383,10 +439,11 @@ func (gs *GraphStorage) GetAllNodeIDs() []uint64 {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	nodeIDs := make([]uint64, 0, len(gs.nodes))
-	for id := range gs.nodes {
+	nodeIDs := make([]uint64, 0, gs.nodeCount())
+	gs.forEachNodeIDUnlocked(func(id uint64) bool {
 		nodeIDs = append(nodeIDs, id)
-	}
+		return true
+	})
 	return nodeIDs
 }
 
@@ -407,10 +464,11 @@ func (gs *GraphStorage) GetAllNodesAcrossTenants() []*Node {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	nodes := make([]*Node, 0, len(gs.nodes))
-	for _, node := range gs.nodes {
+	nodes := make([]*Node, 0, gs.nodeCount())
+	gs.forEachNodeUnlocked(func(node *Node) bool {
 		nodes = append(nodes, node.Clone())
-	}
+		return true
+	})
 	return nodes
 }
 
@@ -421,9 +479,7 @@ func (gs *GraphStorage) ForEachNode(fn func(*Node) bool) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	for _, node := range gs.nodes {
-		if !fn(node.Clone()) {
-			return
-		}
-	}
+	gs.forEachNodeUnlocked(func(node *Node) bool {
+		return fn(node.Clone())
+	})
 }
