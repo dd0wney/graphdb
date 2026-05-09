@@ -189,3 +189,31 @@ func TestExecuteWrite_EscapeHatchOptsIntoLegacyDefault(t *testing.T) {
 		t.Errorf("escape hatch should rewrite empty to %q, got %q", "default", calls[0].tenantID)
 	}
 }
+
+// TestApplyWriteOperation_DoesNotMutateCallerOp pins the by-value
+// contract on ApplyWriteOperation. The escape-hatch path rewrites
+// empty TenantID to "default" before dispatch — but only on the
+// function's local copy. A future refactor that switches the
+// signature to *WriteOperation "for symmetry with executeWrite"
+// would silently re-introduce caller-visible mutation; this test is
+// the canary.
+func TestApplyWriteOperation_DoesNotMutateCallerOp(t *testing.T) {
+	t.Setenv(replicationAllowEmptyTenantEnv, "1")
+
+	executor := &recordingExecutor{}
+	op := WriteOperation{
+		TenantID: "",
+		Type:     "create_node",
+		Labels:   []string{"Doc"},
+	}
+
+	ApplyWriteOperation(executor, op)
+
+	if op.TenantID != "" {
+		t.Errorf("ApplyWriteOperation mutated caller op: TenantID=%q (want unchanged empty)", op.TenantID)
+	}
+	calls := executor.recorded()
+	if len(calls) != 1 || calls[0].tenantID != "default" {
+		t.Errorf("escape hatch should still apply on the local copy: got calls=%+v", calls)
+	}
+}
