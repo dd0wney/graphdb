@@ -323,24 +323,33 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build response with proper filtering
+	// Build response with proper filtering. Audit A4 clone-elision
+	// (2026-05-10): WithNodeRefForTenant validates tenant ownership and
+	// holds the per-shard read lock around fn, so the filter checks run
+	// against the live node pointer with no per-candidate clone. The
+	// expensive Clone() now happens only for post-filter survivors —
+	// for filter-heavy queries where ~80% of candidates are dropped,
+	// this drops allocations from O(ef) to O(results_kept).
 	results := make([]VectorSearchResult, 0, len(searchResults))
 	for _, sr := range searchResults {
-		// Fetch once and reuse for tenant + label + property + include-node checks.
-		node, err := s.graph.GetNode(sr.ID)
-		if err != nil || node == nil {
-			continue
-		}
+		var clonedSurvivor *storage.Node
 
-		if !matchesTenant(node.TenantID, tenantID) {
-			continue // cross-tenant result; drop
-		}
-
-		if len(req.FilterLabels) > 0 && !hasAnyLabel(node.Labels, req.FilterLabels) {
-			continue
-		}
-
-		if len(propertyPredicate) > 0 && !matchesPropertyFilter(node.Properties, propertyPredicate) {
+		err := s.graph.WithNodeRefForTenant(sr.ID, tenantID, func(node *storage.Node) error {
+			if len(req.FilterLabels) > 0 && !hasAnyLabel(node.Labels, req.FilterLabels) {
+				return nil
+			}
+			if len(propertyPredicate) > 0 && !matchesPropertyFilter(node.Properties, propertyPredicate) {
+				return nil
+			}
+			// Survived all filters. Clone under shard.RLock so the
+			// snapshot is safe to use after the lock releases — both
+			// node.Labels and node.Properties values are otherwise
+			// shared with nodeToResponse below.
+			clonedSurvivor = node.Clone()
+			return nil
+		})
+		if err != nil || clonedSurvivor == nil {
+			// ErrNodeNotFound (missing or cross-tenant), or filter rejected.
 			continue
 		}
 
@@ -351,7 +360,7 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.IncludeNodes {
-			result.Node = s.nodeToResponse(node)
+			result.Node = s.nodeToResponse(clonedSurvivor)
 		}
 
 		results = append(results, result)
