@@ -1,5 +1,23 @@
 # Cluso GraphDB Upgrade Guide
 
+> **⚠️ Status: legacy / non-production reference**
+>
+> This guide describes upgrade procedures for the standalone
+> `graphdb-primary` and `graphdb-replica` binaries (under
+> `cmd/graphdb-{primary,replica}`, plus the `nng`/`zmq` build-tag
+> variants). Per audit A8 (2026-05-09), those binaries pre-date
+> the multi-tenancy work — they route writes to the default tenant
+> and serve unauthenticated cross-tenant reads. They refuse to
+> start unless `GRAPHDB_LEGACY_BINARY=1` is set explicitly.
+>
+> **For production, use `cmd/server`.** Multi-tenant HA built on
+> top of `cmd/server` is roadmap work; until that lands, this guide
+> is preserved as historical reference for the standalone binaries
+> (suitable for development/testing under the legacy flag — set it
+> in your unit file's `Environment=` directive or equivalent).
+>
+> Ref: A8 spike at `docs/A8_REPLICATION_TENANCY_DESIGN.md` §2.Q5.
+
 ## Zero-Downtime Upgrade Strategy
 
 This guide describes how to upgrade Cluso GraphDB in production without losing customer data or causing extended downtime.
