@@ -163,12 +163,11 @@ TXN-*.md
 TASKS.md
 node_modules/
 
-# Compiled binaries
-graphdb-server
-graphdb-nng-primary
-graphdb-nng-replica
-graphdb-*-replica
-graphdb-*-primary
+# Compiled binaries (when built without -o into the repo root).
+# Anchored with leading / so they don't match cmd/graphdb-*/ source dirs.
+/graphdb-server
+/graphdb-*-primary
+/graphdb-*-replica
 
 # Compiled example binaries (go build output at repo root)
 /hospital-network
