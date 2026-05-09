@@ -175,16 +175,63 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, response)
 }
 
+// getGraphQLHandlerForTenant returns the per-tenant GraphQL handler,
+// building it on first call and caching for subsequent requests.
+//
+// Audit A9 #3 (2026-05-08): per-tenant schema isolation. The cache
+// is sync.Map keyed on tenantID *string* (not tenantid.TenantID —
+// mixing types here would silently bucket the same tenant twice).
+// singleflight dedupes concurrent cold-starts so a thundering herd
+// of N goroutines for the same tenant runs the build once.
+//
+// Errors are NOT cached: if GenerateSchemaWithLimitsForTenant fails
+// (e.g., transient storage error), the next request retries. This
+// avoids cache-poisoning on a flaky build.
+func (s *Server) getGraphQLHandlerForTenant(tenantID string) (*graphql.GraphQLHandler, error) {
+	// Fast path: cache hit.
+	if cached, ok := s.graphqlHandlers.Load(tenantID); ok {
+		return cached.(*graphql.GraphQLHandler), nil
+	}
+
+	// Slow path: dedupe concurrent builds via singleflight. Even if
+	// 50 goroutines call simultaneously for the same tenantID,
+	// exactly one runs the closure; the others wait for its result.
+	result, err, _ := s.schemaSingleflight.Do(tenantID, func() (any, error) {
+		// Double-check under singleflight: another goroutine may
+		// have populated the cache between our Load above and our
+		// Do entry.
+		if cached, ok := s.graphqlHandlers.Load(tenantID); ok {
+			return cached.(*graphql.GraphQLHandler), nil
+		}
+
+		schema, err := graphql.GenerateSchemaWithLimitsForTenant(s.graph, s.limitConfig, tenantID)
+		if err != nil {
+			// Don't cache on error path — retry on next request.
+			return nil, err
+		}
+		h := graphql.NewGraphQLHandler(schema)
+		s.graphqlHandlers.Store(tenantID, h)
+		return h, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*graphql.GraphQLHandler), nil
+}
+
 func (s *Server) handleGraphQL(w http.ResponseWriter, r *http.Request) {
-	// Check if GraphQL handler is initialized
-	if s.graphqlHandler == nil {
-		s.respondError(w, http.StatusServiceUnavailable, "GraphQL endpoint not available")
+	// Resolve the per-tenant handler. Audit A9 #3: schema is now
+	// keyed by tenantID; cold-start path runs through singleflight.
+	tenantID := getTenantFromContext(r)
+	handler, err := s.getGraphQLHandlerForTenant(tenantID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "GraphQL schema build"))
 		return
 	}
 
 	// Handle preflight OPTIONS request
 	if r.Method == http.MethodOptions {
-		s.graphqlHandler.ServeHTTP(w, r)
+		handler.ServeHTTP(w, r)
 		return
 	}
 
@@ -224,42 +271,36 @@ func (s *Server) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Acquire read lock for schema access (allows concurrent reads, blocks during regeneration)
-	s.schemaLock.RLock()
-	defer s.schemaLock.RUnlock()
-
-	// Restore the request body for the handler
+	// Restore the request body for the handler.
+	//
+	// No schemaLock needed: each tenant's handler is immutable once
+	// built. handleSchemaRegenerate invalidates by Delete on the
+	// sync.Map; in-flight requests holding the old handler reference
+	// finish against the old schema (graceful), and the next request
+	// for that tenant lazy-rebuilds.
 	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Delegate to GraphQL handler
-	s.graphqlHandler.ServeHTTP(w, r)
+	handler.ServeHTTP(w, r)
 }
 
-// handleSchemaRegenerate regenerates the GraphQL schema to reflect new labels/types
+// handleSchemaRegenerate invalidates the caller's tenant's cached
+// schema. The next /graphql request for that tenant will lazy-build
+// with current labels.
+//
+// Audit A9 #3: was a global lock + rebuild. Now per-tenant: a
+// regenerate by tenant-A doesn't disturb tenant-B's cache.
 func (s *Server) handleSchemaRegenerate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
-	// Acquire write lock to prevent concurrent schema access during regeneration
-	s.schemaLock.Lock()
-	defer s.schemaLock.Unlock()
-
-	// Generate new schema with current limit config
-	newSchema, err := graphql.GenerateSchemaWithLimits(s.graph, s.limitConfig)
-	if err != nil {
-		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to regenerate schema: %v", err))
-		return
-	}
-
-	// Update schema and handler atomically (while holding write lock)
-	s.graphqlSchema = newSchema
-	s.graphqlHandler = graphql.NewGraphQLHandler(newSchema)
+	tenantID := getTenantFromContext(r)
+	s.graphqlHandlers.Delete(tenantID)
 
 	s.respondJSON(w, http.StatusOK, map[string]any{
-		"status":  "success",
-		"message": "GraphQL schema regenerated successfully",
+		"status":    "success",
+		"message":   "GraphQL schema cache invalidated for tenant; next request rebuilds",
+		"tenant_id": tenantID,
 	})
 }
 

@@ -110,8 +110,10 @@ func (s *Server) Start() error {
 		mux.HandleFunc("/api/v1/tenants/", s.requireAuth(s.handleTenantEndpoint))
 	}
 
-	// Schema management endpoints (admin only)
-	mux.HandleFunc("/api/v1/schema/regenerate", s.requireAdmin(s.handleSchemaRegenerate))
+	// Schema management endpoints (admin only).
+	// Audit A9 #3: per-tenant schema invalidation. Tenant context is
+	// required so the handler knows whose cache entry to drop.
+	mux.HandleFunc("/api/v1/schema/regenerate", s.requireAdmin(s.withTenant(s.handleSchemaRegenerate)))
 
 	// OpenAPI documentation (public)
 	mux.HandleFunc("/api/docs/openapi.yaml", s.handleOpenAPISpec)

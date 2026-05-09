@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/graphql-go/graphql"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
@@ -23,14 +23,21 @@ import (
 
 // Server represents the HTTP API server
 type Server struct {
-	graph               *storage.GraphStorage
-	executor            *query.Executor
-	searchIndexes       *search.TenantIndexes    // Per-tenant full-text indexes; empty until IndexForTenant is called for a given tenant
-	lsaIndexes          *search.TenantLSAIndexes // Per-tenant LSA indexes for /hybrid-search; nil entry means LSA unavailable for that tenant
-	retriever           *retrieval.Retriever     // Graph-augmented retrieval (F2 GraphRAG); composes searchIndexes + lsaIndexes + graph
-	graphqlHandler      *gqlpkg.GraphQLHandler
-	graphqlSchema       graphql.Schema           // Current GraphQL schema (protected by schemaLock)
-	schemaLock          sync.RWMutex             // Protects graphqlSchema during regeneration
+	graph         *storage.GraphStorage
+	executor      *query.Executor
+	searchIndexes *search.TenantIndexes    // Per-tenant full-text indexes; empty until IndexForTenant is called for a given tenant
+	lsaIndexes    *search.TenantLSAIndexes // Per-tenant LSA indexes for /hybrid-search; nil entry means LSA unavailable for that tenant
+	retriever     *retrieval.Retriever     // Graph-augmented retrieval (F2 GraphRAG); composes searchIndexes + lsaIndexes + graph
+
+	// Audit A9 #3 (2026-05-08): per-tenant GraphQL schema cache.
+	// Keyed by tenantID (string — converted at the validation
+	// boundary; do NOT mix tenantid.TenantID here or you'll bucket
+	// twice). Lazy build via singleflight to dedupe concurrent
+	// cold-starts. /api/v1/schema/regenerate invalidates a single
+	// tenant's entry (Delete) so the next request rebuilds.
+	graphqlHandlers    sync.Map           // map[string]*gqlpkg.GraphQLHandler
+	schemaSingleflight singleflight.Group // dedupes concurrent first-request schema builds per tenant
+
 	complexityConfig    *gqlpkg.ComplexityConfig // GraphQL query complexity limits
 	limitConfig         *gqlpkg.LimitConfig      // GraphQL result limits
 	authHandler         *auth.AuthHandler
