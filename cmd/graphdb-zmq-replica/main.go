@@ -18,6 +18,18 @@ import (
 )
 
 func main() {
+	// Audit A8 (2026-05-09): this binary pre-dates the multi-tenant
+	// work and serves /nodes unauthenticated across all tenants.
+	// Refuse to start unless explicitly opted in via
+	// GRAPHDB_LEGACY_BINARY=1 — same fail-closed pattern as the
+	// JWT_SECRET fix in pkg/api/server_init.go:74-77. Production
+	// deployments should use cmd/server.
+	if os.Getenv("GRAPHDB_LEGACY_BINARY") != "1" {
+		log.Fatalf("graphdb-zmq-replica: this binary pre-dates the multi-tenant " +
+			"work (audit A8) and is not safe for production. Use cmd/server. " +
+			"Set GRAPHDB_LEGACY_BINARY=1 to run anyway for development/testing.")
+	}
+
 	dataDir := flag.String("data", "./data/zmq-replica1", "Data directory")
 	httpPort := flag.Int("http", 8081, "HTTP API port")
 	primaryAddr := flag.String("primary", "localhost:9090", "Primary node address")

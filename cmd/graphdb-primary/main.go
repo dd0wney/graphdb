@@ -16,6 +16,18 @@ import (
 )
 
 func main() {
+	// Audit A8 (2026-05-09): this binary pre-dates the multi-tenant
+	// work and routes writes to the default tenant. Refuse to start
+	// unless explicitly opted in via GRAPHDB_LEGACY_BINARY=1 — same
+	// fail-closed pattern as the JWT_SECRET fix in
+	// pkg/api/server_init.go:74-77. Production deployments should
+	// use cmd/server.
+	if os.Getenv("GRAPHDB_LEGACY_BINARY") != "1" {
+		log.Fatalf("graphdb-primary: this binary pre-dates the multi-tenant " +
+			"work (audit A8) and is not safe for production. Use cmd/server. " +
+			"Set GRAPHDB_LEGACY_BINARY=1 to run anyway for development/testing.")
+	}
+
 	dataDir := flag.String("data", "./data/primary", "Data directory")
 	httpPort := flag.Int("http", 8080, "HTTP API port")
 	replPort := flag.String("repl", ":9090", "Replication port")
