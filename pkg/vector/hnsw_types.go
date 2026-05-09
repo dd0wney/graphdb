@@ -34,7 +34,13 @@ func (pq priorityQueue) Swap(i, j int) {
 }
 
 func (pq *priorityQueue) Push(x any) {
-	*pq = append(*pq, x.(*queueItem))
+	// heap.Interface.Push contract: callers always pass *queueItem.
+	// Mirrors rankedEdgeHeap.Push / rankedNodeHeap.Push in pkg/algorithms.
+	item, ok := x.(*queueItem)
+	if !ok {
+		panic("priorityQueue.Push: expected *queueItem")
+	}
+	*pq = append(*pq, item)
 }
 
 func (pq *priorityQueue) Pop() any {

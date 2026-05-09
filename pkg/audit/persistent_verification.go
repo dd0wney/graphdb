@@ -62,7 +62,13 @@ func (l *PersistentAuditLogger) VerifyIntegrity(filename string) (_ bool, retErr
 		// Verify event hash
 		eventCopy := event
 		eventCopy.EventHash = "" // Clear hash for recalculation
-		eventData, _ := json.Marshal(eventCopy)
+		eventData, err := json.Marshal(eventCopy)
+		if err != nil {
+			// Without explicit handling, a marshal failure produces an
+			// empty hash and surfaces as the downstream "hash mismatch"
+			// error — misleading. Return the real cause.
+			return false, fmt.Errorf("line %d: failed to re-marshal event for hash verification: %w", lineNum, err)
+		}
 		hash := sha256.Sum256(eventData)
 		calculatedHash := hex.EncodeToString(hash[:])
 

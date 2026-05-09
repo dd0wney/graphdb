@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -236,7 +237,11 @@ func (l *PersistentAuditLogger) cleanupWorker() {
 		case <-l.stopCh:
 			return
 		case <-ticker.C:
-			l.cleanup()
+			if err := l.cleanup(); err != nil {
+				// 24-hour ticker; failure means old log files accumulate.
+				// Surface to stderr so ops can see retention is broken.
+				log.Printf("[audit] periodic cleanup failed: %v", err)
+			}
 		}
 	}
 }
