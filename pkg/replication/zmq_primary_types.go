@@ -57,8 +57,14 @@ type DatacenterLink struct {
 	Connected    bool
 }
 
-// WriteOperation represents a buffered write operation
+// WriteOperation represents a buffered write operation.
+//
+// Audit A8 (2026-05-09): TenantID is required on every WriteOperation.
+// See the doc on the same-named type in transport.go for the full
+// rationale (kept in sync — both definitions must carry the field
+// because the build tag selects which compiles).
 type WriteOperation struct {
+	TenantID   string                   `json:"tenant_id"`
 	Type       string                   `json:"type"` // "create_node", "create_edge"
 	Labels     []string                 `json:"labels,omitempty"`
 	Properties map[string]storage.Value `json:"properties,omitempty"`
