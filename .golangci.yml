@@ -1,3 +1,24 @@
+# //nolint convention:
+#
+# When a lint rule needs to be silenced, prefer per-site `//nolint:LINTER`
+# directives with a one-paragraph rationale comment over adding to the
+# blanket exclusion lists below (errcheck.exclude-functions,
+# gosec.excludes, etc.). Reasons:
+#
+#   - Per-site directives keep the lint rule active everywhere it has
+#     actionable findings, so future violations still surface in review.
+#   - The rationale paragraph in the source explains *why* this specific
+#     site is an exception — useful for readers who didn't write it.
+#   - Blanket excludes are easy to add and impossible to revisit: once a
+#     function is excluded everywhere, real misuse becomes invisible.
+#
+# Established by PRs #54 (errcheck for logger writer self-failure),
+# #57 (gosec for X.509 cert perms, sync.Once cancel, operator-controlled
+# paths), and #58 (gocritic captLocal for matrix-notation parameters in
+# pkg/search/lsa.go). Each documented their nolint sites with a paragraph
+# explaining the specific exception above the line. Mirror that format
+# for new ones.
+#
 version: "2"
 run:
   modules-download-mode: readonly
