@@ -6,7 +6,7 @@ import (
 )
 
 // Socket represents a messaging socket that can send and receive messages.
-// This interface abstracts the underlying transport (NNG, ZMQ, or mock for testing).
+// This interface abstracts the underlying transport (NNG or mock for testing).
 type Socket interface {
 	io.Closer
 	Send([]byte) error
@@ -92,8 +92,8 @@ type StorageReader interface {
 // *WithTenant — matching the storage layer keeps the abstraction
 // thin). The apply path that consumes this interface is responsible
 // for refusing empty tenantID before calling these methods; see
-// WriteReceiver.executeWrite and the equivalents in the tag-gated
-// NNG/ZMQ handlers.
+// WriteReceiver.executeWrite and the equivalent in the tag-gated
+// NNG handlers.
 type StorageWriter interface {
 	CreateNodeWithTenant(tenantID string, labels []string, properties map[string]interface{}) (interface{}, error)
 	CreateEdgeWithTenant(tenantID string, from, to uint64, edgeType string, properties map[string]interface{}, weight float64) (interface{}, error)

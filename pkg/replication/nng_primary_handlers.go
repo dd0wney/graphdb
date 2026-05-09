@@ -65,8 +65,8 @@ func (nm *NNGReplicationManager) publishWALEntries() {
 				continue
 			}
 
-			// Prepend topic for filtering (NNG doesn't have native topics like ZMQ)
-			// We use a simple prefix: "WAL:" + data
+			// Prepend topic for filtering — NNG has no native topic-routing,
+			// so we use a userspace prefix "WAL:" that subscribers match on.
 			msg := append([]byte("WAL:"), data...)
 
 			// Publish to local replicas
