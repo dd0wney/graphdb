@@ -277,7 +277,7 @@ go build -o bin/tui ./cmd/tui
 go build -o bin/tui-demo ./cmd/tui-demo
 ```
 
-> **Note on `cmd/graphdb-{primary,replica}` and the `nng`/`zmq` variants:**
+> **Note on `cmd/graphdb-{primary,replica}` and the `nng` variant:**
 > These are legacy standalone-replication binaries that pre-date the
 > multi-tenancy work. They route writes to the default tenant and serve
 > unauthenticated cross-tenant reads — not safe for production. They
@@ -874,7 +874,7 @@ Built with:
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
 - [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
 - [Lipgloss](https://github.com/charmbracelet/lipgloss) - Terminal styling
-- [ZeroMQ](https://github.com/pebbe/zmq4) - Distributed messaging
+- [Mangos](https://go.nanomsg.org/mangos) - Pure-Go nanomsg/NNG implementation for replication transport
 
 ## Roadmap
 

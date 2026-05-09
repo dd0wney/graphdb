@@ -4,8 +4,8 @@
 >
 > This guide describes upgrade procedures for the standalone
 > `graphdb-primary` and `graphdb-replica` binaries (under
-> `cmd/graphdb-{primary,replica}`, plus the `nng`/`zmq` build-tag
-> variants). Per audit A8 (2026-05-09), those binaries pre-date
+> `cmd/graphdb-{primary,replica}`, plus the `nng` build-tag
+> variant). Per audit A8 (2026-05-09), those binaries pre-date
 > the multi-tenancy work — they route writes to the default tenant
 > and serve unauthenticated cross-tenant reads. They refuse to
 > start unless `GRAPHDB_LEGACY_BINARY=1` is set explicitly.

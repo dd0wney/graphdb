@@ -30,7 +30,7 @@ help:
 	@echo ""
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' | sed -e 's/^/ /'
 
-## test: Run all tests (excluding integration tests and ZeroMQ-dependent packages)
+## test: Run all tests (excluding integration tests and tag-gated replication packages)
 test:
 	@echo "Running all tests..."
 	$(GO) test -timeout $(TEST_TIMEOUT) \

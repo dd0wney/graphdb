@@ -439,7 +439,7 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 // are passed nil because the audit row uses no properties; a real
 // adapter would need a map[string]interface{} → map[string]storage.Value
 // conversion (the existing convertProperties helper in pkg/replication
-// serves the NNG/ZMQ paths).
+// serves the NNG path).
 type replicationAdapter struct {
 	gs *storage.GraphStorage
 }
