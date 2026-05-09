@@ -109,11 +109,9 @@ func (s *Server) initAuthRateLimiter() {
 // authRateLimitMiddleware applies stricter rate limiting for authentication endpoints.
 // Uses IP-based limiting only (not user ID) since these are pre-auth requests.
 func (s *Server) authRateLimitMiddleware(next http.Handler) http.Handler {
-	getClientID := func(r *http.Request) string {
-		// For auth endpoints, always use IP-based limiting
-		// This prevents attackers from bypassing limits by trying different usernames
-		return getIPAddress(r)
-	}
+	// For auth endpoints, always use IP-based limiting.
+	// This prevents attackers from bypassing limits by trying different usernames.
+	getClientID := getIPAddress
 
 	onLimited := func(w http.ResponseWriter, r *http.Request, clientID string) {
 		// Record in audit log with auth-specific context

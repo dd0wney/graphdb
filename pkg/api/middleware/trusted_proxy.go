@@ -59,9 +59,9 @@ func ParseTrustedProxies(proxiesStr string) []*net.IPNet {
 				continue
 			}
 			if ip.To4() != nil {
-				cidr = cidr + "/32"
+				cidr += "/32"
 			} else {
-				cidr = cidr + "/128"
+				cidr += "/128"
 			}
 		}
 
