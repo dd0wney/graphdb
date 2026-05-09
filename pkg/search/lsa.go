@@ -585,7 +585,16 @@ func lsaRandMatrix(rng *rand.Rand, rows, cols int) [][]float32 {
 	return m
 }
 
+// The matrix-helper functions below use single-letter capitalized
+// parameter names (X, Y, Q, B, G, A) to mirror the linear-algebra
+// notation in the surrounding comments and any LSA / Jacobi / QR
+// reference. gocritic's captLocal rule wants lowercase, but renaming
+// here would obscure correspondence with the math. //nolint:gocritic
+// directives on each function suppress the rule with this rationale.
+
 // lsaSparseMulDense: Y = X × A   (D×l = sparse(D×T) × dense(T×l))
+//
+//nolint:gocritic // captLocal: matrix notation, see comment above
 func lsaSparseMulDense(X []sparseRow, A [][]float32, D, l int) [][]float32 {
 	Y := make([][]float32, D)
 	for d := range Y {
@@ -603,6 +612,8 @@ func lsaSparseMulDense(X []sparseRow, A [][]float32, D, l int) [][]float32 {
 }
 
 // lsaSparseTMulDense: Z = X^T × Y   (T×l = sparse(D×T)^T × dense(D×l))
+//
+//nolint:gocritic // captLocal: matrix notation, see comment above lsaSparseMulDense
 func lsaSparseTMulDense(X []sparseRow, Y [][]float32, T, l int) [][]float32 {
 	Z := make([][]float32, T)
 	for t := range Z {
@@ -622,6 +633,8 @@ func lsaSparseTMulDense(X []sparseRow, Y [][]float32, T, l int) [][]float32 {
 }
 
 // lsaQR orthonormalizes columns of Y (D×l) via modified Gram-Schmidt.
+//
+//nolint:gocritic // captLocal: matrix notation, see comment above lsaSparseMulDense
 func lsaQR(Y [][]float32, D, l int) [][]float32 {
 	cols := make([][]float32, l)
 	for j := range cols {
@@ -662,6 +675,8 @@ func lsaQR(Y [][]float32, D, l int) [][]float32 {
 }
 
 // lsaLeftMul: B = Q^T × X   (l×T = dense(D×l)^T × sparse(D×T))
+//
+//nolint:gocritic // captLocal: matrix notation, see comment above lsaSparseMulDense
 func lsaLeftMul(Q [][]float32, X []sparseRow, D, l, T int) [][]float32 {
 	B := make([][]float32, l)
 	for i := range B {
@@ -680,6 +695,8 @@ func lsaLeftMul(Q [][]float32, X []sparseRow, D, l, T int) [][]float32 {
 }
 
 // lsaGram: G = B × B^T   (l×l symmetric; eigenvalues = squared singular values of B)
+//
+//nolint:gocritic // captLocal: matrix notation, see comment above lsaSparseMulDense
 func lsaGram(B [][]float32, l, T int) [][]float32 {
 	G := make([][]float32, l)
 	for i := range G {
@@ -702,6 +719,8 @@ func lsaGram(B [][]float32, l, T int) [][]float32 {
 
 // lsaJacobi computes eigendecomposition of symmetric G (n×n) via cyclic Jacobi sweeps.
 // Returns (eigenvalues, V) where columns of V are eigenvectors.
+//
+//nolint:gocritic // captLocal: matrix notation, see comment above lsaSparseMulDense
 func lsaJacobi(G [][]float32, n int) ([]float32, [][]float32) {
 	A := make([][]float32, n)
 	for i := range A {
