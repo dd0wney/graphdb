@@ -2,6 +2,7 @@ package replication
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -164,13 +165,20 @@ func (r *WriteReceiver) receiveLoop() {
 // op is taken by value so the escape-hatch's TenantID rewrite never
 // mutates caller state. Callers can reuse a single op struct across
 // multiple apply calls without surprise.
-func ApplyWriteOperation(executor WriteExecutor, op WriteOperation) {
+//
+// Returns nil on successful dispatch AND on fail-closed refusal —
+// refusal is the documented success path of the gate, signaled by
+// the log.Printf above. A non-nil return means the executor itself
+// rejected the op (e.g., storage error); callers driving the apply
+// path from tests should treat a non-nil return as a fatal signal
+// rather than relying on observable-state assertions alone.
+func ApplyWriteOperation(executor WriteExecutor, op WriteOperation) error {
 	if op.TenantID == "" {
 		if os.Getenv(replicationAllowEmptyTenantEnv) != "1" {
 			log.Printf("replication: refusing %q with empty tenant_id; "+
 				"set %s=1 to opt into legacy default-tenant behavior",
 				op.Type, replicationAllowEmptyTenantEnv)
-			return
+			return nil
 		}
 		op.TenantID = tenant.DefaultTenantID
 	}
@@ -179,20 +187,24 @@ func ApplyWriteOperation(executor WriteExecutor, op WriteOperation) {
 	case "create_node":
 		if _, err := executor.CreateNodeWithTenant(op.TenantID, op.Labels, op.Properties); err != nil {
 			log.Printf("Failed to create node: %v", err)
+			return fmt.Errorf("create_node: %w", err)
 		}
 	case "create_edge":
 		if _, err := executor.CreateEdgeWithTenant(op.TenantID, op.FromNodeID, op.ToNodeID, op.EdgeType, op.Properties, op.Weight); err != nil {
 			log.Printf("Failed to create edge: %v", err)
+			return fmt.Errorf("create_edge: %w", err)
 		}
 	default:
 		log.Printf("Unknown write operation type: %s", op.Type)
 	}
+	return nil
 }
 
-// executeWrite is the in-package receive-loop dispatcher. Delegates
-// to ApplyWriteOperation; signature kept (*WriteOperation) so the
-// receive-loop's already-allocated unmarshal target doesn't need an
-// extra copy on the hot path.
+// executeWrite is the in-package receive-loop dispatcher. Thin
+// wrapper around ApplyWriteOperation; the (*WriteOperation)
+// signature mirrors the receive-loop's already-allocated unmarshal
+// target. Errors are intentionally discarded — the loop has no
+// upstream caller to surface them to.
 func (r *WriteReceiver) executeWrite(op *WriteOperation) {
-	ApplyWriteOperation(r.executor, *op)
+	_ = ApplyWriteOperation(r.executor, *op)
 }

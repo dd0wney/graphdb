@@ -413,7 +413,12 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 			TenantID: "tenant-A",
 			Labels:   []string{"A8WireSentinel"},
 		}
-		replication.ApplyWriteOperation(replicationAdapter{gs: fix.server.graph}, op)
+		// Capture the error: a future row extension (e.g.,
+		// create_edge with stale node IDs) would surface the actual
+		// failure here rather than a confusing "got 0" further down.
+		if err := replication.ApplyWriteOperation(replicationAdapter{gs: fix.server.graph}, op); err != nil {
+			t.Fatalf("ApplyWriteOperation: %v", err)
+		}
 
 		inA := fix.server.graph.GetNodesByLabelForTenant("tenant-A", "A8WireSentinel")
 		if len(inA) != 1 {

@@ -1,6 +1,8 @@
 package replication
 
 import (
+	"errors"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -32,6 +34,12 @@ type recordedCall struct {
 type recordingExecutor struct {
 	mu    sync.Mutex
 	calls []recordedCall
+	// returnErr is the error-injection knob for testing
+	// ApplyWriteOperation's error-propagation contract. If set,
+	// both Create methods record the call AND return this error —
+	// the call is recorded so a test can distinguish "executor was
+	// invoked and errored" from "executor was never invoked."
+	returnErr error
 }
 
 func (e *recordingExecutor) CreateNodeWithTenant(tenantID string, labels []string, _ map[string]interface{}) (uint64, error) {
@@ -42,6 +50,9 @@ func (e *recordingExecutor) CreateNodeWithTenant(tenantID string, labels []strin
 		tenantID: tenantID,
 		labels:   labels,
 	})
+	if e.returnErr != nil {
+		return 0, e.returnErr
+	}
 	return uint64(len(e.calls)), nil // synthetic ID
 }
 
@@ -55,6 +66,9 @@ func (e *recordingExecutor) CreateEdgeWithTenant(tenantID string, from, to uint6
 		to:       to,
 		edgeType: edgeType,
 	})
+	if e.returnErr != nil {
+		return 0, e.returnErr
+	}
 	return uint64(len(e.calls)), nil
 }
 
@@ -207,7 +221,9 @@ func TestApplyWriteOperation_DoesNotMutateCallerOp(t *testing.T) {
 		Labels:   []string{"Doc"},
 	}
 
-	ApplyWriteOperation(executor, op)
+	if err := ApplyWriteOperation(executor, op); err != nil {
+		t.Fatalf("ApplyWriteOperation: %v", err)
+	}
 
 	if op.TenantID != "" {
 		t.Errorf("ApplyWriteOperation mutated caller op: TenantID=%q (want unchanged empty)", op.TenantID)
@@ -215,5 +231,85 @@ func TestApplyWriteOperation_DoesNotMutateCallerOp(t *testing.T) {
 	calls := executor.recorded()
 	if len(calls) != 1 || calls[0].tenantID != "default" {
 		t.Errorf("escape hatch should still apply on the local copy: got calls=%+v", calls)
+	}
+}
+
+// TestApplyWriteOperation_PropagatesExecutorError pins that errors
+// from the underlying executor are returned to the caller (not just
+// logged-and-swallowed). The fail-closed gate's refusal is NOT an
+// error — refusal is the documented success path. But a real
+// executor failure (e.g., storage rejected a malformed op) must
+// reach the caller so audit and unit tests can assert on dispatch
+// success rather than only on observable state.
+//
+// Without error propagation, a future audit-row extension where
+// (e.g.) create_edge references stale node IDs would fail with a
+// confusing "got 0 edges" rather than the actual cause.
+func TestApplyWriteOperation_PropagatesExecutorError(t *testing.T) {
+	t.Setenv(replicationAllowEmptyTenantEnv, "")
+
+	tests := []struct {
+		name string
+		op   WriteOperation
+	}{
+		{
+			name: "create_node propagates",
+			op: WriteOperation{
+				TenantID: "tenant-A",
+				Type:     "create_node",
+				Labels:   []string{"User"},
+			},
+		},
+		{
+			name: "create_edge propagates",
+			op: WriteOperation{
+				TenantID:   "tenant-A",
+				Type:       "create_edge",
+				FromNodeID: 1,
+				ToNodeID:   2,
+				EdgeType:   "OWNS",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &recordingExecutor{returnErr: errors.New("storage rejected")}
+			err := ApplyWriteOperation(executor, tt.op)
+			if err == nil {
+				t.Fatal("ApplyWriteOperation: want error from executor, got nil")
+			}
+			if !strings.Contains(err.Error(), "storage rejected") {
+				t.Errorf("error doesn't wrap underlying: %v", err)
+			}
+			// And the call WAS attempted (proving the error path is
+			// post-dispatch, not a pre-flight refusal).
+			if got := executor.recorded(); len(got) != 1 {
+				t.Errorf("want 1 recorded call, got %d", len(got))
+			}
+		})
+	}
+}
+
+// TestApplyWriteOperation_RefusalReturnsNil pins that fail-closed
+// refusal is NOT signaled as an error. Refusal is the gate's
+// documented success path — the receive-loop has nothing to do with
+// the signal, and surfacing it as an error would force the loop to
+// distinguish refusal-vs-failure for no benefit. A future "errors.New
+// for refusal" change would silently double-up logging.
+func TestApplyWriteOperation_RefusalReturnsNil(t *testing.T) {
+	t.Setenv(replicationAllowEmptyTenantEnv, "")
+
+	executor := &recordingExecutor{}
+	err := ApplyWriteOperation(executor, WriteOperation{
+		TenantID: "", // refused by the gate
+		Type:     "create_node",
+		Labels:   []string{"User"},
+	})
+	if err != nil {
+		t.Errorf("refusal should return nil (gate's success path), got: %v", err)
+	}
+	if got := executor.recorded(); len(got) != 0 {
+		t.Errorf("refusal must not call executor: got %d call(s)", len(got))
 	}
 }
