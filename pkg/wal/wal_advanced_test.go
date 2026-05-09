@@ -300,12 +300,21 @@ func TestWAL_ConcurrentReadWrite(t *testing.T) {
 
 	var wg sync.WaitGroup
 	stopChan := make(chan struct{})
+	// Closed once after the writer's first successful Append. Readers wait
+	// on this before starting their loops; without it, on a fast machine
+	// 3 readers × 10 ReadAll calls can complete on an empty WAL before the
+	// writer is scheduled, then close(stopChan) returns the writer with
+	// zero appends, and the final assertion ("expected some entries") fails.
+	// Goroutine launch order is not execution order — this barrier makes the
+	// happens-before explicit.
+	writerReady := make(chan struct{})
 
 	// Writer goroutine
 	wg.Add(1)
 	var writeCount atomic.Int64
 	go func() {
 		defer wg.Done()
+		first := true
 		for {
 			select {
 			case <-stopChan:
@@ -318,9 +327,16 @@ func TestWAL_ConcurrentReadWrite(t *testing.T) {
 					return
 				}
 				writeCount.Add(1)
+				if first {
+					close(writerReady)
+					first = false
+				}
 			}
 		}
 	}()
+
+	// Block reader launch until the writer has produced at least one entry.
+	<-writerReady
 
 	// Reader goroutines
 	numReaders := 3
