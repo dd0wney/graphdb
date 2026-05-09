@@ -195,13 +195,20 @@ func (s *Server) handleSecurityHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	encryptionStatus := map[string]any{
+		"enabled": s.encryptionEngine != nil,
+	}
+	if s.keyManager != nil {
+		if km, ok := s.keyManager.(*encryption.KeyManager); ok {
+			encryptionStatus["key_stats"] = km.GetStatistics()
+		}
+	}
+
 	health := map[string]any{
 		"timestamp": time.Now().Format(time.RFC3339),
 		"status":    "healthy",
 		"components": map[string]any{
-			"encryption": map[string]any{
-				"enabled": s.encryptionEngine != nil,
-			},
+			"encryption": encryptionStatus,
 			"tls": map[string]any{
 				"enabled": s.tlsConfig != nil && s.tlsConfig.Enabled,
 			},
@@ -214,14 +221,6 @@ func (s *Server) handleSecurityHealth(w http.ResponseWriter, r *http.Request) {
 				"apikey_enabled": true,
 			},
 		},
-	}
-
-	// Add key manager stats if available
-	if s.keyManager != nil {
-		if km, ok := s.keyManager.(*encryption.KeyManager); ok {
-			stats := km.GetStatistics()
-			health["components"].(map[string]any)["encryption"].(map[string]any)["key_stats"] = stats
-		}
 	}
 
 	s.respondJSON(w, http.StatusOK, health)

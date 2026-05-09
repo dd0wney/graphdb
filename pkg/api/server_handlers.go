@@ -190,7 +190,11 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getGraphQLHandlerForTenant(tenantID string) (*graphql.GraphQLHandler, error) {
 	// Fast path: cache hit.
 	if cached, ok := s.graphqlHandlers.Load(tenantID); ok {
-		return cached.(*graphql.GraphQLHandler), nil
+		h, ok := cached.(*graphql.GraphQLHandler)
+		if !ok {
+			return nil, fmt.Errorf("internal: unexpected type %T in graphql handler cache", cached)
+		}
+		return h, nil
 	}
 
 	// Slow path: dedupe concurrent builds via singleflight. Even if
@@ -201,7 +205,11 @@ func (s *Server) getGraphQLHandlerForTenant(tenantID string) (*graphql.GraphQLHa
 		// have populated the cache between our Load above and our
 		// Do entry.
 		if cached, ok := s.graphqlHandlers.Load(tenantID); ok {
-			return cached.(*graphql.GraphQLHandler), nil
+			h, ok := cached.(*graphql.GraphQLHandler)
+			if !ok {
+				return nil, fmt.Errorf("internal: unexpected type %T in graphql handler cache", cached)
+			}
+			return h, nil
 		}
 
 		schema, err := graphql.GenerateSchemaWithLimitsForTenant(s.graph, s.limitConfig, tenantID)
@@ -216,7 +224,11 @@ func (s *Server) getGraphQLHandlerForTenant(tenantID string) (*graphql.GraphQLHa
 	if err != nil {
 		return nil, err
 	}
-	return result.(*graphql.GraphQLHandler), nil
+	h, ok := result.(*graphql.GraphQLHandler)
+	if !ok {
+		return nil, fmt.Errorf("internal: unexpected type %T from singleflight result", result)
+	}
+	return h, nil
 }
 
 func (s *Server) handleGraphQL(w http.ResponseWriter, r *http.Request) {
@@ -355,5 +367,9 @@ func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 
 	// Serve as YAML
 	w.Header().Set("Content-Type", "application/x-yaml")
-	_, _ = w.Write(specContent)
+	if _, err := w.Write(specContent); err != nil {
+		// Response is already partially sent (headers committed);
+		// can't respondError cleanly. Log for diagnostics.
+		log.Printf("openapi: yaml write failed: %v", err)
+	}
 }

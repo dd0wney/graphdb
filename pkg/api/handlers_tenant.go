@@ -62,7 +62,11 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+	if !ok {
+		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
 	var req TenantCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -112,9 +116,9 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		UserAgent:    r.UserAgent(),
 	})
 
-	// Get the created tenant to return with timestamps
-	created, _ := s.tenantStore.Get(t.ID)
-	s.respondJSON(w, http.StatusCreated, tenantToResponse(created))
+	// Create() populates CreatedAt/UpdatedAt on the input pointer (see
+	// pkg/tenant/store.go), so t already has the timestamps for the response.
+	s.respondJSON(w, http.StatusCreated, tenantToResponse(t))
 }
 
 // handleListTenants handles GET /tenants (admin only)
@@ -156,7 +160,11 @@ func (s *Server) handleGetTenant(w http.ResponseWriter, r *http.Request) {
 		tenantID = tenantID[:idx]
 	}
 
-	claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+	if !ok {
+		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
 	// Non-admins can only view their own tenant
 	if claims.Role != auth.RoleAdmin {
@@ -189,7 +197,11 @@ func (s *Server) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+	if !ok {
+		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
 	var req TenantUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -236,9 +248,9 @@ func (s *Server) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 		UserAgent:    r.UserAgent(),
 	})
 
-	// Get updated tenant
-	updated, _ := s.tenantStore.Get(tenantID)
-	s.respondJSON(w, http.StatusOK, tenantToResponse(updated))
+	// Update() refreshes UpdatedAt on the same pointer Get returned (see
+	// pkg/tenant/store.go), so existing already reflects the persisted state.
+	s.respondJSON(w, http.StatusOK, tenantToResponse(existing))
 }
 
 // handleDeleteTenant handles DELETE /tenants/{id} (admin only)
@@ -254,7 +266,11 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+	if !ok {
+		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
 	if err := s.tenantStore.Delete(tenantID); err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -306,7 +322,11 @@ func (s *Server) handleGetTenantUsage(w http.ResponseWriter, r *http.Request) {
 	}
 	tenantID := parts[0]
 
-	claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+	if !ok {
+		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
 	// Non-admins can only view their own tenant
 	if claims.Role != auth.RoleAdmin {
@@ -364,7 +384,11 @@ func (s *Server) handleSuspendTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	tenantID := parts[0]
 
-	claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+	if !ok {
+		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
 	if err := s.tenantStore.Suspend(tenantID); err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -413,7 +437,11 @@ func (s *Server) handleActivateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	tenantID := parts[0]
 
-	claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+	if !ok {
+		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
 	if err := s.tenantStore.Activate(tenantID); err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -502,7 +530,11 @@ func (s *Server) handleTenantEndpoint(w http.ResponseWriter, r *http.Request) {
 		case "suspend":
 			if r.Method == http.MethodPost {
 				// Admin only check
-				claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+				claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+				if !ok {
+					s.respondError(w, http.StatusUnauthorized, "Authentication required")
+					return
+				}
 				if claims.Role != auth.RoleAdmin {
 					s.respondError(w, http.StatusForbidden, "Admin access required")
 					return
@@ -513,7 +545,11 @@ func (s *Server) handleTenantEndpoint(w http.ResponseWriter, r *http.Request) {
 		case "activate":
 			if r.Method == http.MethodPost {
 				// Admin only check
-				claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+				claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+				if !ok {
+					s.respondError(w, http.StatusUnauthorized, "Authentication required")
+					return
+				}
 				if claims.Role != auth.RoleAdmin {
 					s.respondError(w, http.StatusForbidden, "Admin access required")
 					return
@@ -532,7 +568,11 @@ func (s *Server) handleTenantEndpoint(w http.ResponseWriter, r *http.Request) {
 		s.handleGetTenant(w, r)
 	case http.MethodPut:
 		// Admin only check
-		claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+		claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+		if !ok {
+			s.respondError(w, http.StatusUnauthorized, "Authentication required")
+			return
+		}
 		if claims.Role != auth.RoleAdmin {
 			s.respondError(w, http.StatusForbidden, "Admin access required")
 			return
@@ -540,7 +580,11 @@ func (s *Server) handleTenantEndpoint(w http.ResponseWriter, r *http.Request) {
 		s.handleUpdateTenant(w, r)
 	case http.MethodDelete:
 		// Admin only check
-		claims := r.Context().Value(claimsContextKey).(*auth.Claims)
+		claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+		if !ok {
+			s.respondError(w, http.StatusUnauthorized, "Authentication required")
+			return
+		}
 		if claims.Role != auth.RoleAdmin {
 			s.respondError(w, http.StatusForbidden, "Admin access required")
 			return
