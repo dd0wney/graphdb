@@ -50,18 +50,14 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		DefaultListLimit: getEnvInt("GRAPHQL_DEFAULT_LIST_LIMIT", 100),
 	}
 
-	// Generate GraphQL schema with limits (includes filtering, sorting, edges)
-	schema, err := graphql.GenerateSchemaWithLimits(graph, limitConfig)
-	if err != nil {
-		log.Printf("Warning: Failed to generate GraphQL schema: %v", err)
-	}
-
-	var graphqlHandler *graphql.GraphQLHandler
-	if err == nil {
-		graphqlHandler = graphql.NewGraphQLHandler(schema)
-		log.Printf("✅ GraphQL schema generated with limits (max: %d, default: %d) and complexity validation (max: %d)",
-			limitConfig.MaxLimit, limitConfig.DefaultLimit, complexityConfig.MaxComplexity)
-	}
+	// Audit A9 #3 (2026-05-08): no eager schema build at startup.
+	// Schemas are now per-tenant and built lazily on first /graphql
+	// request per tenant. The Server holds a sync.Map cache plus a
+	// singleflight.Group to dedupe concurrent cold-starts. See
+	// server_types.go and getGraphQLHandlerForTenant in
+	// server_handlers.go.
+	log.Printf("✅ GraphQL: per-tenant schemas (limits max: %d, default: %d, complexity max: %d) — built lazily per tenant on first request",
+		limitConfig.MaxLimit, limitConfig.DefaultLimit, complexityConfig.MaxComplexity)
 
 	// Initialize authentication components.
 	//
@@ -245,13 +241,13 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 	lsaIndexes := search.NewTenantLSAIndexes()
 
 	server := &Server{
-		graph:               graph,
-		executor:            executor,
-		searchIndexes:       searchIndexes,
-		lsaIndexes:          lsaIndexes,
-		retriever:           retrieval.NewRetriever(graph, searchIndexes, lsaIndexes),
-		graphqlHandler:      graphqlHandler,
-		graphqlSchema:       schema,
+		graph:         graph,
+		executor:      executor,
+		searchIndexes: searchIndexes,
+		lsaIndexes:    lsaIndexes,
+		retriever:     retrieval.NewRetriever(graph, searchIndexes, lsaIndexes),
+		// graphqlHandlers + schemaSingleflight zero-value initialised
+		// (sync.Map and singleflight.Group both work zero-valued).
 		complexityConfig:    complexityConfig,
 		limitConfig:         limitConfig,
 		authHandler:         authHandler,
