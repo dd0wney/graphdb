@@ -218,14 +218,10 @@ func TestFunctionCallExpression_InReturn(t *testing.T) {
 }
 
 func TestParser_FunctionCallInWhere(t *testing.T) {
-	RegisterFunction("toLower", func(args []any) (any, error) {
-		if len(args) == 0 {
-			return nil, nil
-		}
-		s, _ := args[0].(string)
-		return strings.ToLower(s), nil
-	})
-
+	// Parser-only test: verifies the AST shape produced by parsing
+	// `toLower(...)`. Does not execute the function. Previously also
+	// called RegisterFunction("toLower", ...) which clobbered the
+	// production registry entry and broke sibling tests on -count=2.
 	input := `MATCH (n:Person) WHERE toLower(n.name) = "alice" RETURN n.name`
 	lexer := NewLexer(input)
 	tokens, err := lexer.Tokenize()
@@ -262,8 +258,12 @@ func TestParser_FunctionCallInWhere(t *testing.T) {
 }
 
 func TestParser_FunctionCallInReturn(t *testing.T) {
-	RegisterFunction("toUpper", func(args []any) (any, error) { return nil, nil })
-
+	// Parser-only test: verifies the AST shape produced by parsing
+	// `toUpper(...)`. Does not execute the function. Previously also
+	// called RegisterFunction("toUpper", func(args []any) (any, error)
+	// { return nil, nil }) which clobbered the production registry
+	// entry and broke TestStringFunctions/toUpper +
+	// TestConformance_StringFunctionsInReturn on -count=2.
 	input := `MATCH (n:Person) RETURN toUpper(n.name) AS upper`
 	lexer := NewLexer(input)
 	tokens, err := lexer.Tokenize()
