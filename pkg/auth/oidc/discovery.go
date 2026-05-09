@@ -110,7 +110,10 @@ func (c *DiscoveryClient) fetchDiscovery(ctx context.Context, issuer string) (*O
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if err != nil {
+			body = []byte("<unable to read response body>")
+		}
 		return nil, fmt.Errorf("discovery endpoint returned status %d: %s", resp.StatusCode, string(body))
 	}
 

@@ -422,7 +422,7 @@ func (s *UserStore) generateOIDCUsername(info *OIDCUserInfo) string {
 
 	// Ensure minimum length
 	if len(base) < MinUsernameLength {
-		base = base + "_user"
+		base += "_user"
 	}
 
 	// Ensure uniqueness

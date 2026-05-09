@@ -2,6 +2,7 @@ package health
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -23,7 +24,9 @@ func (hc *HealthChecker) HTTPHandler() http.HandlerFunc {
 		}
 
 		// Encode error after WriteHeader is unrecoverable; log and move on.
-		_ = json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("health: encode response failed: %v", err)
+		}
 	}
 }
 
@@ -42,7 +45,9 @@ func (hc *HealthChecker) ReadinessHandler() http.HandlerFunc {
 		}
 
 		// Encode error after WriteHeader is unrecoverable; log and move on.
-		_ = json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("health: encode response failed: %v", err)
+		}
 	}
 }
 
@@ -61,6 +66,8 @@ func (hc *HealthChecker) LivenessHandler() http.HandlerFunc {
 		}
 
 		// Encode error after WriteHeader is unrecoverable; log and move on.
-		_ = json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("health: encode response failed: %v", err)
+		}
 	}
 }
