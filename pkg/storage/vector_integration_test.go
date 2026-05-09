@@ -212,7 +212,7 @@ func TestStorageVectorSearchIntegration(t *testing.T) {
 		}
 
 		// Add node to storage
-		gs.nodes[node.ID] = node
+		gs.storeNodeInShard(node)
 
 		// Update vector indexes
 		err := gs.UpdateNodeVectorIndexes(node)
@@ -320,7 +320,7 @@ func TestStorageVectorUpdateDelete(t *testing.T) {
 		UpdatedAt: 12345,
 	}
 
-	gs.nodes[node.ID] = node
+	gs.storeNodeInShard(node)
 	_ = gs.UpdateNodeVectorIndexes(node)
 
 	// Search for the node

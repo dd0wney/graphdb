@@ -149,7 +149,7 @@ func (gs *GraphStorage) GetNodesByLabelForTenant(tenantID, label string) []*Node
 
 	nodes := make([]*Node, 0, len(nodeIDs))
 	for _, id := range nodeIDs {
-		if node, exists := gs.nodes[id]; exists {
+		if node, exists := gs.lookupNodeShard(id); exists {
 			nodes = append(nodes, node.Clone())
 		}
 	}
@@ -192,12 +192,13 @@ func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
 	tid := effectiveTenantID(tenantID)
 
 	var nodes []*Node
-	for _, node := range gs.nodes {
+	gs.forEachNodeUnlocked(func(node *Node) bool {
 		nodeTenant := effectiveTenantID(node.TenantID)
 		if nodeTenant == tid {
 			nodes = append(nodes, node.Clone())
 		}
-	}
+		return true
+	})
 
 	return nodes
 }

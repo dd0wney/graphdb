@@ -326,7 +326,7 @@ func TestGraphStorage_DiskBackedEdges_MultipleNodeDeletesWAL(t *testing.T) {
 
 		// Verify before crash
 		gs.mu.RLock()
-		nodeCount := len(gs.nodes)
+		nodeCount := gs.nodeCount()
 		gs.mu.RUnlock()
 
 		if nodeCount != 5 {
@@ -367,7 +367,7 @@ func TestGraphStorage_DiskBackedEdges_MultipleNodeDeletesWAL(t *testing.T) {
 
 		// Verify node count
 		gs.mu.RLock()
-		nodeCount := len(gs.nodes)
+		nodeCount := gs.nodeCount()
 		gs.mu.RUnlock()
 
 		if nodeCount != 5 {
