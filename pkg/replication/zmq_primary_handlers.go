@@ -6,8 +6,10 @@ package replication
 import (
 	"encoding/json"
 	"log"
+	"os"
 	"time"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
@@ -148,15 +150,30 @@ func (zm *ZMQReplicationManager) handleBufferedWrites() {
 	}
 }
 
-// executeWriteOperation executes a buffered write operation
+// executeWriteOperation executes a buffered write operation.
+//
+// Audit A8 (2026-05-09): fails closed when op.TenantID is empty.
+// Mirror of WriteReceiver.executeWrite in write_receiver.go — see
+// that comment for the full rationale and the
+// REPLICATION_ALLOW_EMPTY_TENANT escape hatch.
 func (zm *ZMQReplicationManager) executeWriteOperation(op *WriteOperation) {
+	if op.TenantID == "" {
+		if os.Getenv(replicationAllowEmptyTenantEnv) != "1" {
+			log.Printf("replication (zmq): refusing %q with empty tenant_id; "+
+				"set %s=1 to opt into legacy default-tenant behavior",
+				op.Type, replicationAllowEmptyTenantEnv)
+			return
+		}
+		op.TenantID = tenant.DefaultTenantID
+	}
+
 	switch op.Type {
 	case "create_node":
-		if _, err := zm.storage.CreateNode(op.Labels, op.Properties); err != nil {
+		if _, err := zm.storage.CreateNodeWithTenant(op.TenantID, op.Labels, op.Properties); err != nil {
 			log.Printf("Failed to create node: %v", err)
 		}
 	case "create_edge":
-		if _, err := zm.storage.CreateEdge(op.FromNodeID, op.ToNodeID, op.EdgeType, op.Properties, op.Weight); err != nil {
+		if _, err := zm.storage.CreateEdgeWithTenant(op.TenantID, op.FromNodeID, op.ToNodeID, op.EdgeType, op.Properties, op.Weight); err != nil {
 			log.Printf("Failed to create edge: %v", err)
 		}
 	}
