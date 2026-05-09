@@ -132,3 +132,23 @@ jobs:
         name: binaries-linux
         path: bin/
         retention-days: 7
+
+  tagged-build-nng:
+    name: Tagged Build (-tags nng)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+        cache: true
+
+    - name: Build with -tags nng
+      run: go build -tags nng ./...
+
+    - name: Vet with -tags nng
+      run: go vet -tags nng ./...
