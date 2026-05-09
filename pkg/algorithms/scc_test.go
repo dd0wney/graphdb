@@ -88,6 +88,45 @@ func TestSCC_SimpleCycle(t *testing.T) {
 	}
 }
 
+// TestSCC_DefensiveDegradeOnEdgeReadFailure exercises the defensive-degrade
+// branch in sccView (scc.go:67). The same A→B→C→A cycle that
+// TestSCC_SimpleCycle resolves to a single SCC of size 3 must, under a
+// view where B's outgoing-edge read fails, degrade to 3 singleton SCCs —
+// proving the algorithm under-counts connectivity rather than corrupting
+// or panicking when an edge read fails.
+//
+// The same pattern (failingView + assert under-count) applies to triangles
+// and node_similarity; not duplicated because all three share the
+// "outEdges = nil on error" body and SCC is the most semantically visible.
+func TestSCC_DefensiveDegradeOnEdgeReadFailure(t *testing.T) {
+	gs := setupSCCTestGraph(t)
+	a, _ := gs.CreateNode([]string{"Node"}, nil)
+	b, _ := gs.CreateNode([]string{"Node"}, nil)
+	c, _ := gs.CreateNode([]string{"Node"}, nil)
+	_, _ = gs.CreateEdge(a.ID, b.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(b.ID, c.ID, "LINKS", nil, 1.0)
+	_, _ = gs.CreateEdge(c.ID, a.ID, "LINKS", nil, 1.0)
+
+	view := &failingView{
+		inner:  newTenantBlindView(gs),
+		failOn: b.ID,
+	}
+	result, err := sccView(view)
+	if err != nil {
+		t.Fatalf("sccView failed: %v", err)
+	}
+
+	if len(result.Communities) != 3 {
+		t.Errorf("expected 3 singleton SCCs after defensive degrade, got %d", len(result.Communities))
+	}
+	if result.SingletonCount != 3 {
+		t.Errorf("expected 3 singletons, got %d", result.SingletonCount)
+	}
+	if result.LargestSCC.Size != 1 {
+		t.Errorf("expected largest SCC size 1 (singleton), got %d", result.LargestSCC.Size)
+	}
+}
+
 func TestSCC_Chain(t *testing.T) {
 	gs := setupSCCTestGraph(t)
 

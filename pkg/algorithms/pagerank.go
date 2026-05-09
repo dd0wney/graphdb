@@ -163,7 +163,13 @@ func (h rankedNodeHeap) Less(i, j int) bool { return h[i].Score < h[j].Score } /
 func (h rankedNodeHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
 func (h *rankedNodeHeap) Push(x any) {
-	*h = append(*h, x.(RankedNode))
+	// heap.Interface.Push contract: callers always pass the heap's
+	// element type. Mirrors rankedEdgeHeap.Push in centrality.go.
+	n, ok := x.(RankedNode)
+	if !ok {
+		panic("rankedNodeHeap.Push: expected RankedNode")
+	}
+	*h = append(*h, n)
 }
 
 func (h *rankedNodeHeap) Pop() any {
@@ -219,7 +225,12 @@ func findTopNodesView(view graphView, scores map[uint64]float64, n int) []Ranked
 
 	result := make([]RankedNode, h.Len())
 	for i := h.Len() - 1; i >= 0; i-- {
-		result[i] = heap.Pop(&h).(RankedNode)
+		// The heap is populated only via rankedNodeHeap.Push above.
+		n, ok := heap.Pop(&h).(RankedNode)
+		if !ok {
+			panic("findTopNodesView: heap returned non-RankedNode")
+		}
+		result[i] = n
 	}
 
 	return result

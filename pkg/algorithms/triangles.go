@@ -41,12 +41,21 @@ func countTrianglesView(view graphView) (*TriangleCountResult, error) {
 	for _, nodeID := range nodeIDs {
 		neighbors := make(map[uint64]bool)
 
-		outEdges, _ := view.OutgoingEdges(nodeID)
+		// Defensive: if Outgoing/IncomingEdges fails (future LSM/snapshot
+		// views may), proceed with whatever edges we did read. The node's
+		// triangle count will be undercounted, never inflated.
+		outEdges, err := view.OutgoingEdges(nodeID)
+		if err != nil {
+			outEdges = nil
+		}
 		for _, e := range outEdges {
 			neighbors[e.ToNodeID] = true
 		}
 
-		inEdges, _ := view.IncomingEdges(nodeID)
+		inEdges, err := view.IncomingEdges(nodeID)
+		if err != nil {
+			inEdges = nil
+		}
 		for _, e := range inEdges {
 			neighbors[e.FromNodeID] = true
 		}
