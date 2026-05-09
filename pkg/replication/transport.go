@@ -97,7 +97,17 @@ type Storage interface {
 }
 
 // WriteOperation represents a buffered write operation for replication.
+//
+// Audit A8 (2026-05-09): TenantID is required on every WriteOperation.
+// The apply path (executeWriteOperation) fails closed when TenantID is
+// empty — silently defaulting to the default tenant on the wire was
+// the exact silent-default class A8 closes (in-house precedent: the
+// JWT_SECRET fail-closed fix in pkg/api/server_init.go). The JSON tag
+// deliberately omits `omitempty` so an explicit empty value reaches
+// the receiver unmodified, which the apply path can log and refuse —
+// rather than appearing identical to a missing field.
 type WriteOperation struct {
+	TenantID   string                 `json:"tenant_id"`
 	Type       string                 `json:"type"` // "create_node", "create_edge"
 	Labels     []string               `json:"labels,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
