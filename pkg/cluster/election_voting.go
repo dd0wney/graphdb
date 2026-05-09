@@ -56,7 +56,10 @@ func (em *ElectionManager) sendVoteRequest(addr string, term uint64, candidate *
 	}
 	defer conn.Close()
 
-	conn.SetDeadline(time.Now().Add(em.config.VoteRequestTimeout))
+	if err := conn.SetDeadline(time.Now().Add(em.config.VoteRequestTimeout)); err != nil {
+		log.Printf("Failed to set vote deadline for %s: %v", addr, err)
+		return
+	}
 
 	// Send request
 	// Note: json.NewEncoder does not return an error - it always succeeds

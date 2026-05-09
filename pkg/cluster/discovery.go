@@ -156,7 +156,9 @@ func (nd *NodeDiscovery) announceTo(addr string, announcement AnnouncementMessag
 	defer conn.Close()
 
 	// Set deadline for the whole operation
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return fmt.Errorf("failed to set deadline: %w", err)
+	}
 
 	// Send announcement
 	// Note: json.NewEncoder does not return an error - it always succeeds
@@ -240,7 +242,9 @@ func (nd *NodeDiscovery) HandleAnnouncement(announcement AnnouncementMessage) (*
 	if err := nd.membership.AddNode(nodeInfo); err != nil {
 		if err == ErrNodeAlreadyExists {
 			// Update existing node's timestamp
-			nd.membership.UpdateNodeHeartbeat(nodeInfo.ID, 0, nodeInfo.Epoch, nodeInfo.Term)
+			if hbErr := nd.membership.UpdateNodeHeartbeat(nodeInfo.ID, 0, nodeInfo.Epoch, nodeInfo.Term); hbErr != nil {
+				log.Printf("Warning: Failed to update heartbeat for %s: %v", nodeInfo.ID, hbErr)
+			}
 			log.Printf("Updated existing node from announcement: %s (%s)", nodeInfo.ID, nodeInfo.Addr)
 		} else {
 			return &DiscoveryResponse{

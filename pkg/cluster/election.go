@@ -58,7 +58,9 @@ func (em *ElectionManager) checkElectionTimeout() {
 	timeSinceHeartbeat := time.Since(em.lastHeartbeat)
 	if timeSinceHeartbeat > em.config.ElectionTimeout {
 		log.Printf("Election timeout reached (%v since last heartbeat) - starting election", timeSinceHeartbeat)
-		em.startElectionLocked()
+		if err := em.startElectionLocked(); err != nil {
+			log.Printf("Failed to start election: %v", err)
+		}
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -235,7 +236,11 @@ func (s *PGStore) ListLicenses(ctx context.Context) ([]*License, error) {
 		}
 
 		if len(metadataJSON) > 0 {
-			json.Unmarshal(metadataJSON, &license.Metadata)
+			if err := json.Unmarshal(metadataJSON, &license.Metadata); err != nil {
+				// Don't fail the whole list on one corrupted row; log
+				// so the operator can investigate, leave Metadata nil.
+				log.Printf("[License] Failed to unmarshal metadata for license %s: %v", license.ID, err)
+			}
 		}
 
 		licenses = append(licenses, license)
