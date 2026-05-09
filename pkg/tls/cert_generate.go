@@ -86,8 +86,12 @@ func SaveCertificate(cert tls.Certificate, certFile, keyFile string) error {
 		Bytes: cert.Certificate[0],
 	})
 
-	// Write certificate file
-	if err := os.WriteFile(certFile, certPEM, 0644); err != nil {
+	// Write certificate file. X.509 public certificates are world-readable
+	// by design — clients need to read them to verify the server. The
+	// matching keyFile (line ~115) is written 0600. gosec G306 wants ≤0600
+	// uniformly, but that would break TLS clients running under different
+	// uids than the server.
+	if err := os.WriteFile(certFile, certPEM, 0644); err != nil { //nolint:gosec // X.509 cert is public; key file is 0600 below
 		return fmt.Errorf("failed to write certificate file: %w", err)
 	}
 
@@ -164,9 +168,11 @@ func GenerateAndSaveCertificate(cfg *Config, certFile, keyFile string) error {
 		return fmt.Errorf("failed to create certificate directory: %w", err)
 	}
 
-	// Encode and save certificate
+	// Encode and save certificate. Public X.509 cert; matching keyFile
+	// below is 0600. See comment on the sibling write at the top of
+	// SaveCertificate for the full rationale.
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	if err := os.WriteFile(certFile, certPEM, 0644); err != nil {
+	if err := os.WriteFile(certFile, certPEM, 0644); err != nil { //nolint:gosec // X.509 cert is public; key file is 0600 below
 		return fmt.Errorf("failed to write certificate file: %w", err)
 	}
 

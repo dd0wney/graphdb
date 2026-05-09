@@ -94,7 +94,10 @@ func licenseExists() bool {
 		if path == "" {
 			continue
 		}
-		if _, err := os.Stat(path); err == nil {
+		// gosec G703 flags this as taint-via-Getenv, but GRAPHDB_LICENSE_PATH
+		// is operator-controlled deployment config, not untrusted input.
+		// os.Stat reads metadata only — it cannot expose file contents.
+		if _, err := os.Stat(path); err == nil { //nolint:gosec // operator-controlled path; metadata read only
 			return true
 		}
 	}

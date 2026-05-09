@@ -31,7 +31,11 @@ func NewResultStream(bufferSize int) *ResultStream {
 		bufferSize = DefaultStreamBufferSize
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// gosec G118 flags this as cancel-not-called, but cancel is stored on
+	// the ResultStream struct (line below) and invoked via Close() →
+	// rs.once.Do(rs.cancel). gosec's static analysis can't follow through
+	// the struct field + sync.Once indirection.
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel called in Close() via sync.Once
 
 	return &ResultStream{
 		ch:     make(chan *storage.Node, bufferSize),
