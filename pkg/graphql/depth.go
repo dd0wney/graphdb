@@ -64,8 +64,7 @@ func calculateQueryDepth(document *ast.Document) int {
 	maxDepth := 0
 
 	for _, definition := range document.Definitions {
-		switch def := definition.(type) {
-		case *ast.OperationDefinition:
+		if def, ok := definition.(*ast.OperationDefinition); ok {
 			depth := calculateSelectionSetDepth(def.SelectionSet, 1)
 			if depth > maxDepth {
 				maxDepth = depth

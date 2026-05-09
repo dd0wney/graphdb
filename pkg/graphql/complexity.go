@@ -55,8 +55,7 @@ func calculateQueryComplexity(document *ast.Document, config *ComplexityConfig, 
 	totalComplexity := 0
 
 	for _, definition := range document.Definitions {
-		switch def := definition.(type) {
-		case *ast.OperationDefinition:
+		if def, ok := definition.(*ast.OperationDefinition); ok {
 			complexity := calculateSelectionSetComplexity(def.SelectionSet, config, variableValues, 1)
 			totalComplexity += complexity
 		}
