@@ -85,9 +85,18 @@ type StorageReader interface {
 }
 
 // StorageWriter provides write access to graph storage.
+//
+// Audit A8 (2026-05-09): the methods carry an explicit tenantID and
+// match the *WithTenant naming used by *storage.GraphStorage's write
+// surface (read-side methods are *ForTenant; write-side are
+// *WithTenant — matching the storage layer keeps the abstraction
+// thin). The apply path that consumes this interface is responsible
+// for refusing empty tenantID before calling these methods; see
+// WriteReceiver.executeWrite and the equivalents in the tag-gated
+// NNG/ZMQ handlers.
 type StorageWriter interface {
-	CreateNode(labels []string, properties map[string]interface{}) (interface{}, error)
-	CreateEdge(from, to uint64, edgeType string, properties map[string]interface{}, weight float64) (interface{}, error)
+	CreateNodeWithTenant(tenantID string, labels []string, properties map[string]interface{}) (interface{}, error)
+	CreateEdgeWithTenant(tenantID string, from, to uint64, edgeType string, properties map[string]interface{}, weight float64) (interface{}, error)
 }
 
 // Storage combines read and write access for replication.
