@@ -190,7 +190,10 @@ func (m *JWTManager) ValidateToken(_ context.Context, tokenString string) (*Clai
 	}
 
 	// Extract optional tenant_id (empty string if not present for backward compatibility)
-	tenantID, _ := claimsMap["tenant_id"].(string)
+	tenantID := ""
+	if v, ok := claimsMap["tenant_id"].(string); ok {
+		tenantID = v
+	}
 
 	return &Claims{
 		UserID:    userID,

@@ -216,7 +216,10 @@ func (c *JWKSClient) fetchJWKS(ctx context.Context, jwksURL string) (*JWKS, erro
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if err != nil {
+			body = []byte("<unable to read response body>")
+		}
 		return nil, fmt.Errorf("JWKS endpoint returned status %d: %s", resp.StatusCode, string(body))
 	}
 

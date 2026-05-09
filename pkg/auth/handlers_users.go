@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -258,7 +259,9 @@ func (h *UserManagementHandler) extractAndValidateToken(r *http.Request) (*Claim
 func (h *UserManagementHandler) respondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("Error encoding JSON response: %v", err)
+	}
 }
 
 func (h *UserManagementHandler) respondError(w http.ResponseWriter, status int, message string) {

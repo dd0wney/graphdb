@@ -15,6 +15,41 @@ func NewInputValidator() *InputValidator {
 	return &InputValidator{}
 }
 
+// Patterns are compiled once at init: a malformed pattern panics at
+// startup rather than silently failing per-call, and the per-call
+// regexp.Compile cost is removed from the validation hot path.
+var (
+	sqlInjectionPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\b(union|select|insert|update|delete|drop|create|alter|exec|execute)\b`),
+		regexp.MustCompile(`--`),
+		regexp.MustCompile(`/\*`),
+		regexp.MustCompile(`\*/`),
+		regexp.MustCompile(`;`),
+		regexp.MustCompile(`'`),
+		regexp.MustCompile(`"`),
+		regexp.MustCompile(`\bor\b.*=.*`),
+		regexp.MustCompile(`\band\b.*=.*`),
+	}
+
+	xssPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`<script`),
+		regexp.MustCompile(`javascript:`),
+		regexp.MustCompile(`onerror\s*=`),
+		regexp.MustCompile(`onload\s*=`),
+		regexp.MustCompile(`onclick\s*=`),
+		regexp.MustCompile(`onfocus\s*=`),
+		regexp.MustCompile(`<iframe`),
+		regexp.MustCompile(`<object`),
+		regexp.MustCompile(`<embed`),
+		regexp.MustCompile(`<img.*src=`),
+		regexp.MustCompile(`<svg`),
+		regexp.MustCompile(`eval\(`),
+	}
+
+	emailPattern    = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+	usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
+)
+
 // ValidateString checks a string for injection attacks
 func (v *InputValidator) ValidateString(input string, maxLength int) error {
 	if len(input) > maxLength {
@@ -38,21 +73,8 @@ func (v *InputValidator) ValidateString(input string, maxLength int) error {
 
 // ValidateNoSQLInjection checks for SQL injection patterns
 func (v *InputValidator) ValidateNoSQLInjection(input string) error {
-	patterns := []string{
-		`(?i)\b(union|select|insert|update|delete|drop|create|alter|exec|execute)\b`,
-		`--`,
-		`/\*`,
-		`\*/`,
-		`;`,
-		`'`,
-		`"`,
-		`\bor\b.*=.*`,
-		`\band\b.*=.*`,
-	}
-
-	for _, pattern := range patterns {
-		matched, _ := regexp.MatchString(pattern, input)
-		if matched {
+	for _, p := range sqlInjectionPatterns {
+		if p.MatchString(input) {
 			return fmt.Errorf("potential SQL injection detected")
 		}
 	}
@@ -88,25 +110,9 @@ func (v *InputValidator) ValidateNoPathTraversal(input string) error {
 
 // ValidateNoXSS checks for XSS patterns
 func (v *InputValidator) ValidateNoXSS(input string) error {
-	patterns := []string{
-		`<script`,
-		`javascript:`,
-		`onerror\s*=`,
-		`onload\s*=`,
-		`onclick\s*=`,
-		`onfocus\s*=`,
-		`<iframe`,
-		`<object`,
-		`<embed`,
-		`<img.*src=`,
-		`<svg`,
-		`eval\(`,
-	}
-
 	lowerInput := strings.ToLower(input)
-	for _, pattern := range patterns {
-		matched, _ := regexp.MatchString(pattern, lowerInput)
-		if matched {
+	for _, p := range xssPatterns {
+		if p.MatchString(lowerInput) {
 			return fmt.Errorf("potential XSS detected")
 		}
 	}
@@ -116,9 +122,7 @@ func (v *InputValidator) ValidateNoXSS(input string) error {
 
 // ValidateEmail validates email format
 func (v *InputValidator) ValidateEmail(email string) error {
-	pattern := `^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`
-	matched, _ := regexp.MatchString(pattern, email)
-	if !matched {
+	if !emailPattern.MatchString(email) {
 		return fmt.Errorf("invalid email format")
 	}
 
@@ -135,9 +139,7 @@ func (v *InputValidator) ValidateUsername(username string) error {
 		return fmt.Errorf("username must be 3-32 characters")
 	}
 
-	pattern := `^[a-zA-Z0-9_\-]+$`
-	matched, _ := regexp.MatchString(pattern, username)
-	if !matched {
+	if !usernamePattern.MatchString(username) {
 		return fmt.Errorf("username contains invalid characters")
 	}
 

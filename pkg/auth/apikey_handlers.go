@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 )
@@ -107,7 +108,9 @@ func (h *APIKeyHandler) HandleRevokeAPIKey(w http.ResponseWriter, r *http.Reques
 func respondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("Error encoding JSON response: %v", err)
+	}
 }
 
 func respondError(w http.ResponseWriter, status int, message string) {
