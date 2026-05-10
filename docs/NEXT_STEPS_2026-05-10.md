@@ -135,9 +135,9 @@ Landed as PR #65 (`a356e1f`) — removed `pkg/replication/zmq_*.go` (5 files), `
 - [ ] `handleTenantEndpoint` asserts admin claims that handlers re-fetch — ~12 call sites. One PR introducing a `requireAdmin` middleware/helper, migrating sites, and pinning behavior with a regression row.
 - **Acceptance**: All 12 sites converted; behavior unchanged (verified by existing auth tests); claim-double-check pattern eliminated.
 
-#### H3. Local branch cleanup
-- [ ] 12+ `feat/audit-*` and `feat/audit-a6c-*` local branches are merged into `main` and stale. One housekeeping commit deleting them (`git branch -d`).
-- **Acceptance**: `git branch | grep -c audit` = 0 (or only branches that map to open work).
+#### H3. Local branch cleanup ✅ DONE 2026-05-10
+
+Force-deleted 21 stale branches whose PRs were squash-merged. Squash-merge breaks `git branch -d`'s reachability check (the squashed commit on main is content-equivalent but not ancestor-equivalent to the branch tip), so `-D` was required after verifying each branch had a merged PR via `gh pr list --head <branch> --state merged`. `git branch | grep -c audit` = 0; only `main` remains. No remote cleanup attempted — the remote branches still exist on origin but no longer affect local state. Future PRs that use `--delete-branch` at merge time avoid recreating this debt.
 
 ### Track S — Scoping spike (new)
 
