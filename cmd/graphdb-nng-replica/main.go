@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/replication"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -86,8 +87,14 @@ func main() {
 	fmt.Printf("\nShutting down...\n")
 }
 
-func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication.NNGReplicaNode) {
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+// buildHTTPHandler registers the replica's read-only HTTP surface on a
+// fresh *http.ServeMux. Used by main and exercised in server_test.go to
+// pin the route set (audit A8.2: /nodes must NOT be registered — see
+// docs/A8_REPLICATION_TENANCY_DESIGN.md §1.3).
+func buildHTTPHandler(replica *replication.NNGReplicaNode, graph *storage.GraphStorage) *http.ServeMux {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		state := replica.GetReplicationState()
 		connected := "disconnected"
 		if state.CurrentLSN > 0 {
@@ -101,28 +108,38 @@ func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication
 		})
 	})
 
-	http.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
 		stats := graph.GetStatistics()
 		json.NewEncoder(w).Encode(stats)
 	})
 
-	http.HandleFunc("/replication/status", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/replication/status", func(w http.ResponseWriter, r *http.Request) {
 		state := replica.GetReplicationState()
 		json.NewEncoder(w).Encode(state)
 	})
 
-	// Read-only endpoints
-	http.HandleFunc("/nodes", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			http.Error(w, "Replica is read-only", http.StatusMethodNotAllowed)
-			return
-		}
+	// A8.2: /nodes was previously registered here returning an empty
+	// array stub. The non-nng cmd/graphdb-replica registered the same
+	// route returning graph.GetAllNodesAcrossTenants() with no auth —
+	// any caller could dump every tenant's node corpus. Both are
+	// removed for consistency. Replication uses the WAL stream, not
+	// HTTP; this route was inspection-only. Any future replica read-API
+	// should ride cmd/server's middleware stack (see A8.1).
 
-		json.NewEncoder(w).Encode([]any{})
-	})
+	return mux
+}
 
+func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication.NNGReplicaNode) {
+	mux := buildHTTPHandler(replica, graph)
 	addr := fmt.Sprintf(":%d", port)
-	if err := http.ListenAndServe(addr, nil); err != nil {
+	server := &http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("HTTP server failed: %v", err)
 	}
 }
