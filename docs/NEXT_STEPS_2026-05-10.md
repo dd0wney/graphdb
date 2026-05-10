@@ -60,6 +60,7 @@ All M1–M6 items shipped. PRs #2, #3, #4, #5, #15, #16 merged into `main`.
 
 - **Lint sweep**: batches 1, 2A, 2B-correctness/handlers/logger, 2C-mechanical, 2D, 2E, 2F all merged (PRs #50, #52–#58, plus prior #14, #12). Cadence has noticeably slowed — the residual is small.
 - **Test-flake roster** (May 2026): WAL race (#59), query Linux failure (#60), perf-regression skip (#61), 5M-node cache assertion tier (#62), parser cleanup (#64). CI is now reliably green on PRs; remaining red is overwhelmingly Linux-runner cancellation (exit 143), not real regressions.
+- **Coord-deploy track** ✅ **CLOSED 2026-05-10**: gap-spike → operational MVP → multi-project schema → B-lite atomic claim resolver → skill rewrite. PRs #85–#93. Daemon now runs locally with real atomic uniqueness; skills exercise the live surface.
 
 ---
 
@@ -131,28 +132,26 @@ Landed as PR #65 (`a356e1f`) — removed `pkg/replication/zmq_*.go` (5 files), `
 
 Force-deleted 21 stale branches whose PRs were squash-merged. Squash-merge breaks `git branch -d`'s reachability check (the squashed commit on main is content-equivalent but not ancestor-equivalent to the branch tip), so `-D` was required after verifying each branch had a merged PR via `gh pr list --head <branch> --state merged`. `git branch | grep -c audit` = 0; only `main` remains. No remote cleanup attempted — the remote branches still exist on origin but no longer affect local state. Future PRs that use `--delete-branch` at merge time avoid recreating this debt.
 
-#### H4. Coord-deploy gap — pick A or B (off critical path)
+#### H4. Coord-deploy gap ✅ DONE 2026-05-10 (PRs #85, #86, #87, #89, #91, #93)
 
-Surfaced by PR #82 (`docs/COORD_GAP_2026-05-10.md`) when the 2026-05-10 02:36Z session attempted to deploy the parallel-agent coord instance per `docs/COORD_SETUP.md`. Pre-flight check found the deploy commands and skill bash blocks reference an API surface that doesn't exist (`POST /v1/constraints/uniqueness`, `POST /v1/property-indexes`, `POST /v1/batch`, `GET /v1/nodes/by-property`, `license-server issue` subcommand). Until this resolves, the parallel-agent skills (`work-claim`, `worktree-spawn`, `merge-coordinator`) hard-fail with "coord instance not reachable" — they remain scaffolding.
+Surfaced by PR #82 (`docs/COORD_GAP_2026-05-10.md`) when the 2026-05-10 02:36Z session attempted to deploy the parallel-agent coord instance per `docs/COORD_SETUP.md`. Pre-flight found the deploy commands and skill bash blocks referenced an API surface that doesn't exist. Resolution chose **B-lite** (resolver-side `:Claim` uniqueness) per spike recommendation; rolled out across six PRs over 2026-05-10.
 
-Three options (full analysis in `docs/COORD_GAP_2026-05-10.md`):
+**What landed:**
 
-- **A. Align skills to existing GraphQL surface.** Rewrite the skill bash blocks to use `curl /graphql` mutations (`createNode`, `createEdge`). Small doc fix; **atomicity gap remains** — uniqueness must be advisory (look-before-leap with accepted race window), OR add server-side uniqueness check inside the `createNode` resolver for `Claim` specifically.
-- **B. Build the missing surface.** Wire `pkg/storage.PropertyIndex`, `pkg/constraints.UniquenessViolation`, and a multi-mutation transaction primitive to HTTP/GraphQL. Several PRs. The "real API feedback" `NEXT_SESSION_PROMPT.md` anticipated; the primitives are useful for any caller, not just coord.
-- **C. Defer.** Skills remain scaffolding; parallel-agent coordination falls back to "ask the user." This is the current state.
+- [x] Spike doc: `docs/COORD_DEPLOY_SPIKE_2026-05-10.md` (PR #85). Recommends B-lite.
+- [x] Operational MVP: coord daemon running, `scripts/coord-bootstrap.sh` + `scripts/coord-seed.sh`, `docs/COORD_SETUP.md` rewritten (PRs #86, #87).
+- [x] Multi-project schema: `:Project` nodes, `:IN_PROJECT` edges, project-prefixed Task IDs (`graphdb:H4-PR1-blite`), conflict-guard against `COORD_PROJECT` mismatch, multi-project safety verified (PR #89).
+- [x] **B-lite resolver**: atomic `:Claim` uniqueness via new `storage.CreateNodeWithUniquePropertyForTenant` + special-case in `createNodeMutationResolver`. Two agents racing for the same task get exactly one winner, with a structured "unique constraint violation" error naming the conflicting node (PR #91).
+- [x] **H4.2 wiring** (closed as part of #91): `cmd/server`'s GraphQL had no Mutation type — `pkg/graphql/limits.go` was queries-only. Extracted shared `buildMutationType` and mounted on both schema generators. B-lite is now reachable end-to-end from cmd/server's `/graphql`.
+- [x] **Skill rewrite**: `.claude/skills/work-claim/`, `worktree-spawn/`, `merge-coordinator/` rewritten against real REST + GraphQL surface. `work-claim` uses GraphQL `createNode` for the Claim (REST `POST /nodes` bypasses B-lite — explicitly noted), HOLDS+FOR via REST `/edges`. Live-verified end-to-end (PR #93).
 
-- [x] Spike doc landed: `docs/COORD_DEPLOY_SPIKE_2026-05-10.md` (PR #85). Recommends B-lite.
-- [x] Operational MVP landed: coord daemon running locally, `scripts/coord-bootstrap.sh` + `scripts/coord-seed.sh` codify the flow, `docs/COORD_SETUP.md` rewritten with what actually works. Coord state seeded from the planning doc; first claim made (Agent#5 → Claim#6 → Task#1 H4-PR1-blite).
-- [ ] **PR 1 (B-lite)**: resolver-side `:Claim` uniqueness in `pkg/graphql/edges_schema.go`. ~50-100 LOC. Next session.
-- [ ] **PR 3 (skill rewrite)**: update `.claude/skills/work-claim/`, `.claude/skills/worktree-spawn/`, `.claude/skills/merge-coordinator/` bash blocks to use the real REST + GraphQL surface. Currently calls non-existent `/v1/constraints/uniqueness`. Until rewrite lands, skills stay scaffolding even though coord is up.
+**Strategic framing held**: graphdb coordinates its own development with **real atomic claim semantics** (verified live: 10-way concurrent claims for the same task → 1 success, 9 structured conflicts citing the same winner ID). The dogfood claim now lands without footnote — see memory `project_graphdb_dogfoods_coord.md`.
 
-**Sub-tracks surfaced by the operational MVP (track as H4.x):**
+**Off-track follow-ups discovered, not closed under H4** (each is independent of H4's deliverables; promote to top-level next planning round):
 
-- **H4.1**: REST `/nodes` GET base64-encodes string properties. `pkg/api/handlers_nodes.go:34` does `props[k] = v.Data` where `Value.Data` is `[]byte` — Go's `encoding/json` serializes `[]byte` as base64. Fix is type-aware decoding before response. Affects every REST `/nodes` consumer, not just coord. Single-PR cleanup.
-- **H4.2**: `cmd/server`'s GraphQL has no Mutation type. `cmd/server` uses `pkg/graphql/limits.go`'s `GenerateSchemaWithLimitsForTenant`, which is queries-only. The Mutation type defined in `pkg/graphql/edges_schema.go` is unreachable from the live server — coord writes have to go via REST. Resolution: merge the two generators OR have `cmd/server` use the edges-aware one. Spike worth doing first; the answer might affect schema-generation perf.
-
-- **Off critical path for shipped features** — F1.1, F3, A8.1, S1 don't depend on this.
-- **Strategic framing** (per memory `project_graphdb_dogfoods_coord.md`): the critical-path / dependency-graph / claim-state shape of parallel-agent coordination is *natively* a graph workload — typed nodes (Task, Agent, Claim), typed edges (HOLDS, FOR, DEPENDS_ON, CLOSED_BY), traversal queries ("what blocks F1.1-impl?", "who's holding stale claims?"). SQL needs recursive CTEs; KV can't model dependencies; document stores denormalize and rot. graphdb is the right substrate. **Picking option B-lite (per spike recommendation, accepted by user 2026-05-10) is the positioning demo: graphdb coordinates its own development with real atomic claim semantics, not advisory honor-system.**
+- **H4.1** *(open)*: REST `/nodes` GET base64-encodes string properties (`pkg/api/handlers_nodes.go:34` — `props[k] = v.Data` where `Value.Data` is `[]byte`). All read-side coord scripts and skill bash blocks work around this with Python decode helpers. Type-aware decoding before `respondJSON` is a single-PR cleanup; affects every REST `/nodes` consumer, not just coord.
+- **H4.3** *(net-new)*: snapshot-replay drops the per-tenant label index. `replayCreateNode` populates global `nodesByLabel` but not `tenantNodesByLabel`, so per-label GraphQL queries (`{ tasks { id } }`) return "Cannot query field" after restart until the next write. Skill bash blocks already work around this with REST `/nodes` + client-side label filter; the proper fix is to mirror the tenant-index population in `persistence_replay.go`. Single-PR cleanup.
+- **H4.4** *(net-new)*: REST `POST /nodes` doesn't enforce B-lite uniqueness. The check is GraphQL-resolver-only. Skills route Claim creation through GraphQL explicitly, but a future caller using REST would silently bypass. Mirroring the check in `pkg/api/handlers_nodes.go` would close this; ~30-50 LOC.
 
 ### Track S — Scoping spike (new)
 
@@ -177,7 +176,7 @@ H3 ✅ ──┘                                       ├─→ F1.1-spike → 
 
 **Critical path**: ~~H1~~ → ~~A4~~ → ~~A4-edges~~ → ~~A8.2~~ → **F1.1-spike** → F1.1-impl → F3 → A8.1 → S1.
 
-Off-path parallel work: ~~H3~~ ✅ (branches), H2 (requireAdmin), and H4 (coord-deploy gap — A or B) anywhere there's a small gap.
+Off-path parallel work: ~~H3~~ ✅ (branches), ~~H4~~ ✅ (coord-deploy gap — closed via B-lite + skill rewrite + multi-project, PRs #85–#93), H2 (requireAdmin) anywhere there's a small gap. The H4.x net-new sub-tracks (H4.1 base64, H4.3 replay-tenant-index, H4.4 REST-uniqueness-mirror) are each single-PR cleanups suitable as small parallel work — none are blocking.
 
 **Why this ordering**:
 - **H1 first** ✅ — broken `main` builds were creating false-positive CI signal across every other PR's matrix; closed via PRs #65 + #66.
