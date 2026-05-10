@@ -62,9 +62,8 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
-	if !ok {
-		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+	claims := s.requireAdminClaims(w, r)
+	if claims == nil {
 		return
 	}
 
@@ -197,9 +196,8 @@ func (s *Server) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
-	if !ok {
-		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+	claims := s.requireAdminClaims(w, r)
+	if claims == nil {
 		return
 	}
 
@@ -266,9 +264,8 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
-	if !ok {
-		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+	claims := s.requireAdminClaims(w, r)
+	if claims == nil {
 		return
 	}
 
@@ -384,9 +381,8 @@ func (s *Server) handleSuspendTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	tenantID := parts[0]
 
-	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
-	if !ok {
-		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+	claims := s.requireAdminClaims(w, r)
+	if claims == nil {
 		return
 	}
 
@@ -437,9 +433,8 @@ func (s *Server) handleActivateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	tenantID := parts[0]
 
-	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
-	if !ok {
-		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+	claims := s.requireAdminClaims(w, r)
+	if claims == nil {
 		return
 	}
 
@@ -529,14 +524,7 @@ func (s *Server) handleTenantEndpoint(w http.ResponseWriter, r *http.Request) {
 			}
 		case "suspend":
 			if r.Method == http.MethodPost {
-				// Admin only check
-				claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
-				if !ok {
-					s.respondError(w, http.StatusUnauthorized, "Authentication required")
-					return
-				}
-				if claims.Role != auth.RoleAdmin {
-					s.respondError(w, http.StatusForbidden, "Admin access required")
+				if s.requireAdminClaims(w, r) == nil {
 					return
 				}
 				s.handleSuspendTenant(w, r)
@@ -544,14 +532,7 @@ func (s *Server) handleTenantEndpoint(w http.ResponseWriter, r *http.Request) {
 			}
 		case "activate":
 			if r.Method == http.MethodPost {
-				// Admin only check
-				claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
-				if !ok {
-					s.respondError(w, http.StatusUnauthorized, "Authentication required")
-					return
-				}
-				if claims.Role != auth.RoleAdmin {
-					s.respondError(w, http.StatusForbidden, "Admin access required")
+				if s.requireAdminClaims(w, r) == nil {
 					return
 				}
 				s.handleActivateTenant(w, r)
@@ -567,26 +548,12 @@ func (s *Server) handleTenantEndpoint(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		s.handleGetTenant(w, r)
 	case http.MethodPut:
-		// Admin only check
-		claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
-		if !ok {
-			s.respondError(w, http.StatusUnauthorized, "Authentication required")
-			return
-		}
-		if claims.Role != auth.RoleAdmin {
-			s.respondError(w, http.StatusForbidden, "Admin access required")
+		if s.requireAdminClaims(w, r) == nil {
 			return
 		}
 		s.handleUpdateTenant(w, r)
 	case http.MethodDelete:
-		// Admin only check
-		claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
-		if !ok {
-			s.respondError(w, http.StatusUnauthorized, "Authentication required")
-			return
-		}
-		if claims.Role != auth.RoleAdmin {
-			s.respondError(w, http.StatusForbidden, "Admin access required")
+		if s.requireAdminClaims(w, r) == nil {
 			return
 		}
 		s.handleDeleteTenant(w, r)
