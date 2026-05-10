@@ -216,6 +216,43 @@ These are explicit questions the user should weigh in on rather than decisions b
 
 ---
 
+## Known limitations + productization gaps
+
+Surfaced from a session-end audit of "what would block a serious enterprise customer." Some items overlap with existing roadmap entries (linked); others are net-new gaps that aren't sequenced into the 90-day plan above. **This list is the input to the next planning checkpoint, not the plan itself** — each new gap is a track-banner-sized commitment.
+
+### Already tracked elsewhere in this doc
+
+- **S1** — storage interface extraction. Without it, the codebase is one big package and the plugin/extension story is undefined. Spike scheduled at the end of the 90-day window; if its go/no-go says "do this NOW" the rest of the plan re-orders. The largest unlock for "third-party storage backends" or "embedded engine for other products."
+- **F1.1** — per-tenant LSA. Cross-tenant embedding leakage is documented as a caveat in shipped F1, but the documented hole is reachable today by any customer running multi-tenant `/v1/embeddings`. Spike + impl scheduled mid-window.
+- **F3** — Compliance API package. SOC2/GDPR integration is named as a deliverable but not built; the underlying primitives (`pkg/masking/`, per-tenant property filter, `pkg/audit/`) all exist, but the customer-facing surface tying them together is absent.
+- **A8.1** — standalone-binary architectural cleanup. The `GRAPHDB_LEGACY_BINARY` fail-closed gate (PR #47) is a holding action, not a fix; the legacy binaries still exist and an operator that opts in still gets the old code path.
+
+### Architectural ceilings (net-new — not on the 90-day plan)
+
+- **Single-node assumption baked in.** Replication is primary/replica (A8 design), not sharded — write throughput can't scale beyond one box. Any horizontal-scale story (sharded write path, consensus, distributed query) is a multi-quarter scope. Either commit to the work as a track-banner item or explicitly document "single-node by design; horizontal scale is a customer's responsibility (e.g., per-tenant deployments behind a router)" at the README/positioning level. Currently undocumented.
+- **LSA scale ceiling (~100K-500K docs at 200 dims).** Documented in F1 internal docs but not at the README/positioning layer. For commercial corpora the customer would swap LSA for a real embedding model (OpenAI text-embedding-3, Anthropic, BGE, etc.). Not blocked — `/v1/embeddings` is OpenAI-shape compatible and BYO embeddings work via the same surface — but the OOTB story is limited and the workaround isn't documented.
+
+### Operational / observability (net-new)
+
+- **No production-grade observability narrative beyond `pkg/metrics`.** No tracing (no OpenTelemetry / Jaeger / Honeycomb integration), no SLO/SLI document, no dashboards-as-code, no runbook surface. A serious enterprise eval would ask for these before signing — usually as part of the "ops readiness" checklist. Scope: ~1-2 PRs for OpenTelemetry tracing wiring, plus a `docs/SLO.md` with target latency / error budget per endpoint, plus example Grafana JSON.
+- **Linux CI infra tax.** `make test-race` consistently exits 143 (runner-cancellation) on every PR; tolerated per session-memory framing as known infra, not regression. A customer running CI against the upstream repo would see red checks and ask why. Two structural fixes possible: split the race target across packages (so each batch fits the runner's idle-timeout budget), or bump the runner timeout in `.github/workflows/`. Single small PR either way; worth doing before any external-developer onboarding pass.
+
+### Commercial / docs (net-new)
+
+- **Documentation surface is internal-audit-shaped, not customer-shaped.** `docs/AUDIT_*.md`, `NEXT_STEPS_*.md`, design spikes (`A8_REPLICATION_TENANCY_DESIGN.md`, `A9_SCHEMA_ISOLATION_DESIGN.md`, `F2_GRAPHRAG_DESIGN.md`) dominate the docs tree; getting-started, integration guides, "5-minute quickstart," language-client examples, deployment recipes are thin. A README-funnel pass would surface this — the work is mostly reorganization plus one or two new guides, not a research project.
+- **No stated commercial offering.** No pricing, no support model, no SLA, no licensing story. `pkg/licensing/` exists as a code module but isn't the same as a market offering. Decision the technical work assumes but hasn't articulated: open-source-first with paid support? Dual-license (AGPL + commercial)? Hosted-only? Each implies different architectural priorities — a hosted offering pulls A8.1 and observability forward; open-source-first pulls customer docs forward. **Worth its own founder-led discussion, not a technical-track decision.**
+
+### Suggested triage for next checkpoint
+
+When this document is superseded by `NEXT_STEPS_<DATE>.md` for the next window:
+
+1. **Decide the commercial-offering question first** — it shapes which gaps are urgent vs. deferred.
+2. **Promote the Linux CI infra tax to a small in-cycle PR** regardless of commercial direction — it's a 1-2 hour fix that pays back in every subsequent PR's review surface.
+3. **Bundle observability + customer docs into a single "ops readiness" track** if the commercial answer says "hosted" or "enterprise self-serve."
+4. **Surface the single-node ceiling as a README positioning paragraph** even if you don't commit to the horizontal-scale work — silent ceilings are worse than documented ones.
+
+---
+
 ## How to use this document
 
 This is a planning checkpoint, not a backlog. Work below the line is grouped by sequencing-graph dependency, not priority. When picking up the next PR:
