@@ -141,10 +141,18 @@ Three options (full analysis in `docs/COORD_GAP_2026-05-10.md`):
 - **B. Build the missing surface.** Wire `pkg/storage.PropertyIndex`, `pkg/constraints.UniquenessViolation`, and a multi-mutation transaction primitive to HTTP/GraphQL. Several PRs. The "real API feedback" `NEXT_SESSION_PROMPT.md` anticipated; the primitives are useful for any caller, not just coord.
 - **C. Defer.** Skills remain scaffolding; parallel-agent coordination falls back to "ask the user." This is the current state.
 
-- [ ] Decision recorded under "Decision points" in the next planning checkpoint.
-- **Trigger to escalate**: sustained ≥3 active parallel agents AND coordination friction is observed in practice. Until then, single-agent or pair-coordinated-by-user is the working model. (The 2026-05-10 02:36Z session is itself an example of two agents independently picking up A8.2 — exactly the collision class A or B would prevent.)
+- [x] Spike doc landed: `docs/COORD_DEPLOY_SPIKE_2026-05-10.md` (PR #85). Recommends B-lite.
+- [x] Operational MVP landed: coord daemon running locally, `scripts/coord-bootstrap.sh` + `scripts/coord-seed.sh` codify the flow, `docs/COORD_SETUP.md` rewritten with what actually works. Coord state seeded from the planning doc; first claim made (Agent#5 → Claim#6 → Task#1 H4-PR1-blite).
+- [ ] **PR 1 (B-lite)**: resolver-side `:Claim` uniqueness in `pkg/graphql/edges_schema.go`. ~50-100 LOC. Next session.
+- [ ] **PR 3 (skill rewrite)**: update `.claude/skills/work-claim/`, `.claude/skills/worktree-spawn/`, `.claude/skills/merge-coordinator/` bash blocks to use the real REST + GraphQL surface. Currently calls non-existent `/v1/constraints/uniqueness`. Until rewrite lands, skills stay scaffolding even though coord is up.
+
+**Sub-tracks surfaced by the operational MVP (track as H4.x):**
+
+- **H4.1**: REST `/nodes` GET base64-encodes string properties. `pkg/api/handlers_nodes.go:34` does `props[k] = v.Data` where `Value.Data` is `[]byte` — Go's `encoding/json` serializes `[]byte` as base64. Fix is type-aware decoding before response. Affects every REST `/nodes` consumer, not just coord. Single-PR cleanup.
+- **H4.2**: `cmd/server`'s GraphQL has no Mutation type. `cmd/server` uses `pkg/graphql/limits.go`'s `GenerateSchemaWithLimitsForTenant`, which is queries-only. The Mutation type defined in `pkg/graphql/edges_schema.go` is unreachable from the live server — coord writes have to go via REST. Resolution: merge the two generators OR have `cmd/server` use the edges-aware one. Spike worth doing first; the answer might affect schema-generation perf.
+
 - **Off critical path for shipped features** — F1.1, F3, A8.1, S1 don't depend on this.
-- **Strategic framing**: the critical-path / dependency-graph / claim-state shape of parallel-agent coordination is *natively* a graph workload — typed nodes (Task, Agent, Claim), typed edges (HOLDS, FOR, DEPENDS_ON, CLOSED_BY), traversal queries ("what blocks F1.1-impl?", "who's holding stale claims?"). SQL needs recursive CTEs; KV can't model dependencies; document stores denormalize and rot. graphdb is the right substrate. **Picking option B is therefore not just operational — it's a positioning demo: graphdb coordinates its own development.** Worth weighting that against the engineering cost.
+- **Strategic framing** (per memory `project_graphdb_dogfoods_coord.md`): the critical-path / dependency-graph / claim-state shape of parallel-agent coordination is *natively* a graph workload — typed nodes (Task, Agent, Claim), typed edges (HOLDS, FOR, DEPENDS_ON, CLOSED_BY), traversal queries ("what blocks F1.1-impl?", "who's holding stale claims?"). SQL needs recursive CTEs; KV can't model dependencies; document stores denormalize and rot. graphdb is the right substrate. **Picking option B-lite (per spike recommendation, accepted by user 2026-05-10) is the positioning demo: graphdb coordinates its own development with real atomic claim semantics, not advisory honor-system.**
 
 ### Track S — Scoping spike (new)
 
