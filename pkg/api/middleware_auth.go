@@ -47,6 +47,34 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	})
 }
 
+// requireAdminClaims pulls admin-validated claims from the request context.
+// Writes 401 (no claims in context) or 403 (claims present but role != admin)
+// directly to w on failure and returns nil; caller pattern is:
+//
+//	claims := s.requireAdminClaims(w, r)
+//	if claims == nil {
+//	    return
+//	}
+//
+// Use after a route is wrapped in s.requireAdmin (the typical case — the
+// middleware writes claims into context and enforces the role at the
+// dispatch layer; this helper pulls them out and re-asserts as
+// defense-in-depth at the handler boundary so a future routing change
+// that drops the middleware can't silently turn an admin endpoint into
+// an unauthenticated one).
+func (s *Server) requireAdminClaims(w http.ResponseWriter, r *http.Request) *auth.Claims {
+	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+	if !ok {
+		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+		return nil
+	}
+	if claims.Role != auth.RoleAdmin {
+		s.respondError(w, http.StatusForbidden, "Admin access required")
+		return nil
+	}
+	return claims
+}
+
 // requireAuth middleware validates JWT tokens or API keys and protects endpoints
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
