@@ -16,7 +16,7 @@
 
 All M1–M6 items shipped. PRs #2, #3, #4, #5, #15, #16 merged into `main`.
 
-### Track A — Audit / tenancy isolation ✅ **CLOSED for original scope; A4 done 2026-05-10; one A4 follow-up + two A8 follow-ups**
+### Track A — Audit / tenancy isolation ✅ **CLOSED — original scope + A4-edges + A8.2 done 2026-05-10; one A8 follow-up (A8.1) remains, off critical path**
 
 | Original task | Status | Evidence |
 |---|---|---|
@@ -36,13 +36,14 @@ All M1–M6 items shipped. PRs #2, #3, #4, #5, #15, #16 merged into `main`.
 | Sub-track | Status | Evidence |
 |---|---|---|
 | A8: replication tenancy (5 commits) | ✅ Done | A8 spike `d32d30d`, impl `ade06c6` `fbea625`, regression `c0e90fb`, legacy gate `1051a34`, banner `0fe7425` |
+| A8.2: replica `/nodes` GET unauth'd cross-tenant dump | ✅ Done | PR #81 (`c42f9b6`) — removed route from both replica binaries, refactored to private mux, audit-regression row added |
 | A9: GraphQL schema introspection isolation (4 commits) | ✅ Done | A9 spike `5c771fa`, impl `22ee7a2` `7b220d0`, regression `d3fa00d` |
 
-**A4 closed (2026-05-10, PR #67)** — partitioned `gs.nodes` for race-cleanness, clone-elision in vector post-filter, concurrent-read bench. **One follow-up surfaced**: **A4-edges** (symmetric partition for `gs.edges` + transaction-layer coordination — three known surfaces of one bug class; details in the A4-edges section below and the in-code note at `pkg/storage/edge_operations.go` above `GetEdge`).
+**A4 closed (2026-05-10, PR #67)** — partitioned `gs.nodes` for race-cleanness, clone-elision in vector post-filter, concurrent-read bench. **A4-edges follow-up closed (2026-05-10, PR #70)** — symmetric partition for `gs.edges` + transaction-layer coordination collapsed three surfaces to one (Commit() holds gs.mu around apply* calls, neutralizing surfaces 2+3); race-clean under `-count=3`.
 
-**A8 spike-defined follow-ups** (called out in `A8_REPLICATION_TENANCY_DESIGN.md` lines 232, 266 — not yet tracked):
-- **A8.1**: Deprecate or rebuild standalone primary/replica binaries on top of `cmd/server` infrastructure. The current `GRAPHDB_LEGACY_BINARY` gate is a holding action, not a fix.
-- **A8.2**: Replica's `/nodes` GET is an unauth'd cross-tenant dump. Separate from A8's write-path finding; the read path on the replica binary is independently exposed.
+**A8 spike-defined follow-ups** (called out in `A8_REPLICATION_TENANCY_DESIGN.md` lines 232, 266):
+- **A8.1**: Deprecate or rebuild standalone primary/replica binaries on top of `cmd/server` infrastructure. The current `GRAPHDB_LEGACY_BINARY` gate is a holding action, not a fix. **Off critical path.**
+- **A8.2**: Replica's `/nodes` GET unauth'd cross-tenant dump. **✅ Done 2026-05-10 (PR #81)** — removed route from both `cmd/graphdb-replica` (real leak via `GetAllNodesAcrossTenants()`) and `cmd/graphdb-nng-replica` (empty-stub, removed for symmetry). See A8.2 section below for the remove-vs-add-auth decision.
 
 ### Track F — Killer features
 
@@ -83,31 +84,22 @@ Landed as four commits on `feat/audit-a4-shard-partition`:
 
 **Acceptance reframed**: the original "≥2× throughput at 4 readers" criterion did NOT hold empirically on M1 (lock-grain ratio 1.02×/1.08×/1.15× at 4/16/32 readers). Reason: Go's `RWMutex.RLock` doesn't contend with other RLockers; pure-reader workloads measure cache-line / atomic-op cost, not the lock-wait fraction the audit's projection assumed. The value delivered is **structural correctness** (race-detector clean under `-count=3` — closes the latent shared-map race that `transaction_commit.applyNodeUpdates` was creating against global readers) plus the named clone-elision. The empirical finding is documented in the bench file's header so future readers see both the spec and the outcome.
 
-#### A4-edges. Symmetric partition for `gs.edges` + transaction-layer coordination
+#### A4-edges. Symmetric partition for `gs.edges` + transaction-layer coordination ✅ DONE 2026-05-10 (PR #70)
 
-The same lock-disagreement bug class A4 closed for nodes has three known surfaces on edges and the transaction layer — see the in-code note at `pkg/storage/edge_operations.go` above `GetEdge`:
+Landed as PR #70 — partitioned `gs.edges → edgeShards [256]map[uint64]*Edge`, mirrored A4's helpers, migrated `GetEdge`/`CreateEdge`/`UpdateEdge`/`DeleteEdge` (and `*ForTenant` variants) onto per-shard locks, added `BenchmarkGetEdge_Uniform_PureReads_4` + Legacy baseline.
 
-1. `GetEdge` (shard.RLock) vs `CreateEdge`/`UpdateEdge`/`DeleteEdge` (gs.mu.Lock) — same shared-map race A4 fixed for nodes.
-2. `transaction_commit.applyNodeUpdates` mutates `node.Properties` under `shard.Lock` alone, while `UpdateNode` mutates the same `node.Properties` under `gs.mu.Lock` — transaction layer doesn't coordinate with global-lock writers.
-3. `DeleteNode` cascade mutates `gs.edges` / adjacency under `gs.mu.Lock` while `GetEdge` reads under `shard.RLock` — symmetric to (1).
-
-- [ ] Apply A4's partition shape to `gs.edges` → `edgeShards [256]map[uint64]*Edge`; mirror the helpers (`lookupEdgeShard` / `storeEdgeInShard` / `deleteEdgeShardEntry` / `edgeCount` / `forEachEdgeUnlocked` / `flattenEdgesForSnapshot` / `rebucketSnapshotEdges`).
-- [ ] Migrate `GetEdge`/`CreateEdge`/`UpdateEdge`/`DeleteEdge` (and `*ForTenant` variants) onto per-shard locks; same writer pattern as A4 (`gs.mu.Lock` for global indexes — `edgesByType`, tenant indexes, adjacency lists — plus `lockShard(edgeID)` for the shard mutation).
-- [ ] Audit `transaction_commit.applyNodeUpdates` and `DeleteNode` cascade lock acquisition; tighten coordination so transaction-layer writes don't race with global-lock readers (the same fix that closed surface 1 for nodes).
-- [ ] Add the corresponding A4-style bench (`BenchmarkGetEdge_Uniform_PureReads_4` + Legacy baseline) — same access-pattern/contention axes; throughput claim framed correctness-first per A4's reframe.
-- **Acceptance**: `go test -race ./pkg/storage/... -count=3` clean (closes all three surfaces); no new race-detector findings; existing concurrent-edge tests unchanged.
-- **Why now (after A4)**: the partition idiom is fresh, the helper shape is established, the bench harness is reusable. Landing the symmetric edge fix while reviewer context is hot keeps the PR cheap to read.
-- **Estimated scope**: similar to A4 — ~300-400 LOC, ~15 files; either one big PR or the same three-commit split A4 used (structural / lock-grain / bench).
+**Three-surfaces-to-one collapse**: the in-code note above `GetEdge` originally enumerated three lock-disagreement surfaces. Investigation found surfaces 2+3 (transaction-layer writes, DeleteNode cascade) are already neutralized because `Commit()` holds `gs.mu` around the `apply*` calls — only surface 1 (`GetEdge` shard.RLock vs writer gs.mu.Lock) needed the fix. Race-clean under `go test -race ./pkg/storage/... -count=3`.
 
 #### A8.1. Rebuild standalone replication on `cmd/server` (nng-only after H1)
 - [ ] Spike doc: with H1 having narrowed the surface to nng + the un-prefixed `cmd/graphdb-{primary,replica}` (in-process transport), the open question is: rebuild `cmd/graphdb-nng-{primary,replica}` to share `cmd/server`'s tenant middleware stack, or delete them and document migration to `cmd/server`'s built-in replication.
 - [ ] Decision recorded as a go/no-go in the spike, then 1–2 implementation PRs.
 - **Acceptance**: `GRAPHDB_LEGACY_BINARY` becomes either (a) a removed env var, or (b) gates only a thin shim that delegates to `cmd/server` plumbing.
 
-#### A8.2. Replica `/nodes` GET unauth'd cross-tenant dump
-- [ ] Single PR. Add `requireAuth + withTenant` to the replica binary's `/nodes` route, or remove the route entirely if the read API is only meant to live on the primary.
-- [ ] Add an audit-regression row pinning the behavior.
-- **Acceptance**: Cross-tenant request to replica `/nodes` returns 401/404 (matching primary); regression test passes.
+#### A8.2. Replica `/nodes` GET unauth'd cross-tenant dump ✅ DONE 2026-05-10 (PR #81)
+
+Landed as PR #81 (`c42f9b6`) — chose **remove** over **add-auth** because (1) replication uses the WAL stream not HTTP so the route was inspection-only, (2) wiring `requireAuth + withTenant` would re-implement middleware in binaries A8.1 wants to retire, (3) future replica read-API should ride `cmd/server`'s middleware stack. `cmd/graphdb-replica`'s leak (`graph.GetAllNodesAcrossTenants()`) and `cmd/graphdb-nng-replica`'s empty-stub were both removed for symmetry.
+
+Side change: each binary's `startHTTPServer` now uses a private `*http.ServeMux` via `buildHTTPHandler` (required for the regression tests; also marginal hardening — no default-mux pollution can collide). Audit-regression row added at `pkg/api/audit_regression_test.go` reference map; per-binary regression tests at `cmd/graphdb-{,nng-}replica/server_test.go` (`TestBuildHTTPHandler_A82_NoNodesRoute`).
 
 ### Track F — Features
 
@@ -139,6 +131,21 @@ Landed as PR #65 (`a356e1f`) — removed `pkg/replication/zmq_*.go` (5 files), `
 
 Force-deleted 21 stale branches whose PRs were squash-merged. Squash-merge breaks `git branch -d`'s reachability check (the squashed commit on main is content-equivalent but not ancestor-equivalent to the branch tip), so `-D` was required after verifying each branch had a merged PR via `gh pr list --head <branch> --state merged`. `git branch | grep -c audit` = 0; only `main` remains. No remote cleanup attempted — the remote branches still exist on origin but no longer affect local state. Future PRs that use `--delete-branch` at merge time avoid recreating this debt.
 
+#### H4. Coord-deploy gap — pick A or B (off critical path)
+
+Surfaced by PR #82 (`docs/COORD_GAP_2026-05-10.md`) when the 2026-05-10 02:36Z session attempted to deploy the parallel-agent coord instance per `docs/COORD_SETUP.md`. Pre-flight check found the deploy commands and skill bash blocks reference an API surface that doesn't exist (`POST /v1/constraints/uniqueness`, `POST /v1/property-indexes`, `POST /v1/batch`, `GET /v1/nodes/by-property`, `license-server issue` subcommand). Until this resolves, the parallel-agent skills (`work-claim`, `worktree-spawn`, `merge-coordinator`) hard-fail with "coord instance not reachable" — they remain scaffolding.
+
+Three options (full analysis in `docs/COORD_GAP_2026-05-10.md`):
+
+- **A. Align skills to existing GraphQL surface.** Rewrite the skill bash blocks to use `curl /graphql` mutations (`createNode`, `createEdge`). Small doc fix; **atomicity gap remains** — uniqueness must be advisory (look-before-leap with accepted race window), OR add server-side uniqueness check inside the `createNode` resolver for `Claim` specifically.
+- **B. Build the missing surface.** Wire `pkg/storage.PropertyIndex`, `pkg/constraints.UniquenessViolation`, and a multi-mutation transaction primitive to HTTP/GraphQL. Several PRs. The "real API feedback" `NEXT_SESSION_PROMPT.md` anticipated; the primitives are useful for any caller, not just coord.
+- **C. Defer.** Skills remain scaffolding; parallel-agent coordination falls back to "ask the user." This is the current state.
+
+- [ ] Decision recorded under "Decision points" in the next planning checkpoint.
+- **Trigger to escalate**: sustained ≥3 active parallel agents AND coordination friction is observed in practice. Until then, single-agent or pair-coordinated-by-user is the working model. (The 2026-05-10 02:36Z session is itself an example of two agents independently picking up A8.2 — exactly the collision class A or B would prevent.)
+- **Off critical path for shipped features** — F1.1, F3, A8.1, S1 don't depend on this.
+- **Strategic framing**: the critical-path / dependency-graph / claim-state shape of parallel-agent coordination is *natively* a graph workload — typed nodes (Task, Agent, Claim), typed edges (HOLDS, FOR, DEPENDS_ON, CLOSED_BY), traversal queries ("what blocks F1.1-impl?", "who's holding stale claims?"). SQL needs recursive CTEs; KV can't model dependencies; document stores denormalize and rot. graphdb is the right substrate. **Picking option B is therefore not just operational — it's a positioning demo: graphdb coordinates its own development.** Worth weighting that against the engineering cost.
+
 ### Track S — Scoping spike (new)
 
 #### S1. Storage interface extraction — spike with binary go/no-go
@@ -155,21 +162,21 @@ Force-deleted 21 stale branches whose PRs were squash-merged. Squash-merge break
 
 ```
 H1 ✅ ──┐
-        ├─→ A4 ✅ ──→ A4-edges ──→ A8.2 ──┐
-H3 ─────┘                                  ├─→ F1.1-spike → F1.1-impl → ┐
-                                           └─→ H2 ───────────────────── ├─→ F3 → A8.1 → S1
+        ├─→ A4 ✅ ──→ A4-edges ✅ ──→ A8.2 ✅ ──┐
+H3 ✅ ──┘                                       ├─→ F1.1-spike → F1.1-impl → ┐
+                                                └─→ H2 ────────────────────── ├─→ F3 → A8.1 → S1
 ```
 
-**Critical path**: ~~H1~~ → ~~A4~~ → **A4-edges** → A8.2 → F1.1-spike → F1.1-impl → F3 → A8.1 → S1.
+**Critical path**: ~~H1~~ → ~~A4~~ → ~~A4-edges~~ → ~~A8.2~~ → **F1.1-spike** → F1.1-impl → F3 → A8.1 → S1.
 
-Off-path parallel work: H3 (branches) and H2 (requireAdmin) anywhere there's a small gap.
+Off-path parallel work: ~~H3~~ ✅ (branches), H2 (requireAdmin), and H4 (coord-deploy gap — A or B) anywhere there's a small gap.
 
 **Why this ordering**:
 - **H1 first** ✅ — broken `main` builds were creating false-positive CI signal across every other PR's matrix; closed via PRs #65 + #66.
 - **A4 early** ✅ — the audit's HIGH-1/HIGH-2/CRIT-1 collapsed into one operation; closed via PR #67 (with the throughput-criterion reframe documented).
-- **A4-edges next** because the partition idiom and helper shape are fresh from A4; reviewer context is hot. A4-edges closes the symmetric edge-side race plus the transaction-layer coordination gap that A4 surfaced but didn't fix.
-- **A4-edges before A8.2 is the same deliberate call** A4 was originally given vs A8.2: A8.2 is a security finding, but the legacy-binary gate (`GRAPHDB_LEGACY_BINARY` fail-closed, PR #47) means the exposed replica route doesn't start unless an operator opts in. Exposure is mitigated-in-depth. Meanwhile A4-edges closes a real concurrency bug class that's already manifested as `TestGraphStorage_ConcurrentDeletion` flakes. If A8.2 turns out to be reachable via a path the legacy gate doesn't cover, swap the order — the dependency graph permits it.
-- **A8.2 before F1.1** because once the security debt is closed, the rest of the audit track can be considered fully retired before new feature surface lands.
+- **A4-edges after A4** ✅ — the partition idiom and helper shape were fresh from A4; landed PR #70 with the three-surfaces-to-one collapse documented (Commit() holds gs.mu around apply* calls, neutralizing surfaces 2+3).
+- **A8.2 after A4-edges** ✅ — A8.2 is a security finding but the legacy-binary gate (`GRAPHDB_LEGACY_BINARY` fail-closed, PR #47) meant exposure was mitigated-in-depth, so A4-edges (real concurrency bug class manifesting as `TestGraphStorage_ConcurrentDeletion` flakes) went first. PR #81 closed A8.2 via removal rather than auth-wrap.
+- **F1.1-spike now at head of queue** because the audit track is fully retired (A4 + A4-edges + A8.2 done; A8.1 remains but is off critical path). New feature surface (F1.1) rides on a clean audit track.
 - **F1.1 before F3** because the multi-tenant LSA caveat is a documented hole in a *shipped* feature (`/v1/embeddings`); F3 introduces *new* surface and customer-facing claims, so it should ride on a clean F1.
 - **A8.1 late** because it's an architectural cleanup of binaries that are already gated by `GRAPHDB_LEGACY_BINARY`; the urgency is lower.
 - **S1 last** because its output is the **input to the next planning checkpoint**, not work for this one.
@@ -264,4 +271,4 @@ This is a planning checkpoint, not a backlog. Work below the line is grouped by 
 **Revisit triggers** (any one is sufficient to start a new checkpoint immediately, not after the 3–5 PR cadence):
 - **S1 spike concludes** with a "schedule for Q3 as track-banner item" recommendation — that decision re-orders the next quarter, not just the next item.
 - **A8.1 spike concludes** with "rebuild on `cmd/server`" rather than "delete" — rebuild is a multi-PR sub-track that wasn't budgeted in this checkpoint.
-- **A8.2 turns out to be reachable** through a path the legacy-binary gate doesn't cover — promotes immediately to head of queue.
+- ~~**A8.2 turns out to be reachable** through a path the legacy-binary gate doesn't cover — promotes immediately to head of queue.~~ ✅ Closed 2026-05-10 by PR #81 (route removed; cross-tenant request now returns 404 on both replica binaries).
