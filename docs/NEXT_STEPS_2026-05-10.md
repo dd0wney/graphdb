@@ -16,7 +16,7 @@
 
 All M1–M6 items shipped. PRs #2, #3, #4, #5, #15, #16 merged into `main`.
 
-### Track A — Audit / tenancy isolation ✅ **CLOSED for original scope; one carry-forward + two A8 follow-ups**
+### Track A — Audit / tenancy isolation ✅ **CLOSED for original scope; A4 done 2026-05-10; one A4 follow-up + two A8 follow-ups**
 
 | Original task | Status | Evidence |
 |---|---|---|
@@ -24,7 +24,7 @@ All M1–M6 items shipped. PRs #2, #3, #4, #5, #15, #16 merged into `main`.
 | A2: `JWT_SECRET` fail-closed | ✅ Done | PR #4 (`95657fa`) |
 | A3a: additive `*ForTenant` variants | ✅ Done | PR #15 (`9f1f5e1`) |
 | A3b: enforce `matchesTenant` | ✅ Done | PR #16 (`54b44e4`) |
-| **A4: shard locks for node reads** | ❌ **Not done** | `pkg/storage/node_operations.go:96` still uses `gs.mu.RLock()`; `Clone()` on line 112 also unaddressed |
+| A4: shard locks + clone-elision on `GetNode` | ✅ Done | PR #67 (`f44d01c` partition, `89dcbcf` clone-elision, `1e92e21` bench, `eb7026a` matchesTenant cleanup); throughput criterion reframed — see A4 section below |
 | A5: `withTenant` middleware on remaining REST routes | ✅ Done | `4afa405`, hardened by `9a442ef` |
 | A6a: `/nodes` `/edges` `*ForTenant` migration | ✅ Done | `85a0835`, follow-up `d561281` |
 | A6b: `/traverse` `/shortest-path` tenant scoping | ✅ Done | `5c9ac3c` |
@@ -38,7 +38,7 @@ All M1–M6 items shipped. PRs #2, #3, #4, #5, #15, #16 merged into `main`.
 | A8: replication tenancy (5 commits) | ✅ Done | A8 spike `d32d30d`, impl `ade06c6` `fbea625`, regression `c0e90fb`, legacy gate `1051a34`, banner `0fe7425` |
 | A9: GraphQL schema introspection isolation (4 commits) | ✅ Done | A9 spike `5c771fa`, impl `22ee7a2` `7b220d0`, regression `d3fa00d` |
 
-**Carry-forward**: **A4** (shard locks + clone-elision on `GetNode`) was deferred mid-flight. It is the last open item from the original audit, and `GetNode` is the audit's named chokepoint — performance HIGH-1 + HIGH-2 + security CRIT-1 collapsed into one operation. Schedule below.
+**A4 closed (2026-05-10, PR #67)** — partitioned `gs.nodes` for race-cleanness, clone-elision in vector post-filter, concurrent-read bench. **One follow-up surfaced**: **A4-edges** (symmetric partition for `gs.edges` + transaction-layer coordination — three known surfaces of one bug class; details in the A4-edges section below and the in-code note at `pkg/storage/edge_operations.go` above `GetEdge`).
 
 **A8 spike-defined follow-ups** (called out in `A8_REPLICATION_TENANCY_DESIGN.md` lines 232, 266 — not yet tracked):
 - **A8.1**: Deprecate or rebuild standalone primary/replica binaries on top of `cmd/server` infrastructure. The current `GRAPHDB_LEGACY_BINARY` gate is a holding action, not a fix.
@@ -73,13 +73,31 @@ Sequencing principles carried forward from the May 8 plan:
 
 ### Track A — Audit closure
 
-#### A4. Shard locks + clone-elision on `GetNode`
-- [ ] Extend existing `rlockShard` / `runlockShard` (currently used only by edge ops in `pkg/storage/edge_operations.go`) to node reads.
-- [ ] Audit every writer that mutates `gs.nodes` to take per-shard write lock alongside `gs.mu`.
-- [ ] Drop `node.Clone()` on the internal `getNodeRefForTenant` path (added in A3b); preserve cloning only for external API callers.
-- [ ] Concurrent-read benchmark (4, 8, 16 reader goroutines) — before/after numbers in commit message.
-- [ ] **Advisor call** before starting (lock-ordering analysis; the original plan mandated this).
-- **Acceptance**: `go test -race ./pkg/storage/... -count=3` clean; ≥2× throughput at 4 readers; no new race-detector findings.
+#### A4. Shard locks + clone-elision on `GetNode` ✅ DONE 2026-05-10 (PR #67)
+
+Landed as four commits on `feat/audit-a4-shard-partition`:
+- `feat(storage): partition gs.nodes for race-cleanness` (`f44d01c`) — `gs.nodes` becomes `nodeShards [256]map[uint64]*Node`; readers/writers migrated onto per-shard locks; `closed` becomes `atomic.Bool`.
+- `feat(api): clone-elision in vector post-filter` (`89dcbcf`) — vector handler uses storage's `WithNodeRefForTenant` callback so the filter sees a live ref; `Clone()` runs only for survivors. Allocations on the hot path drop from O(ef) to O(survivors). Closes audit HIGH-1.
+- `test(storage): concurrent-read benchmark + lock-grain ratio` (`1e92e21`) — three access-pattern axes × two contention axes × Legacy global-RLock baseline isolating the lock-grain delta.
+- `chore(api): drop unused matchesTenant helper` (`eb7026a`) — orphaned by the clone-elision change; removed per the codebase's "delete unused" convention.
+
+**Acceptance reframed**: the original "≥2× throughput at 4 readers" criterion did NOT hold empirically on M1 (lock-grain ratio 1.02×/1.08×/1.15× at 4/16/32 readers). Reason: Go's `RWMutex.RLock` doesn't contend with other RLockers; pure-reader workloads measure cache-line / atomic-op cost, not the lock-wait fraction the audit's projection assumed. The value delivered is **structural correctness** (race-detector clean under `-count=3` — closes the latent shared-map race that `transaction_commit.applyNodeUpdates` was creating against global readers) plus the named clone-elision. The empirical finding is documented in the bench file's header so future readers see both the spec and the outcome.
+
+#### A4-edges. Symmetric partition for `gs.edges` + transaction-layer coordination
+
+The same lock-disagreement bug class A4 closed for nodes has three known surfaces on edges and the transaction layer — see the in-code note at `pkg/storage/edge_operations.go` above `GetEdge`:
+
+1. `GetEdge` (shard.RLock) vs `CreateEdge`/`UpdateEdge`/`DeleteEdge` (gs.mu.Lock) — same shared-map race A4 fixed for nodes.
+2. `transaction_commit.applyNodeUpdates` mutates `node.Properties` under `shard.Lock` alone, while `UpdateNode` mutates the same `node.Properties` under `gs.mu.Lock` — transaction layer doesn't coordinate with global-lock writers.
+3. `DeleteNode` cascade mutates `gs.edges` / adjacency under `gs.mu.Lock` while `GetEdge` reads under `shard.RLock` — symmetric to (1).
+
+- [ ] Apply A4's partition shape to `gs.edges` → `edgeShards [256]map[uint64]*Edge`; mirror the helpers (`lookupEdgeShard` / `storeEdgeInShard` / `deleteEdgeShardEntry` / `edgeCount` / `forEachEdgeUnlocked` / `flattenEdgesForSnapshot` / `rebucketSnapshotEdges`).
+- [ ] Migrate `GetEdge`/`CreateEdge`/`UpdateEdge`/`DeleteEdge` (and `*ForTenant` variants) onto per-shard locks; same writer pattern as A4 (`gs.mu.Lock` for global indexes — `edgesByType`, tenant indexes, adjacency lists — plus `lockShard(edgeID)` for the shard mutation).
+- [ ] Audit `transaction_commit.applyNodeUpdates` and `DeleteNode` cascade lock acquisition; tighten coordination so transaction-layer writes don't race with global-lock readers (the same fix that closed surface 1 for nodes).
+- [ ] Add the corresponding A4-style bench (`BenchmarkGetEdge_Uniform_PureReads_4` + Legacy baseline) — same access-pattern/contention axes; throughput claim framed correctness-first per A4's reframe.
+- **Acceptance**: `go test -race ./pkg/storage/... -count=3` clean (closes all three surfaces); no new race-detector findings; existing concurrent-edge tests unchanged.
+- **Why now (after A4)**: the partition idiom is fresh, the helper shape is established, the bench harness is reusable. Landing the symmetric edge fix while reviewer context is hot keeps the PR cheap to read.
+- **Estimated scope**: similar to A4 — ~300-400 LOC, ~15 files; either one big PR or the same three-commit split A4 used (structural / lock-grain / bench).
 
 #### A8.1. Rebuild standalone replication on `cmd/server` (nng-only after H1)
 - [ ] Spike doc: with H1 having narrowed the surface to nng + the un-prefixed `cmd/graphdb-{primary,replica}` (in-process transport), the open question is: rebuild `cmd/graphdb-nng-{primary,replica}` to share `cmd/server`'s tenant middleware stack, or delete them and document migration to `cmd/server`'s built-in replication.
@@ -109,12 +127,9 @@ Sequencing principles carried forward from the May 8 plan:
 
 ### Track H — Housekeeping (new)
 
-#### H1. Delete the `-tags zmq` replication variant
-- [ ] **Decision baked in**: `nng` is the chosen transport. The `-tags zmq` variant is deprecated dead code — confirmed by primary-source check (`go build -tags nng ./pkg/replication/` succeeds; `go build -tags zmq ./pkg/replication/` fails with 4 compile errors, including the duplicate `WriteOperation` from `zmq_primary_types.go:66` shadowing `transport.go:118`'s A8-migrated type).
-- [ ] One PR removing `pkg/replication/zmq_*.go`, `cmd/graphdb-zmq-primary/`, `cmd/graphdb-zmq-replica/`, and `test-zmq-replication.sh`.
-- [ ] Add CI matrix row for `go build -tags nng ./...` (the surviving variant — currently no nng-tagged build is exercised by CI).
-- [ ] Update `docs/` references — A8 spike doc mentions "the `nng`/`zmq` variants"; collapse to nng-only.
-- **Acceptance**: zmq files removed; `go build -tags nng ./...` and default build pass on CI; no remaining zmq references in `pkg/`, `cmd/`, or docs (except a one-line history note in `CHANGELOG.md`).
+#### H1. Delete the `-tags zmq` replication variant ✅ DONE 2026-05-10 (PR #65 + #66)
+
+Landed as PR #65 (`a356e1f`) — removed `pkg/replication/zmq_*.go` (5 files), `cmd/graphdb-zmq-{primary,replica}/`, `test-zmq-replication.sh`. `go mod tidy` removed `github.com/pebbe/zmq4`, eliminating the only CGO dependency in the replication tree. Tagged-build CI for the surviving `nng` variant landed as PR #66 (`508acb5`); workflow-scope token meant it had to split out from #65.
 
 #### H2. Consolidate `requireAdmin` to a single helper
 - [ ] `handleTenantEndpoint` asserts admin claims that handlers re-fetch — ~12 call sites. One PR introducing a `requireAdmin` middleware/helper, migrating sites, and pinning behavior with a regression row.
@@ -139,21 +154,21 @@ Sequencing principles carried forward from the May 8 plan:
 ## Sequencing graph
 
 ```
-H1 ──┐
-     ├─→ A4 ──→ A8.2 ──┐
-H3 ──┘                 ├─→ F1.1-spike ──→ F1.1-impl ──┐
-                       │                              ├─→ F3 ──→ A8.1 ──→ S1
-                       └─→ H2 ─────────────────────────┘
+H1 ✅ ──┐
+        ├─→ A4 ✅ ──→ A4-edges ──→ A8.2 ──┐
+H3 ─────┘                                  ├─→ F1.1-spike → F1.1-impl → ┐
+                                           └─→ H2 ───────────────────── ├─→ F3 → A8.1 → S1
 ```
 
-**Critical path**: H1 → A4 → A8.2 → F1.1-spike → F1.1-impl → F3 → A8.1 → S1.
+**Critical path**: ~~H1~~ → ~~A4~~ → **A4-edges** → A8.2 → F1.1-spike → F1.1-impl → F3 → A8.1 → S1.
 
 Off-path parallel work: H3 (branches) and H2 (requireAdmin) anywhere there's a small gap.
 
 **Why this ordering**:
-- **H1 first** because broken `main` builds create false-positive CI signal across every other PR's matrix.
-- **A4 early** because the audit's HIGH-1/HIGH-2/CRIT-1 collapse into one operation and the carry-forward debt grows the longer it sits.
-- **A4 before A8.2 was a deliberate call.** A8.2 is a security finding, but the legacy-binary gate from A8 #5 (`GRAPHDB_LEGACY_BINARY` fail-closed, PR #47) means the exposed replica route doesn't start unless an operator explicitly opts in. The exposure is mitigated-in-depth, not unmitigated. Meanwhile A4 has been carrying forward since the original audit, and `GetNode` is the named chokepoint where three audit findings collapse into one operation. If A8.2 turns out to be reachable via a path the legacy gate doesn't cover, swap the order — the dependency graph permits it.
+- **H1 first** ✅ — broken `main` builds were creating false-positive CI signal across every other PR's matrix; closed via PRs #65 + #66.
+- **A4 early** ✅ — the audit's HIGH-1/HIGH-2/CRIT-1 collapsed into one operation; closed via PR #67 (with the throughput-criterion reframe documented).
+- **A4-edges next** because the partition idiom and helper shape are fresh from A4; reviewer context is hot. A4-edges closes the symmetric edge-side race plus the transaction-layer coordination gap that A4 surfaced but didn't fix.
+- **A4-edges before A8.2 is the same deliberate call** A4 was originally given vs A8.2: A8.2 is a security finding, but the legacy-binary gate (`GRAPHDB_LEGACY_BINARY` fail-closed, PR #47) means the exposed replica route doesn't start unless an operator opts in. Exposure is mitigated-in-depth. Meanwhile A4-edges closes a real concurrency bug class that's already manifested as `TestGraphStorage_ConcurrentDeletion` flakes. If A8.2 turns out to be reachable via a path the legacy gate doesn't cover, swap the order — the dependency graph permits it.
 - **A8.2 before F1.1** because once the security debt is closed, the rest of the audit track can be considered fully retired before new feature surface lands.
 - **F1.1 before F3** because the multi-tenant LSA caveat is a documented hole in a *shipped* feature (`/v1/embeddings`); F3 introduces *new* surface and customer-facing claims, so it should ride on a clean F1.
 - **A8.1 late** because it's an architectural cleanup of binaries that are already gated by `GRAPHDB_LEGACY_BINARY`; the urgency is lower.
