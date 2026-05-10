@@ -17,7 +17,7 @@ func (gs *GraphStorage) buildNodeListFromIDs(nodeIDs []uint64) []*Node {
 func (gs *GraphStorage) buildEdgeListFromIDs(edgeIDs []uint64) []*Edge {
 	edges := make([]*Edge, 0, len(edgeIDs))
 	for _, edgeID := range edgeIDs {
-		if edge, exists := gs.edges[edgeID]; exists {
+		if edge, exists := gs.lookupEdgeShard(edgeID); exists {
 			edges = append(edges, edge.Clone())
 		}
 	}

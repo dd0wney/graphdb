@@ -96,7 +96,7 @@ func (gs *GraphStorage) DeleteEdgeForTenant(edgeID uint64, tenantID string) erro
 // Internal use only — package-private. Mirrors getNodeRefForTenant in
 // node_operations.go.
 func (gs *GraphStorage) getEdgeRefForTenant(edgeID uint64, tenantID string) (*Edge, error) {
-	edge, exists := gs.edges[edgeID]
+	edge, exists := gs.lookupEdgeShard(edgeID)
 	if !exists {
 		return nil, ErrEdgeNotFound
 	}
@@ -115,17 +115,19 @@ func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	// Get edge to find fromID and toID
-	edge, exists := gs.edges[edgeID]
+	// Lookup + delete on edgeShards under the per-shard write lock so
+	// concurrent GetEdge readers see a consistent map. gs.mu.Lock above
+	// excludes other writers; lockShard excludes the readers. A4-edges.
+	gs.lockShard(edgeID)
+	edge, exists := gs.lookupEdgeShard(edgeID)
 	if !exists {
+		gs.unlockShard(edgeID)
 		return fmt.Errorf("edge %d not found", edgeID)
 	}
-
 	fromID := edge.FromNodeID
 	toID := edge.ToNodeID
-
-	// Delete from edges map
-	delete(gs.edges, edgeID)
+	gs.deleteEdgeShardEntry(edgeID)
+	gs.unlockShard(edgeID)
 
 	// Remove from global type index
 	gs.removeEdgeFromTypeIndex(edge.Type, edgeID)
@@ -166,30 +168,12 @@ func (gs *GraphStorage) GetEdgeForTenant(edgeID uint64, tenantID string) (*Edge,
 //
 // Tenant-blind. New callers should prefer GetEdgeForTenant.
 //
-// A4 follow-up: this is one instance of a wider lock-disagreement
-// bug class — code in pkg/storage takes shard locks for some
-// operations while mutating the same shared maps under gs.mu.Lock
-// elsewhere. The three currently-known surfaces are:
-//
-//  1. GetEdge (shard.RLock) vs CreateEdge / UpdateEdge / DeleteEdge
-//     (gs.mu.Lock) — this method.
-//  2. transaction_commit.applyNodeUpdates mutates node.Properties
-//     under shard.Lock alone, while UpdateNode mutates the same
-//     node.Properties under gs.mu.Lock. Same root cause; the
-//     transaction-layer write doesn't coordinate with the
-//     global-lock write path.
-//  3. DeleteNode cascade mutates gs.edges / adjacency under
-//     gs.mu.Lock while GetEdge reads under shard.RLock — symmetric
-//     to (1).
-//
-// Audit task A4 (2026-05-10) closed the equivalent race for nodes by
-// partitioning gs.nodes into [256]map shards. The unified fix is
-// either to (a) partition gs.edges the same way and have
-// transaction-commit re-acquire gs.mu where needed, or (b) tighten
-// the transaction layer to coordinate with global-lock writers. Both
-// are tracked as a single follow-up scope rather than three separate
-// fixes; landing only one of (1)/(2)/(3) leaves the other two
-// windows open. See the 2026-05-10 planning checkpoint.
+// Reader takes the per-shard read lock; writers (CreateEdge,
+// UpdateEdge, DeleteEdge, UpsertEdge) hold gs.mu.Lock plus
+// lockShard(edgeID) for the edgeShards mutation, so readers and
+// writers exclude correctly on shardLocks[edgeID & shardMask].
+// Audit task A4-edges (2026-05-10) closed the prior shared-map race
+// by partitioning gs.edges into [256]map[uint64]*Edge.
 func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 	defer gs.startQueryTiming()()
 
@@ -197,7 +181,7 @@ func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 	gs.rlockShard(edgeID)
 	defer gs.runlockShard(edgeID)
 
-	edge, exists := gs.edges[edgeID]
+	edge, exists := gs.lookupEdgeShard(edgeID)
 	if !exists {
 		return nil, ErrEdgeNotFound
 	}
@@ -227,7 +211,16 @@ func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, w
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
-	edge, exists := gs.edges[edgeID]
+	// lockShard excludes concurrent GetEdge readers from this edge's
+	// shard while we mutate edge.Properties / edge.Weight. The
+	// edge struct's pointer is stable across the unlock — Edge is only
+	// removed via deleteEdgeShardEntry which also takes lockShard, and
+	// gs.mu.Lock prevents that from racing with this UpdateEdge.
+	// A4-edges.
+	gs.lockShard(edgeID)
+	defer gs.unlockShard(edgeID)
+
+	edge, exists := gs.lookupEdgeShard(edgeID)
 	if !exists {
 		return ErrEdgeNotFound
 	}
@@ -272,7 +265,13 @@ func (gs *GraphStorage) createEdgeLocked(tenantID string, fromID, toID uint64, e
 		CreatedAt:  time.Now().Unix(),
 	}
 
-	gs.edges[edgeID] = edge
+	// gs.mu.Lock is held by the caller (CreateEdge / UpsertEdge / etc.)
+	// for the global indexes below; lockShard excludes concurrent
+	// GetEdge readers from this edge's shard while we write to
+	// edgeShards. Audit task A4-edges (2026-05-10).
+	gs.lockShard(edgeID)
+	gs.storeEdgeInShard(edge)
+	gs.unlockShard(edgeID)
 
 	// Update global type index (for backward compatibility)
 	gs.edgesByType[edgeType] = append(gs.edgesByType[edgeType], edgeID)
@@ -346,7 +345,7 @@ func (gs *GraphStorage) findEdgeBetweenLocked(fromID, toID uint64, edgeType stri
 
 	// Search for matching edge
 	for _, edgeID := range edgeIDs {
-		edge, exists := gs.edges[edgeID]
+		edge, exists := gs.lookupEdgeShard(edgeID)
 		if !exists {
 			continue
 		}
@@ -371,7 +370,7 @@ func (gs *GraphStorage) FindAllEdgesBetween(fromID, toID uint64) ([]*Edge, error
 
 	var result []*Edge
 	for _, edgeID := range edgeIDs {
-		edge, exists := gs.edges[edgeID]
+		edge, exists := gs.lookupEdgeShard(edgeID)
 		if !exists {
 			continue
 		}
@@ -428,14 +427,17 @@ func (gs *GraphStorage) upsertEdgeWithTenantNoVerify(tenantID string, fromID, to
 	}
 
 	if existing != nil {
-		// Update existing edge
-		edge := gs.edges[existing.ID]
+		// Update existing edge under per-shard lock to exclude
+		// concurrent GetEdge readers. A4-edges.
+		gs.lockShard(existing.ID)
+		edge, _ := gs.lookupEdgeShard(existing.ID)
 
 		// Merge properties (new values override existing)
 		for k, v := range properties {
 			edge.Properties[k] = v
 		}
 		edge.Weight = weight
+		gs.unlockShard(existing.ID)
 
 		// Write to WAL for durability
 		gs.writeToWAL(wal.OpUpdateEdge, edge)
@@ -464,9 +466,14 @@ func (gs *GraphStorage) DeleteEdgeBetween(fromID, toID uint64, edgeType string) 
 		return false, nil
 	}
 
+	// One-edge-at-a-time shard locking for the search loop. gs.mu.Lock
+	// (held above) excludes other writers; lockShard excludes readers
+	// per shard during each lookup. A4-edges.
 	var edgeToDelete *Edge
 	for _, edgeID := range edgeIDs {
-		edge, exists := gs.edges[edgeID]
+		gs.rlockShard(edgeID)
+		edge, exists := gs.lookupEdgeShard(edgeID)
+		gs.runlockShard(edgeID)
 		if !exists {
 			continue
 		}
@@ -480,8 +487,10 @@ func (gs *GraphStorage) DeleteEdgeBetween(fromID, toID uint64, edgeType string) 
 		return false, nil
 	}
 
-	// Delete from edges map
-	delete(gs.edges, edgeToDelete.ID)
+	// Delete from edges shard under write lock.
+	gs.lockShard(edgeToDelete.ID)
+	gs.deleteEdgeShardEntry(edgeToDelete.ID)
+	gs.unlockShard(edgeToDelete.ID)
 
 	// Remove from global type index
 	gs.removeEdgeFromTypeIndex(edgeType, edgeToDelete.ID)

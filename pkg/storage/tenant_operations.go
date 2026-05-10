@@ -176,7 +176,7 @@ func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Ed
 
 	edges := make([]*Edge, 0, len(edgeIDs))
 	for _, id := range edgeIDs {
-		if edge, exists := gs.edges[id]; exists {
+		if edge, exists := gs.lookupEdgeShard(id); exists {
 			edges = append(edges, edge.Clone())
 		}
 	}
@@ -211,12 +211,13 @@ func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) []*Edge {
 	tid := effectiveTenantID(tenantID)
 
 	var edges []*Edge
-	for _, edge := range gs.edges {
+	gs.forEachEdgeUnlocked(func(edge *Edge) bool {
 		edgeTenant := effectiveTenantID(edge.TenantID)
 		if edgeTenant == tid {
 			edges = append(edges, edge.Clone())
 		}
-	}
+		return true
+	})
 
 	return edges
 }

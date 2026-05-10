@@ -164,8 +164,8 @@ func TestIDAllocation_EdgeIDsNeverReused(t *testing.T) {
 		}
 
 		// Verify all 20 edges exist with unique IDs
-		if len(gs.edges) != 20 {
-			t.Errorf("Expected 20 edges after crash, got %d", len(gs.edges))
+		if gs.edgeCount() != 20 {
+			t.Errorf("Expected 20 edges after crash, got %d", gs.edgeCount())
 		}
 
 		t.Log("After crash: No ID collisions detected - all edge IDs unique")

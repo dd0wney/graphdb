@@ -117,12 +117,12 @@ func (gs *GraphStorage) replayCreateEdge(entry *wal.Entry) error {
 	}
 
 	// Skip if edge already exists (already in snapshot)
-	if _, exists := gs.edges[edge.ID]; exists {
+	if _, exists := gs.lookupEdgeShard(edge.ID); exists {
 		return nil
 	}
 
 	// Replay edge creation
-	gs.edges[edge.ID] = &edge
+	gs.storeEdgeInShard(&edge)
 	gs.edgesByType[edge.Type] = append(gs.edgesByType[edge.Type], edge.ID)
 
 	// Rebuild adjacency lists (disk-backed or in-memory)
@@ -151,12 +151,12 @@ func (gs *GraphStorage) replayDeleteEdge(entry *wal.Entry) error {
 	}
 
 	// Skip if edge doesn't exist (already deleted or never existed)
-	if _, exists := gs.edges[edge.ID]; !exists {
+	if _, exists := gs.lookupEdgeShard(edge.ID); !exists {
 		return nil
 	}
 
 	// Replay edge deletion
-	delete(gs.edges, edge.ID)
+	gs.deleteEdgeShardEntry(edge.ID)
 
 	// Remove from type index
 	gs.removeEdgeFromTypeIndex(edge.Type, edge.ID)

@@ -78,7 +78,7 @@ func (tx *Transaction) applyCreatedEdges() {
 	for shardIdx, edges := range edgesByShard {
 		tx.gs.shardLocks[shardIdx].Lock()
 		for _, edge := range edges {
-			tx.gs.edges[edge.ID] = edge
+			tx.gs.storeEdgeInShard(edge)
 			// Update edge indexes
 			tx.gs.edgesByType[edge.Type] = append(tx.gs.edgesByType[edge.Type], edge.ID)
 			tx.gs.outgoingEdges[edge.FromNodeID] = append(tx.gs.outgoingEdges[edge.FromNodeID], edge.ID)

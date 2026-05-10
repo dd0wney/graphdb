@@ -300,6 +300,84 @@ func (gs *GraphStorage) rebucketSnapshotNodes(flat map[uint64]*Node) {
 	}
 }
 
+// Partitioned-edge-map helpers (audit task A4-edges, 2026-05-10).
+//
+// Mirror of the node-side helpers above. edgeShards is keyed by
+// edgeID & shardMask; the same shardLocks array protects both, so a
+// node operation on shard 5 and an edge operation on shard 5 share
+// the lock (acceptable cross-contention; splitting per-entity-type
+// locks is a future optimization if perf shows it matters).
+
+// lookupEdgeShard returns the edge for the given ID. Caller must hold
+// the appropriate read lock.
+func (gs *GraphStorage) lookupEdgeShard(id uint64) (*Edge, bool) {
+	e, ok := gs.edgeShards[gs.getShardIndex(id)][id]
+	return e, ok
+}
+
+// storeEdgeInShard writes edge into its owning shard. Caller must hold
+// the appropriate write lock.
+func (gs *GraphStorage) storeEdgeInShard(edge *Edge) {
+	gs.edgeShards[gs.getShardIndex(edge.ID)][edge.ID] = edge
+}
+
+// deleteEdgeShardEntry removes the entry for id from its owning shard.
+// Caller must hold the appropriate write lock.
+func (gs *GraphStorage) deleteEdgeShardEntry(id uint64) {
+	delete(gs.edgeShards[gs.getShardIndex(id)], id)
+}
+
+// edgeCount returns the total number of edges across all shards. Caller
+// must hold gs.mu.RLock or all shard read locks for a consistent count.
+func (gs *GraphStorage) edgeCount() int {
+	total := 0
+	for i := range gs.edgeShards {
+		total += len(gs.edgeShards[i])
+	}
+	return total
+}
+
+// forEachEdgeUnlocked invokes fn for every edge across all shards.
+// Iteration stops early if fn returns false. Caller must hold
+// gs.mu.RLock (or all shard read locks) for the duration; concurrent
+// map writes during iteration will trip the Go runtime's map-race check.
+func (gs *GraphStorage) forEachEdgeUnlocked(fn func(*Edge) bool) {
+	for i := range gs.edgeShards {
+		for _, edge := range gs.edgeShards[i] {
+			if !fn(edge) {
+				return
+			}
+		}
+	}
+}
+
+// flattenEdgesForSnapshot collects every edge from every shard into a
+// single map for serialization. Used by the snapshot writer to preserve
+// the on-disk format (a flat map[uint64]*Edge) across the partition
+// migration. Caller must hold gs.mu.RLock for the duration.
+func (gs *GraphStorage) flattenEdgesForSnapshot() map[uint64]*Edge {
+	out := make(map[uint64]*Edge, gs.edgeCount())
+	for i := range gs.edgeShards {
+		for id, edge := range gs.edgeShards[i] {
+			out[id] = edge
+		}
+	}
+	return out
+}
+
+// rebucketSnapshotEdges redistributes a flat snapshot map across the
+// partitioned shards. Used by the snapshot loader. Caller must hold
+// gs.mu.Lock for the duration. Replaces (does not merge with) any
+// existing shard contents.
+func (gs *GraphStorage) rebucketSnapshotEdges(flat map[uint64]*Edge) {
+	for i := range gs.edgeShards {
+		gs.edgeShards[i] = make(map[uint64]*Edge)
+	}
+	for id, edge := range flat {
+		gs.edgeShards[gs.getShardIndex(id)][id] = edge
+	}
+}
+
 // allocateNodeID allocates a new node ID in a thread-safe manner using atomic operations.
 // This is a lock-free operation that provides much better throughput than mutex-based allocation.
 // Returns error if ID space is exhausted.
