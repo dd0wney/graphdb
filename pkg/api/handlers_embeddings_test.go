@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/search"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
@@ -393,5 +394,75 @@ func TestEmbeddings_TenantIsolation(t *testing.T) {
 	})
 	if rr.Code != http.StatusOK {
 		t.Errorf("tenant-A (has index) should succeed, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// TestEmbeddings_VocabDisjointness pins the structural property that two
+// tenants with disjoint corpora produce LSA indexes with disjoint
+// vocabularies. Stronger than TestEmbeddings_TenantIsolation, which only
+// proves registry-level isolation (B has no index when only A was built).
+//
+// Read through FoldQuery rather than the unexported `vocab` map: a token
+// in tenant-A's corpus must fold against A's index and produce OOV
+// against B's, and vice versa. If FoldQuery succeeds in both directions
+// for the *same* token we'd have evidence of cross-tenant vocabulary
+// bleed at build time — which is the exact defect the planning doc
+// claimed was live and which the F1.1 spike (docs/F1_1_PER_TENANT_LSA_DESIGN.md)
+// argued against.
+func TestEmbeddings_VocabDisjointness(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	cfg := search.LSAConfig{
+		Dims: 6, Oversamp: 3, PowerIter: 2,
+		MaxVocab: 200, MinDocFreq: 1, TitleBoost: 3, Seed: 42,
+	}
+
+	// Disjoint corpora: A's tokens never appear in B's, and vice versa.
+	// Each doc varies which terms appear so that no term has df==D
+	// (BuildLSAIndex filters terms with df>=D as zero-IDF noise at
+	// lsa.go:231 — identical docs would yield zero vocab and trip the
+	// T>=Dims guard).
+	corpusA := []search.Document{
+		{ID: 1, Body: "alpha bravo charlie delta echo foxtrot"},
+		{ID: 2, Body: "bravo charlie delta golf sierra tango"},
+		{ID: 3, Body: "alpha echo foxtrot golf sierra tango"},
+	}
+	corpusB := []search.Document{
+		{ID: 1, Body: "hotel india juliet kilo lima oscar"},
+		{ID: 2, Body: "india juliet kilo papa quebec romeo"},
+		{ID: 3, Body: "hotel lima oscar papa quebec romeo"},
+	}
+
+	idxA, err := search.BuildLSAIndex(corpusA, cfg)
+	if err != nil {
+		t.Fatalf("build LSA for tenant-A: %v", err)
+	}
+	idxB, err := search.BuildLSAIndex(corpusB, cfg)
+	if err != nil {
+		t.Fatalf("build LSA for tenant-B: %v", err)
+	}
+
+	server.lsaIndexes.Set("tenant-A", idxA)
+	server.lsaIndexes.Set("tenant-B", idxB)
+
+	// Tokens from corpus A: must fold in A, must be OOV in B.
+	for _, term := range []string{"alpha", "foxtrot", "sierra"} {
+		if _, _, err := idxA.FoldQuery(term); err != nil {
+			t.Errorf("FoldQuery(%q) on tenant-A: want success, got error: %v", term, err)
+		}
+		if _, _, err := idxB.FoldQuery(term); err == nil {
+			t.Errorf("FoldQuery(%q) on tenant-B: want OOV error (B's vocab is disjoint from A's), got success", term)
+		}
+	}
+
+	// Tokens from corpus B: must fold in B, must be OOV in A.
+	for _, term := range []string{"hotel", "juliet", "quebec"} {
+		if _, _, err := idxB.FoldQuery(term); err != nil {
+			t.Errorf("FoldQuery(%q) on tenant-B: want success, got error: %v", term, err)
+		}
+		if _, _, err := idxA.FoldQuery(term); err == nil {
+			t.Errorf("FoldQuery(%q) on tenant-A: want OOV error (A's vocab is disjoint from B's), got success", term)
+		}
 	}
 }
