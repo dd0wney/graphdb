@@ -98,8 +98,13 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 
-			// Store claims in context for handlers to access
+			// Store claims in context for handlers to access. Also write the
+			// identity into the audit collector (if installed) so the outer
+			// auditMiddleware can include it in emitted events — see
+			// middleware_audit_collector.go for why a separate collector is
+			// needed instead of context lookups.
 			ctx := context.WithValue(r.Context(), claimsContextKey, claims)
+			setAuditUser(ctx, claims.UserID, claims.Username)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
@@ -140,8 +145,10 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 				Role:     user.Role,
 			}
 
-			// Store claims in context for handlers to access
+			// Store claims in context for handlers to access. Audit collector
+			// write mirrors the JWT path above.
 			ctx := context.WithValue(r.Context(), claimsContextKey, claims)
+			setAuditUser(ctx, claims.UserID, claims.Username)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
