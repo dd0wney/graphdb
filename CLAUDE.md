@@ -111,6 +111,26 @@ This codebase has had multiple audits and the planning doc sometimes misframes t
 - `golangci-lint` is configured with `max-same-issues: 3` (per `.golangci.yml`); cleanup PRs that touch many files often need 1-2 follow-up runs because new findings surface as originals clear. Plan the lint sweep accordingly.
 - The repo's bench harness is reusable across data types — see `bench_concurrent_read_test.go` (nodes) and `bench_concurrent_edge_read_test.go` (edges) for the template if you partition a third data type.
 
+## Preparing a new session (handoff convention)
+
+When a session is about to end with substantive multi-PR work (≥3 merged PRs, or any work that left non-obvious state), write a session handoff at `docs/SESSION_HANDOFF_<DATE>.md` before stopping. The next session opens by reading the most recent one.
+
+**Distinct from `docs/HANDOFF_<DATE>_<TOPIC>.md`** — those are task-focused (one deliverable, full implementation brief, see e.g. `HANDOFF_2026-05-06_VECTOR_SEARCH_PROPERTY_FILTER.md`). `SESSION_HANDOFF_<DATE>.md` is session-state-focused (what shifted, what's queued, what to retire).
+
+A session handoff should contain, in order:
+
+1. **TL;DR** — one or two sentences on what changed at the project level.
+2. **What's done** — this session's merged PRs, one line each. Include PR numbers.
+3. **Current state** — `main` HEAD commit, open PRs (if any), open branches (if any), uncommitted changes (should be none — flag if not).
+4. **What's next** — the ranked queue from the planning doc, with notes for any items the session moved (e.g., "A4-edges is now done, removed from the queue").
+5. **Stale assumptions to retire** — anything in the user's auto-memory or in `NEXT_STEPS_<DATE>.md` that this session's work invalidated. Be specific: name the file, the line range, the corrected claim. The next session should be able to update the planning doc / refresh memory from this list alone.
+6. **Open questions for the user** — decisions that came up but weren't resolved. The next session opens by either resolving these or by acknowledging them and proceeding.
+7. **How to use this handoff** — a one-line pointer (e.g., "Read this first, then `NEXT_STEPS_<DATE>.md`, then act").
+
+**Don't bundle a handoff into a task PR.** The handoff is its own commit/PR (single-file diff, fast review, doesn't churn alongside code). If the session also produced a planning-doc update, those can land in the same PR.
+
+**Don't rely on the auto-memory system to substitute** — memory is per-user, the handoff is per-repo. A different agent (or a different model) reading this repo cold should be able to pick up where the previous session left off using only the handoff + the planning doc.
+
 ## What this file is NOT for
 
 - Today's TODO list. Use the planning doc.
