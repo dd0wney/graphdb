@@ -75,8 +75,14 @@ func main() {
 	fmt.Printf("\n👋 Shutting down...\n")
 }
 
-func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication.ReplicaNode) {
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+// buildHTTPHandler registers the replica's read-only HTTP surface on a
+// fresh *http.ServeMux. Used by main and exercised in server_test.go to
+// pin the route set (audit A8.2: /nodes must NOT be registered — see
+// docs/A8_REPLICATION_TENANCY_DESIGN.md §1.3).
+func buildHTTPHandler(replica *replication.ReplicaNode, graph *storage.GraphStorage) *http.ServeMux {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		state := replica.GetReplicationState()
 		connected := "disconnected"
 		if state.CurrentLSN > 0 {
@@ -89,35 +95,32 @@ func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication
 		})
 	})
 
-	http.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
 		stats := graph.GetStatistics()
 		json.NewEncoder(w).Encode(stats)
 	})
 
-	http.HandleFunc("/replication/status", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/replication/status", func(w http.ResponseWriter, r *http.Request) {
 		state := replica.GetReplicationState()
 		json.NewEncoder(w).Encode(state)
 	})
 
-	// Read-only endpoints
-	http.HandleFunc("/nodes", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			http.Error(w, "Replica is read-only", http.StatusMethodNotAllowed)
-			return
-		}
+	// A8.2: /nodes was previously registered here returning
+	// graph.GetAllNodesAcrossTenants() with no auth — any caller could
+	// dump every tenant's node corpus. The route is removed (rather than
+	// guarded) because replication uses the WAL stream, not HTTP; this
+	// route was inspection-only. Any future read-API on the replica
+	// should ride cmd/server's middleware stack (see A8.1).
 
-		// Replica is a read-only mirror of the primary's full state
-		// across all tenants — replication legitimately needs the
-		// cross-tenant view. GetAllNodesAcrossTenants is the explicit
-		// entry point; the previous GetAllNodes was deleted to prevent
-		// accidental misuse from tenant-scoped paths (audit A3b).
-		nodes := graph.GetAllNodesAcrossTenants()
-		json.NewEncoder(w).Encode(nodes)
-	})
+	return mux
+}
 
+func startHTTPServer(port int, graph *storage.GraphStorage, replica *replication.ReplicaNode) {
+	mux := buildHTTPHandler(replica, graph)
 	addr := fmt.Sprintf(":%d", port)
 	server := &http.Server{
 		Addr:         addr,
+		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,

@@ -42,6 +42,7 @@ import (
 //	A6c-query   → pkg/api/handlers_query_a6c_test.go    (/query)
 //	A6c-algorithms → pkg/api/handlers_algorithms_a6c_test.go (/algorithms)
 //	A8   → pkg/replication/apply_test.go                (replication apply path)
+//	A8.2 → cmd/graphdb-replica/server_test.go            (no /nodes route on replica)
 //	A9   → pkg/api/handlers_graphql_introspection_a9_test.go (/graphql introspection)
 //	F2   → pkg/api/handlers_retrieve_test.go            (/v1/retrieve)
 func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
