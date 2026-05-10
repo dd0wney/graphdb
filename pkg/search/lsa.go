@@ -28,8 +28,14 @@ import (
 //     corpus produces byte-identical document vectors across rebuilds. This
 //     is a feature: downstream callers can cache vectors keyed on corpus hash.
 //
-//  3. Not tenant-scoped. Mirrors the current posture of FullTextIndex in this
-//     package. Per-tenant isolation is a follow-up PR for both indexes together.
+//  3. Tenant scoping is provided by the caller, not by this struct. Per-tenant
+//     isolation lives in the registry layer above (see tenant_lsa_indexes.go,
+//     pkg/api/handlers_search_admin.go's tenant-scoped corpus assembly via
+//     GetNodesByLabelForTenant, and pkg/api/handlers_embeddings.go's per-tenant
+//     read path). The LSAIndex itself is a pure data structure with no tenancy
+//     awareness — pass it documents from one tenant and it will produce a
+//     model for that tenant. Verified by TestEmbeddings_TenantIsolation in
+//     pkg/api/handlers_embeddings_test.go.
 
 // Document is the input shape for BuildLSAIndex.
 //
