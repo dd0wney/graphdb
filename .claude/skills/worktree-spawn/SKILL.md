@@ -19,10 +19,10 @@ Set up an isolated worktree so a parallel agent can work without colliding with 
    - Verify `git status --short` is clean (don't carry uncommitted state into a new worktree).
    - Verify on `main`, pull latest: `git checkout main && git pull`.
    - Run `go build ./...` to confirm main is in a buildable state. If not, refuse to spawn — surface the broken-main as a blocker.
-2. **Determine task ID** from the user's request. Look it up in `docs/NEXT_STEPS_<DATE>.md` to confirm it's a real task. If unclear, ask.
-3. **Optionally claim the task** via `work-claim` (recommend this when ≥2 agents are or might be active). If the claim fails, abort spawn — another agent already owns the task.
-4. **Compute worktree path**: `../graphdb-<task-id>` (e.g., `../graphdb-A8.2`). If that directory exists, suggest a suffix (`../graphdb-A8.2-2`).
-5. **Compute branch name**. Match the repo's existing convention from `git log --oneline | head -20` — typically `<track>/<task-id>` (e.g., `feat/audit-a8.2`). Fall back to `feat/<task-id>` if no clear convention.
+2. **Determine the bare task ID** from the user's request (e.g. `H4-PR3-skill-rewrite`). Look it up in `docs/NEXT_STEPS_<DATE>.md` to confirm it's a real task. If unclear, ask. Note: the coord daemon stores task IDs project-prefixed (`graphdb:H4-PR3-skill-rewrite`) — `work-claim` handles the prefix internally, so this skill passes the bare ID through.
+3. **Optionally claim the task** via `work-claim` (recommend this when ≥2 agents are or might be active). `work-claim` auto-detects `COORD_PROJECT` from the git remote, prefixes the task ID, and uses the B-lite GraphQL `createNode` mutation to claim atomically — concurrent spawns racing the same task lose at the resolver. If the claim fails with a "unique constraint violation," abort spawn — another agent already owns it.
+4. **Compute worktree path**: `../graphdb-<task-id>` (e.g., `../graphdb-H4-PR3-skill-rewrite`). If that directory exists, suggest a suffix (`../graphdb-H4-PR3-skill-rewrite-2`).
+5. **Compute branch name**. Match the repo's existing convention from `git log --oneline | head -20` — typically `<track>/<task-id>` (e.g., `feat/coord-blite-claim-uniqueness-2026-05-10`). Fall back to `feat/<task-id>` if no clear convention.
 6. **Use `EnterWorktree`** to set up the worktree. (`EnterWorktree` is a Claude Code tool — it creates the worktree, the branch off main, and switches the agent's working context. Do not shell out to `git worktree add` directly; the tool handles process state correctly.)
 7. **Setup in the new worktree**:
    - `go mod download` (warm the module cache for the worktree).
@@ -57,5 +57,5 @@ Set up an isolated worktree so a parallel agent can work without colliding with 
 
 - [ ] Main checkout is on `main`, clean, up-to-date with origin.
 - [ ] `go build ./...` passes on main (don't fork from broken state).
-- [ ] Task ID exists in the planning doc.
-- [ ] If using `work-claim`, the claim succeeded.
+- [ ] Task ID exists in the planning doc AND has been seeded into the coord daemon (via `scripts/coord-seed.sh`).
+- [ ] If using `work-claim`, the coord daemon is reachable (`scripts/coord-bootstrap.sh` has run) and the claim succeeded.
