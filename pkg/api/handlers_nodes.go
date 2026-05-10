@@ -29,16 +29,7 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := make([]*NodeResponse, 0, len(allNodes))
 
 	for _, node := range allNodes {
-		props := make(map[string]any)
-		for k, v := range node.Properties {
-			props[k] = v.Data
-		}
-
-		nodes = append(nodes, &NodeResponse{
-			ID:         node.ID,
-			Labels:     node.Labels,
-			Properties: props,
-		})
+		nodes = append(nodes, s.nodeToResponse(node))
 	}
 
 	s.respondJSON(w, http.StatusOK, nodes)
