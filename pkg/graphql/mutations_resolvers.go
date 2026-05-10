@@ -12,10 +12,22 @@ import (
 
 // claimLabel and claimUniqueProperty enforce B-lite atomic claim
 // semantics: at most one :Claim node per tenant may carry a given
-// for_task value. See docs/COORD_DEPLOY_SPIKE_2026-05-10.md §5.2 / §10
-// PR 1 for the rationale. The resolver delegates uniqueness to
+// for_task value. The resolver delegates uniqueness to
 // storage.CreateNodeWithUniquePropertyForTenant so the check + create
 // run under a single gs.mu.Lock acquisition.
+//
+// TODO(2026-05-10): these constants are coord-domain hardcoded. The
+// graphdb-coord layer (https://github.com/dd0wney/graphdb-coord) was
+// extracted to a sibling repo on this date; the storage primitive
+// (CreateNodeWithUniquePropertyForTenant + ErrUniqueConstraintViolation)
+// stayed here because it's a useful generic primitive, but this
+// label-and-property tuple is the one place graphdb still knows about
+// "Claim" and "for_task" by name. The right next step is to make
+// the resolver consume a configurable uniqueness-rules registry
+// (essentially option B-full from the original COORD_DEPLOY_SPIKE
+// design), at which point graphdb has zero coord-specific knowledge
+// and the rule lives in graphdb-coord's bootstrap path. ~150-300 LOC
+// of Go; no caller migration because it slots in at this same site.
 const (
 	claimLabel          = "Claim"
 	claimUniqueProperty = "for_task"
