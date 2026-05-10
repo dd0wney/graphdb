@@ -5,8 +5,6 @@ import (
 	"log"
 	"net/http"
 	"time"
-
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
 )
 
 // CreateAPIKeyRequest represents a request to create an API key
@@ -41,10 +39,8 @@ type APIKeyResponse struct {
 
 // handleAPIKeys handles GET (list) and POST (create) for /api/v1/apikeys
 func (s *Server) handleAPIKeys(w http.ResponseWriter, r *http.Request) {
-	// Get claims from context (set by requireAdmin middleware)
-	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
-	if !ok {
-		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+	claims := s.requireAdminClaims(w, r)
+	if claims == nil {
 		return
 	}
 
