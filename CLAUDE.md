@@ -1,0 +1,119 @@
+# Project guide for Claude Code agents
+
+Repo-specific instructions to make agent iteration cheap. Loaded automatically by Claude Code when working in this directory. Pairs with the user's global `~/.claude/CLAUDE.md`; this file should only contain things that don't apply elsewhere.
+
+Keep this file under ~200 lines. If something only matters once a quarter, it doesn't belong here.
+
+## Orient first — read these before doing substantive work
+
+In this order:
+
+1. **`docs/CAPABILITIES_2026-05-10.md`** — what exists in `pkg/` + `cmd/` + the enterprise repo, with maturity tags. Read this before claiming anything is "missing" or "scaffolding only" — coarse grep is misleading because the codebase is large.
+2. **`docs/NEXT_STEPS_2026-05-10.md`** — current planning checkpoint. Critical-path queue + already-tracked work. The header date is the source of truth; if a newer `NEXT_STEPS_<DATE>.md` exists, that supersedes.
+3. **`docs/AUDIT_*_2026-05-06.md`** — multi-specialist audits (architecture, security, performance, code-quality). Most of the current work derives from these. Skim only if your task touches the named area.
+
+If the user names a task by track letter (`A4-edges`, `H2`, `F1.1`, `S1`, etc.) or audit-finding ID (`CRIT-1`, `HIGH-2`), that resolves via `NEXT_STEPS_<DATE>.md` or the audit docs. Don't guess what these mean — look them up.
+
+## Open-core: a sibling private repo exists
+
+graphdb is dual-repo:
+
+- `dd0wney/graphdb` (this repo, public): OSS core + plugin/license framework.
+- `dd0wney/graphdb-enterprise` (private): `.so` plugin implementations.
+
+Before claiming a feature is "missing" or that a `pkg/plugins`-style interface is "scaffolding," check what's in the enterprise repo via `gh api repos/dd0wney/graphdb-enterprise/contents`. The OSS-only inspection lies — `prometheus-metrics` (advanced monitoring) and `r2-backup` already ship there; 4 more named in `docs/ENTERPRISE_PLUGINS.md` are unbuilt but documented.
+
+This caught the productization-gaps PR (#71) — corrected in `docs/CAPABILITIES_2026-05-10.md`. Don't repeat the pattern.
+
+## Repo layout quick reference
+
+- `pkg/` — 37 packages. `storage` and `query` are the largest (~50/30 test files); see `CAPABILITIES_2026-05-10.md` for the per-package map.
+- `cmd/` — 29 binaries. `graphdb` is the main server; `cmd/benchmark*` are 13 separate exercisers (proliferation; consolidation might come later).
+- `workers/graphdb-client/` — first-party TypeScript client for Cloudflare Workers. Only non-Go SDK that ships.
+- `docs/` — heavy on `AUDIT_*.md` and `NEXT_STEPS_*.md`; sparse on customer-facing onboarding (a productization-gap, see `CAPABILITIES_2026-05-10.md`).
+
+## Common workflows
+
+### Build, test, lint at CI's surface
+
+```bash
+go build ./...
+go vet ./...
+go test ./pkg/<area>/ -short -timeout 90s -count=1
+go test -race ./pkg/storage/ -count=3 -timeout 300s   # for storage/concurrency changes
+golangci-lint run ./...                                # MUST pass before PR; CI cap is "same issue × 3"
+```
+
+`/preflight` runs an equivalent set; `/review` checks the diff before commit.
+
+### Pre-PR
+
+Per the user's global `CLAUDE.md`, run `/review` then `/preflight` before opening a PR.
+
+Always pass `--delete-branch` to `gh pr merge` so squash-merged branches don't accumulate as stale local references — that debt was the H3 task this repo just closed (#69).
+
+### Atomic-commit convention
+
+PRs are squash-merged with `(#NN)` suffix on main (see `git log --oneline | head`). Multi-commit PRs are fine while in flight — squash collapses them. Within a PR, prefer the structural / lock-grain / bench split that A4 (#67) and A4-edges (#70) used: each commit self-consistent, last commit captures the verification numbers.
+
+## Idioms specific to this repo
+
+### Tenant scoping (`*ForTenant` convention)
+
+Every public storage method has a `Foo` (tenant-blind, legacy) and `FooForTenant` (tenant-strict) pair. New code goes through `FooForTenant`. Cross-tenant lookups return `ErrNodeNotFound` / `ErrEdgeNotFound` (NOT a distinct error) to avoid existence-leak side channels. See `pkg/storage/node_operations.go:GetNodeForTenant` for the canonical example.
+
+### Partitioned shard maps + per-shard locks (A4 / A4-edges idiom)
+
+`gs.nodeShards [256]map[uint64]*Node` and `gs.edgeShards [256]map[uint64]*Edge` are partitioned by `id & shardMask`. Helpers in `pkg/storage/storage_helpers.go`: `lookupNodeShard` / `storeNodeInShard` / `deleteNodeShardEntry` / `nodeCount` / `forEachNodeUnlocked` (and edge variants). Rules:
+
+- **Readers** (`GetNode`, `GetEdge`): take `rlockShard(id)` only.
+- **Writers** (`Create*`, `Update*`, `Delete*`, cascade helpers): take `gs.mu.Lock` for global indexes (`nodesByLabel`, `edgesByType`, `outgoingEdges`, `incomingEdges`, tenant indexes) PLUS `lockShard(id)` for the shardmap mutation.
+- **Cross-shard ops** (DeleteNode cascading edges): collect IDs, sort by shard index, acquire in order. (Currently moot because `gs.mu.Lock` serializes writers, but the discipline matters if that ever changes.)
+
+If you add a third partitioned structure, mirror this exactly. Don't re-invent.
+
+### Atomic + lock-free counters
+
+`closed atomic.Bool`, `nextNodeID` / `nextEdgeID` use `atomic.AddUint64`. Per-tenant counters use atomics with underflow protection (`atomicDecrementWithUnderflowProtection`).
+
+### Snapshot format stability
+
+Snapshot on-disk format is a flat `map[uint64]*Node` / `map[uint64]*Edge` even though in-memory storage is partitioned. `flattenNodesForSnapshot` / `rebucketSnapshotNodes` (and edge variants) handle the conversion. **Do not change the on-disk format without a snapshot version bump** — the snapshot file is customer-data-equivalent.
+
+### `//nolint:` per-site convention
+
+`//nolint:` directives MUST include a reason after the lint name. Plain `//nolint` is rejected by lint policy. See `docs/AUDIT_code_quality_2026-05-06.md` and PR #63 for the rationale.
+
+### `getEdge` / `getNode` benchmarks: prevent Clone elision
+
+When writing benchmarks that mirror production paths (e.g., comparing a per-shard-RLock variant to a `gs.mu.RLock` Legacy baseline), the compiler will dead-code-eliminate `Clone()` if the result is unused. Use `var benchSink atomic.Pointer[T]` and `benchSink.Store(...)` to force the allocation. See `pkg/storage/bench_concurrent_read_test.go` for the pattern.
+
+## Known infra patterns
+
+- **CI Ubuntu `test-race` consistently exits 143.** This is `make test-race`'s 10-minute timeout against the runner's idle-timeout budget — runner cancellation, not a real test failure. macOS runs pass. Tolerated; don't re-investigate without new evidence. PR descriptions can flag it as "known exit-143 infra pattern."
+- **CI benchmark workflow consistently fails on the comment step.** Permission-scope issue, not a benchmark regression. Same toleration as exit-143.
+- **`mergeStateStatus: UNSTABLE`** is the normal state for green PRs in this repo (because of the two known-infra failures above). Verify the failure set matches the expected pattern before merging; net-new failures need investigation.
+
+## Known pitfalls
+
+- **`git branch -d <squash-merged>` refuses** because the squashed commit on main is content-equivalent but not ancestor-equivalent to the branch tip. Use `-D` after verifying the PR is merged via `gh pr list --head <branch> --state merged`. Or just `--delete-branch` at merge time.
+- **`gh pr merge` deletes the LOCAL branch when `--delete-branch` is passed** (in addition to the remote). A subsequent `git branch -D <name>` will error with "branch not found"; that's expected, not a problem.
+- **The cluster code (`pkg/cluster/`, ~2,800 LOC) is real but its production wiring is unverified.** The planning doc says "single-node assumption baked in" — the honest interpretation is "no sharded write path." Don't claim the cluster is unwired without checking; don't claim it's production-ready without checking either.
+- **`pkg/compliance` exists with GDPR/SOC2 controls.** F3 ("Compliance API not started") is about the HTTP-API surface, not the framework itself. Scope F3 narrowly.
+
+## When in doubt, ask the user
+
+This codebase has had multiple audits and the planning doc sometimes misframes things (the cluster + compliance examples above). When the planning doc and the code disagree, **trust the code, then surface the discrepancy to the user** — don't silently work around the planning doc.
+
+## Tooling notes
+
+- Serena MCP is configured (`.serena/`) for symbol-level navigation — useful for locating cross-package symbols faster than ad-hoc grep.
+- `golangci-lint` is configured with `max-same-issues: 3` (per `.golangci.yml`); cleanup PRs that touch many files often need 1-2 follow-up runs because new findings surface as originals clear. Plan the lint sweep accordingly.
+- The repo's bench harness is reusable across data types — see `bench_concurrent_read_test.go` (nodes) and `bench_concurrent_edge_read_test.go` (edges) for the template if you partition a third data type.
+
+## What this file is NOT for
+
+- Today's TODO list. Use the planning doc.
+- General Go advice. Use the user's global `CLAUDE.md`.
+- Long-form architecture narrative. Use `docs/ARCHITECTURE*` (if it exists) or the audit docs.
+- Cross-conversation memory. The agent's memory system handles that.
