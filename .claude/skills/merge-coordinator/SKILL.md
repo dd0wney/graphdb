@@ -25,11 +25,9 @@ If only one PR is ready, this skill is overkill — use `ci-status-triage` direc
      --jq '.[] | select(.mergeable == "MERGEABLE")'
    ```
    Filter to MERGEABLE only. PRs in `CONFLICTING` state need rebase first — surface as blocked, don't include in the merge plan.
-2. **Extract dependency hints** from each PR body. Look for:
-   - "follow-up to #N" / "follow-up of #N"
-   - "depends on #M" / "blocked by #M"
-   - "should land before #X" / "should land after #X"
-   - File-path overlaps that suggest sequencing (two PRs both touching `pkg/storage/storage_types.go` will conflict; one needs to land before the other rebases).
+2. **Extract dependency hints** from two sources:
+   - **Coord instance** (preferred when available): traverse `:DEPENDS_ON` edges from the Task nodes the PRs claim. Each PR's matching Claim points to a Task; `(PR_task)-[:DEPENDS_ON]->(other_task)` means "the other task must close first." Query: `MATCH (t:Task {id: $task_id})-[:DEPENDS_ON]->(d:Task) RETURN d.id`. Authoritative — these dependencies were declared at planning time, not inferred from PR prose.
+   - **PR body fallback** (when coord traversal returns nothing or coord is unavailable): scan for "follow-up to #N" / "depends on #M" / "blocked by #M" / "should land before #X" / "should land after #X" / file-path overlaps suggesting sequencing (two PRs both touching `pkg/storage/storage_types.go` will conflict; one needs to land before the other rebases).
 3. **Build the dependency DAG**. Each PR is a node; "depends on" / "follow-up to" creates an edge. Cycles indicate human coordination needed — surface and abort.
 4. **Topologically sort**. Tie-break ties by:
    - Smaller PR first (less risk per merge — get easy wins out)
@@ -82,7 +80,7 @@ If the user says "go ahead, merge in this order," run sequentially:
 ## Coordination with other skills
 
 - **`ci-status-triage`**: called per PR.
-- **`work-claim`**: claims should already be released (or about to be released) by the merging PRs. If a PR's matching IN_FLIGHT.md row is stale, surface as a follow-up.
+- **`work-claim`**: claims should already be released (or about to be released) by the merging PRs. If a PR's matching `:Claim` node in the coord instance is stale, surface as a follow-up (the stale-sweep task documented in `work-claim`'s body).
 - **`planning-doc-update`**: not invoked by this skill, but the user typically runs it AFTER the merge sequence completes (one update covering all the closed tasks).
 
 ## Pre-flight checks

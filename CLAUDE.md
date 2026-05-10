@@ -152,7 +152,7 @@ Eight `.claude/skills/<name>/SKILL.md` skills live in this repo. Each automates 
 
 | Skill | When | Output |
 |---|---|---|
-| `work-claim` | Before starting any planning-doc task when ≥2 agents may be active. | Tiny PR adding a row to `docs/IN_FLIGHT.md`. Returns success (you own the task) or failure (someone else does). |
+| `work-claim` | Before starting any planning-doc task when ≥2 agents may be active. | Atomic POST to the graphdb coord instance creating a `:Claim` node. Returns success (you own the task) or 409 Conflict (someone else does). See `docs/COORD_SETUP.md`. |
 | `worktree-spawn` | Setting up a parallel agent in an isolated worktree. Wraps `EnterWorktree` + setup boilerplate + optional `work-claim`. | Ready-to-work worktree at `../graphdb-<task-id>` on a fresh branch. |
 | `integration-checkpoint` | Long-running branch (>4h) before merging, after high-leverage main changes, when the user says "sync against main." | Clean rebase + re-run tests + advisor confirmation that original framing still holds. |
 | `merge-coordinator` | ≥2 PRs ready to merge with non-obvious order. Speculative — retire if not invoked for parallel-merge scenarios within a quarter. | Recommended merge sequence based on PR-body cross-references + topological sort. Doesn't auto-merge. |
@@ -163,7 +163,7 @@ These skills cross-reference each other when relevant (e.g., `session-handoff` n
 
 When ≥2 Claude Code agents are or might be active on this repo simultaneously:
 
-1. **Each agent claims its task** via `work-claim` before substantive work. Reading `docs/IN_FLIGHT.md` shows what's already claimed.
+1. **Each agent claims its task** via `work-claim` before substantive work. The coord instance (separate graphdb running the coord schema; see `docs/COORD_SETUP.md`) is the source of truth — query it for active claims via `GET /v1/nodes?label=Claim` or use the GraphQL surface for richer queries.
 2. **Spawn a worktree per parallel task** via `worktree-spawn` — keeps each agent in its own filesystem checkout, eliminating one class of collision.
 3. **Periodic `integration-checkpoint`** for any branch that's been open >4 hours OR after a high-leverage change lands on main (e.g., something that touches shared infrastructure like `pkg/storage/storage_helpers.go` or `CLAUDE.md`).
 4. **Pre-merge `ci-status-triage`** as always.
