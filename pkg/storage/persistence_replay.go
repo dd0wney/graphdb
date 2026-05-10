@@ -59,6 +59,12 @@ func (gs *GraphStorage) replayCreateNode(entry *wal.Entry) error {
 	for _, label := range node.Labels {
 		gs.nodesByLabel[label] = append(gs.nodesByLabel[label], node.ID)
 	}
+	// H4.3: mirror the tenant-scoped label index. Without this, the
+	// per-tenant GraphQL schema generator (which lists labels from
+	// tenantNodesByLabel, not the global nodesByLabel) sees the tenant
+	// as labelless after a restart, so `{ tasks { id } }` 400s with
+	// "Cannot query field" until the tenant takes its next write.
+	gs.addNodeToTenantIndex(&node)
 	if gs.outgoingEdges[node.ID] == nil {
 		gs.outgoingEdges[node.ID] = make([]uint64, 0)
 	}
