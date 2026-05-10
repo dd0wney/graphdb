@@ -61,6 +61,7 @@ All M1–M6 items shipped. PRs #2, #3, #4, #5, #15, #16 merged into `main`.
 - **Lint sweep**: batches 1, 2A, 2B-correctness/handlers/logger, 2C-mechanical, 2D, 2E, 2F all merged (PRs #50, #52–#58, plus prior #14, #12). Cadence has noticeably slowed — the residual is small.
 - **Test-flake roster** (May 2026): WAL race (#59), query Linux failure (#60), perf-regression skip (#61), 5M-node cache assertion tier (#62), parser cleanup (#64). CI is now reliably green on PRs; remaining red is overwhelmingly Linux-runner cancellation (exit 143), not real regressions.
 - **Coord-deploy track** ✅ **CLOSED 2026-05-10**: gap-spike → operational MVP → multi-project schema → B-lite atomic claim resolver → skill rewrite. PRs #85–#93. Daemon now runs locally with real atomic uniqueness; skills exercise the live surface.
+- **Coord layer extracted** ✅ **2026-05-10 (later same day)**: the Taskmaster-like layer (skills, MCP wrapper, scripts, comparison + spike docs) moved to sibling repo [`dd0wney/graphdb-coord`](https://github.com/dd0wney/graphdb-coord). The B-lite uniqueness primitive stayed in graphdb (`pkg/storage.CreateNodeWithUniquePropertyForTenant`); the `:Claim`/`for_task` resolver special-case stayed too with a TODO to generalize. graphdb is now back to being just the database; coord lives one repo over.
 
 ---
 
