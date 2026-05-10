@@ -217,6 +217,23 @@ curl -fsS -X POST -H "X-API-Key: $GRAPHDB_COORD_TOKEN" \
   -d "$(printf '{"type":"FOR","from_node_id":%s,"to_node_id":%s}' "$CLAIM_NODE_ID" "$TASK_NODE_ID")" >/dev/null
 ```
 
+### 7.5. Flip task status to `in-progress`
+
+The status enum (see `scripts/coord-seed.sh` header) treats `pending` as the default and `in-progress` as the active-claim marker. `coord-next` filters for `pending`, so flipping the status here removes this Task from the next-task recommendation pool until the claim is released.
+
+Use `updateNode` on the existing Task — properties merge, so we send only the changed field. The `in-progress` literal must match what `coord-next` filters on; don't paraphrase.
+
+```bash
+TASK_UPDATE_PAYLOAD=$(TASK_NODE_ID="$TASK_NODE_ID" python3 -c "
+import json, os
+new_props = {'status': 'in-progress'}
+query = 'mutation { updateNode(id: \"' + os.environ['TASK_NODE_ID'] + '\", properties: ' + json.dumps(json.dumps(new_props)) + ') { id } }'
+print(json.dumps({'query': query}))
+")
+curl -fsS -X POST -H "X-API-Key: $GRAPHDB_COORD_TOKEN" \
+  -H 'Content-Type: application/json' "$GRAPHDB_COORD_URL/graphql" -d "$TASK_UPDATE_PAYLOAD" >/dev/null
+```
+
 ### 8. Report success
 
 Surface the IDs to the user so they can investigate later if needed:
@@ -231,7 +248,12 @@ proceed.
 
 ## Releasing the claim
 
-When the work PR merges, mark the Task closed by adding a `:CLOSED_BY` edge from Task → PR, then delete the Claim (cascades HOLDS + FOR via storage's edge-cleanup).
+When the work PR merges:
+1. Add a `:CLOSED_BY` edge from Task → PR.
+2. Flip the Task's `status` from `in-progress` to `done`.
+3. Delete the Claim node (cascades HOLDS + FOR via storage's edge-cleanup).
+
+Order matters slightly: do (2) before (3) so a stale-sweep that races the release sees the Task as `done` (and skips it) rather than `in-progress` with no Claim (which would look like an orphaned in-progress).
 
 ```bash
 PR_NUMBER=91   # whatever the merging PR is
@@ -262,13 +284,25 @@ curl -fsS -X POST -H "X-API-Key: $GRAPHDB_COORD_TOKEN" \
   -H 'Content-Type: application/json' "$GRAPHDB_COORD_URL/edges" \
   -d "$(printf '{"type":"CLOSED_BY","from_node_id":%s,"to_node_id":%s}' "$TASK_NODE_ID" "$PR_NODE_ID")" >/dev/null
 
-# 3. Delete the Claim node (HOLDS + FOR edges go with it).
+# 3. Flip Task.status to "done" before deleting the Claim — order matters
+#    if a stale-sweep races the release (Task with no Claim but status=in-progress
+#    looks orphaned; Task with no Claim but status=done is correctly retired).
+TASK_DONE_PAYLOAD=$(TASK_NODE_ID="$TASK_NODE_ID" python3 -c "
+import json, os
+new_props = {'status': 'done'}
+query = 'mutation { updateNode(id: \"' + os.environ['TASK_NODE_ID'] + '\", properties: ' + json.dumps(json.dumps(new_props)) + ') { id } }'
+print(json.dumps({'query': query}))
+")
+curl -fsS -X POST -H "X-API-Key: $GRAPHDB_COORD_TOKEN" \
+  -H 'Content-Type: application/json' "$GRAPHDB_COORD_URL/graphql" -d "$TASK_DONE_PAYLOAD" >/dev/null
+
+# 4. Delete the Claim node (HOLDS + FOR edges go with it).
 curl -fsS -X POST -H "X-API-Key: $GRAPHDB_COORD_TOKEN" \
   -H 'Content-Type: application/json' "$GRAPHDB_COORD_URL/graphql" \
   -d "$(printf '{"query":"mutation { deleteNode(id: \\"%s\\") { success } }"}' "$CLAIM_NODE_ID")" >/dev/null
 ```
 
-For abandoned work (no PR ever merged): skip the `:CLOSED_BY` edge, just delete the Claim with a note in the user-visible report.
+For abandoned work (no PR ever merged): skip steps 1–2, set `status` to `cancelled` (not `done`), then delete the Claim. Distinguishes intentional retirement from completion in audit-history queries.
 
 ## Stale claim cleanup
 

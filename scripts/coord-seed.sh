@@ -61,22 +61,36 @@ log "COORD_PROJECT=$COORD_PROJECT"
 # "<COORD_PROJECT>:" before sending. Closed Tasks are seeded so audit-
 # history queries work from day one (e.g., "did A4-edges close before
 # A8.2?"). Closing PR refs become :CLOSED_BY edges in a future iteration.
+#
+# Status enum (extended from binary open/done as of 2026-05-10, mirrors
+# Taskmaster's taxonomy — see docs/COMPARE_TASKMASTER_2026-05-10.md §7):
+#   pending      — not yet started; the default for new Tasks
+#   in-progress  — actively being worked on; set by work-claim on Claim creation
+#   blocked      — paused waiting on something external (not a DEPENDS_ON Task,
+#                  which is implicit; this is for human-resolvable blockers)
+#   done         — completed; CLOSED_BY edge typically points at the closing PR
+#   deferred     — explicitly punted to a later planning round
+#   cancelled    — abandoned without completion (distinct from deferred)
+#
+# coord-next/coord-clusters filter on `pending` (and respect DEPENDS_ON) when
+# recommending the next task. work-claim flips `pending` → `in-progress` on a
+# successful Claim and `in-progress` → `done` on release.
 TASKS=(
   "H1:H:done:65,66"
   "H3:H:done:"
   "A4:A:done:67"
   "A4-edges:A:done:70"
   "A8.2:A:done:81"
-  "F1.1-spike:F:open:"
-  "F1.1-impl:F:open:"
-  "F3:F:open:"
-  "A8.1:A:open:"
-  "H2:H:open:"
-  "H4-PR1-blite:H:open:"
-  "H4-PR2-bootstrap:H:open:"
-  "H4-PR3-skill-rewrite:H:open:"
-  "H4-PR4-planning-update:H:open:"
-  "S1:S:open:"
+  "F1.1-spike:F:pending:"
+  "F1.1-impl:F:pending:"
+  "F3:F:pending:"
+  "A8.1:A:pending:"
+  "H2:H:pending:"
+  "H4-PR1-blite:H:done:91"
+  "H4-PR2-bootstrap:H:done:86,87"
+  "H4-PR3-skill-rewrite:H:done:93"
+  "H4-PR4-planning-update:H:done:94"
+  "S1:S:pending:"
 )
 
 # Pre-fetch nodes once for both the :Project lookup and the existing-Task
