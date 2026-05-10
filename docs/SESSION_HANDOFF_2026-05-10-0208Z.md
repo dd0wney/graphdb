@@ -81,4 +81,4 @@ For the user's auto-memory and for the planning doc:
 3. Then read `CLAUDE.md` § "Orient first" if you haven't already (but if you're a Claude Code agent in this repo, you've already been auto-loaded).
 4. If picking up A8.2 (recommended), check the audit reference in `docs/AUDIT_security_2026-05-06.md` for the original finding, plus `pkg/api/audit_regression_test.go` for the test-row pattern other A* tasks used.
 
-This handoff goes stale on the next substantive session. When that happens, write a new `docs/SESSION_HANDOFF_<DATE>.md` and don't bother updating this one.
+This handoff goes stale on the next substantive session. When that happens, write a new `docs/SESSION_HANDOFF_<YYYY-MM-DD>-<HHMM>Z.md` (filename format defined in CLAUDE.md) and don't bother updating this one.
