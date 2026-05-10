@@ -137,7 +137,9 @@ A session handoff should contain, in order:
 
 ## Project-level skills available
 
-Four `.claude/skills/<name>/SKILL.md` skills live in this repo. Each automates a workflow that recurred ≥2-3 times in recent sessions. Use them instead of re-deriving the structure.
+Eight `.claude/skills/<name>/SKILL.md` skills live in this repo. Each automates a workflow that recurred ≥2-3 times in recent sessions, OR provides primitives for parallel-agent coordination.
+
+**Single-agent / session-lifecycle:**
 
 | Skill | When | Output |
 |---|---|---|
@@ -146,7 +148,29 @@ Four `.claude/skills/<name>/SKILL.md` skills live in this repo. Each automates a
 | `ci-status-triage` | Before any merge (this repo's normal state is `UNSTABLE`-but-mergeable; manual classification required). | Categorised failure list + merge/hold/investigate recommendation. Doesn't modify anything. |
 | `branch-cleanup` | After multi-PR work, or "clean up stale branches." | Local `git branch -D` of confirmed-merged branches. Asks user before bulk delete. |
 
-These skills cross-reference each other when relevant (e.g., `session-handoff` notes that `branch-cleanup` is a natural follow-up). They follow shared discipline: single-PR-per-output, doesn't bundle into task PRs, stops before merge, surfaces decisions to the user explicitly.
+**Parallel-agent coordination:**
+
+| Skill | When | Output |
+|---|---|---|
+| `work-claim` | Before starting any planning-doc task when ≥2 agents may be active. | Tiny PR adding a row to `docs/IN_FLIGHT.md`. Returns success (you own the task) or failure (someone else does). |
+| `worktree-spawn` | Setting up a parallel agent in an isolated worktree. Wraps `EnterWorktree` + setup boilerplate + optional `work-claim`. | Ready-to-work worktree at `../graphdb-<task-id>` on a fresh branch. |
+| `integration-checkpoint` | Long-running branch (>4h) before merging, after high-leverage main changes, when the user says "sync against main." | Clean rebase + re-run tests + advisor confirmation that original framing still holds. |
+| `merge-coordinator` | ≥2 PRs ready to merge with non-obvious order. Speculative — retire if not invoked for parallel-merge scenarios within a quarter. | Recommended merge sequence based on PR-body cross-references + topological sort. Doesn't auto-merge. |
+
+These skills cross-reference each other when relevant (e.g., `session-handoff` notes that `branch-cleanup` is a natural follow-up; `worktree-spawn` calls `work-claim` internally). They follow shared discipline: single-PR-per-output, doesn't bundle into task PRs, stops before merge, surfaces decisions to the user explicitly.
+
+## Parallel-agent coordination workflow
+
+When ≥2 Claude Code agents are or might be active on this repo simultaneously:
+
+1. **Each agent claims its task** via `work-claim` before substantive work. Reading `docs/IN_FLIGHT.md` shows what's already claimed.
+2. **Spawn a worktree per parallel task** via `worktree-spawn` — keeps each agent in its own filesystem checkout, eliminating one class of collision.
+3. **Periodic `integration-checkpoint`** for any branch that's been open >4 hours OR after a high-leverage change lands on main (e.g., something that touches shared infrastructure like `pkg/storage/storage_helpers.go` or `CLAUDE.md`).
+4. **Pre-merge `ci-status-triage`** as always.
+5. **When multiple PRs are ready**, `merge-coordinator` recommends an order; the agent owning the merging session executes (or asks the user to).
+6. **Session ends → `session-handoff`** captures cross-session sync. **`branch-cleanup`** sweeps stale local branches.
+
+The user's global `~/.claude/CLAUDE.md` parallel-agent rules ("Never modify shared interfaces without explicit coordination," "Own your directory," "If you need an interface change, stop and propose it — don't implement," "Run full tests before marking any task complete," "Commit frequently with small atomic changes") are the discipline; these skills are the mechanisms that make the discipline cheap to follow.
 
 ## What this file is NOT for
 
