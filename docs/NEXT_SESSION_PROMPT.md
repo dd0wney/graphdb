@@ -12,14 +12,22 @@ Pre-flight before starting:
 
 1. Read `docs/SESSION_HANDOFF_2026-05-10-0600Z.md` for what closed last session.
 2. Skim `docs/NEXT_STEPS_2026-05-10.md` § "Track F" for F1.1's full scope.
-3. Confirm coord daemon healthy: `curl -fsS http://localhost:8090/health`. If not, `bash scripts/coord-bootstrap.sh`. If you intend to claim F1.1-spike via the `work-claim` skill, the daemon must be up.
-4. Check open PRs first: `gh pr list --state open`. If #95 (Taskmaster comparison) is still open, the user owes a decision — surface it before doing other work.
+3. Confirm coord daemon healthy: `curl -fsS http://localhost:8090/health`. If not, `bash scripts/coord-bootstrap.sh`. If you intend to claim F1.1-spike, the daemon must be up.
+4. Check open PRs first: `gh pr list --state open`. The previous session may still have #95 / #97 / #98 / #96 in flight — surface any unmerged ones before doing new work.
 
 Implementation scope (the spike):
 
 - F1.1 = per-tenant Latent Semantic Analysis. The user's planning doc has the spike contract; follow that. Exit criteria includes a go/no-go decision baked into the spike's last section.
 - The spike is `/spike` shape: deliverable is a markdown design doc + go/no-go, NOT implementation. Implementation is F1.1-impl which follows.
 
-Validation angle: this is the first task to ride coord post-H4 close-out. Exercise the `work-claim` skill on F1.1-spike from session start (claim `graphdb:F1.1-spike`) and report back at session end whether the skill behaved as documented. If anything in `work-claim`'s bash blocks misbehaves, file a follow-up — that's the empirical test of the skill rewrite.
+New skills + tooling available (from the 2026-05-10 session):
+
+- `coord-next` — recommend next pending+unblocked Task. **Try this first** — should return `graphdb:F1.1-spike`.
+- `coord-subtask` — decompose a Task via :SUBTASK_OF if the spike feels too big.
+- `coord-clusters` — DAG-grouped parallel-execution plan.
+- `cmd/coord-mcp` (binary) — MCP server exposing 8 coord tools. Optional: wire into a non-Claude-Code MCP client to dogfood from outside Claude Code.
+- Status enum is now richer (`pending`/`in-progress`/`blocked`/`done`/`deferred`/`cancelled`); `work-claim` flips Task.status on claim and release.
+
+Validation angle: this is the first task to ride the post-H4 + post-Taskmaster-borrow tooling. Run `coord-next` first to confirm it recommends `graphdb:F1.1-spike`, then claim via `work-claim`. Report at session end whether the new skills behaved as documented.
 
 End the session via the `session-handoff` skill.
