@@ -570,13 +570,13 @@ type claimInput struct {
 }
 
 type claimOutput struct {
-	Success           bool   `json:"success"`
-	ClaimNodeID       int    `json:"claim_node_id,omitempty"`
-	AgentNodeID       int    `json:"agent_node_id,omitempty"`
-	TaskNodeID        int    `json:"task_node_id,omitempty"`
-	Conflict          bool   `json:"conflict,omitempty"`
-	ConflictingClaim  int    `json:"conflicting_claim_node_id,omitempty"`
-	ConflictMessage   string `json:"conflict_message,omitempty"`
+	Success          bool   `json:"success"`
+	ClaimNodeID      int    `json:"claim_node_id,omitempty"`
+	AgentNodeID      int    `json:"agent_node_id,omitempty"`
+	TaskNodeID       int    `json:"task_node_id,omitempty"`
+	Conflict         bool   `json:"conflict,omitempty"`
+	ConflictingClaim int    `json:"conflicting_claim_node_id,omitempty"`
+	ConflictMessage  string `json:"conflict_message,omitempty"`
 }
 
 func (c *coordClient) claimTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in claimInput) (*mcp.CallToolResult, claimOutput, error) {
@@ -666,16 +666,16 @@ func (c *coordClient) claimTaskTool(ctx context.Context, _ *mcp.CallToolRequest,
 // --- coord_release_claim ---
 
 type releaseInput struct {
-	ClaimNodeID int `json:"claim_node_id" jsonschema:"the :Claim node id from coord_claim_task. Required."`
-	TaskNodeID  int `json:"task_node_id" jsonschema:"the :Task node id from coord_claim_task. Required."`
-	PRNumber    int `json:"pr_number,omitempty" jsonschema:"optional GitHub PR number. If set, creates a :PR node + CLOSED_BY edge."`
+	ClaimNodeID int  `json:"claim_node_id" jsonschema:"the :Claim node id from coord_claim_task. Required."`
+	TaskNodeID  int  `json:"task_node_id" jsonschema:"the :Task node id from coord_claim_task. Required."`
+	PRNumber    int  `json:"pr_number,omitempty" jsonschema:"optional GitHub PR number. If set, creates a :PR node + CLOSED_BY edge."`
 	Cancelled   bool `json:"cancelled,omitempty" jsonschema:"true if the Task was abandoned without completion. Sets status to cancelled instead of done; skips :PR + CLOSED_BY."`
 }
 
 type releaseOutput struct {
-	Success     bool `json:"success"`
-	PRNodeID    int  `json:"pr_node_id,omitempty"`
-	NewStatus   string `json:"new_status"`
+	Success   bool   `json:"success"`
+	PRNodeID  int    `json:"pr_node_id,omitempty"`
+	NewStatus string `json:"new_status"`
 }
 
 func (c *coordClient) releaseClaimTool(ctx context.Context, _ *mcp.CallToolRequest, in releaseInput) (*mcp.CallToolResult, releaseOutput, error) {
