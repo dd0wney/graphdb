@@ -53,8 +53,11 @@ func (s *Server) withTenant(next http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 
-		// Inject tenant into context
+		// Inject tenant into context. Also write into the audit collector
+		// (if installed) so auditMiddleware can include TenantID in emitted
+		// events — see middleware_audit_collector.go for the rationale.
 		ctx := tenant.WithTenant(r.Context(), tenantID)
+		setAuditTenant(ctx, tenantID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }

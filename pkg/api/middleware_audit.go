@@ -8,7 +8,6 @@ import (
 
 	"github.com/dd0wney/cluso-graphdb/pkg/api/middleware"
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
 )
 
 // logAuditEvent logs an event to both audit loggers when persistent logging is enabled.
@@ -39,12 +38,16 @@ func (s *Server) auditMiddleware(next http.Handler) http.Handler {
 		// Process request
 		next.ServeHTTP(wrapper, r)
 
-		// Extract user info from context if authenticated
-		userID := ""
-		username := ""
-		if claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims); ok {
-			userID = claims.UserID
-			username = claims.Username
+		// Extract identity from the audit collector. requireAuth and
+		// withTenant install user/tenant via r.WithContext(ctx) which is
+		// downstream-only — a direct r.Context().Value(claimsContextKey)
+		// here would always miss because next.ServeHTTP gave downstream
+		// a wrapped *http.Request, leaving this scope's r untouched.
+		// auditCollectorMiddleware (installed outer of this middleware)
+		// shares a pointer that the inner middlewares write through.
+		userID, username, tenantID := "", "", ""
+		if coll := getAuditCollector(r.Context()); coll != nil {
+			userID, username, tenantID = coll.snapshot()
 		}
 
 		// Determine resource type and action from path and method
@@ -63,6 +66,7 @@ func (s *Server) auditMiddleware(next http.Handler) http.Handler {
 		event := &audit.Event{
 			UserID:       userID,
 			Username:     username,
+			TenantID:     tenantID,
 			Action:       action,
 			ResourceType: resourceType,
 			Status:       status,
