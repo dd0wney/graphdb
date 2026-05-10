@@ -17,9 +17,81 @@ func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value)
 
 // CreateNodeWithTenant creates a new node for a specific tenant.
 func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, properties map[string]Value) (*Node, error) {
-	start := time.Now()
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
+	return gs.createNodeLocked(tenantID, labels, properties)
+}
+
+// CreateNodeWithUniquePropertyForTenant creates a node only if no other
+// node in the same tenant already has the same value for
+// (uniqueLabel, uniquePropertyKey). The check + create runs under a
+// single gs.mu.Lock acquisition, so two concurrent calls cannot both
+// observe "no conflict" and both create. On conflict, returns a
+// *UniqueConstraintError (errors.Is matches ErrUniqueConstraintViolation).
+//
+// uniqueLabel must be present in labels and the new properties must
+// contain uniquePropertyKey. The constraint is enforced for the named
+// label only, mirroring the per-label scope in pkg/constraints —
+// nodes with other labels can hold the same property value.
+//
+// Introduced for B-lite (docs/COORD_DEPLOY_SPIKE_2026-05-10.md §5.2 /
+// §10 PR 1) so the GraphQL :Claim resolver can enforce one active claim
+// per for_task. Generic enough to reuse if other coord types need
+// uniqueness; a fully general HTTP/GraphQL constraint API (B-full) is
+// still deferred per the spike.
+func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
+	tenantID string,
+	labels []string,
+	properties map[string]Value,
+	uniqueLabel string,
+	uniquePropertyKey string,
+) (*Node, error) {
+	if uniqueLabel == "" || uniquePropertyKey == "" {
+		return nil, fmt.Errorf("uniqueLabel and uniquePropertyKey are required")
+	}
+
+	// Caller-side sanity: the new node must carry the labelled property
+	// so the uniqueness rule is meaningful.
+	if !containsString(labels, uniqueLabel) {
+		return nil, fmt.Errorf("uniqueLabel %q must be present in labels", uniqueLabel)
+	}
+	newVal, ok := properties[uniquePropertyKey]
+	if !ok {
+		return nil, fmt.Errorf("property %q is required for uniqueness check", uniquePropertyKey)
+	}
+
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+
+	if err := gs.checkClosed(); err != nil {
+		return nil, err
+	}
+
+	tid := effectiveTenantID(tenantID)
+	if labelMap := gs.tenantNodesByLabel[tid]; labelMap != nil {
+		for _, existingID := range labelMap[uniqueLabel] {
+			existing, exists := gs.lookupNodeShard(existingID)
+			if !exists {
+				continue
+			}
+			if existingVal, has := existing.Properties[uniquePropertyKey]; has && valuesEqual(existingVal, newVal) {
+				return nil, &UniqueConstraintError{
+					Label:             uniqueLabel,
+					PropertyKey:       uniquePropertyKey,
+					ConflictingNodeID: existingID,
+					TenantID:          tid.String(),
+				}
+			}
+		}
+	}
+
+	return gs.createNodeLocked(tenantID, labels, properties)
+}
+
+// createNodeLocked is the body of CreateNodeWithTenant minus the lock.
+// Caller must hold gs.mu.Lock().
+func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, properties map[string]Value) (*Node, error) {
+	start := time.Now()
 
 	// Check if storage is closed
 	if err := gs.checkClosed(); err != nil {
@@ -87,6 +159,30 @@ func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, p
 
 	gs.recordOperation("create_node", "success", start)
 	return node.Clone(), nil
+}
+
+func valuesEqual(a, b Value) bool {
+	if a.Type != b.Type {
+		return false
+	}
+	if len(a.Data) != len(b.Data) {
+		return false
+	}
+	for i := range a.Data {
+		if a.Data[i] != b.Data[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func containsString(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
 }
 
 // GetNode retrieves a node by ID.

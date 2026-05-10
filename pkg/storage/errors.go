@@ -7,14 +7,37 @@ import (
 
 // Common sentinel errors
 var (
-	ErrNodeNotFound    = errors.New("node not found")
-	ErrEdgeNotFound    = errors.New("edge not found")
-	ErrStorageClosed   = errors.New("storage is closed")
-	ErrInvalidID       = errors.New("invalid ID")
-	ErrWALAppendFailed = errors.New("WAL append failed")
-	ErrMarshalFailed   = errors.New("marshal failed")
-	ErrIndexFailed     = errors.New("index operation failed")
+	ErrNodeNotFound              = errors.New("node not found")
+	ErrEdgeNotFound              = errors.New("edge not found")
+	ErrStorageClosed             = errors.New("storage is closed")
+	ErrInvalidID                 = errors.New("invalid ID")
+	ErrWALAppendFailed           = errors.New("WAL append failed")
+	ErrMarshalFailed             = errors.New("marshal failed")
+	ErrIndexFailed               = errors.New("index operation failed")
+	ErrUniqueConstraintViolation = errors.New("unique constraint violation")
 )
+
+// UniqueConstraintError is returned by CreateNodeWithUniquePropertyForTenant
+// when a node with the same (label, propertyKey, propertyValue) already
+// exists in the tenant. Use errors.Is(err, ErrUniqueConstraintViolation)
+// to detect this class.
+type UniqueConstraintError struct {
+	Label             string
+	PropertyKey       string
+	ConflictingNodeID uint64
+	TenantID          string
+}
+
+// Error implements the error interface.
+func (e *UniqueConstraintError) Error() string {
+	return fmt.Sprintf("unique constraint violation: tenant=%s label=%s property=%s already held by node %d",
+		e.TenantID, e.Label, e.PropertyKey, e.ConflictingNodeID)
+}
+
+// Unwrap allows errors.Is(err, ErrUniqueConstraintViolation).
+func (e *UniqueConstraintError) Unwrap() error {
+	return ErrUniqueConstraintViolation
+}
 
 // StorageError provides structured error information for storage operations.
 type StorageError struct {

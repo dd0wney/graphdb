@@ -175,8 +175,16 @@ func generateSchemaWithLimitsForLabels(gs *storage.GraphStorage, config *LimitCo
 		Fields: queryFields,
 	})
 
+	// Mount the same mutation set the edges_schema.go uses. Without
+	// this, cmd/server's GraphQL endpoint exposes only queries, which
+	// makes the createNode/createEdge resolvers — and the B-lite
+	// :Claim uniqueness check that piggy-backs on createNode —
+	// unreachable from the live server. (H4.2.)
+	mutationType := buildMutationType(gs, edgeType)
+
 	schema, err := graphql.NewSchema(graphql.SchemaConfig{
-		Query: queryType,
+		Query:    queryType,
+		Mutation: mutationType,
 	})
 
 	if err != nil {

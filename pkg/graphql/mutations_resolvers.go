@@ -10,6 +10,17 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
+// claimLabel and claimUniqueProperty enforce B-lite atomic claim
+// semantics: at most one :Claim node per tenant may carry a given
+// for_task value. See docs/COORD_DEPLOY_SPIKE_2026-05-10.md §5.2 / §10
+// PR 1 for the rationale. The resolver delegates uniqueness to
+// storage.CreateNodeWithUniquePropertyForTenant so the check + create
+// run under a single gs.mu.Lock acquisition.
+const (
+	claimLabel          = "Claim"
+	claimUniqueProperty = "for_task"
+)
+
 // createNodeMutationResolver creates a resolver for createNode mutation
 func createNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
@@ -46,6 +57,27 @@ func createNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		// Create node in storage, scoped to caller's tenant.
 		// Audit A6c-graphql-resolvers (2026-05-08).
 		tenantID := tenant.MustFromContext(p.Context)
+
+		// B-lite: special-case :Claim creation so two agents cannot both
+		// hold an active claim on the same task. The single-label
+		// labels==["Claim"] check is intentional — multi-label nodes
+		// take the regular path so callers retain freedom to add
+		// secondary labels without inheriting uniqueness semantics.
+		if len(labels) == 1 && labels[0] == claimLabel {
+			if _, ok := properties[claimUniqueProperty]; !ok {
+				return nil, fmt.Errorf(":Claim creation requires a %q property", claimUniqueProperty)
+			}
+			node, err := gs.CreateNodeWithUniquePropertyForTenant(
+				tenantID, labels, properties, claimLabel, claimUniqueProperty,
+			)
+			if err != nil {
+				// Surface the typed conflict verbatim so callers can
+				// match on the message; errors.Is still works upstream.
+				return nil, err
+			}
+			return node, nil
+		}
+
 		node, err := gs.CreateNodeWithTenant(tenantID, labels, properties)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create node: %w", err)
