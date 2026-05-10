@@ -135,6 +135,19 @@ A session handoff should contain, in order:
 
 **Don't rely on the auto-memory system to substitute** — memory is per-user, the handoff is per-repo. A different agent (or a different model) reading this repo cold should be able to pick up where the previous session left off using only the handoff + the planning doc.
 
+## Project-level skills available
+
+Four `.claude/skills/<name>/SKILL.md` skills live in this repo. Each automates a workflow that recurred ≥2-3 times in recent sessions. Use them instead of re-deriving the structure.
+
+| Skill | When | Output |
+|---|---|---|
+| `session-handoff` | At session-end with substantive multi-PR work, or "prepare a handoff." | `docs/SESSION_HANDOFF_<...>.md` + PR. Stops before merge. |
+| `planning-doc-update` | After a tracked task closes, or "mark X done in the planning doc." | Targeted edits to `docs/NEXT_STEPS_<DATE>.md` + PR. Single-file diff. |
+| `ci-status-triage` | Before any merge (this repo's normal state is `UNSTABLE`-but-mergeable; manual classification required). | Categorised failure list + merge/hold/investigate recommendation. Doesn't modify anything. |
+| `branch-cleanup` | After multi-PR work, or "clean up stale branches." | Local `git branch -D` of confirmed-merged branches. Asks user before bulk delete. |
+
+These skills cross-reference each other when relevant (e.g., `session-handoff` notes that `branch-cleanup` is a natural follow-up). They follow shared discipline: single-PR-per-output, doesn't bundle into task PRs, stops before merge, surfaces decisions to the user explicitly.
+
 ## What this file is NOT for
 
 - Today's TODO list. Use the planning doc.
