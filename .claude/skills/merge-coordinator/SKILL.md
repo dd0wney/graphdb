@@ -26,7 +26,31 @@ If only one PR is ready, this skill is overkill — use `ci-status-triage` direc
    ```
    Filter to MERGEABLE only. PRs in `CONFLICTING` state need rebase first — surface as blocked, don't include in the merge plan.
 2. **Extract dependency hints** from two sources:
-   - **Coord instance** (preferred when available): traverse `:DEPENDS_ON` edges from the Task nodes the PRs claim. Each PR's matching Claim points to a Task; `(PR_task)-[:DEPENDS_ON]->(other_task)` means "the other task must close first." Query: `MATCH (t:Task {id: $task_id})-[:DEPENDS_ON]->(d:Task) RETURN d.id`. Authoritative — these dependencies were declared at planning time, not inferred from PR prose.
+   - **Coord instance** (preferred when available): traverse `:DEPENDS_ON` edges from the Task nodes the PRs claim. Each PR's matching Claim points to a Task; `(PR_task)-[:DEPENDS_ON]->(other_task)` means "the other task must close first." Authoritative — these dependencies were declared at planning time, not inferred from PR prose. Coord doesn't speak Cypher; the per-label GraphQL queries (`{ tasks { ... } }`) depend on the tenant label index, which isn't repopulated on daemon restart (separate snapshot-replay bug). Use REST `/nodes` for the Task lookup (label filter client-side; resilient to that bug) and GraphQL `{ edges { ... } }` for edges (REST `GET /edges` returns 405):
+     ```bash
+     # Reads all nodes + all edges in two round-trips; filters client-side.
+     NODES=$(curl -fsS -H "X-API-Key: $GRAPHDB_COORD_TOKEN" "$GRAPHDB_COORD_URL/nodes")
+     EDGES=$(curl -fsS -X POST -H "X-API-Key: $GRAPHDB_COORD_TOKEN" \
+       -H 'Content-Type: application/json' "$GRAPHDB_COORD_URL/graphql" \
+       -d '{"query":"{ edges { id type fromNodeId toNodeId } }"}')
+
+     paste <(echo "$NODES") <(echo "$EDGES") | python3 -c "
+     import json, sys, base64
+     def decode(v):
+         try: return base64.b64decode(v).decode('utf-8')
+         except: return v
+     # Each line is 'nodes_json\\tedges_json' — split.
+     line = sys.stdin.read().strip()
+     nodes_json, edges_json = line.split('\\t', 1)
+     nodes = json.loads(nodes_json)
+     edges = json.loads(edges_json).get('data', {}).get('edges', [])
+     id_to_task = {str(n['id']): decode(n['properties'].get('id','')) for n in nodes if 'Task' in n.get('labels', [])}
+     for e in edges:
+         if e.get('type') == 'DEPENDS_ON':
+             print(f\"{id_to_task.get(str(e['fromNodeId']), '?')} -> {id_to_task.get(str(e['toNodeId']), '?')}\")
+     "
+     ```
+     Map each open PR to its claimed Task via the PR's matching `:Claim.for_task` (read from coord) or by parsing the PR title/branch for the task ID.
    - **PR body fallback** (when coord traversal returns nothing or coord is unavailable): scan for "follow-up to #N" / "depends on #M" / "blocked by #M" / "should land before #X" / "should land after #X" / file-path overlaps suggesting sequencing (two PRs both touching `pkg/storage/storage_types.go` will conflict; one needs to land before the other rebases).
 3. **Build the dependency DAG**. Each PR is a node; "depends on" / "follow-up to" creates an edge. Cycles indicate human coordination needed — surface and abort.
 4. **Topologically sort**. Tie-break ties by:
