@@ -1,6 +1,6 @@
 ---
 name: session-handoff
-description: Write a session-handoff doc capturing what shifted, what's queued, and what to retire so the next Claude Code session can pick up cleanly. Use when the user asks to "prepare a session handoff," "write a handoff doc," "close out the session," "end of session," or after substantive multi-PR work (≥3 merged PRs in this session, or any state that's non-obvious for a fresh agent). Output is a single new markdown file at docs/SESSION_HANDOFF_<YYYY-MM-DD>-<HHMM>Z.md following a 7-section structure. Distinct from task-focused HANDOFF_<DATE>_<TOPIC>.md docs (those are implementation briefs for one deliverable).
+description: Write a session-handoff doc capturing what shifted, what's queued, and what to retire so the next Claude Code session can pick up cleanly. Use when the user asks to "prepare a session handoff," "write a handoff doc," "close out the session," "end of session," or after substantive multi-PR work (≥3 merged PRs in this session, or any state that's non-obvious for a fresh agent). Output is a new markdown file at docs/SESSION_HANDOFF_<YYYY-MM-DD>-<HHMM>Z.md following an 8-section structure, plus an overwrite of docs/NEXT_SESSION_PROMPT.md (singleton paste-ready directive for the next session). Distinct from task-focused HANDOFF_<DATE>_<TOPIC>.md docs (those are implementation briefs for one deliverable).
 ---
 
 # Session handoff
@@ -77,7 +77,20 @@ The next session should be able to update the planning doc / refresh memory usin
 
 Decisions that came up but weren't resolved. The next session opens by either resolving these or by acknowledging them and proceeding. If there are no open questions, omit this section — don't pad it.
 
-### 8. (Optional) How to use this handoff
+### 8. Next-session prompt (paste-ready)
+
+The handoff doc embeds this section AND the skill writes the same content to `docs/NEXT_SESSION_PROMPT.md` (singleton — overwritten each invocation). The standalone file is the canonical pointer the user can share with a fresh session without grepping for the latest dated handoff.
+
+Default recipe for the prompt:
+
+1. **Top of critical-path queue** from §5 ("What's next"). If the user explicitly named a different task during the session, use that instead.
+2. **Validation angle** if any infrastructure landed this session that hasn't been exercised on real work yet. Naming this lets the next session double up on shipping AND validating. Example from this repo: "use the new parallel-agent skills end-to-end while picking up A8.2."
+3. **Pre-flight requirements** the prompt depends on. Surface env vars, services that must be running, schema bootstrap state. Don't assume the next session re-derives them.
+4. **End via session-handoff skill** — the close-out instruction. Optionally request a "what worked / what didn't" report on whatever validation angle was named in step 2.
+
+Keep the prompt under ~15 lines. It's a directive, not a briefing. The handoff itself is the briefing.
+
+### 9. (Optional) How to use this handoff
 
 A short numbered list:
 
@@ -91,10 +104,11 @@ This section is optional because it's stable across handoffs — only include if
 ## What this skill produces
 
 1. The handoff markdown file at `docs/SESSION_HANDOFF_<YYYY-MM-DD>-<HHMM>Z.md`.
-2. A new branch `docs/session-handoff-<YYYY-MM-DD>-<HHMM>Z` (use the same UTC suffix).
-3. A commit on that branch.
-4. A PR titled `docs: session handoff — <YYYY-MM-DD> <HH:MM> UTC` with the body summarizing the doc's TL;DR + open questions.
-5. Stop before merging. Surface to user with merge prompt — handoffs are the literal close-out, the user should explicitly bless the merge as their session-end signal.
+2. `docs/NEXT_SESSION_PROMPT.md` (singleton — overwritten each invocation) containing §8's prompt as a standalone file with a header noting which handoff generated it.
+3. A new branch `docs/session-handoff-<YYYY-MM-DD>-<HHMM>Z` (use the same UTC suffix).
+4. A commit on that branch including BOTH files (handoff + updated NEXT_SESSION_PROMPT).
+5. A PR titled `docs: session handoff — <YYYY-MM-DD> <HH:MM> UTC` with the body summarizing the doc's TL;DR + open questions + the next-session prompt.
+6. Stop before merging. Surface to user with merge prompt — handoffs are the literal close-out, the user should explicitly bless the merge as their session-end signal.
 
 ## What this skill does NOT do
 
@@ -102,6 +116,7 @@ This section is optional because it's stable across handoffs — only include if
 - **Don't refresh the user's auto-memory directly**. The handoff lists stale memory items; the user's harness handles memory updates.
 - **Don't bundle handoffs into task PRs**. Single-file diffs review fast and don't churn alongside code.
 - **Don't update prior handoffs**. Each handoff is a one-shot snapshot. Stale handoffs are intentional historical record.
+- **Do overwrite `docs/NEXT_SESSION_PROMPT.md`**. That one IS a singleton — the latest handoff replaces it. The header in the file notes which handoff generated it for traceability.
 
 ## Pre-flight checks before writing
 
@@ -114,4 +129,5 @@ This section is optional because it's stable across handoffs — only include if
 
 - **Session that produced no PRs but left non-trivial state** (e.g., partial design exploration, abandoned approach). Still write the handoff — §3 says "no PRs merged this session," §6 captures what was learned. Future agents benefit from "we tried X, it didn't work because Y" more than from silence.
 - **Session that's mid-task at handoff time**. Note explicitly in §4 (open PRs / open branches / uncommitted changes). The next session knows to resume rather than start fresh.
-- **Multiple handoffs same day**. Filename time disambiguates. The latest is the live handoff; prior same-day handoffs are historical (typically because the session restarted after a model swap or context reset).
+- **Multiple handoffs same day**. Filename time disambiguates. The latest is the live handoff; prior same-day handoffs are historical (typically because the session restarted after a model swap or context reset). `docs/NEXT_SESSION_PROMPT.md` always reflects the latest only.
+- **Session ended without a clear next-task recommendation** (rare but possible — exploratory sessions that didn't surface what's next). §8's prompt should still get written; default to the planning doc's critical-path top, OR explicitly say "Next session: open the planning doc and pick from the critical-path queue; no specific recommendation from this session." Don't omit the file — its existence is the contract.
