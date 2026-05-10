@@ -283,11 +283,19 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 	return server, nil
 }
 
-// bootstrapIndexesFromEnv builds the FTS and/or LSA index for the
-// default tenant at startup when corresponding env vars are set. Intended
+// bootstrapIndexesFromEnv builds the FTS and/or LSA index for one or
+// more tenants at startup when corresponding env vars are set. Intended
 // for container deployments that can't easily curl the admin endpoints
-// post-boot. Multi-tenant setups should continue using the admin
-// endpoints; this env path handles only the default tenant.
+// post-boot.
+//
+// FTS still bootstraps the default tenant only (multi-tenant FTS
+// bootstrap is a future extension if requested).
+//
+// LSA supports multi-tenant bootstrap via GRAPHDB_LSA_BOOTSTRAP_TENANTS;
+// if unset, falls back to the single "default" tenant for back-compat
+// with the previous single-tenant behavior. All tenants in the list
+// share the same labels / title_property / body_properties config —
+// per-tenant config blocks are out of scope for the env-bootstrap path.
 //
 // FTS config (both required to trigger):
 //
@@ -300,6 +308,8 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 //	GRAPHDB_LSA_BOOTSTRAP_TITLE_PROPERTY  e.g. "title" (optional)
 //	GRAPHDB_LSA_BOOTSTRAP_BODY_PROPERTIES e.g. "body,summary"
 //	GRAPHDB_LSA_BOOTSTRAP_DIMS            e.g. "200" (optional)
+//	GRAPHDB_LSA_BOOTSTRAP_TENANTS         e.g. "default,acme,corp" (optional;
+//	                                      defaults to "default")
 func (s *Server) bootstrapIndexesFromEnv() {
 	const defaultTenantID = "default"
 
@@ -324,8 +334,14 @@ func (s *Server) bootstrapIndexesFromEnv() {
 		}
 		titleProp := os.Getenv("GRAPHDB_LSA_BOOTSTRAP_TITLE_PROPERTY")
 
-		if err := s.buildAndRegisterLSA(defaultTenantID, labels, titleProp, bodyProps); err != nil {
-			log.Printf("bootstrap: LSA build for default tenant failed: %v", err)
+		tenants := splitEnvCSV("GRAPHDB_LSA_BOOTSTRAP_TENANTS")
+		if len(tenants) == 0 {
+			tenants = []string{defaultTenantID}
+		}
+		for _, tenantID := range tenants {
+			if err := s.buildAndRegisterLSA(tenantID, labels, titleProp, bodyProps); err != nil {
+				log.Printf("bootstrap: LSA build for tenant %q failed: %v", tenantID, err)
+			}
 		}
 	}
 }

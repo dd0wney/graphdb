@@ -50,7 +50,7 @@ All M1–M6 items shipped. PRs #2, #3, #4, #5, #15, #16 merged into `main`.
 | Original task | Status | Evidence |
 |---|---|---|
 | F1: `/v1/embeddings` OpenAI-compat endpoint | ✅ Done | PR #7 (`09d527b`) |
-| F1.1: per-tenant LSA (named as follow-up) | ❌ Not started | The multi-tenant caveat documented in F1 is still live |
+| F1.1: per-tenant LSA (named as follow-up) | ✅ Shipped 2026-04-20 (`cf57251` + `d7f74d5`) | Per-tenant `TenantLSAIndexes` registry, tenant-scoped corpus assembly, per-tenant `/v1/embeddings`. Verified by `TestEmbeddings_TenantIsolation`. Spike-on-discovery: `docs/F1_1_PER_TENANT_LSA_DESIGN.md` |
 | F2: GraphRAG retrieval — **shipped as `/v1/retrieve` (design pivot)** | ✅ Done | F2 #1–#7: spike `b2943d3`, factor `079a3c6`, package `039e8d1`, handler `01afe54`, regression `3a84cdf`, bench `80bbdc9`, docs `0f673b6` |
 | F3: Compliance API package | ❌ Not started | `pkg/masking/`, per-tenant property filter, audit log all live; integration surface absent |
 
@@ -105,12 +105,18 @@ Side change: each binary's `startHTTPServer` now uses a private `*http.ServeMux`
 
 ### Track F — Features
 
-#### F1.1. Per-tenant LSA
-- [ ] **Spike** (1 PR): design doc `docs/F1_1_PER_TENANT_LSA_DESIGN.md`. Specify per-tenant LSA model build trigger (lazy on first semantic-search request? eager on tenant create?), storage cost (N tenants × 200-dim × vocabulary), migration path for existing single-LSA deployments. Explicit go/no-go recommendation at the end.
-- [ ] If go: 2–3 implementation PRs adapting `pkg/search/tenant_indexes.go`'s pattern to `pkg/search/lsa.go`.
-- [ ] Cross-tenant test: writes to tenant B do not change tenant A's embedding output for the same input.
-- [ ] Update `/v1/embeddings` to route per-tenant; remove the multi-tenant caveat from `docs/API.md`.
-- **Acceptance**: Per-tenant cross-tenant embedding test passes; bench shows per-tenant build cost is bounded by per-tenant corpus size.
+#### F1.1. Per-tenant LSA ✅ RESOLVED 2026-05-10 by spike-on-discovery
+
+The spike (`docs/F1_1_PER_TENANT_LSA_DESIGN.md`) found that per-tenant LSA already shipped on 2026-04-20 (`cf57251` `feat: add LSAIndex.TopKByVector + TenantLSAIndexes (v2 prep)` paired with `d7f74d5` for the tenant-scoped admin build endpoint). The premise of this F1.1 entry — "Not started" with a "live cross-tenant leak" — was stale.
+
+- [x] **Spike** delivered. Recommendation: NO-GO on F1.1-impl as originally scoped (the per-tenant infra exists). GO on a single-PR cleanup (this PR if you're reading it).
+- [x] Cross-tenant test exists: `TestEmbeddings_TenantIsolation` in `pkg/api/handlers_embeddings_test.go`. Augmented in cleanup PR with `TestEmbeddings_VocabDisjointness` for vocab-level isolation.
+- [x] `/v1/embeddings` is already routed per-tenant (`handlers_embeddings.go:118-119`). `docs/API.md:693` already documents it as such.
+- [x] No multi-tenant caveat exists in `docs/API.md` to remove; the trade-offs list (`API.md:744-762`) covers vocabulary-bound, scale-ceiling, build-first, deterministic, no-external-API — none mention cross-tenant leakage.
+
+**Residual**: G2 (auto-trigger on tenant-create) deferred to operational follow-up; not safety-critical, not blocking.
+
+**Acceptance**: spike conclusion + cleanup PR (this one) cover the original intent. F1.1-impl Task in coord retired, not closed.
 
 #### F3. Compliance API package
 - [ ] New `pkg/api/handlers_compliance.go`. Endpoints: `GET /v1/compliance/audit-log` (paginated, filtered), `POST /v1/compliance/masking-policy`, `GET /v1/compliance/masking-policy/{tenant}`.
@@ -171,11 +177,11 @@ Surfaced by PR #82 (`docs/COORD_GAP_2026-05-10.md`) when the 2026-05-10 02:36Z s
 ```
 H1 ✅ ──┐
         ├─→ A4 ✅ ──→ A4-edges ✅ ──→ A8.2 ✅ ──┐
-H3 ✅ ──┘                                       ├─→ F1.1-spike → F1.1-impl → ┐
-                                                └─→ H2 ────────────────────── ├─→ F3 → A8.1 → S1
+H3 ✅ ──┘                                       ├─→ F1.1 ✅ (spike-on-discovery 2026-05-10) ──┐
+                                                └─→ H2 ─────────────────────────────────────── ├─→ F3 → A8.1 → S1
 ```
 
-**Critical path**: ~~H1~~ → ~~A4~~ → ~~A4-edges~~ → ~~A8.2~~ → **F1.1-spike** → F1.1-impl → F3 → A8.1 → S1.
+**Critical path**: ~~H1~~ → ~~A4~~ → ~~A4-edges~~ → ~~A8.2~~ → ~~F1.1-spike~~ → **F3** → A8.1 → S1.
 
 Off-path parallel work: ~~H3~~ ✅ (branches), ~~H4~~ ✅ (coord-deploy gap — closed via B-lite + skill rewrite + multi-project, PRs #85–#93), H2 (requireAdmin) anywhere there's a small gap. The H4.x net-new sub-tracks (H4.1 base64, H4.3 replay-tenant-index, H4.4 REST-uniqueness-mirror) are each single-PR cleanups suitable as small parallel work — none are blocking.
 
@@ -184,8 +190,8 @@ Off-path parallel work: ~~H3~~ ✅ (branches), ~~H4~~ ✅ (coord-deploy gap — 
 - **A4 early** ✅ — the audit's HIGH-1/HIGH-2/CRIT-1 collapsed into one operation; closed via PR #67 (with the throughput-criterion reframe documented).
 - **A4-edges after A4** ✅ — the partition idiom and helper shape were fresh from A4; landed PR #70 with the three-surfaces-to-one collapse documented (Commit() holds gs.mu around apply* calls, neutralizing surfaces 2+3).
 - **A8.2 after A4-edges** ✅ — A8.2 is a security finding but the legacy-binary gate (`GRAPHDB_LEGACY_BINARY` fail-closed, PR #47) meant exposure was mitigated-in-depth, so A4-edges (real concurrency bug class manifesting as `TestGraphStorage_ConcurrentDeletion` flakes) went first. PR #81 closed A8.2 via removal rather than auth-wrap.
-- **F1.1-spike now at head of queue** because the audit track is fully retired (A4 + A4-edges + A8.2 done; A8.1 remains but is off critical path). New feature surface (F1.1) rides on a clean audit track.
-- **F1.1 before F3** because the multi-tenant LSA caveat is a documented hole in a *shipped* feature (`/v1/embeddings`); F3 introduces *new* surface and customer-facing claims, so it should ride on a clean F1.
+- **F1.1 resolved by spike-on-discovery (2026-05-10)** — per-tenant LSA already shipped 2026-04-20; the spike's discovery output retires the original ordering rationale. F3 takes the head of the queue.
+- **F3 ahead of A8.1** because F3 introduces new market surface and customer-facing claims; A8.1 is internal architectural cleanup of binaries already gated by `GRAPHDB_LEGACY_BINARY`. F3 has higher external value per unit of work.
 - **A8.1 late** because it's an architectural cleanup of binaries that are already gated by `GRAPHDB_LEGACY_BINARY`; the urgency is lower.
 - **S1 last** because its output is the **input to the next planning checkpoint**, not work for this one.
 
@@ -197,9 +203,9 @@ These are explicit questions the user should weigh in on rather than decisions b
 
 1. **Storage interface extraction — promote to next quarter, or defer further?**
    This plan schedules S1 (the spike) at the end of the 90 days. The spike's go/no-go is the binary deliverable. Do not pre-commit either way.
-2. **F1.1 vs. F3 ordering** — currently F1.1 first (fix the documented multi-tenant LSA caveat in shipped F1) before F3 (new market surface). If a customer signal pulls F3 forward, swap the order; the dependency graph allows it.
+2. **F1.1 vs. F3 ordering** — RESOLVED 2026-05-10. F1.1 closed by spike-on-discovery; F3 is now the head of the queue.
 3. **A8.1's spike conclusion** — could land as either "delete the standalone binaries" or "rebuild on `cmd/server`". The spike decides; the decision is not pre-baked.
-4. **Per-tenant LSA build trigger** (lazy vs. eager) — answered inside the F1.1 spike.
+4. **Per-tenant LSA build trigger** (lazy vs. eager) — RESOLVED 2026-05-10 in `docs/F1_1_PER_TENANT_LSA_DESIGN.md` §3.G2: manual-via-admin today, auto-trigger deferred as operational UX (not safety-critical).
 
 ---
 
@@ -214,7 +220,7 @@ These are explicit questions the user should weigh in on rather than decisions b
 ## Risks specific to this 90-day window
 
 - **A4 is the riskiest scheduled item**. Lock-ordering refactors are advisor-call territory by the original plan's own admission. Underestimating it shifts the entire critical path right. Mitigate by getting the bench numbers first (read-only — baseline doesn't need any code change) so the *value* of the change is quantified before the change lands.
-- **F1.1 storage cost may invalidate per-tenant LSA**. N tenants × 200-dim × vocabulary memory could push small-deployment users over a footprint they accepted in F1. The spike must produce a memory model, not a hand-wave. If the model says "no go," document it and remove the multi-tenant LSA caveat from F1's docs by stating the design constraint explicitly rather than promising a fix.
+- **~~F1.1 storage cost may invalidate per-tenant LSA~~** — RESOLVED 2026-05-10. Storage model produced in `docs/F1_1_PER_TENANT_LSA_DESIGN.md` §4: per-tenant footprint is dominated by per-document content storage (for `DocSnippet`), not vocabulary; ~78 MB per tenant for 10K docs at default config. Multi-tenant scaling is linear in N×D×avg-content-bytes, with the existing single-tenant ceiling (~100K-500K docs) preserved per tenant. Original framing axis ("N × 200-dim × vocabulary") was wrong — vocabulary is bounded by `MaxVocab=8000`.
 - **S1's spike could conclude "do this NOW"**. If the design doc determines that storage interface extraction must happen before F3 ships safely, the 90-day plan needs to be re-ordered, not extended. That outcome is a feature, not a failure — but plan for the possibility of mid-quarter re-planning.
 - **Replication-binary deprecation (A8.1) may surface customer dependencies** invisible in the codebase. The spike should poll `cmd/graphdb-primary` and `cmd/graphdb-replica` users (if any are reachable) before deciding to delete vs. rebuild.
 
@@ -238,7 +244,7 @@ Surfaced from a session-end audit of "what would block a serious enterprise cust
 ### Already tracked elsewhere in this doc
 
 - **S1** — storage interface extraction. Without it, the codebase is one big package and the plugin/extension story is undefined. Spike scheduled at the end of the 90-day window; if its go/no-go says "do this NOW" the rest of the plan re-orders. The largest unlock for "third-party storage backends" or "embedded engine for other products."
-- **F1.1** — per-tenant LSA. Cross-tenant embedding leakage is documented as a caveat in shipped F1, but the documented hole is reachable today by any customer running multi-tenant `/v1/embeddings`. Spike + impl scheduled mid-window.
+- **~~F1.1~~** — per-tenant LSA. RESOLVED 2026-05-10. The "cross-tenant embedding leakage" framing was stale; per-tenant routing + tenant-scoped corpus assembly shipped 2026-04-20 (`cf57251` + `d7f74d5`). Verified by `TestEmbeddings_TenantIsolation`. See `docs/F1_1_PER_TENANT_LSA_DESIGN.md` for the full discovery + storage model.
 - **F3** — Compliance API package. SOC2/GDPR integration is named as a deliverable but not built; the underlying primitives (`pkg/masking/`, per-tenant property filter, `pkg/audit/`) all exist, but the customer-facing surface tying them together is absent.
 - **A8.1** — standalone-binary architectural cleanup. The `GRAPHDB_LEGACY_BINARY` fail-closed gate (PR #47) is a holding action, not a fix; the legacy binaries still exist and an operator that opts in still gets the old code path.
 
