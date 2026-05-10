@@ -115,6 +115,8 @@ This codebase has had multiple audits and the planning doc sometimes misframes t
 
 When a session is about to end with substantive multi-PR work (≥3 merged PRs, or any work that left non-obvious state), write a session handoff at `docs/SESSION_HANDOFF_<YYYY-MM-DD>-<HHMM>Z.md` before stopping. The next session opens by reading the most recent one.
 
+**Skill**: `session-handoff` (`.claude/skills/session-handoff/SKILL.md`) automates this — it gathers state, fills the 7-section template, and opens a PR. Use it instead of writing the doc by hand. The convention below is what the skill follows; if you're inspecting why the skill produces what it does, this is the spec.
+
 **Filename format**: `SESSION_HANDOFF_<YYYY-MM-DD>-<HHMM>Z.md` — UTC date + 4-digit 24-hour time (no separator), explicit `Z` suffix for UTC. Example: `SESSION_HANDOFF_2026-05-10-0208Z.md`. The time component is required because multiple handoffs can land in the same calendar day; UTC avoids timezone ambiguity. Pull the time from `git log -1 --format="%aI"` on the previous commit (or `date -u +"%Y-%m-%dT%H:%MZ"` if writing pre-commit).
 
 **Distinct from `docs/HANDOFF_<DATE>_<TOPIC>.md`** — those are task-focused (one deliverable, full implementation brief, see e.g. `HANDOFF_2026-05-06_VECTOR_SEARCH_PROPERTY_FILTER.md`). `SESSION_HANDOFF_<YYYY-MM-DD>-<HHMM>Z.md` is session-state-focused (what shifted, what's queued, what to retire).
