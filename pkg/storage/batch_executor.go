@@ -84,7 +84,7 @@ func (b *Batch) executeCreateEdge(op batchOp) error {
 		Weight:     op.weight,
 	}
 
-	b.graph.edges[edge.ID] = edge
+	b.graph.storeEdgeInShard(edge)
 	atomic.AddUint64(&b.graph.stats.EdgeCount, 1)
 
 	// Update edge type index
@@ -180,13 +180,13 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 	// Delete edges
 	outgoing := b.graph.outgoingEdges[op.nodeID]
 	for _, edgeID := range outgoing {
-		delete(b.graph.edges, edgeID)
+		b.graph.deleteEdgeShardEntry(edgeID)
 		atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
 	}
 
 	incoming := b.graph.incomingEdges[op.nodeID]
 	for _, edgeID := range incoming {
-		delete(b.graph.edges, edgeID)
+		b.graph.deleteEdgeShardEntry(edgeID)
 		atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
 	}
 
@@ -212,7 +212,7 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 }
 
 func (b *Batch) executeDeleteEdge(op batchOp) error {
-	edge, exists := b.graph.edges[op.edgeID]
+	edge, exists := b.graph.lookupEdgeShard(op.edgeID)
 	if !exists {
 		return nil // Skip non-existent edges
 	}
@@ -244,7 +244,7 @@ func (b *Batch) executeDeleteEdge(op batchOp) error {
 	}
 
 	// Delete edge with atomic decrement
-	delete(b.graph.edges, op.edgeID)
+	b.graph.deleteEdgeShardEntry(op.edgeID)
 	atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
 
 	// Write to WAL for durability

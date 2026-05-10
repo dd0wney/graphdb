@@ -61,7 +61,7 @@ func (gs *GraphStorage) Snapshot() error {
 		Stats           Statistics
 	}{
 		Nodes:           gs.flattenNodesForSnapshot(),
-		Edges:           gs.edges,
+		Edges:           gs.flattenEdgesForSnapshot(),
 		NodesByLabel:    gs.nodesByLabel,
 		EdgesByType:     gs.edgesByType,
 		OutgoingEdges:   gs.outgoingEdges,
@@ -150,7 +150,7 @@ func (gs *GraphStorage) loadFromDisk() error {
 	}
 
 	gs.rebucketSnapshotNodes(snapshot.Nodes)
-	gs.edges = snapshot.Edges
+	gs.rebucketSnapshotEdges(snapshot.Edges)
 	gs.nodesByLabel = snapshot.NodesByLabel
 	gs.edgesByType = snapshot.EdgesByType
 	gs.outgoingEdges = snapshot.OutgoingEdges

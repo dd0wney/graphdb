@@ -29,7 +29,13 @@ type GraphStorage struct {
 	// map would risk under shard-grained locking. Audit task A4
 	// (2026-05-10).
 	nodeShards [256]map[uint64]*Node
-	edges      map[uint64]*Edge
+	// edgeShards mirrors nodeShards's partition shape for edges.
+	// Same rationale: a single shared map[uint64]*Edge can't be safely
+	// read under shard.RLock while another goroutine writes to it under
+	// any lock — Go's map runtime panics on concurrent map read+write
+	// even across distinct keys (bucket splits / rehash mutate map
+	// metadata). Audit task A4-edges (2026-05-10).
+	edgeShards [256]map[uint64]*Edge
 
 	// Indexes for fast lookups
 	nodesByLabel    map[string][]uint64       // label -> node IDs

@@ -53,11 +53,11 @@ func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 		if gs.nodeCount() != 5 {
 			t.Fatalf("Expected 5 nodes before crash, got %d", gs.nodeCount())
 		}
-		if len(gs.edges) != 3 {
-			t.Fatalf("Expected 3 edges before crash, got %d", len(gs.edges))
+		if gs.edgeCount() != 3 {
+			t.Fatalf("Expected 3 edges before crash, got %d", gs.edgeCount())
 		}
 
-		t.Logf("Before crash: %d nodes, %d edges", gs.nodeCount(), len(gs.edges))
+		t.Logf("Before crash: %d nodes, %d edges", gs.nodeCount(), gs.edgeCount())
 
 		// DON'T CLOSE - simulate crash (testCrashableStorage handles cleanup)
 	}
@@ -81,8 +81,8 @@ func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 		}
 
 		// Check if batch-created edges survived crash
-		if len(gs.edges) != 3 {
-			t.Errorf("After crash: Expected 3 edges, got %d", len(gs.edges))
+		if gs.edgeCount() != 3 {
+			t.Errorf("After crash: Expected 3 edges, got %d", gs.edgeCount())
 			t.Errorf("Batch edge operations were LOST after crash!")
 		}
 
@@ -98,7 +98,7 @@ func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 		}
 
 		t.Logf("After crash recovery: %d nodes, %d edges (expected 5 nodes, 3 edges)",
-			gs.nodeCount(), len(gs.edges))
+			gs.nodeCount(), gs.edgeCount())
 	}
 }
 
@@ -296,9 +296,9 @@ func TestBatchDurability_LargeBatch(t *testing.T) {
 		}
 
 		// Check edge count
-		if len(gs.edges) != numEdges {
+		if gs.edgeCount() != numEdges {
 			t.Errorf("After crash: Expected %d edges, got %d (LOST: %d edges)",
-				numEdges, len(gs.edges), numEdges-len(gs.edges))
+				numEdges, gs.edgeCount(), numEdges-gs.edgeCount())
 		}
 
 		// Verify statistics
@@ -313,7 +313,7 @@ func TestBatchDurability_LargeBatch(t *testing.T) {
 		}
 
 		t.Logf("After crash recovery: %d nodes, %d edges (large batch durability check)",
-			gs.nodeCount(), len(gs.edges))
+			gs.nodeCount(), gs.edgeCount())
 	}
 }
 
