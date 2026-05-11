@@ -47,7 +47,19 @@ func (s *Server) handleSecurityKeyRotate(w http.ResponseWriter, r *http.Request)
 	s.respondJSON(w, http.StatusOK, response)
 }
 
-// handleSecurityAuditLogs retrieves audit logs with optional filtering
+// handleSecurityAuditLogs retrieves audit logs with optional filtering.
+//
+// Deprecated: superseded by GET /v1/compliance/audit-log (see
+// pkg/api/handlers_compliance.go). The compliance endpoint covers the same
+// query surface (user_id, username, action, resource_type, status,
+// start_time, end_time, limit) plus tenant scoping and offset-based
+// pagination. Per docs/F3_COMPLIANCE_API_DESIGN.md §3 Decision 1c, admin
+// cross-tenant queries are reachable via X-Tenant-ID: <other> (single
+// tenant) or ?tenant=* (all tenants).
+//
+// Sunset plan: removed one release window after F3 closes (F3.3 / PR-4).
+// New callers should use /v1/compliance/audit-log; existing admin tooling
+// has until the F3 sunset window to migrate.
 func (s *Server) handleSecurityAuditLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
