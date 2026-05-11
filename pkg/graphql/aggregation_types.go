@@ -6,8 +6,15 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
-// buildNodeAggregateTypes creates node types and aggregate types for a label
-func buildNodeAggregateTypes(gs *storage.GraphStorage, label string) (*graphql.Object, *graphql.Object) {
+// buildNodeAggregateTypes creates node types and aggregate types for a label.
+//
+// deps is currently unused inside this function — the two property
+// iterations at lines 29 and 79 (F3 design doc §3 Decision 3 hook sites)
+// extract storage.ValueType for type-inference only and never emit
+// values to the response. Threaded through so the deps reach
+// createNodeAggregateResolver and any future response-emitting
+// resolvers added here.
+func buildNodeAggregateTypes(gs *storage.GraphStorage, label string, _ *MaskingDeps) (*graphql.Object, *graphql.Object) {
 	// Create regular node type
 	nodeType := graphql.NewObject(graphql.ObjectConfig{
 		Name: label,

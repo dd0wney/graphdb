@@ -8,8 +8,13 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
-// createGenericNodeType creates a generic MutationNode type for mutation responses
-func createGenericNodeType() *graphql.Object {
+// createGenericNodeType creates a generic MutationNode type for mutation responses.
+//
+// deps is the F3 masking hookup; nil disables masking on the "properties"
+// resolver. The mutation result reflects the just-created/updated node back
+// to the caller, so it must respect the same per-tenant masking the read
+// path applies.
+func createGenericNodeType(deps *MaskingDeps) *graphql.Object {
 	return graphql.NewObject(graphql.ObjectConfig{
 		Name: "MutationNode",
 		Fields: graphql.Fields{
@@ -35,9 +40,12 @@ func createGenericNodeType() *graphql.Object {
 				Type: graphql.String,
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if node, ok := p.Source.(*storage.Node); ok {
+						// F3 masking hook: mutation responses respect
+						// the same per-tenant policy as reads.
+						maskedProps := applyMaskingPolicyForGraphQL(p.Context, deps, node.Properties)
 						props := "{"
 						first := true
-						for k, v := range node.Properties {
+						for k, v := range maskedProps {
 							if !first {
 								props += ", "
 							}

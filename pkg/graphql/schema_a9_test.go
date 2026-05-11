@@ -61,7 +61,7 @@ func TestGenerateSchemaForTenant_ExcludesForeignLabels(t *testing.T) {
 	gs := setupA9Fixture(t)
 
 	t.Run("tenant-A schema includes A's labels", func(t *testing.T) {
-		schema, err := GenerateSchemaForTenant(gs, "tenant-A")
+		schema, err := GenerateSchemaForTenant(gs, "tenant-A", nil)
 		if err != nil {
 			t.Fatalf("schema: %v", err)
 		}
@@ -73,7 +73,7 @@ func TestGenerateSchemaForTenant_ExcludesForeignLabels(t *testing.T) {
 	})
 
 	t.Run("tenant-A schema excludes B's labels", func(t *testing.T) {
-		schema, err := GenerateSchemaForTenant(gs, "tenant-A")
+		schema, err := GenerateSchemaForTenant(gs, "tenant-A", nil)
 		if err != nil {
 			t.Fatalf("schema: %v", err)
 		}
@@ -104,7 +104,7 @@ func TestGenerateSchemaWithLimitsForTenant_ExcludesForeignLabels(t *testing.T) {
 	gs := setupA9Fixture(t)
 	cfg := &LimitConfig{DefaultLimit: 100, MaxLimit: 1000}
 
-	schema, err := GenerateSchemaWithLimitsForTenant(gs, cfg, "tenant-A")
+	schema, err := GenerateSchemaWithLimitsForTenant(gs, cfg, "tenant-A", nil)
 	if err != nil {
 		t.Fatalf("schema: %v", err)
 	}
@@ -130,22 +130,22 @@ func TestAllSchemaForTenantBuilders_ExcludeForeignLabels(t *testing.T) {
 		build func() (graphql.Schema, error)
 	}{
 		{"GenerateSchemaForTenant", func() (graphql.Schema, error) {
-			return GenerateSchemaForTenant(gs, "tenant-A")
+			return GenerateSchemaForTenant(gs, "tenant-A", nil)
 		}},
 		{"GenerateSchemaWithEdgesForTenant", func() (graphql.Schema, error) {
-			return GenerateSchemaWithEdgesForTenant(gs, "tenant-A")
+			return GenerateSchemaWithEdgesForTenant(gs, "tenant-A", nil)
 		}},
 		{"GenerateSchemaWithFilteringForTenant", func() (graphql.Schema, error) {
-			return GenerateSchemaWithFilteringForTenant(gs, "tenant-A")
+			return GenerateSchemaWithFilteringForTenant(gs, "tenant-A", nil)
 		}},
 		{"GenerateSchemaWithLimitsForTenant", func() (graphql.Schema, error) {
-			return GenerateSchemaWithLimitsForTenant(gs, cfg, "tenant-A")
+			return GenerateSchemaWithLimitsForTenant(gs, cfg, "tenant-A", nil)
 		}},
 		{"GenerateSchemaWithAggregationForTenant", func() (graphql.Schema, error) {
-			return GenerateSchemaWithAggregationForTenant(gs, "tenant-A")
+			return GenerateSchemaWithAggregationForTenant(gs, "tenant-A", nil)
 		}},
 		{"GenerateSchemaWithMutationsForTenant", func() (graphql.Schema, error) {
-			return GenerateSchemaWithMutationsForTenant(gs, "tenant-A")
+			return GenerateSchemaWithMutationsForTenant(gs, "tenant-A", nil)
 		}},
 	}
 

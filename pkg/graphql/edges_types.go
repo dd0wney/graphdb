@@ -101,8 +101,14 @@ func createEdgeType() *graphql.Object {
 	})
 }
 
-// createNodeTypeWithEdges creates a node type with edge traversal fields
-func createNodeTypeWithEdges(label string, edgeType *graphql.Object, gs *storage.GraphStorage) *graphql.Object {
+// createNodeTypeWithEdges creates a node type with edge traversal fields.
+//
+// deps is the F3 masking hookup; nil disables masking on this node
+// type's "properties" resolver. Non-production schemas (CLI, tests)
+// pass nil; the production-tenant schema-build through
+// generateSchemaWithLimitsForLabels doesn't reach this helper (it uses
+// createNodeType — the no-edges variant).
+func createNodeTypeWithEdges(label string, edgeType *graphql.Object, gs *storage.GraphStorage, deps *MaskingDeps) *graphql.Object {
 	return graphql.NewObject(graphql.ObjectConfig{
 		Name: label,
 		Fields: graphql.Fields{
@@ -128,9 +134,12 @@ func createNodeTypeWithEdges(label string, edgeType *graphql.Object, gs *storage
 				Type: graphql.String,
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if node, ok := p.Source.(*storage.Node); ok {
+						// F3 masking hook (design doc §3 Decision 3).
+						maskedProps := applyMaskingPolicyForGraphQL(p.Context, deps, node.Properties)
+
 						props := "{"
 						first := true
-						for k, v := range node.Properties {
+						for k, v := range maskedProps {
 							if !first {
 								props += ", "
 							}

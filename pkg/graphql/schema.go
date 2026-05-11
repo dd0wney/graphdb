@@ -15,8 +15,12 @@ import (
 // and single-tenant deployments. API callers should use
 // GenerateSchemaForTenant so introspection (`__schema`) doesn't leak
 // foreign-tenant label names — see audit A9 (#36).
+//
+// Masking is disabled (deps = nil). CLI-mode builds don't need
+// per-tenant masking — single-tenant deployments have no tenant
+// boundary to mask across.
 func GenerateSchema(gs *storage.GraphStorage) (graphql.Schema, error) {
-	return generateSchemaWithLabels(gs, gs.GetAllLabels())
+	return generateSchemaWithLabels(gs, gs.GetAllLabels(), nil)
 }
 
 // GenerateSchemaForTenant generates a GraphQL schema scoped to the
@@ -28,19 +32,22 @@ func GenerateSchema(gs *storage.GraphStorage) (graphql.Schema, error) {
 // p.Context via A6c-graphql-resolvers (#24), so query-result
 // scoping was already correct; this fix is purely about the
 // introspection / type-registry surface.
-func GenerateSchemaForTenant(gs *storage.GraphStorage, tenantID string) (graphql.Schema, error) {
-	return generateSchemaWithLabels(gs, gs.GetLabelsForTenant(tenantID))
+//
+// deps is the per-server masking hookup; nil disables masking.
+// Production callers pass non-nil deps; tests pass nil.
+func GenerateSchemaForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+	return generateSchemaWithLabels(gs, gs.GetLabelsForTenant(tenantID), deps)
 }
 
 // generateSchemaWithLabels is the shared schema-build core. The
 // caller picks the label source (tenant-blind GetAllLabels vs
 // tenant-scoped GetLabelsForTenant); this function builds the type
 // registry and resolvers from that list.
-func generateSchemaWithLabels(gs *storage.GraphStorage, labels []string) (graphql.Schema, error) {
+func generateSchemaWithLabels(gs *storage.GraphStorage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	// Create GraphQL types for each node label
 	nodeTypes := make(map[string]*graphql.Object)
 	for _, label := range labels {
-		nodeTypes[label] = createNodeType(label)
+		nodeTypes[label] = createNodeType(label, deps)
 	}
 
 	// Create Query type with fields for each label
@@ -96,8 +103,14 @@ func generateSchemaWithLabels(gs *storage.GraphStorage, labels []string) (graphq
 	return schema, nil
 }
 
-// createNodeType creates a GraphQL Object type for a node label
-func createNodeType(label string) *graphql.Object {
+// createNodeType creates a GraphQL Object type for a node label.
+//
+// deps is the per-server masking-policy hookup. Nil means no masking
+// (CLI builds, tests, schema variants that aren't on the production
+// API path). The resolver closure captures deps; per-request policy
+// lookup happens inside applyMaskingPolicyForGraphQL via the request
+// context's tenant.
+func createNodeType(label string, deps *MaskingDeps) *graphql.Object {
 	return graphql.NewObject(graphql.ObjectConfig{
 		Name: label,
 		Fields: graphql.Fields{
@@ -124,10 +137,15 @@ func createNodeType(label string) *graphql.Object {
 				Type: graphql.String, // JSON string for now
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if node, ok := p.Source.(*storage.Node); ok {
+						// F3 masking hook: apply the tenant's masking
+						// policy to a copy of node.Properties before
+						// serializing. Nil deps / no policy → pass-through.
+						maskedProps := applyMaskingPolicyForGraphQL(p.Context, deps, node.Properties)
+
 						// Convert properties to JSON-like string
 						props := "{"
 						first := true
-						for k, v := range node.Properties {
+						for k, v := range maskedProps {
 							if !first {
 								props += ", "
 							}

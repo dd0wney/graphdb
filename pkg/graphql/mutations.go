@@ -12,21 +12,25 @@ import (
 // GenerateSchemaWithMutations generates a GraphQL schema with
 // mutation support (tenant-blind). API callers should use
 // GenerateSchemaWithMutationsForTenant per audit A9 (#36).
+//
+// Masking is disabled (deps = nil).
 func GenerateSchemaWithMutations(gs *storage.GraphStorage) (graphql.Schema, error) {
-	return generateSchemaWithMutationsForLabels(gs, gs.GetAllLabels())
+	return generateSchemaWithMutationsForLabels(gs, gs.GetAllLabels(), nil)
 }
 
 // GenerateSchemaWithMutationsForTenant scopes the schema to one
 // tenant's labels. Audit A9.
-func GenerateSchemaWithMutationsForTenant(gs *storage.GraphStorage, tenantID string) (graphql.Schema, error) {
-	return generateSchemaWithMutationsForLabels(gs, gs.GetLabelsForTenant(tenantID))
+//
+// deps is the F3 masking hookup; nil disables masking.
+func GenerateSchemaWithMutationsForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+	return generateSchemaWithMutationsForLabels(gs, gs.GetLabelsForTenant(tenantID), deps)
 }
 
-func generateSchemaWithMutationsForLabels(gs *storage.GraphStorage, labels []string) (graphql.Schema, error) {
+func generateSchemaWithMutationsForLabels(gs *storage.GraphStorage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	// Create GraphQL types for each node label
 	nodeTypes := make(map[string]*graphql.Object)
 	for _, label := range labels {
-		nodeTypes[label] = createNodeType(label)
+		nodeTypes[label] = createNodeType(label, deps)
 	}
 
 	// Create Query type with fields for each label
@@ -70,7 +74,7 @@ func generateSchemaWithMutationsForLabels(gs *storage.GraphStorage, labels []str
 	})
 
 	// Create shared types for mutations (created once, reused multiple times)
-	mutationNodeType := createGenericNodeType()
+	mutationNodeType := createGenericNodeType(deps)
 	deleteResultType := createDeleteResultType()
 
 	// Create Mutation type

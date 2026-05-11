@@ -53,23 +53,29 @@ func applyLimit(requestedLimit int, config *LimitConfig) int {
 // GenerateSchemaWithLimits generates a GraphQL schema with filtering
 // and result limits (tenant-blind). API callers should use
 // GenerateSchemaWithLimitsForTenant per audit A9 (#36).
+//
+// Masking is disabled (deps = nil); use GenerateSchemaWithLimitsForTenant
+// for the production path that needs per-tenant masking.
 func GenerateSchemaWithLimits(gs *storage.GraphStorage, config *LimitConfig) (graphql.Schema, error) {
 	if err := ValidateLimitConfig(config); err != nil {
 		return graphql.Schema{}, err
 	}
-	return generateSchemaWithLimitsForLabels(gs, config, gs.GetAllLabels())
+	return generateSchemaWithLimitsForLabels(gs, config, gs.GetAllLabels(), nil)
 }
 
 // GenerateSchemaWithLimitsForTenant scopes the schema's type
 // registry to one tenant's labels. Audit A9 (2026-05-08).
-func GenerateSchemaWithLimitsForTenant(gs *storage.GraphStorage, config *LimitConfig, tenantID string) (graphql.Schema, error) {
+//
+// deps is the F3 masking hookup; nil disables masking. The
+// pkg/api server passes the server's PolicyStore + Masker.
+func GenerateSchemaWithLimitsForTenant(gs *storage.GraphStorage, config *LimitConfig, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
 	if err := ValidateLimitConfig(config); err != nil {
 		return graphql.Schema{}, err
 	}
-	return generateSchemaWithLimitsForLabels(gs, config, gs.GetLabelsForTenant(tenantID))
+	return generateSchemaWithLimitsForLabels(gs, config, gs.GetLabelsForTenant(tenantID), deps)
 }
 
-func generateSchemaWithLimitsForLabels(gs *storage.GraphStorage, config *LimitConfig, labels []string) (graphql.Schema, error) {
+func generateSchemaWithLimitsForLabels(gs *storage.GraphStorage, config *LimitConfig, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	nodeTypes := make(map[string]*graphql.Object)
 
 	// Create where input type
@@ -86,7 +92,7 @@ func generateSchemaWithLimitsForLabels(gs *storage.GraphStorage, config *LimitCo
 
 	// Create node types
 	for _, label := range labels {
-		nodeTypes[label] = createNodeType(label)
+		nodeTypes[label] = createNodeType(label, deps)
 	}
 
 	// Create edge type
@@ -180,7 +186,7 @@ func generateSchemaWithLimitsForLabels(gs *storage.GraphStorage, config *LimitCo
 	// makes the createNode/createEdge resolvers — and the B-lite
 	// :Claim uniqueness check that piggy-backs on createNode —
 	// unreachable from the live server. (H4.2.)
-	mutationType := buildMutationType(gs, edgeType)
+	mutationType := buildMutationType(gs, edgeType, deps)
 
 	schema, err := graphql.NewSchema(graphql.SchemaConfig{
 		Query:    queryType,

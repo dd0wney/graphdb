@@ -12,23 +12,27 @@ import (
 // GenerateSchemaWithAggregation generates a GraphQL schema with
 // aggregation support (tenant-blind). API callers should use
 // GenerateSchemaWithAggregationForTenant per audit A9 (#36).
+//
+// Masking is disabled (deps = nil).
 func GenerateSchemaWithAggregation(gs *storage.GraphStorage) (graphql.Schema, error) {
-	return generateSchemaWithAggregationForLabels(gs, gs.GetAllLabels())
+	return generateSchemaWithAggregationForLabels(gs, gs.GetAllLabels(), nil)
 }
 
 // GenerateSchemaWithAggregationForTenant scopes the schema to one
 // tenant's labels. Audit A9.
-func GenerateSchemaWithAggregationForTenant(gs *storage.GraphStorage, tenantID string) (graphql.Schema, error) {
-	return generateSchemaWithAggregationForLabels(gs, gs.GetLabelsForTenant(tenantID))
+//
+// deps is the F3 masking hookup; nil disables masking.
+func GenerateSchemaWithAggregationForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+	return generateSchemaWithAggregationForLabels(gs, gs.GetLabelsForTenant(tenantID), deps)
 }
 
-func generateSchemaWithAggregationForLabels(gs *storage.GraphStorage, labels []string) (graphql.Schema, error) {
+func generateSchemaWithAggregationForLabels(gs *storage.GraphStorage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	nodeTypes := make(map[string]*graphql.Object)
 	aggregateTypes := make(map[string]*graphql.Object)
 
 	// Create node types and aggregate types for each label
 	for _, label := range labels {
-		nodeType, aggregateType := buildNodeAggregateTypes(gs, label)
+		nodeType, aggregateType := buildNodeAggregateTypes(gs, label, deps)
 		nodeTypes[label] = nodeType
 		aggregateTypes[label] = aggregateType
 	}
@@ -51,7 +55,7 @@ func generateSchemaWithAggregationForLabels(gs *storage.GraphStorage, labels []s
 		lowerLabel := strings.ToLower(label)
 		queryFields[lowerLabel+"sAggregate"] = &graphql.Field{
 			Type:    aggregateTypes[label],
-			Resolve: createNodeAggregateResolver(gs, label),
+			Resolve: createNodeAggregateResolver(gs, label, deps),
 		}
 	}
 

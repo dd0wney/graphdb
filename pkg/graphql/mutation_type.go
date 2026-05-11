@@ -19,8 +19,13 @@ import (
 //
 // edgeType is passed in because callers may have constructed it for
 // their query fields and we want to avoid building it twice.
-func buildMutationType(gs *storage.GraphStorage, edgeType *graphql.Object) *graphql.Object {
-	mutationNodeType := createGenericNodeType()
+//
+// deps is the F3 masking hookup; nil disables masking on the
+// MutationNode's "properties" resolver. The mutation surface emits
+// the just-created / updated node back to the client; that response
+// must respect the same per-tenant masking the read path applies.
+func buildMutationType(gs *storage.GraphStorage, edgeType *graphql.Object, deps *MaskingDeps) *graphql.Object {
+	mutationNodeType := createGenericNodeType(deps)
 	deleteResultType := createDeleteResultType()
 
 	return graphql.NewObject(graphql.ObjectConfig{

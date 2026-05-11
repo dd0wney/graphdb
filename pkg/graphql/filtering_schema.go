@@ -13,17 +13,21 @@ import (
 // GenerateSchemaWithFiltering generates a GraphQL schema with
 // filtering support (tenant-blind). API callers should use
 // GenerateSchemaWithFilteringForTenant per audit A9 (#36).
+//
+// Masking is disabled (deps = nil).
 func GenerateSchemaWithFiltering(gs *storage.GraphStorage) (graphql.Schema, error) {
-	return generateSchemaWithFilteringForLabels(gs, gs.GetAllLabels())
+	return generateSchemaWithFilteringForLabels(gs, gs.GetAllLabels(), nil)
 }
 
 // GenerateSchemaWithFilteringForTenant scopes the schema to one
 // tenant's labels. Audit A9.
-func GenerateSchemaWithFilteringForTenant(gs *storage.GraphStorage, tenantID string) (graphql.Schema, error) {
-	return generateSchemaWithFilteringForLabels(gs, gs.GetLabelsForTenant(tenantID))
+//
+// deps is the F3 masking hookup; nil disables masking.
+func GenerateSchemaWithFilteringForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+	return generateSchemaWithFilteringForLabels(gs, gs.GetLabelsForTenant(tenantID), deps)
 }
 
-func generateSchemaWithFilteringForLabels(gs *storage.GraphStorage, labels []string) (graphql.Schema, error) {
+func generateSchemaWithFilteringForLabels(gs *storage.GraphStorage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	nodeTypes := make(map[string]*graphql.Object)
 
 	// Create where input type (we'll use a generic JSON-like structure)
@@ -40,7 +44,7 @@ func generateSchemaWithFilteringForLabels(gs *storage.GraphStorage, labels []str
 
 	// Create node types
 	for _, label := range labels {
-		nodeTypes[label] = createNodeType(label)
+		nodeTypes[label] = createNodeType(label, deps)
 	}
 
 	// Create edge type
