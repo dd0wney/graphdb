@@ -22,7 +22,7 @@ func GenerateSchemaWithSorting(gs *storage.GraphStorage) (graphql.Schema, error)
 	// Create GraphQL types for each node label with edge traversal
 	nodeTypes := make(map[string]*graphql.Object)
 	for _, label := range labels {
-		nodeTypes[label] = createNodeTypeWithEdges(label, edgeType, gs)
+		nodeTypes[label] = createNodeTypeWithEdges(label, edgeType, gs, nil)
 	}
 
 	// Create connection types for each label
@@ -158,7 +158,7 @@ func GenerateSchemaWithSorting(gs *storage.GraphStorage) (graphql.Schema, error)
 	})
 
 	// Create shared types for mutations
-	mutationNodeType := createGenericNodeType()
+	mutationNodeType := createGenericNodeType(nil)
 	deleteResultType := createDeleteResultType()
 
 	// Create Mutation type

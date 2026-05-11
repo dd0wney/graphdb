@@ -7,8 +7,14 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
-// createNodeAggregateResolver creates a resolver for node aggregations
-func createNodeAggregateResolver(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
+// createNodeAggregateResolver creates a resolver for node aggregations.
+//
+// deps is the F3 masking hookup. When a tenant policy masks a numeric
+// property, the masked value becomes a TypeString (per
+// Policy.ApplyToStorageValues) and the numeric switch below skips it —
+// the operator-named-mask semantics propagate to aggregates without
+// special-casing. Nil deps = no masking, aggregates over raw values.
+func createNodeAggregateResolver(gs *storage.GraphStorage, label string, deps *MaskingDeps) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label lookup.
 		tenantID := tenant.MustFromContext(p.Context)
@@ -31,7 +37,12 @@ func createNodeAggregateResolver(gs *storage.GraphStorage, label string) graphql
 			counts := make(map[string]int)
 
 			for _, node := range nodes {
-				for key, value := range node.Properties {
+				// F3 masking hook: aggregate over the masked view of
+				// properties. Masked numeric properties become
+				// TypeString and naturally fall out of the numeric
+				// branches below (no contribution to sum/min/max/avg).
+				maskedProps := applyMaskingPolicyForGraphQL(p.Context, deps, node.Properties)
+				for key, value := range maskedProps {
 					var numValue float64
 					var isNumeric bool
 

@@ -212,7 +212,14 @@ func (s *Server) getGraphQLHandlerForTenant(tenantID string) (*graphql.GraphQLHa
 			return h, nil
 		}
 
-		schema, err := graphql.GenerateSchemaWithLimitsForTenant(s.graph, s.limitConfig, tenantID)
+		// F3 PR-3b: pass masking deps so the per-tenant policy applies
+		// to GraphQL responses (mirrors the REST applyMaskingPolicy
+		// hook at server_helpers.go).
+		maskingDeps := &graphql.MaskingDeps{
+			Store:  s.maskingPolicyStore,
+			Masker: s.masker,
+		}
+		schema, err := graphql.GenerateSchemaWithLimitsForTenant(s.graph, s.limitConfig, tenantID, maskingDeps)
 		if err != nil {
 			// Don't cache on error path — retry on next request.
 			return nil, err

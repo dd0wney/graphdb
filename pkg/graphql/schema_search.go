@@ -10,8 +10,12 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
-// GenerateSchemaWithSearch creates a GraphQL schema with full-text search
-func GenerateSchemaWithSearch(gs *storage.GraphStorage, searchIndex *search.FullTextIndex) (graphql.Schema, error) {
+// GenerateSchemaWithSearch creates a GraphQL schema with full-text search.
+//
+// deps is the F3 masking hookup; nil disables masking on the search-result
+// node properties (the result type contains the matched node's full
+// property bag JSON-encoded; masking flows through there).
+func GenerateSchemaWithSearch(gs *storage.GraphStorage, searchIndex *search.FullTextIndex, deps *MaskingDeps) (graphql.Schema, error) {
 	// Create a simple SearchResult type
 	searchResultType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "SearchResult",
@@ -43,7 +47,10 @@ func GenerateSchemaWithSearch(gs *storage.GraphStorage, searchIndex *search.Full
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if result, ok := p.Source.(map[string]any); ok {
 						if node, ok := result["node"].(*storage.Node); ok {
-							propsJSON, err := json.Marshal(node.Properties)
+							// F3 masking hook: search results respect
+							// the same per-tenant policy as direct reads.
+							maskedProps := applyMaskingPolicyForGraphQL(p.Context, deps, node.Properties)
+							propsJSON, err := json.Marshal(maskedProps)
 							if err != nil {
 								return nil, fmt.Errorf("failed to marshal node properties: %w", err)
 							}

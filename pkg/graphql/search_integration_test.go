@@ -45,7 +45,7 @@ func TestGraphQLSearchIntegration(t *testing.T) {
 	}
 
 	// Create schema with search
-	schema, err := GenerateSchemaWithSearch(gs, searchIndex)
+	schema, err := GenerateSchemaWithSearch(gs, searchIndex, nil)
 	if err != nil {
 		t.Fatalf("Failed to generate schema: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestGraphQLPhraseSearch(t *testing.T) {
 	searchIndex := search.NewFullTextIndex(gs)
 	_ = searchIndex.IndexNodes([]string{"Document"}, []string{"content"})
 
-	schema, err := GenerateSchemaWithSearch(gs, searchIndex)
+	schema, err := GenerateSchemaWithSearch(gs, searchIndex, nil)
 	if err != nil {
 		t.Fatalf("Failed to generate schema: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestGraphQLBooleanSearch(t *testing.T) {
 	searchIndex := search.NewFullTextIndex(gs)
 	_ = searchIndex.IndexNodes([]string{"Article"}, []string{"title"})
 
-	schema, err := GenerateSchemaWithSearch(gs, searchIndex)
+	schema, err := GenerateSchemaWithSearch(gs, searchIndex, nil)
 	if err != nil {
 		t.Fatalf("Failed to generate schema: %v", err)
 	}

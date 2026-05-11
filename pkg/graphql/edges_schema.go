@@ -12,27 +12,31 @@ import (
 // GenerateSchemaWithEdges generates a GraphQL schema with edge
 // traversal capabilities (tenant-blind). API callers should use
 // GenerateSchemaWithEdgesForTenant per audit A9 (#36).
+//
+// Masking is disabled (deps = nil).
 func GenerateSchemaWithEdges(gs *storage.GraphStorage) (graphql.Schema, error) {
-	return generateSchemaWithEdgesForLabels(gs, gs.GetAllLabels())
+	return generateSchemaWithEdgesForLabels(gs, gs.GetAllLabels(), nil)
 }
 
 // GenerateSchemaWithEdgesForTenant scopes the schema's type registry
 // to one tenant's labels. Audit A9 (2026-05-08) — closes the
 // introspection metadata leak.
-func GenerateSchemaWithEdgesForTenant(gs *storage.GraphStorage, tenantID string) (graphql.Schema, error) {
-	return generateSchemaWithEdgesForLabels(gs, gs.GetLabelsForTenant(tenantID))
+//
+// deps is the F3 masking hookup; nil disables masking.
+func GenerateSchemaWithEdgesForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+	return generateSchemaWithEdgesForLabels(gs, gs.GetLabelsForTenant(tenantID), deps)
 }
 
 // generateSchemaWithEdgesForLabels is the shared body. Caller picks
 // the label source.
-func generateSchemaWithEdgesForLabels(gs *storage.GraphStorage, labels []string) (graphql.Schema, error) {
+func generateSchemaWithEdgesForLabels(gs *storage.GraphStorage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	// Create edge type (shared across schema)
 	edgeType := createEdgeType()
 
 	// Create GraphQL types for each node label with edge traversal
 	nodeTypes := make(map[string]*graphql.Object)
 	for _, label := range labels {
-		nodeTypes[label] = createNodeTypeWithEdges(label, edgeType, gs)
+		nodeTypes[label] = createNodeTypeWithEdges(label, edgeType, gs, deps)
 	}
 
 	// Create Query type
@@ -106,7 +110,7 @@ func generateSchemaWithEdgesForLabels(gs *storage.GraphStorage, labels []string)
 	})
 
 	// Mutation type assembled in mutation_type.go so limits.go can reuse it.
-	mutationType := buildMutationType(gs, edgeType)
+	mutationType := buildMutationType(gs, edgeType, deps)
 
 	// Create schema
 	schema, err := graphql.NewSchema(graphql.SchemaConfig{
