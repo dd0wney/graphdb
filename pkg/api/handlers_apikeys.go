@@ -174,9 +174,12 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request, keyI
 		return
 	}
 
-	// Revoke the key
+	// Revoke the key. On 500, the store may surface internal-state errors
+	// (file I/O, JSON marshal); sanitize before forwarding to the response
+	// body so internals aren't echoed to the caller. See audit doc
+	// docs/AUDIT_error_sanitization_2026-05-11.md §"LEAKY".
 	if err := s.apiKeyStore.RevokeKey(keyID); err != nil {
-		s.respondError(w, http.StatusInternalServerError, err.Error())
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "revoke api key"))
 		return
 	}
 
