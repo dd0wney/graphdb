@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -253,5 +254,44 @@ func TestCreateNodeWithUniquePropertyForTenant_DifferentTypesNotEqual(t *testing
 	)
 	if err != nil {
 		t.Errorf("IntValue(1) should not collide with StringValue(\"1\"): %v", err)
+	}
+}
+
+// TestUniqueConstraintError_ResponseBodySafe pins the contract that
+// UniqueConstraintError.Error() does NOT include the tenant identifier in
+// its formatted message, so the string can be safely forwarded to HTTP or
+// GraphQL response bodies without leaking the operating tenant. The
+// TenantID struct field remains accessible via errors.As for legitimate
+// internal observers (logs, audit). See docs/AUDIT_error_sanitization_2026-05-11.md.
+func TestUniqueConstraintError_ResponseBodySafe(t *testing.T) {
+	uc := &UniqueConstraintError{
+		Label:             "Claim",
+		PropertyKey:       "for_task",
+		ConflictingNodeID: 42,
+		TenantID:          "secret-tenant-id",
+	}
+	msg := uc.Error()
+
+	if strings.Contains(msg, "secret-tenant-id") {
+		t.Errorf("Error() leaks TenantID into formatted message: %q", msg)
+	}
+	if strings.Contains(strings.ToLower(msg), "tenant") {
+		t.Errorf("Error() contains the substring \"tenant\": %q — must not appear in response-body-safe format", msg)
+	}
+
+	// Required content: label, property, node ID, the class prefix.
+	for _, want := range []string{"unique constraint violation", "label=Claim", "property=for_task", "node 42"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("Error() = %q, missing required substring %q", msg, want)
+		}
+	}
+
+	// TenantID remains accessible via the struct field for internal use.
+	var ucAs *UniqueConstraintError
+	if !errors.As(error(uc), &ucAs) {
+		t.Fatalf("errors.As should match *UniqueConstraintError")
+	}
+	if ucAs.TenantID != "secret-tenant-id" {
+		t.Errorf("TenantID field = %q, want %q", ucAs.TenantID, "secret-tenant-id")
 	}
 }
