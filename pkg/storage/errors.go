@@ -20,7 +20,10 @@ var (
 // UniqueConstraintError is returned by CreateNodeWithUniquePropertyForTenant
 // when a node with the same (label, propertyKey, propertyValue) already
 // exists in the tenant. Use errors.Is(err, ErrUniqueConstraintViolation)
-// to detect this class.
+// to detect this class. TenantID is preserved on the struct for logs and
+// audit records; it is intentionally omitted from Error() so the message
+// can be safely forwarded to HTTP/GraphQL response bodies without leaking
+// the operating tenant.
 type UniqueConstraintError struct {
 	Label             string
 	PropertyKey       string
@@ -29,9 +32,14 @@ type UniqueConstraintError struct {
 }
 
 // Error implements the error interface.
+//
+// The message is response-body-safe: callers can forward Error() to an HTTP
+// or GraphQL response without leaking the tenant identifier. Internal
+// observers (logs, audit) that need the tenant should pull it from the
+// TenantID struct field via errors.As.
 func (e *UniqueConstraintError) Error() string {
-	return fmt.Sprintf("unique constraint violation: tenant=%s label=%s property=%s already held by node %d",
-		e.TenantID, e.Label, e.PropertyKey, e.ConflictingNodeID)
+	return fmt.Sprintf("unique constraint violation: label=%s property=%s already held by node %d",
+		e.Label, e.PropertyKey, e.ConflictingNodeID)
 }
 
 // Unwrap allows errors.Is(err, ErrUniqueConstraintViolation).
