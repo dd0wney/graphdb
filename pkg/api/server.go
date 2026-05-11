@@ -84,6 +84,11 @@ func (s *Server) Start() error {
 	// docs/F2_GRAPHRAG_DESIGN.md.
 	mux.HandleFunc("/v1/retrieve", s.requireAuth(s.withTenant(s.handleRetrieve)))
 
+	// Compliance API (F3). Tenant-scoped audit log with admin cross-
+	// tenant override (X-Tenant-ID or ?tenant=*). See
+	// docs/F3_COMPLIANCE_API_DESIGN.md.
+	mux.HandleFunc("/v1/compliance/audit-log", s.requireAuth(s.withTenant(s.handleComplianceAuditLog)))
+
 	// Search index population (admin-only, tenant-scoped)
 	mux.HandleFunc("/search/index", s.requireAdmin(s.withTenant(s.handleSearchIndex)))
 	mux.HandleFunc("/hybrid-search/lsa-index", s.requireAdmin(s.withTenant(s.handleLSAIndex)))
@@ -171,6 +176,8 @@ func (s *Server) Start() error {
 	log.Printf("   Audit Logs:    GET  %s://%s/api/v1/security/audit/logs (admin)", protocol, addr)
 	log.Printf("   Audit Export:  POST %s://%s/api/v1/security/audit/export (admin)", protocol, addr)
 	log.Printf("   Security Health: GET  %s://%s/api/v1/security/health (admin)", protocol, addr)
+	log.Printf("📑 Compliance API (F3, tenant-scoped):")
+	log.Printf("   Audit Log:     GET  %s://%s/v1/compliance/audit-log (tenant; admin: X-Tenant-ID or ?tenant=*)", protocol, addr)
 	log.Printf("🔑 API Key Management (admin only):")
 	log.Printf("   List Keys:     GET  %s://%s/api/v1/apikeys (admin)", protocol, addr)
 	log.Printf("   Create Key:    POST %s://%s/api/v1/apikeys (admin)", protocol, addr)
