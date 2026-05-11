@@ -24,12 +24,13 @@ const (
 type ResourceType string
 
 const (
-	ResourceNode  ResourceType = "node"
-	ResourceEdge  ResourceType = "edge"
-	ResourceQuery ResourceType = "query"
-	ResourceAuth  ResourceType = "auth"
-	ResourceUser  ResourceType = "user"
-	ResourceKey   ResourceType = "apikey"
+	ResourceNode       ResourceType = "node"
+	ResourceEdge       ResourceType = "edge"
+	ResourceQuery      ResourceType = "query"
+	ResourceAuth       ResourceType = "auth"
+	ResourceUser       ResourceType = "user"
+	ResourceKey        ResourceType = "apikey"
+	ResourceCompliance ResourceType = "compliance" // F3: masking policy CRUD + audit log queries
 )
 
 // Status represents the outcome of an action
