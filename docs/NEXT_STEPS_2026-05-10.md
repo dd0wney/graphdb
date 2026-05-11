@@ -52,7 +52,7 @@ All M1–M6 items shipped. PRs #2, #3, #4, #5, #15, #16 merged into `main`.
 | F1: `/v1/embeddings` OpenAI-compat endpoint | ✅ Done | PR #7 (`09d527b`) |
 | F1.1: per-tenant LSA (named as follow-up) | ✅ Shipped 2026-04-20 (`cf57251` + `d7f74d5`) | Per-tenant `TenantLSAIndexes` registry, tenant-scoped corpus assembly, per-tenant `/v1/embeddings`. Verified by `TestEmbeddings_TenantIsolation`. Spike-on-discovery: `docs/F1_1_PER_TENANT_LSA_DESIGN.md` |
 | F2: GraphRAG retrieval — **shipped as `/v1/retrieve` (design pivot)** | ✅ Done | F2 #1–#7: spike `b2943d3`, factor `079a3c6`, package `039e8d1`, handler `01afe54`, regression `3a84cdf`, bench `80bbdc9`, docs `0f673b6` |
-| F3: Compliance API package | ❌ Not started | `pkg/masking/`, per-tenant property filter, audit log all live; integration surface absent |
+| F3: Compliance API package | 🟡 In progress (3-of-5 sub-PRs landed) | PR-1 design (#104), PR-0 prereq (#107), PR-2 audit-log endpoint (#111) done; PR-3a masking policy + read-path (#114, in CI); PR-3b GraphQL + PR-4 docs pending. Decomposed in §"F3" below. |
 
 **F2 design pivot** is documented in `F2_GRAPHRAG_DESIGN.md` and rationalized in commit `b2943d3`: LangChain BaseRetriever shape (not OpenAI-compat — OpenAI defines no retrieval endpoint), new `POST /v1/retrieve` (not `expand_hops` on `/hybrid-search`), avoid "graphrag" in the URL. The May 8 plan's F2 task description is superseded; the spike doc is authoritative going forward.
 
@@ -118,12 +118,25 @@ The spike (`docs/F1_1_PER_TENANT_LSA_DESIGN.md`) found that per-tenant LSA alrea
 
 **Acceptance**: spike conclusion + cleanup PR (this one) cover the original intent. F1.1-impl Task in coord retired, not closed.
 
-#### F3. Compliance API package
-- [ ] New `pkg/api/handlers_compliance.go`. Endpoints: `GET /v1/compliance/audit-log` (paginated, filtered), `POST /v1/compliance/masking-policy`, `GET /v1/compliance/masking-policy/{tenant}`.
-- [ ] Swagger annotations.
-- [ ] Reference SOC2/GDPR integration guide in new `docs/COMPLIANCE.md`.
-- [ ] Audit-regression row: cross-tenant policy access denied.
-- **Acceptance**: Audit log returns tenant's events in append-only order; masking policy applies to all read paths (Get/List/Search/Vector) — pinned by the existing per-tenant property-filter test surface.
+#### F3. Compliance API package 🟡 IN PROGRESS
+
+Decomposed into 5 sub-PRs per `docs/F3_COMPLIANCE_API_DESIGN.md`. Coord tracks the sub-PRs as `graphdb:F3.1`/`.2`/`.3` (subtasks of `graphdb:F3`); see `dd0wney/graphdb-coord` for the dependency graph.
+
+- [x] **F3 PR-1 (design)** ✅ DONE 2026-05-10 (PR #104): `docs/F3_COMPLIANCE_API_DESIGN.md` — 4 design decisions, audit-collector prereq scoped out as PR-0.
+- [x] **F3 PR-0 (audit-collector prereq)** ✅ DONE 2026-05-10 (PR #107): audit middleware now sees auth+tenant via collector pattern.
+- [x] **F3 PR-2 (audit-log endpoint)** ✅ DONE 2026-05-11 (PR #111): `GET /v1/compliance/audit-log` — tenant-scoped, paginated, follows existing handler-tenant-context pattern.
+- [ ] **F3 PR-3a (masking policy + read-path masking)** — PR #114 *(in CI, UNSTABLE-but-mergeable; known infra exit-143)*. Adds `pkg/masking/Policy` + `PolicyStore` + `Apply`; `POST/GET /v1/compliance/masking-policy[/{tenant}]` endpoints; per-tenant read-path masking sweep across 13 sites (`handlers_{nodes,edges,search,vectors,retrieve,hybrid_search,algorithms_traversal}.go`) via signature-change to `nodeToResponse`/`edgeToResponse` taking `context.Context`. Load-bearing test: `TestMasking_PolicyFollowsTenant`. Tracked as `graphdb:F3.1` in coord.
+- [ ] **F3 PR-3b (GraphQL resolver integration)** — pending. Six resolver sites in `pkg/graphql/` per design doc §3 Decision 3; mirror PR-3a's `applyMaskingPolicy` pattern, reusing `Policy.Apply` + `Masker`. Tracked as `graphdb:F3.2` in coord (DEPENDS_ON F3.1).
+- [ ] **F3 PR-4 (docs + audit-regression test)** — pending. `docs/COMPLIANCE.md` (SOC2 control mapping, GDPR Article 32 evidence, masking-policy semantics, retention) + regression row in `pkg/api/audit_regression_test.go` per design doc §5 template. Tracked as `graphdb:F3.3` in coord (DEPENDS_ON F3.2).
+
+**Acceptance**: Audit log returns tenant's events in append-only order; masking policy applies to all read paths across **both REST and GraphQL**; cross-tenant policy access denied (pinned by `TestMasking_PolicyFollowsTenant` for REST + planned GraphQL equivalent in PR-3b/PR-4).
+
+#### F3-related cleanup (off critical path)
+
+Two cleanup tasks surfaced during F3 work; trackable in coord but **not** gating F3 closure.
+
+- [ ] **`/security/audit/logs` deprecation comment** — per F3 design doc §3 Decision 1c. The new `/v1/compliance/audit-log` (PR #111) supersedes; legacy endpoint needs a deprecation marker + sunset plan. Single-file PR, can land standalone or bundle into PR-3b/PR-4. Tracked as `graphdb:audit-logs-deprecation` in coord (track F, no deps).
+- [ ] **Storage error-message sanitization audit** — surfaced by PR #109 review: `UniqueConstraintError.Error()` formats `tenant=<tenantID>` into the message, exposing cross-tenant existence-leak when the error reaches a response body via `respondError`. Worth one-pass audit of every `err.Error()` site that lands in a response body. Tracked as `graphdb:storage-error-sanitization-audit` in coord (track F, no deps).
 
 ### Track H — Housekeeping (new)
 
@@ -157,9 +170,9 @@ Surfaced by PR #82 (`docs/COORD_GAP_2026-05-10.md`) when the 2026-05-10 02:36Z s
 **Off-track follow-ups, mostly closed across the 2026-05-10/11 dogfood sessions** (each independent of H4's original deliverables):
 
 - **H4.1** ✅ DONE 2026-05-10 (PR #105): REST `/nodes` GET base64-encoded string properties. `valueToInterface` helper now dispatches on `Value.Type` via the existing typed accessors (`AsString`, `AsInt`, …); `nodeToResponse`/`edgeToResponse`/`listNodes` collapse to one helper-call (the `listNodes` loop was duplicating `nodeToResponse`'s body).
-- **H4.3** *(in review, PR #108)*: snapshot-replay drops the per-tenant label index. One-line fix in `replayCreateNode` to call `addNodeToTenantIndex(&node)` after the existing global label-index population. Regression test pins via crash-without-snapshot recovery.
-- **H4.3-followup** *(in review, PR #110)*: sibling fix to H4.3 — `loadFromDisk` also dropped `tenantNodesByLabel`. Same symptom, fires via clean-shutdown path instead of WAL replay. Independent of #108 (different file, different function); ships either order.
-- **H4.4** *(in review, PR #109)*: REST `POST /nodes` B-lite mirror. Single-label `:Claim` creation routes through `CreateNodeWithUniquePropertyForTenant`; 409 on conflict with the storage-layer's typed error message verbatim (callers can parse the owning node id). Constants duplicated from `pkg/graphql` with a TODO referencing the eventual uniqueness-rules registry that retires both sites.
+- **H4.3** *(in review, PR #108 — review-blocked 2026-05-11)*: snapshot-replay drops the per-tenant label index. One-line fix in `replayCreateNode` to call `addNodeToTenantIndex(&node)` after the existing global label-index population. **Review finding**: symmetric edge-index gap — `replayCreateEdge` also doesn't rebuild `tenantEdgesByType`. The PR scope as phrased reads as the broader fix; needs the edge mirror added.
+- **H4.3-followup** *(in review, PR #110 — review-blocked 2026-05-11)*: sibling fix to H4.3 — `loadFromDisk` also dropped `tenantNodesByLabel`. Same symptom, fires via clean-shutdown path instead of WAL replay. **Review finding**: same edge-index gap as PR #108 on the snapshot-load path.
+- **H4.4** *(in review, PR #109 — review-blocked 2026-05-11)*: REST `POST /nodes` B-lite mirror. Single-label `:Claim` creation routes through `CreateNodeWithUniquePropertyForTenant`; 409 on conflict with the storage-layer's typed error message. **Review finding**: 409-body cross-tenant existence-leak — `err.Error()` on `UniqueConstraintError` formats `tenant=<tenantID>` into the response, letting callers probe whether a `for_task` is claimed in another tenant. Needs structured-JSON 409 with `winning_node_id` field but stripped `TenantID`. Also surfaces a broader concern tracked separately as `graphdb:storage-error-sanitization-audit`.
 - **H4.5** ✅ DONE 2026-05-10 (`dd0wney/graphdb-coord` `e3e1986`): `coord-seed.sh` now seeds `:DEPENDS_ON` from an explicit `DEPS=("A<-B" ...)` array. Critical-path chain `F1.1-spike → F3 → A8.1 → S1` plus `H4.6 ← H4.5` seeded; `coord-next` reflects planning-doc intent instead of FIFO. Idempotent loop mirrors the existing `:IN_PROJECT` pattern.
 - **H4.6 parallel-dogfood** ✅ DONE 2026-05-11 (`dd0wney/graphdb-coord` `af1a835`): retro doc on the 2026-05-10/11 two-agent contention window. Scenario A (synthetic two-process race on same `for_task`) ran live and produced the expected single-winner-one-conflict result; Scenario B emerged organically from this session's H4.x track running concurrent with the F3 agent's work. B-lite operationally validated under realistic cooperative two-agent run, with documented qualifications. See `dd0wney/graphdb-coord/docs/COORD_PARALLEL_AGENT_RETRO_2026-05-11.md`.
 - **H4.7 seed-project-default** ✅ DONE 2026-05-10 (`dd0wney/graphdb-coord` `5b190a1`): `.coord-project` file at repo root pins `COORD_PROJECT` default, overriding `git remote get-url origin` basename. Closes the `graphdb-coord:` parallel-namespace failure mode surfaced when an unguarded `bash scripts/coord-seed.sh` from `graphdb-coord/` auto-detected the wrong project and created 19 orphan nodes.
