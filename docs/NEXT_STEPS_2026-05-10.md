@@ -154,11 +154,15 @@ Surfaced by PR #82 (`docs/COORD_GAP_2026-05-10.md`) when the 2026-05-10 02:36Z s
 
 **Strategic framing held**: graphdb coordinates its own development with **real atomic claim semantics** (verified live: 10-way concurrent claims for the same task → 1 success, 9 structured conflicts citing the same winner ID). The dogfood claim now lands without footnote — see memory `project_graphdb_dogfoods_coord.md`.
 
-**Off-track follow-ups discovered, not closed under H4** (each is independent of H4's deliverables; promote to top-level next planning round):
+**Off-track follow-ups, mostly closed across the 2026-05-10/11 dogfood sessions** (each independent of H4's original deliverables):
 
-- **H4.1** *(open)*: REST `/nodes` GET base64-encodes string properties (`pkg/api/handlers_nodes.go:34` — `props[k] = v.Data` where `Value.Data` is `[]byte`). All read-side coord scripts and skill bash blocks work around this with Python decode helpers. Type-aware decoding before `respondJSON` is a single-PR cleanup; affects every REST `/nodes` consumer, not just coord.
-- **H4.3** *(net-new)*: snapshot-replay drops the per-tenant label index. `replayCreateNode` populates global `nodesByLabel` but not `tenantNodesByLabel`, so per-label GraphQL queries (`{ tasks { id } }`) return "Cannot query field" after restart until the next write. Skill bash blocks already work around this with REST `/nodes` + client-side label filter; the proper fix is to mirror the tenant-index population in `persistence_replay.go`. Single-PR cleanup.
-- **H4.4** *(net-new)*: REST `POST /nodes` doesn't enforce B-lite uniqueness. The check is GraphQL-resolver-only. Skills route Claim creation through GraphQL explicitly, but a future caller using REST would silently bypass. Mirroring the check in `pkg/api/handlers_nodes.go` would close this; ~30-50 LOC.
+- **H4.1** ✅ DONE 2026-05-10 (PR #105): REST `/nodes` GET base64-encoded string properties. `valueToInterface` helper now dispatches on `Value.Type` via the existing typed accessors (`AsString`, `AsInt`, …); `nodeToResponse`/`edgeToResponse`/`listNodes` collapse to one helper-call (the `listNodes` loop was duplicating `nodeToResponse`'s body).
+- **H4.3** *(in review, PR #108)*: snapshot-replay drops the per-tenant label index. One-line fix in `replayCreateNode` to call `addNodeToTenantIndex(&node)` after the existing global label-index population. Regression test pins via crash-without-snapshot recovery.
+- **H4.3-followup** *(in review, PR #110)*: sibling fix to H4.3 — `loadFromDisk` also dropped `tenantNodesByLabel`. Same symptom, fires via clean-shutdown path instead of WAL replay. Independent of #108 (different file, different function); ships either order.
+- **H4.4** *(in review, PR #109)*: REST `POST /nodes` B-lite mirror. Single-label `:Claim` creation routes through `CreateNodeWithUniquePropertyForTenant`; 409 on conflict with the storage-layer's typed error message verbatim (callers can parse the owning node id). Constants duplicated from `pkg/graphql` with a TODO referencing the eventual uniqueness-rules registry that retires both sites.
+- **H4.5** ✅ DONE 2026-05-10 (`dd0wney/graphdb-coord` `e3e1986`): `coord-seed.sh` now seeds `:DEPENDS_ON` from an explicit `DEPS=("A<-B" ...)` array. Critical-path chain `F1.1-spike → F3 → A8.1 → S1` plus `H4.6 ← H4.5` seeded; `coord-next` reflects planning-doc intent instead of FIFO. Idempotent loop mirrors the existing `:IN_PROJECT` pattern.
+- **H4.6 parallel-dogfood** ✅ DONE 2026-05-11 (`dd0wney/graphdb-coord` `af1a835`): retro doc on the 2026-05-10/11 two-agent contention window. Scenario A (synthetic two-process race on same `for_task`) ran live and produced the expected single-winner-one-conflict result; Scenario B emerged organically from this session's H4.x track running concurrent with the F3 agent's work. B-lite operationally validated under realistic cooperative two-agent run, with documented qualifications. See `dd0wney/graphdb-coord/docs/COORD_PARALLEL_AGENT_RETRO_2026-05-11.md`.
+- **H4.7 seed-project-default** ✅ DONE 2026-05-10 (`dd0wney/graphdb-coord` `5b190a1`): `.coord-project` file at repo root pins `COORD_PROJECT` default, overriding `git remote get-url origin` basename. Closes the `graphdb-coord:` parallel-namespace failure mode surfaced when an unguarded `bash scripts/coord-seed.sh` from `graphdb-coord/` auto-detected the wrong project and created 19 orphan nodes.
 
 ### Track S — Scoping spike (new)
 
@@ -183,7 +187,7 @@ H3 ✅ ──┘                                       ├─→ F1.1 ✅ (spike
 
 **Critical path**: ~~H1~~ → ~~A4~~ → ~~A4-edges~~ → ~~A8.2~~ → ~~F1.1-spike~~ → **F3** → A8.1 → S1.
 
-Off-path parallel work: ~~H3~~ ✅ (branches), ~~H4~~ ✅ (coord-deploy gap — closed via B-lite + skill rewrite + multi-project, PRs #85–#93), H2 (requireAdmin) anywhere there's a small gap. The H4.x net-new sub-tracks (H4.1 base64, H4.3 replay-tenant-index, H4.4 REST-uniqueness-mirror) are each single-PR cleanups suitable as small parallel work — none are blocking.
+Off-path parallel work: ~~H3~~ ✅ (branches), ~~H4~~ ✅ (coord-deploy gap — closed via B-lite + skill rewrite + multi-project, PRs #85–#93), ~~H2~~ ✅ (requireAdmin, PR #102). The H4.x net-new sub-tracks are now closed or in review: ~~H4.1~~ ✅ (#105), ~~H4.5~~ ✅ (graphdb-coord `e3e1986`), ~~H4.6~~ ✅ (graphdb-coord `af1a835`), ~~H4.7~~ ✅ (graphdb-coord `5b190a1`); H4.3 (#108), H4.3-followup (#110), H4.4 (#109) in review — none blocking.
 
 **Why this ordering**:
 - **H1 first** ✅ — broken `main` builds were creating false-positive CI signal across every other PR's matrix; closed via PRs #65 + #66.
