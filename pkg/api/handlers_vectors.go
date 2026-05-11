@@ -360,7 +360,7 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.IncludeNodes {
-			result.Node = s.nodeToResponse(clonedSurvivor)
+			result.Node = s.nodeToResponse(r.Context(), clonedSurvivor)
 		}
 
 		results = append(results, result)

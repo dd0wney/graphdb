@@ -12,6 +12,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
 	gqlpkg "github.com/dd0wney/cluso-graphdb/pkg/graphql"
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
+	"github.com/dd0wney/cluso-graphdb/pkg/masking"
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
 	"github.com/dd0wney/cluso-graphdb/pkg/retrieval"
@@ -48,6 +49,8 @@ type Server struct {
 	auditLogger         audit.Logger                 // Interface for audit logging (in-memory or persistent)
 	inMemoryAuditLogger *audit.AuditLogger           // In-memory logger for GetEvents/GetRecentEvents
 	persistentAudit     *audit.PersistentAuditLogger // Persistent logger (nil if disabled)
+	maskingPolicyStore  *masking.PolicyStore         // F3: per-tenant masking policies (in-memory; lost on restart)
+	masker              *masking.Masker              // F3: shared Masker (holds token cache across requests)
 	metricsRegistry     *metrics.Registry
 	healthChecker       *health.HealthChecker
 	tlsConfig           *tlspkg.Config

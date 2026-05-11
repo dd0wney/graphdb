@@ -42,7 +42,7 @@ func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := s.edgeToResponse(edge)
+	response := s.edgeToResponse(r.Context(), edge)
 	s.respondJSON(w, http.StatusCreated, response)
 }
 
@@ -68,7 +68,7 @@ func (s *Server) getEdge(w http.ResponseWriter, r *http.Request, edgeID uint64) 
 		return
 	}
 
-	response := s.edgeToResponse(edge)
+	response := s.edgeToResponse(r.Context(), edge)
 	s.respondJSON(w, http.StatusOK, response)
 }
 
@@ -122,7 +122,7 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		edges = append(edges, s.edgeToResponse(edge))
+		edges = append(edges, s.edgeToResponse(r.Context(), edge))
 	}
 
 	response := BatchEdgeResponse{

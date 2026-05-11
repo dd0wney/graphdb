@@ -1,12 +1,16 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/cluso-graphdb/pkg/masking"
 )
 
 // Compliance API endpoint defaults.
@@ -125,4 +129,175 @@ func (s *Server) handleComplianceAuditLog(w http.ResponseWriter, r *http.Request
 	}
 
 	s.respondJSON(w, http.StatusOK, response)
+}
+
+// maskingPolicyRequest is the JSON body for POST
+// /v1/compliance/masking-policy. Mirrors masking.Policy but drops
+// server-managed fields (TenantID — set from request context;
+// UpdatedAt — server-stamped).
+type maskingPolicyRequest struct {
+	Properties map[string]masking.MaskingStrategy `json:"properties,omitempty"`
+	AutoDetect bool                               `json:"auto_detect"`
+}
+
+// validMaskingStrategies is the allow-list for incoming policy
+// strategies. We validate at the request boundary rather than rely
+// on Masker's "unknown → maskPartial" default so operators get a
+// clear 400 on typos.
+var validMaskingStrategies = map[masking.MaskingStrategy]bool{
+	masking.StrategyFull:     true,
+	masking.StrategyPartial:  true,
+	masking.StrategyHash:     true,
+	masking.StrategyRedact:   true,
+	masking.StrategyTokenize: true,
+	masking.StrategyNone:     true,
+}
+
+// handleComplianceMaskingPolicySet serves POST
+// /v1/compliance/masking-policy. Sets or replaces the masking policy
+// for a tenant. Per design doc §3 Decision 1c / §4 PR-3:
+//
+//   - Admin-only operation (claims.Role == RoleAdmin).
+//   - Target tenant comes from withTenant context resolution
+//     (X-Tenant-ID admin-override applies).
+//   - Body: maskingPolicyRequest JSON.
+//
+// Audit: emits AuditActionUpdate / ResourceCompliance event on success.
+func (s *Server) handleComplianceMaskingPolicySet(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	claims, ok := r.Context().Value(claimsContextKey).(*auth.Claims)
+	if !ok || claims.Role != auth.RoleAdmin {
+		s.respondError(w, http.StatusForbidden, "Admin role required")
+		return
+	}
+
+	tenantID := getTenantFromContext(r)
+	if tenantID == "" {
+		s.respondError(w, http.StatusBadRequest, "No tenant resolvable from context")
+		return
+	}
+
+	var req maskingPolicyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+
+	// Validate strategies before we Set, so an operator with a typo
+	// gets a clear 400 with the bad name rather than silent fallback.
+	for propName, strategy := range req.Properties {
+		if !validMaskingStrategies[strategy] {
+			s.respondError(w, http.StatusBadRequest,
+				"Invalid masking strategy for property "+propName+": "+string(strategy))
+			return
+		}
+	}
+
+	policy := &masking.Policy{
+		Properties: req.Properties,
+		AutoDetect: req.AutoDetect,
+	}
+	s.maskingPolicyStore.Set(tenantID, policy)
+
+	// Audit trail: who changed which tenant's masking policy. Read
+	// back the stored policy to surface the server-stamped UpdatedAt
+	// in the response body. The Get cannot return ErrPolicyNotFound
+	// because we just Set it on the line above; ignore the error.
+	stored, _ := s.maskingPolicyStore.Get(tenantID) //nolint:errcheck // Set above guarantees presence
+	if stored == nil {
+		stored = &masking.Policy{TenantID: tenantID}
+	}
+	s.logAuditEvent(&audit.Event{
+		TenantID:     tenantID,
+		UserID:       claims.UserID,
+		Username:     claims.Username,
+		Action:       audit.ActionUpdate,
+		ResourceType: audit.ResourceCompliance,
+		ResourceID:   "masking-policy/" + tenantID,
+		Status:       audit.StatusSuccess,
+		IPAddress:    getIPAddress(r),
+		UserAgent:    r.UserAgent(),
+		Metadata: map[string]any{
+			"property_count": len(req.Properties),
+			"auto_detect":    req.AutoDetect,
+		},
+	})
+
+	s.respondJSON(w, http.StatusOK, stored)
+}
+
+// handleComplianceMaskingPolicyGet serves GET
+// /v1/compliance/masking-policy/{tenant}. Returns the named tenant's
+// policy. Per design doc:
+//
+//   - Admin: any tenant.
+//   - Non-admin: only own tenant (403 otherwise — strict, not 404, so
+//     non-admins get a clear access-denied rather than masking the
+//     existence of another tenant; existence of the *masking policy*
+//     is not a side channel because tenants exist independently and
+//     admins can already enumerate them).
+//   - Missing policy: 404 with a distinct error so operators can
+//     differentiate "no policy" from "policy exists but is empty."
+func (s *Server) handleComplianceMaskingPolicyGet(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Path: /v1/compliance/masking-policy/{tenant}
+	const prefix = "/v1/compliance/masking-policy/"
+	if !strings.HasPrefix(r.URL.Path, prefix) {
+		s.respondError(w, http.StatusNotFound, "Not found")
+		return
+	}
+	pathTenant := strings.TrimPrefix(r.URL.Path, prefix)
+	if pathTenant == "" || strings.Contains(pathTenant, "/") {
+		s.respondError(w, http.StatusBadRequest, "Tenant ID required in path")
+		return
+	}
+
+	claims, hasClaims := r.Context().Value(claimsContextKey).(*auth.Claims)
+	if !hasClaims {
+		s.respondError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	if claims.Role != auth.RoleAdmin {
+		callerTenant := getTenantFromContext(r)
+		if pathTenant != callerTenant {
+			s.respondError(w, http.StatusForbidden,
+				"Non-admin callers can only read their own tenant's policy")
+			return
+		}
+	}
+
+	policy, err := s.maskingPolicyStore.Get(pathTenant)
+	if err != nil {
+		if errors.Is(err, masking.ErrPolicyNotFound) {
+			s.respondError(w, http.StatusNotFound, "No masking policy set for this tenant")
+			return
+		}
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "get masking policy"))
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, policy)
+}
+
+// handleComplianceMaskingPolicy dispatches POST vs GET on the
+// /v1/compliance/masking-policy/* route family. GET handler reads
+// {tenant} from path; POST handler doesn't (target is withTenant's
+// resolved tenant).
+func (s *Server) handleComplianceMaskingPolicy(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		s.handleComplianceMaskingPolicySet(w, r)
+	case http.MethodGet:
+		s.handleComplianceMaskingPolicyGet(w, r)
+	default:
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+	}
 }

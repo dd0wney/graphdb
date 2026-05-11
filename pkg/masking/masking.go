@@ -41,7 +41,20 @@ func (m *Masker) MaskString(value string, fieldType FieldType) string {
 		return value
 	}
 
-	strategy := m.getStrategy(fieldType)
+	return m.ApplyStrategy(value, m.getStrategy(fieldType), fieldType)
+}
+
+// ApplyStrategy masks value using strategy directly, bypassing the
+// FieldType → strategy lookup. Used by the F3 per-tenant Policy
+// machinery, which carries explicit (property-name → strategy) rules
+// rather than the per-FieldType config Masker was designed around.
+// fieldType is still passed because the StrategyTokenize path uses it
+// to namespace the token cache; for non-tokenize strategies it's
+// effectively a label.
+func (m *Masker) ApplyStrategy(value string, strategy MaskingStrategy, fieldType FieldType) string {
+	if value == "" {
+		return value
+	}
 
 	switch strategy {
 	case StrategyFull:

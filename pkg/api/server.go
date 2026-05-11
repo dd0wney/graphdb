@@ -89,6 +89,15 @@ func (s *Server) Start() error {
 	// docs/F3_COMPLIANCE_API_DESIGN.md.
 	mux.HandleFunc("/v1/compliance/audit-log", s.requireAuth(s.withTenant(s.handleComplianceAuditLog)))
 
+	// F3 masking-policy CRUD. Single mux entry catches both
+	//   POST /v1/compliance/masking-policy           (admin-only Set; target via withTenant)
+	//   GET  /v1/compliance/masking-policy/{tenant}  (admin OR self-tenant)
+	// Dispatch lives in handleComplianceMaskingPolicy; the trailing
+	// slash registration captures path-suffix calls like
+	// /v1/compliance/masking-policy/tenant-a.
+	mux.HandleFunc("/v1/compliance/masking-policy", s.requireAuth(s.withTenant(s.handleComplianceMaskingPolicy)))
+	mux.HandleFunc("/v1/compliance/masking-policy/", s.requireAuth(s.withTenant(s.handleComplianceMaskingPolicy)))
+
 	// Search index population (admin-only, tenant-scoped)
 	mux.HandleFunc("/search/index", s.requireAdmin(s.withTenant(s.handleSearchIndex)))
 	mux.HandleFunc("/hybrid-search/lsa-index", s.requireAdmin(s.withTenant(s.handleLSAIndex)))

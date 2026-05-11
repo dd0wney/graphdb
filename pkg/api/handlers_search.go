@@ -116,19 +116,20 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		filtered = filtered[req.Offset:end]
 	}
 
+	ctx := r.Context()
 	results := make([]SearchResultItem, 0, len(filtered))
-	for _, r := range filtered {
+	for _, hit := range filtered {
 		item := SearchResultItem{
-			NodeID: r.NodeID,
-			Score:  r.Score,
+			NodeID: hit.NodeID,
+			Score:  hit.Score,
 		}
 		if req.IncludeContent {
-			if content, ok := idx.NodeContent(r.NodeID); ok {
+			if content, ok := idx.NodeContent(hit.NodeID); ok {
 				item.Snippet = truncateRunes(content, searchSnippetRunes)
 			}
 		}
-		if req.IncludeNodes && r.Node != nil {
-			item.Node = s.nodeToResponse(r.Node)
+		if req.IncludeNodes && hit.Node != nil {
+			item.Node = s.nodeToResponse(ctx, hit.Node)
 		}
 		results = append(results, item)
 	}

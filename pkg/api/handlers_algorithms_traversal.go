@@ -116,7 +116,7 @@ func (s *Server) traverseFromWithContext(ctx context.Context, tenantID string, n
 		return nil // Skip missing or cross-tenant nodes (no leak).
 	}
 
-	*nodes = append(*nodes, s.nodeToResponse(node))
+	*nodes = append(*nodes, s.nodeToResponse(ctx, node))
 
 	edges, err := s.graph.GetOutgoingEdgesForTenant(nodeID, tenantID)
 	if err != nil {

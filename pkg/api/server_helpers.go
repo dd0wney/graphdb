@@ -1,21 +1,35 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"path/filepath"
 	"time"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/masking"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
 )
 
-func (s *Server) nodeToResponse(node *storage.Node) *NodeResponse {
-	props := make(map[string]any)
+// nodeToResponse converts a *storage.Node to its JSON response shape.
+// Takes ctx for tenant-scoped masking policy lookup (F3): the request
+// context carries the resolved tenantID via withTenant, and this
+// helper applies the tenant's masking policy (if any) to property
+// values before returning.
+//
+// ctx may be a non-HTTP context (background, test) — in that case
+// there's no tenant resolvable from context, so no masking is applied
+// (equivalent to pre-F3 behaviour).
+func (s *Server) nodeToResponse(ctx context.Context, node *storage.Node) *NodeResponse {
+	props := make(map[string]any, len(node.Properties))
 	for k, v := range node.Properties {
 		props[k] = valueToInterface(v)
 	}
+	props = s.applyMaskingPolicy(ctx, props)
 
 	return &NodeResponse{
 		ID:         node.ID,
@@ -24,11 +38,13 @@ func (s *Server) nodeToResponse(node *storage.Node) *NodeResponse {
 	}
 }
 
-func (s *Server) edgeToResponse(edge *storage.Edge) *EdgeResponse {
-	props := make(map[string]any)
+// edgeToResponse mirrors nodeToResponse for edges. Same ctx contract.
+func (s *Server) edgeToResponse(ctx context.Context, edge *storage.Edge) *EdgeResponse {
+	props := make(map[string]any, len(edge.Properties))
 	for k, v := range edge.Properties {
 		props[k] = valueToInterface(v)
 	}
+	props = s.applyMaskingPolicy(ctx, props)
 
 	return &EdgeResponse{
 		ID:         edge.ID,
@@ -38,6 +54,35 @@ func (s *Server) edgeToResponse(edge *storage.Edge) *EdgeResponse {
 		Properties: props,
 		Weight:     edge.Weight,
 	}
+}
+
+// applyMaskingPolicy is the per-tenant masking hook. Resolves the
+// tenant from ctx, looks up the tenant's masking policy (if any),
+// and returns a copy of props with the policy applied. If no policy
+// is set for the tenant — the common case — returns props unchanged.
+//
+// Defense-in-depth: returns props unchanged on any internal error.
+// The F3 design doc §6 calls out that read paths must never
+// fail-closed on masking errors — better to ship unmasked output
+// and surface the gap via audit logs than to break customer reads.
+func (s *Server) applyMaskingPolicy(ctx context.Context, props map[string]any) map[string]any {
+	if s == nil || s.maskingPolicyStore == nil || s.masker == nil || ctx == nil {
+		return props
+	}
+	tenantID, ok := tenant.FromContext(ctx)
+	if !ok || tenantID == "" {
+		return props
+	}
+	policy, err := s.maskingPolicyStore.Get(tenantID)
+	if err != nil {
+		if errors.Is(err, masking.ErrPolicyNotFound) {
+			return props
+		}
+		// Other errors are unexpected from an in-memory store; pass
+		// through rather than fail the response.
+		return props
+	}
+	return policy.Apply(props, s.masker)
 }
 
 func (s *Server) convertToValue(v any) storage.Value {
