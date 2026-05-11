@@ -172,6 +172,17 @@ func (gs *GraphStorage) loadFromDisk() error {
 		gs.propertyIndexes[key] = idx
 	}
 
+	// H4.3-followup: rebuild tenantNodesByLabel + tenantStats from the
+	// snapshot's flat node set. The snapshot struct (line 135 above) only
+	// persists the global nodesByLabel — without this loop, post-restart
+	// per-tenant GraphQL queries 400 with `Cannot query field "tasks" on
+	// type "Query"` until the tenant's next write reseeds the index.
+	// Sibling fix to the WAL-replay fix in persistence_replay.go's
+	// replayCreateNode (H4.3).
+	for _, node := range snapshot.Nodes {
+		gs.addNodeToTenantIndex(node)
+	}
+
 	return nil
 }
 
