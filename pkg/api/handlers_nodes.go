@@ -29,7 +29,7 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := make([]*NodeResponse, 0, len(allNodes))
 
 	for _, node := range allNodes {
-		nodes = append(nodes, s.nodeToResponse(node))
+		nodes = append(nodes, s.nodeToResponse(r.Context(), node))
 	}
 
 	s.respondJSON(w, http.StatusOK, nodes)
@@ -58,7 +58,7 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := s.nodeToResponse(node)
+	response := s.nodeToResponse(r.Context(), node)
 	s.respondJSON(w, http.StatusCreated, response)
 }
 
@@ -88,7 +88,7 @@ func (s *Server) getNode(w http.ResponseWriter, r *http.Request, nodeID uint64) 
 		return
 	}
 
-	response := s.nodeToResponse(node)
+	response := s.nodeToResponse(r.Context(), node)
 	s.respondJSON(w, http.StatusOK, response)
 }
 
@@ -136,7 +136,7 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 		s.respondJSON(w, http.StatusOK, map[string]any{"updated": nodeID})
 		return
 	}
-	response := s.nodeToResponse(node)
+	response := s.nodeToResponse(r.Context(), node)
 	s.respondJSON(w, http.StatusOK, response)
 }
 
@@ -198,7 +198,7 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		nodes = append(nodes, s.nodeToResponse(node))
+		nodes = append(nodes, s.nodeToResponse(r.Context(), node))
 	}
 
 	response := BatchNodeResponse{

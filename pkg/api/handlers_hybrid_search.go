@@ -117,7 +117,7 @@ func (s *Server) handleHybridSearch(w http.ResponseWriter, r *http.Request) {
 	hydrated := make(map[uint64]*NodeResponse, len(hits))
 	for _, h := range hits {
 		if h.FTSNode != nil {
-			hydrated[h.NodeID] = s.nodeToResponse(h.FTSNode)
+			hydrated[h.NodeID] = s.nodeToResponse(r.Context(), h.FTSNode)
 		}
 	}
 
@@ -135,7 +135,7 @@ func (s *Server) handleHybridSearch(w http.ResponseWriter, r *http.Request) {
 				if gerr != nil || gnode == nil {
 					continue
 				}
-				node = s.nodeToResponse(gnode)
+				node = s.nodeToResponse(r.Context(), gnode)
 				hydrated[h.NodeID] = node
 			}
 			if hasAnyLabel(node.Labels, req.Labels) {

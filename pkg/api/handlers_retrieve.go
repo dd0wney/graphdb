@@ -160,7 +160,7 @@ func (s *Server) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.IncludeNode {
 			if node, err := s.graph.GetNodeForTenant(c.NodeID, tenantID); err == nil {
-				doc.Metadata.Node = s.nodeToResponse(node)
+				doc.Metadata.Node = s.nodeToResponse(r.Context(), node)
 			}
 		}
 		docs = append(docs, doc)

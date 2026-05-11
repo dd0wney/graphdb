@@ -15,6 +15,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/auth/oidc"
 	"github.com/dd0wney/cluso-graphdb/pkg/graphql"
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
+	"github.com/dd0wney/cluso-graphdb/pkg/masking"
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
 	"github.com/dd0wney/cluso-graphdb/pkg/queryutil"
@@ -258,6 +259,8 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		auditLogger:         auditLogger,
 		inMemoryAuditLogger: inMemoryAuditLogger,
 		persistentAudit:     persistentAudit,
+		maskingPolicyStore:  masking.NewPolicyStore(),
+		masker:              masking.NewMasker(masking.DefaultMaskingConfig()),
 		metricsRegistry:     metricsRegistry,
 		healthChecker:       healthChecker,
 		tlsConfig:           nil, // TLS disabled by default
