@@ -9,6 +9,17 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/validation"
 )
 
+// claimLabel + claimUniquePropertyKey mirror pkg/graphql/mutations_resolvers.go's
+// B-lite uniqueness rule for REST callers. Both sites enforce: at most one
+// :Claim per (tenant, for_task). Duplicated intentionally so REST POST /nodes
+// can't silently bypass the check; both sites retire together when the
+// configurable uniqueness-rules registry (COORD_DEPLOY_SPIKE option B-full)
+// lands.
+const (
+	claimLabel             = "Claim"
+	claimUniquePropertyKey = "for_task"
+)
+
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	s.NewMethodRouter(w, r).
 		Get(func() { s.listNodes(w, r) }).
@@ -52,8 +63,35 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	// JWT claim — re-introducing the cross-tenant write the audit closed
 	// at the storage layer.
 	tenantID := getTenantFromContext(r)
-	node, err := s.graph.CreateNodeWithTenant(tenantID, req.Labels, props)
+
+	// H4.4: B-lite mirror. Route single-label :Claim creation through the
+	// unique-property helper so REST callers can't bypass the at-most-one-
+	// active-Claim-per-(tenant, for_task) rule that the GraphQL resolver
+	// enforces. Single-label labels==[claimLabel] is the same gate the
+	// resolver uses (pkg/graphql/mutations_resolvers.go:78) — multi-label
+	// nodes retain freedom to add secondary labels without inheriting
+	// uniqueness semantics.
+	var (
+		node *storage.Node
+		err  error
+	)
+	if len(req.Labels) == 1 && req.Labels[0] == claimLabel {
+		if _, ok := props[claimUniquePropertyKey]; !ok {
+			s.respondError(w, http.StatusBadRequest,
+				":Claim creation requires a "+claimUniquePropertyKey+" property")
+			return
+		}
+		node, err = s.graph.CreateNodeWithUniquePropertyForTenant(
+			tenantID, req.Labels, props, claimLabel, claimUniquePropertyKey,
+		)
+	} else {
+		node, err = s.graph.CreateNodeWithTenant(tenantID, req.Labels, props)
+	}
 	if err != nil {
+		if errors.Is(err, storage.ErrUniqueConstraintViolation) {
+			s.respondError(w, http.StatusConflict, err.Error())
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create node"))
 		return
 	}
