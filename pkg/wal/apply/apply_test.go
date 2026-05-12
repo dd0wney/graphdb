@@ -1,4 +1,4 @@
-package replication
+package apply
 
 import (
 	"errors"
@@ -7,9 +7,10 @@ import (
 	"testing"
 )
 
-// Audit A8 #3 (2026-05-09): tests the WriteReceiver apply path's
-// fail-closed behavior on empty TenantID, plus the tenant-flow-through
-// for populated TenantID.
+// Audit A8 (2026-05-09; lifted 2026-05-12 by A8.1 Option B from
+// pkg/replication/apply_test.go): tests the apply path's fail-closed
+// behavior on empty TenantID, plus tenant-flow-through for populated
+// TenantID.
 //
 // The load-bearing test is the fail-closed half: the assertion is
 // "mock executor recorded zero calls," not "no error returned." A
@@ -80,21 +81,19 @@ func (e *recordingExecutor) recorded() []recordedCall {
 	return out
 }
 
-// TestExecuteWrite_FailsClosedOnEmptyTenantID is the security gate.
-// An incoming WriteOperation with empty TenantID — whether from a
-// buggy/old sender or a malicious payload — must NOT reach the
-// executor. The audit precedent is the JWT_SECRET fix in
-// pkg/api/server_init.go: silent default-on-empty was the exact
-// pattern this audit cycle exists to close.
+// TestApplyWriteOperation_FailsClosedOnEmptyTenantID is the security
+// gate. A WriteOperation with empty TenantID — whether from a buggy/old
+// sender or a malicious payload — must NOT reach the executor. The audit
+// precedent is the JWT_SECRET fix in pkg/api/server_init.go: silent
+// default-on-empty was the exact pattern this audit cycle exists to close.
 //
-// The assertion is recorded-calls-equals-zero, NOT "no error" — a
-// future regression where rejection-then-call slips in must fail
-// here. We pin REPLICATION_ALLOW_EMPTY_TENANT to "" via t.Setenv:
-// against the current `!= "1"` gate the empty string is equivalent
-// to unset (both fail closed). If a future change relaxes the gate
-// to `!= ""`, this test would silently regress; keep the gate's
-// comparison intentional.
-func TestExecuteWrite_FailsClosedOnEmptyTenantID(t *testing.T) {
+// The assertion is recorded-calls-equals-zero, NOT "no error" — a future
+// regression where rejection-then-call slips in must fail here. We pin
+// AllowEmptyTenantEnv to "" via t.Setenv: against the current `!= "1"`
+// gate the empty string is equivalent to unset (both fail closed). If a
+// future change relaxes the gate to `!= ""`, this test would silently
+// regress; keep the gate's comparison intentional.
+func TestApplyWriteOperation_FailsClosedOnEmptyTenantID(t *testing.T) {
 	tests := []struct {
 		name string
 		op   WriteOperation
@@ -124,12 +123,13 @@ func TestExecuteWrite_FailsClosedOnEmptyTenantID(t *testing.T) {
 			// Ensure the env-var escape hatch is OFF for this test —
 			// the *default* behavior must be fail-closed. Setenv with
 			// the helper handles cleanup.
-			t.Setenv(replicationAllowEmptyTenantEnv, "")
+			t.Setenv(AllowEmptyTenantEnv, "")
 
 			executor := &recordingExecutor{}
-			receiver := &WriteReceiver{executor: executor}
 
-			receiver.executeWrite(&tt.op)
+			if err := ApplyWriteOperation(executor, tt.op); err != nil {
+				t.Fatalf("ApplyWriteOperation: %v", err)
+			}
 
 			calls := executor.recorded()
 			if len(calls) != 0 {
@@ -139,28 +139,31 @@ func TestExecuteWrite_FailsClosedOnEmptyTenantID(t *testing.T) {
 	}
 }
 
-// TestExecuteWrite_PopulatedTenantIDFlowsThrough pins the happy path:
-// a WriteOperation with non-empty TenantID reaches the executor with
-// the correct tenant. Without this, fail-closed could regress to
+// TestApplyWriteOperation_PopulatedTenantIDFlowsThrough pins the happy
+// path: a WriteOperation with non-empty TenantID reaches the executor
+// with the correct tenant. Without this, fail-closed could regress to
 // "fail always" without anything noticing.
-func TestExecuteWrite_PopulatedTenantIDFlowsThrough(t *testing.T) {
-	t.Setenv(replicationAllowEmptyTenantEnv, "")
+func TestApplyWriteOperation_PopulatedTenantIDFlowsThrough(t *testing.T) {
+	t.Setenv(AllowEmptyTenantEnv, "")
 
 	executor := &recordingExecutor{}
-	receiver := &WriteReceiver{executor: executor}
 
-	receiver.executeWrite(&WriteOperation{
+	if err := ApplyWriteOperation(executor, WriteOperation{
 		TenantID: "tenant-A",
 		Type:     "create_node",
 		Labels:   []string{"User"},
-	})
-	receiver.executeWrite(&WriteOperation{
+	}); err != nil {
+		t.Fatalf("ApplyWriteOperation node: %v", err)
+	}
+	if err := ApplyWriteOperation(executor, WriteOperation{
 		TenantID:   "tenant-B",
 		Type:       "create_edge",
 		FromNodeID: 10,
 		ToNodeID:   20,
 		EdgeType:   "OWNS",
-	})
+	}); err != nil {
+		t.Fatalf("ApplyWriteOperation edge: %v", err)
+	}
 
 	calls := executor.recorded()
 	if len(calls) != 2 {
@@ -174,26 +177,26 @@ func TestExecuteWrite_PopulatedTenantIDFlowsThrough(t *testing.T) {
 	}
 }
 
-// TestExecuteWrite_EscapeHatchOptsIntoLegacyDefault exercises the
-// REPLICATION_ALLOW_EMPTY_TENANT=1 escape hatch from the spike's Q3.
-// With the env var set, an empty TenantID is rewritten to "default"
-// before dispatch — the old (insecure) behavior, made explicit and
-// opt-in for one-shot migration scenarios.
+// TestApplyWriteOperation_EscapeHatchOptsIntoLegacyDefault exercises the
+// AllowEmptyTenantEnv=1 escape hatch. With the env var set, an empty
+// TenantID is rewritten to "default" before dispatch — the old (insecure)
+// behavior, made explicit and opt-in for one-shot migration scenarios.
 //
 // This test exists so a future change to the gate's wording (or its
-// removal) is intentional. If the escape hatch is dropped, this test
-// is the canary that flags it.
-func TestExecuteWrite_EscapeHatchOptsIntoLegacyDefault(t *testing.T) {
-	t.Setenv(replicationAllowEmptyTenantEnv, "1")
+// removal) is intentional. If the escape hatch is dropped, this test is
+// the canary that flags it.
+func TestApplyWriteOperation_EscapeHatchOptsIntoLegacyDefault(t *testing.T) {
+	t.Setenv(AllowEmptyTenantEnv, "1")
 
 	executor := &recordingExecutor{}
-	receiver := &WriteReceiver{executor: executor}
 
-	receiver.executeWrite(&WriteOperation{
+	if err := ApplyWriteOperation(executor, WriteOperation{
 		TenantID: "", // legacy/migration shape
 		Type:     "create_node",
 		Labels:   []string{"Doc"},
-	})
+	}); err != nil {
+		t.Fatalf("ApplyWriteOperation: %v", err)
+	}
 
 	calls := executor.recorded()
 	if len(calls) != 1 {
@@ -204,15 +207,14 @@ func TestExecuteWrite_EscapeHatchOptsIntoLegacyDefault(t *testing.T) {
 	}
 }
 
-// TestApplyWriteOperation_DoesNotMutateCallerOp pins the by-value
-// contract on ApplyWriteOperation. The escape-hatch path rewrites
-// empty TenantID to "default" before dispatch — but only on the
-// function's local copy. A future refactor that switches the
-// signature to *WriteOperation "for symmetry with executeWrite"
-// would silently re-introduce caller-visible mutation; this test is
-// the canary.
+// TestApplyWriteOperation_DoesNotMutateCallerOp pins the by-value contract
+// on ApplyWriteOperation. The escape-hatch path rewrites empty TenantID
+// to "default" before dispatch — but only on the function's local copy.
+// A future refactor that switches the signature to *WriteOperation "for
+// symmetry with caller-side wrappers" would silently re-introduce
+// caller-visible mutation; this test is the canary.
 func TestApplyWriteOperation_DoesNotMutateCallerOp(t *testing.T) {
-	t.Setenv(replicationAllowEmptyTenantEnv, "1")
+	t.Setenv(AllowEmptyTenantEnv, "1")
 
 	executor := &recordingExecutor{}
 	op := WriteOperation{
@@ -234,19 +236,19 @@ func TestApplyWriteOperation_DoesNotMutateCallerOp(t *testing.T) {
 	}
 }
 
-// TestApplyWriteOperation_PropagatesExecutorError pins that errors
-// from the underlying executor are returned to the caller (not just
-// logged-and-swallowed). The fail-closed gate's refusal is NOT an
-// error — refusal is the documented success path. But a real
-// executor failure (e.g., storage rejected a malformed op) must
-// reach the caller so audit and unit tests can assert on dispatch
-// success rather than only on observable state.
+// TestApplyWriteOperation_PropagatesExecutorError pins that errors from
+// the underlying executor are returned to the caller (not just
+// logged-and-swallowed). The fail-closed gate's refusal is NOT an error
+// — refusal is the documented success path. But a real executor failure
+// (e.g., storage rejected a malformed op) must reach the caller so audit
+// and unit tests can assert on dispatch success rather than only on
+// observable state.
 //
-// Without error propagation, a future audit-row extension where
-// (e.g.) create_edge references stale node IDs would fail with a
-// confusing "got 0 edges" rather than the actual cause.
+// Without error propagation, a future audit-row extension where (e.g.)
+// create_edge references stale node IDs would fail with a confusing "got
+// 0 edges" rather than the actual cause.
 func TestApplyWriteOperation_PropagatesExecutorError(t *testing.T) {
-	t.Setenv(replicationAllowEmptyTenantEnv, "")
+	t.Setenv(AllowEmptyTenantEnv, "")
 
 	tests := []struct {
 		name string
@@ -291,14 +293,13 @@ func TestApplyWriteOperation_PropagatesExecutorError(t *testing.T) {
 	}
 }
 
-// TestApplyWriteOperation_RefusalReturnsNil pins that fail-closed
-// refusal is NOT signaled as an error. Refusal is the gate's
-// documented success path — the receive-loop has nothing to do with
-// the signal, and surfacing it as an error would force the loop to
-// distinguish refusal-vs-failure for no benefit. A future "errors.New
-// for refusal" change would silently double-up logging.
+// TestApplyWriteOperation_RefusalReturnsNil pins that fail-closed refusal
+// is NOT signaled as an error. Refusal is the gate's documented success
+// path — surfacing it as an error would force callers to distinguish
+// refusal-vs-failure for no benefit. A future "errors.New for refusal"
+// change would silently double-up logging.
 func TestApplyWriteOperation_RefusalReturnsNil(t *testing.T) {
-	t.Setenv(replicationAllowEmptyTenantEnv, "")
+	t.Setenv(AllowEmptyTenantEnv, "")
 
 	executor := &recordingExecutor{}
 	err := ApplyWriteOperation(executor, WriteOperation{

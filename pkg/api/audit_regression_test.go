@@ -12,9 +12,9 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/audit"
 	"github.com/dd0wney/cluso-graphdb/pkg/auth"
 	"github.com/dd0wney/cluso-graphdb/pkg/masking"
-	"github.com/dd0wney/cluso-graphdb/pkg/replication"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/cluso-graphdb/pkg/wal/apply"
 )
 
 // TestAuditRegressionSuite_CrossTenantIsolation is the consolidated
@@ -46,7 +46,7 @@ import (
 //	A6c-graphql → pkg/graphql/http_tenant_test.go       (/graphql resolver scope)
 //	A6c-query   → pkg/api/handlers_query_a6c_test.go    (/query)
 //	A6c-algorithms → pkg/api/handlers_algorithms_a6c_test.go (/algorithms)
-//	A8   → pkg/replication/apply_test.go                (replication apply path)
+//	A8   → pkg/wal/apply/apply_test.go                  (apply path fail-closed tenant gate; lifted 2026-05-12 by A8.1 Option B from pkg/replication)
 //	A8.2 → (closed by A8.1 deletion — replica binary no longer exists)
 //	A9   → pkg/api/handlers_graphql_introspection_a9_test.go (/graphql introspection)
 //	F2   → pkg/api/handlers_retrieve_test.go            (/v1/retrieve)
@@ -493,14 +493,14 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 		}
 	})
 
-	// ---- replication apply path — A8 ----
+	// ---- apply path fail-closed tenant gate — A8 ----
 
-	t.Run("A8/replication-write-preserves-tenant", func(t *testing.T) {
-		// PR #40+ (A8 spike): a WriteOperation flowing through the
-		// replication apply path lands only in the originating
-		// tenant, and never silently routes to "default". The
-		// per-package authoritative test is
-		// pkg/replication/apply_test.go (fail-closed semantics on
+	t.Run("A8/apply-write-preserves-tenant", func(t *testing.T) {
+		// PR #40+ (A8 spike), lifted 2026-05-12 by A8.1 Option B:
+		// a WriteOperation flowing through the apply path lands only
+		// in the originating tenant, and never silently routes to
+		// "default". The per-package authoritative test is
+		// pkg/wal/apply/apply_test.go (fail-closed semantics on
 		// empty TenantID + tenant-flow-through with a mock
 		// executor); this row is the umbrella that pins the
 		// observable end-to-end contract against a real
@@ -509,7 +509,7 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 		// Unique label "A8WireSentinel" — separate from the
 		// fixture's shared "User"/"Doc" labels — so the assertion
 		// is exact (1 in tenant-A, 0 in default).
-		op := replication.WriteOperation{
+		op := apply.WriteOperation{
 			Type:     "create_node",
 			TenantID: "tenant-A",
 			Labels:   []string{"A8WireSentinel"},
@@ -517,7 +517,7 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 		// Capture the error: a future row extension (e.g.,
 		// create_edge with stale node IDs) would surface the actual
 		// failure here rather than a confusing "got 0" further down.
-		if err := replication.ApplyWriteOperation(replicationAdapter{gs: fix.server.graph}, op); err != nil {
+		if err := apply.ApplyWriteOperation(applyAdapter{gs: fix.server.graph}, op); err != nil {
 			t.Fatalf("ApplyWriteOperation: %v", err)
 		}
 
@@ -527,25 +527,22 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 		}
 		inDefault := fix.server.graph.GetNodesByLabelForTenant("default", "A8WireSentinel")
 		if len(inDefault) != 0 {
-			t.Errorf("replication apply leaked into default tenant: %d node(s) with A8WireSentinel", len(inDefault))
+			t.Errorf("apply leaked into default tenant: %d node(s) with A8WireSentinel", len(inDefault))
 		}
 	})
 }
 
-// replicationAdapter wraps *storage.GraphStorage to satisfy the
-// replication.WriteExecutor interface for the A8 audit row.
+// applyAdapter wraps *storage.GraphStorage to satisfy the
+// apply.WriteExecutor interface for the A8 audit row.
 //
-// Test-scoped on purpose. A production wiring of pkg/replication into
-// cmd/server is HA work — out of audit scope (A8 spike §5). Properties
-// are passed nil because the audit row uses no properties; a real
-// adapter would need a map[string]interface{} → map[string]storage.Value
-// conversion (the existing convertProperties helper in pkg/replication
-// serves the NNG path).
-type replicationAdapter struct {
+// Test-scoped on purpose. Properties are passed nil because the audit
+// row uses no properties; a real adapter would need a
+// map[string]interface{} → map[string]storage.Value conversion.
+type applyAdapter struct {
 	gs *storage.GraphStorage
 }
 
-func (a replicationAdapter) CreateNodeWithTenant(tenantID string, labels []string, _ map[string]interface{}) (uint64, error) {
+func (a applyAdapter) CreateNodeWithTenant(tenantID string, labels []string, _ map[string]interface{}) (uint64, error) {
 	n, err := a.gs.CreateNodeWithTenant(tenantID, labels, nil)
 	if err != nil {
 		return 0, err
@@ -553,7 +550,7 @@ func (a replicationAdapter) CreateNodeWithTenant(tenantID string, labels []strin
 	return n.ID, nil
 }
 
-func (a replicationAdapter) CreateEdgeWithTenant(tenantID string, from, to uint64, edgeType string, _ map[string]interface{}, weight float64) (uint64, error) {
+func (a applyAdapter) CreateEdgeWithTenant(tenantID string, from, to uint64, edgeType string, _ map[string]interface{}, weight float64) (uint64, error) {
 	e, err := a.gs.CreateEdgeWithTenant(tenantID, from, to, edgeType, nil, weight)
 	if err != nil {
 		return 0, err
