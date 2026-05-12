@@ -1,6 +1,7 @@
 ---
 name: coord-lesson
-description: Record, list, or surface a `:Lesson` in the coord daemon — the curated learning layer. A lesson captures a non-obvious finding tied to a specific Task (e.g. "running tests with -race=3 catches H4.3 tenant-index regressions that -count=1 misses"). Use when an agent finishes a task with a real lesson to record, when the user says "save this as a lesson," "record a lesson," "what lessons apply to X," "surface lessons for task Y," or when reviewing what prior work has taught us. Lessons surface automatically on `coord claim` for the claimed task; this skill covers explicit record / list / show / inform outside that auto-flow.
+description: Record, list, show, or inform a `:Lesson` in coord — the curated learning layer (non-obvious findings tied to a Task). Covers the explicit lifecycle outside the auto-surfacing that happens on `coord claim`.
+when_to_use: An agent finishes a task with a real lesson to record. The user says "save this as a lesson," "record a lesson," "what lessons apply to X," "surface lessons for task Y." Reviewing what prior work has taught us on a topic. Wiring an existing lesson to a new task via `inform`.
 allowed-tools: Bash(../graphdb-coord/coord *) Bash(jq *)
 ---
 
