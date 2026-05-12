@@ -9,6 +9,12 @@ allowed-tools: Bash(../graphdb-coord/coord *) Bash(jq *) Bash(wc *)
 
 The dreaming layer is out-of-band synthesis over the accumulated `:Lesson` corpus. Inspired by sleep-consolidation: agents do hot-path work all day, then the dreaming pass clusters and generalises offline. It never runs in any agent's hot path; you invoke it deliberately.
 
+## Current state
+
+Live snapshot at skill-load time. Default policy is proposed-only (the actionable set):
+
+- Pending dreams: !`../graphdb-coord/coord dream list --json 2>/dev/null | jq -ce '{proposed_count: .count}' 2>/dev/null || echo '(coord dream list unavailable — daemon down or binary predates `coord dream list`; rebuild via: cd ../graphdb-coord && go build -o coord ./cmd/coord)'`
+
 ## How the loop works
 
 ```

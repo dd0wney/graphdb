@@ -9,6 +9,12 @@ allowed-tools: Bash(../graphdb-coord/coord *) Bash(jq *)
 
 Raw observations tied to graphdb tasks. Lower bar than `:Lesson` — record now, decide if it generalizes later. The promote step is where curation happens.
 
+## Current state
+
+Live snapshot at skill-load time:
+
+- Corpus: !`../graphdb-coord/coord insight list --limit 5 --json 2>/dev/null | jq -ce '{count, recent_ids: [.insights[0:3][].id]}' 2>/dev/null || echo '(coord daemon unreachable — see Pre-flight)'`
+
 ## Why insights vs. lessons?
 
 - **`:Lesson`** = curated, surfaces on every related claim, drives recall.

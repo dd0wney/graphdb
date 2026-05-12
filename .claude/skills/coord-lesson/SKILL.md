@@ -9,6 +9,12 @@ allowed-tools: Bash(../graphdb-coord/coord *) Bash(jq *)
 
 Curated learnings tied to graphdb tasks via `LEARNED_FROM`/`INFORMED_BY` edges. Distinct from raw `:Insight` observations (use `coord-insight` for those — promotion to a lesson is a deliberate step).
 
+## Current state
+
+Live snapshot of the lesson corpus at skill-load time (zero-cost if daemon is up; fallback string if not — see Pre-flight to recover):
+
+- Corpus: !`../graphdb-coord/coord lesson list --limit 5 --json 2>/dev/null | jq -ce '{count, recent_ids: [.lessons[0:3][].id]}' 2>/dev/null || echo '(coord daemon unreachable — see Pre-flight)'`
+
 ## When to invoke
 
 - After substantive work on a task, the agent identifies a finding that:
