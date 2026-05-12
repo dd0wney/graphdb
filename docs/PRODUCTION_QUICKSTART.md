@@ -1,811 +1,256 @@
 # Cluso GraphDB - Production Quickstart
 
-## Deploy Today, Update Tomorrow
+## Single-Node Deployment
 
-This guide shows you how to deploy Cluso GraphDB to production TODAY and safely update it TOMORROW.
-
----
-
-## Day 1: Initial Production Deployment
-
-### Architecture: Minimal High-Availability Setup
-
-```
-                    ┌──────────────┐
-                    │ Load Balancer│
-                    │  (nginx)     │
-                    └───────┬──────┘
-                            │
-        ┌───────────────────┼───────────────────┐
-        │                   │                   │
-   ┌────▼─────┐       ┌────▼─────┐       ┌────▼─────┐
-   │ Primary  │       │ Replica1 │       │ Replica2 │
-   │ :8080    │──────▶│ :8081    │       │ :8082    │
-   │ (Write)  │       │ (Read)   │       │ (Read)   │
-   └──────────┘       └──────────┘       └──────────┘
-   /data/primary      /data/replica1     /data/replica2
-```
-
-### Prerequisites
-
-**3 servers (or Docker containers):**
-- CPU: 4 cores minimum
-- RAM: 8GB minimum
-- Disk: 100GB SSD (data can grow, plan accordingly)
-- Network: Low latency between nodes (<10ms)
-
-**Software:**
-- Go 1.21+ (to build binaries)
-- nginx or HAProxy (load balancer)
-- systemd (for process management)
+> **graphdb is single-node by design.** Per the A8.1 architectural decision (2026-05-12, see `docs/A8_1_SPIKE_2026-05-12.md`), the standalone replication binaries (`graphdb-primary`, `graphdb-replica`, plus their `nng` variants) and the `pkg/replication/` library were retired. The deployment surface is now `cmd/server` only.
+>
+> Horizontal scale (sharded write path, distributed query) is a multi-quarter scope explicitly out of the current roadmap. If you need multi-node HA today, the deployment patterns are: per-tenant deployment behind a router, or wait for a future `cmd/server`-native replication rebuild.
+>
+> A prior version of this guide documented multi-node deployment using the legacy `graphdb-primary` / `graphdb-replica` binaries. That guidance was unsafe — the binaries pre-dated the multi-tenant work and routed writes to the default tenant. They've been deleted from the codebase; the old guide is in git history.
 
 ---
 
-### Step 1: Build Binaries
+## Prerequisites
+
+- Linux server (Ubuntu 22.04+ or equivalent) with systemd
+- 4 CPU cores, 8GB RAM, 100GB SSD (sized for your corpus — see Scale Considerations below)
+- Go 1.23+ if building from source
+- Network access on port 8080 (HTTP API) and whatever other ports you expose
+
+## Step 1: Build the binary
 
 ```bash
 # On your build machine
-cd /path/to/cluso-graphdb
-
-# Build primary server
-go build -o graphdb-primary ./cmd/graphdb-primary
-
-# Build replica server
-go build -o graphdb-replica ./cmd/graphdb-replica
-
-# Verify builds
-./graphdb-primary --version
-./graphdb-replica --version
+cd cluso-graphdb
+go build -o graphdb ./cmd/server
+./graphdb --version
 ```
 
----
+For deploying a pre-built artifact, copy the binary to the target machine — no static dependencies beyond glibc.
 
-### Step 2: Deploy Primary Node
-
-**On primary server (e.g., 10.0.1.10):**
+## Step 2: Deploy the server
 
 ```bash
 # Create data directory
-sudo mkdir -p /var/lib/graphdb/primary
-sudo chown $USER:$USER /var/lib/graphdb/primary
+sudo mkdir -p /var/lib/graphdb
+sudo chown graphdb:graphdb /var/lib/graphdb
 
 # Copy binary
-sudo cp graphdb-primary /usr/local/bin/
-sudo chmod +x /usr/local/bin/graphdb-primary
+sudo cp graphdb /usr/local/bin/
+sudo chmod +x /usr/local/bin/graphdb
 
 # Create systemd service
-sudo tee /etc/systemd/system/graphdb-primary.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/graphdb.service > /dev/null <<EOF
 [Unit]
-Description=Cluso GraphDB Primary Node
+Description=Cluso GraphDB
 After=network.target
 
 [Service]
 Type=simple
 User=graphdb
 Group=graphdb
-WorkingDirectory=/var/lib/graphdb/primary
-ExecStart=/usr/local/bin/graphdb-primary \\
-  --data=/var/lib/graphdb/primary \\
-  --http=8080 \\
-  --replication=:9090
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
+WorkingDirectory=/var/lib/graphdb
+Environment="DATA_DIR=/var/lib/graphdb"
+Environment="JWT_SECRET=<set-a-strong-secret>"
+ExecStart=/usr/local/bin/graphdb --port 8080
+Restart=on-failure
+RestartSec=5s
 
 # Resource limits
 LimitNOFILE=65536
-LimitNPROC=32768
+LimitNPROC=4096
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 # Create user
-sudo useradd -r -s /bin/false graphdb
-sudo chown -R graphdb:graphdb /var/lib/graphdb
+sudo useradd --system --home /var/lib/graphdb --shell /usr/sbin/nologin graphdb
 
-# Start primary
+# Start
 sudo systemctl daemon-reload
-sudo systemctl enable graphdb-primary
-sudo systemctl start graphdb-primary
-
-# Verify it's running
-sudo systemctl status graphdb-primary
-curl http://localhost:8080/health
-```
-
-**Expected output:**
-```json
-{
-  "status": "healthy",
-  "role": "primary",
-  "version": "1.0.0",
-  "uptime_seconds": 5
-}
-```
-
----
-
-### Step 3: Deploy Replica Nodes
-
-**On replica1 server (e.g., 10.0.1.11):**
-
-```bash
-# Create data directory
-sudo mkdir -p /var/lib/graphdb/replica1
-sudo useradd -r -s /bin/false graphdb
-sudo chown -R graphdb:graphdb /var/lib/graphdb
-
-# Copy binary
-sudo cp graphdb-replica /usr/local/bin/
-sudo chmod +x /usr/local/bin/graphdb-replica
-
-# Create systemd service
-sudo tee /etc/systemd/system/graphdb-replica.service > /dev/null <<EOF
-[Unit]
-Description=Cluso GraphDB Replica Node
-After=network.target
-
-[Service]
-Type=simple
-User=graphdb
-Group=graphdb
-WorkingDirectory=/var/lib/graphdb/replica1
-ExecStart=/usr/local/bin/graphdb-replica \\
-  --data=/var/lib/graphdb/replica1 \\
-  --http=8081 \\
-  --primary=10.0.1.10:9090 \\
-  --id=replica-01
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-LimitNOFILE=65536
-LimitNPROC=32768
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Start replica
-sudo systemctl daemon-reload
-sudo systemctl enable graphdb-replica
-sudo systemctl start graphdb-replica
-
-# Verify it's running
-sudo systemctl status graphdb-replica
-curl http://localhost:8081/health
-```
-
-**Expected output:**
-```json
-{
-  "status": "healthy",
-  "role": "replica",
-  "connected": "connected",
-  "primary": "10.0.1.10:9090"
-}
-```
-
-**Repeat on replica2 server (10.0.1.12):**
-- Change port to `8082`
-- Change data dir to `/var/lib/graphdb/replica2`
-- Change ID to `replica-02`
-
----
-
-### Step 4: Configure Load Balancer
-
-**On nginx server (or same as primary):**
-
-```bash
-# Install nginx
-sudo apt-get install nginx  # Debian/Ubuntu
-# or
-sudo yum install nginx      # RHEL/CentOS
-
-# Configure
-sudo tee /etc/nginx/conf.d/graphdb.conf > /dev/null <<'EOF'
-upstream graphdb_primary {
-    server 10.0.1.10:8080 max_fails=3 fail_timeout=30s;
-}
-
-upstream graphdb_replicas {
-    server 10.0.1.11:8081 max_fails=3 fail_timeout=30s;
-    server 10.0.1.12:8082 max_fails=3 fail_timeout=30s;
-}
-
-server {
-    listen 80;
-    server_name graphdb.example.com;
-
-    # Health check endpoint
-    location /health {
-        proxy_pass http://graphdb_primary;
-    }
-
-    # Write operations -> Primary only
-    location ~ ^/api/(nodes|edges) {
-        if ($request_method ~ ^(POST|PUT|DELETE)$) {
-            proxy_pass http://graphdb_primary;
-        }
-        # GET requests -> Replicas
-        proxy_pass http://graphdb_replicas;
-    }
-
-    # Replication status -> Primary
-    location /replication {
-        proxy_pass http://graphdb_primary;
-    }
-
-    # Queries -> Replicas (read-only)
-    location /query {
-        proxy_pass http://graphdb_replicas;
-    }
-
-    # Stats -> Any node
-    location /stats {
-        proxy_pass http://graphdb_replicas;
-    }
-
-    # Default -> Primary
-    location / {
-        proxy_pass http://graphdb_primary;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-EOF
-
-# Test configuration
-sudo nginx -t
-
-# Reload nginx
-sudo systemctl reload nginx
-```
-
----
-
-### Step 5: Verify Production Setup
-
-```bash
-# Check all nodes healthy
-curl http://graphdb.example.com/health
-
-# Check replication status
-curl http://10.0.1.10:8080/replication/status | jq .
-
-# Expected: All replicas connected with low lag
-{
-  "is_primary": true,
-  "replica_count": 2,
-  "replicas": [
-    {
-      "replica_id": "replica-01",
-      "connected": true,
-      "heartbeat_lag": 0,
-      "lag_ms": 12
-    },
-    {
-      "replica_id": "replica-02",
-      "connected": true,
-      "heartbeat_lag": 0,
-      "lag_ms": 15
-    }
-  ]
-}
-```
-
-**Test write operation:**
-```bash
-# Write to primary
-curl -X POST http://graphdb.example.com/api/nodes \
-  -H "Content-Type: application/json" \
-  -d '{
-    "labels": ["Customer"],
-    "properties": {
-      "name": "Test Customer",
-      "email": "test@example.com"
-    }
-  }'
-
-# Wait 1 second for replication
-sleep 1
-
-# Read from replica
-curl http://10.0.1.11:8081/stats
-
-# Verify node count increased
-```
-
----
-
-### Step 6: Setup Monitoring (Optional but Recommended)
-
-**Create monitoring script:**
-
-```bash
-sudo tee /usr/local/bin/monitor-graphdb.sh > /dev/null <<'EOF'
-#!/bin/bash
-
-PRIMARY="http://10.0.1.10:8080"
-ALERT_EMAIL="ops@example.com"
-
-# Check primary health
-if ! curl -sf $PRIMARY/health > /dev/null; then
-    echo "PRIMARY DOWN" | mail -s "GraphDB Alert" $ALERT_EMAIL
-    exit 1
-fi
-
-# Check replication lag
-MAX_LAG=$(curl -s $PRIMARY/replication/status | jq '[.replicas[].heartbeat_lag] | max')
-
-if [ "$MAX_LAG" -gt 10 ]; then
-    echo "HIGH REPLICATION LAG: $MAX_LAG" | mail -s "GraphDB Alert" $ALERT_EMAIL
-fi
-
-# Check for disconnected replicas
-DISCONNECTED=$(curl -s $PRIMARY/replication/status | jq '[.replicas[] | select(.connected == false)] | length')
-
-if [ "$DISCONNECTED" -gt 0 ]; then
-    echo "REPLICAS DISCONNECTED: $DISCONNECTED" | mail -s "GraphDB Alert" $ALERT_EMAIL
-fi
-EOF
-
-sudo chmod +x /usr/local/bin/monitor-graphdb.sh
-
-# Add to cron (run every minute)
-echo "* * * * * /usr/local/bin/monitor-graphdb.sh" | sudo crontab -
-```
-
----
-
-### Step 7: Setup Backups
-
-**Daily backup script:**
-
-```bash
-sudo tee /usr/local/bin/backup-graphdb.sh > /dev/null <<'EOF'
-#!/bin/bash
-
-BACKUP_DIR="/var/backups/graphdb"
-DATE=$(date +%Y%m%d-%H%M%S)
-PRIMARY_DATA="/var/lib/graphdb/primary"
-
-# Create backup directory
-mkdir -p $BACKUP_DIR
-
-# Trigger snapshot on primary
-curl -X POST http://localhost:8080/snapshot
-
-# Wait for snapshot to complete
-sleep 5
-
-# Backup data directory
-tar -czf $BACKUP_DIR/graphdb-$DATE.tar.gz $PRIMARY_DATA
-
-# Keep only last 7 days
-find $BACKUP_DIR -name "graphdb-*.tar.gz" -mtime +7 -delete
-
-echo "Backup completed: graphdb-$DATE.tar.gz"
-EOF
-
-sudo chmod +x /usr/local/bin/backup-graphdb.sh
-
-# Add to cron (run daily at 2am)
-echo "0 2 * * * /usr/local/bin/backup-graphdb.sh" | sudo crontab -
-```
-
----
-
-## Day 2: Update Production Database
-
-You've discovered a bug or want to deploy a new feature. Here's how to update safely.
-
-### Update Scenario: Deploy v1.1 with Zero Downtime
-
-**New binaries available:**
-- `graphdb-primary-v1.1`
-- `graphdb-replica-v1.1`
-
----
-
-### Step 1: Pre-Update Checks
-
-```bash
-# 1. Verify current version
-curl http://10.0.1.10:8080/health | jq '.version'
-# Output: "1.0.0"
-
-# 2. Check replication healthy
-curl http://10.0.1.10:8080/replication/status | jq '.replicas[] | {id, connected, lag: .heartbeat_lag}'
-
-# 3. Create backup (run backup script manually)
-sudo /usr/local/bin/backup-graphdb.sh
-
-# 4. Test new version in staging (if available)
-# ... staging tests pass ...
-```
-
----
-
-### Step 2: Update Replica1 (Zero Downtime)
-
-**On replica1 server (10.0.1.11):**
-
-```bash
-# Stop replica
-sudo systemctl stop graphdb-replica
-
-# Backup current binary
-sudo cp /usr/local/bin/graphdb-replica /usr/local/bin/graphdb-replica.v1.0.backup
-
-# Backup data (optional but safe)
-sudo tar -czf /tmp/replica1-backup-$(date +%Y%m%d).tar.gz /var/lib/graphdb/replica1
-
-# Install new binary
-sudo cp graphdb-replica-v1.1 /usr/local/bin/graphdb-replica
-
-# Start upgraded replica
-sudo systemctl start graphdb-replica
-
-# Monitor logs for errors
-sudo journalctl -u graphdb-replica -f
-# Watch for: "Connected to primary", no error messages
-
-# Check health
-curl http://localhost:8081/health | jq .
-# Expected: version "1.1.0", connected "connected"
-
-# Check lag on primary
-curl http://10.0.1.10:8080/replication/status | jq '.replicas[] | select(.replica_id=="replica-01")'
-# Expected: connected: true, heartbeat_lag < 5
-```
-
-**Wait 2-3 minutes and verify replica1 is stable.**
-
----
-
-### Step 3: Update Replica2 (Zero Downtime)
-
-**On replica2 server (10.0.1.12):**
-
-```bash
-# Same process as replica1
-sudo systemctl stop graphdb-replica
-sudo cp /usr/local/bin/graphdb-replica /usr/local/bin/graphdb-replica.v1.0.backup
-sudo cp graphdb-replica-v1.1 /usr/local/bin/graphdb-replica
-sudo systemctl start graphdb-replica
+sudo systemctl enable graphdb
+sudo systemctl start graphdb
 
 # Verify
-curl http://localhost:8082/health | jq .
-curl http://10.0.1.10:8080/replication/status | jq '.replicas[] | select(.replica_id=="replica-02")'
-```
-
-**Current state:**
-```
-Primary: v1.0 (still serving writes)
-Replica1: v1.1 ✓
-Replica2: v1.1 ✓
-```
-
----
-
-### Step 4: Promote Replica1 to Primary (5-Second Switchover)
-
-**This is the only brief downtime window**
-
-**On monitoring terminal, watch replication:**
-```bash
-# Terminal 1: Monitor replication lag
-watch 'curl -s http://10.0.1.10:8080/replication/status | jq ".replicas[] | {id, lag: .heartbeat_lag}"'
-```
-
-**Execute promotion:**
-
-```bash
-# Terminal 2: Execute these commands
-
-# 1. Stop writes to old primary (optional - enables graceful drain)
-# For now we'll do a quick stop since replication is realtime
-
-# 2. Wait for lag = 0 (should already be 0)
-curl -s http://10.0.1.10:8080/replication/status | jq '.replicas[0].heartbeat_lag'
-# Verify: 0
-
-# 3. Stop old primary
-ssh 10.0.1.10 'sudo systemctl stop graphdb-primary'
-
-# 4. Promote replica1 to primary
-ssh 10.0.1.11 'sudo systemctl stop graphdb-replica'
-
-# Update replica1 config to primary mode
-ssh 10.0.1.11 'sudo tee /etc/systemd/system/graphdb-primary.service > /dev/null <<EOF
-[Unit]
-Description=Cluso GraphDB Primary Node
-After=network.target
-
-[Service]
-Type=simple
-User=graphdb
-Group=graphdb
-WorkingDirectory=/var/lib/graphdb/replica1
-ExecStart=/usr/local/bin/graphdb-primary \\
-  --data=/var/lib/graphdb/replica1 \\
-  --http=8081 \\
-  --replication=:9090
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF'
-
-# Start new primary
-ssh 10.0.1.11 'sudo systemctl daemon-reload && sudo systemctl start graphdb-primary'
-
-# Verify new primary
-curl http://10.0.1.11:8081/health
-# Expected: role: "primary"
-```
-
-**Downtime: ~5 seconds** (time between stopping old primary and starting new)
-
----
-
-### Step 5: Update Load Balancer
-
-**On nginx server:**
-
-```bash
-# Update upstream primary address
-sudo sed -i 's/10.0.1.10:8080/10.0.1.11:8081/' /etc/nginx/conf.d/graphdb.conf
-
-# Test configuration
-sudo nginx -t
-
-# Reload (no downtime)
-sudo systemctl reload nginx
-
-# Verify traffic flowing to new primary
-curl http://graphdb.example.com/health
-# Expected: role: "primary", version: "1.1.0"
-```
-
----
-
-### Step 6: Upgrade Old Primary as New Replica
-
-**On old primary server (10.0.1.10):**
-
-```bash
-# Install new binary
-sudo cp graphdb-replica-v1.1 /usr/local/bin/graphdb-replica
-
-# Create replica service
-sudo tee /etc/systemd/system/graphdb-replica.service > /dev/null <<EOF
-[Unit]
-Description=Cluso GraphDB Replica Node
-After=network.target
-
-[Service]
-Type=simple
-User=graphdb
-Group=graphdb
-WorkingDirectory=/var/lib/graphdb/primary
-ExecStart=/usr/local/bin/graphdb-replica \\
-  --data=/var/lib/graphdb/primary \\
-  --http=8080 \\
-  --primary=10.0.1.11:9090 \\
-  --id=replica-03
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Start as replica
-sudo systemctl daemon-reload
-sudo systemctl start graphdb-replica
-
-# Verify connection
+sudo systemctl status graphdb
 curl http://localhost:8080/health
-# Expected: role: "replica", connected: "connected"
-
-# Check on new primary
-curl http://10.0.1.11:8081/replication/status | jq .
-# Expected: 3 replicas connected
 ```
 
----
+**Required environment variables:**
+- `JWT_SECRET` — any non-empty value. Required in every environment; the previous "auto-generate in non-prod" behavior was removed as a security finding. See `pkg/api/server_init.go:74-77`.
+- `DATA_DIR` — where the server persists graph state, snapshots, auth state, and LSA indexes. Defaults to `./data/server` if unset.
 
-### Step 7: Final Verification
+**Optional environment variables** (see `pkg/api/server_init.go` for the full list):
+- `ADMIN_PASSWORD` — sets initial admin password on first boot. If unset and `GRAPHDB_ENV=production`, no admin user is created (you must seed manually).
+- `GRAPHDB_ENV` — `production` triggers stricter defaults (no auto-generated admin password).
+- `AUDIT_PERSISTENT=true` + `AUDIT_DIR=/var/log/graphdb/audit` — enable on-disk audit logging.
+- `GRAPHDB_LSA_BOOTSTRAP_LABELS` / `GRAPHDB_LSA_BOOTSTRAP_BODY_PROPERTIES` / `GRAPHDB_LSA_BOOTSTRAP_TENANTS` — build LSA indexes at boot. See `pkg/api/server_init.go`'s `bootstrapIndexesFromEnv` for the full env-var surface.
+
+## Step 3: Verify the deployment
 
 ```bash
-# All nodes upgraded
-curl http://10.0.1.11:8081/health | jq .version  # "1.1.0" (primary)
-curl http://10.0.1.10:8080/health | jq .version  # "1.1.0" (replica)
-curl http://10.0.1.12:8082/health | jq .version  # "1.1.0" (replica)
+# Liveness
+curl http://localhost:8080/health
 
-# All replicas healthy
-curl http://10.0.1.11:8081/replication/status | jq '.replicas[] | {id, connected, lag: .heartbeat_lag}'
+# Readiness (deeper check — storage accessible, etc.)
+curl http://localhost:8080/health/ready
 
-# Test write operation
-curl -X POST http://graphdb.example.com/api/nodes \
-  -H "Content-Type: application/json" \
-  -d '{
-    "labels": ["TestV1.1"],
-    "properties": {"updated": true}
-  }'
+# Prometheus metrics
+curl http://localhost:8080/metrics
 
-# Test read from replica
-curl http://10.0.1.10:8080/stats | jq .
+# Authenticate (replace ADMIN_PASSWORD with your value)
+TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"ADMIN_PASSWORD"}' | jq -r '.token')
+
+# Smoke-test a write
+curl -X POST http://localhost:8080/v1/nodes \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"labels":["Doc"],"properties":{"title":"first node"}}'
 ```
 
-**Upgrade complete!** ✓
+## Step 4: Monitoring
 
----
+The server exposes Prometheus metrics at `/metrics`. Key gauges and counters:
 
-## Summary: What Just Happened
+- `graphdb_http_requests_total{method,path,status}` — request volume
+- `graphdb_http_request_duration_seconds{path}` — latency histogram
+- `graphdb_storage_node_count` / `graphdb_storage_edge_count` — corpus size
+- `graphdb_wal_*` — WAL throughput, fsync latency, batched-write stats
+- `graphdb_lsm_*` — LSM cache hit rate, level sizes
 
-**Day 1:** Deployed 3-node cluster with primary + 2 replicas
+See `docs/MONITORING_SETUP.md` for a Prometheus + Grafana setup that scrapes these.
 
-**Day 2 Update Timeline:**
-```
-00:00 - Started update process
-00:02 - Replica1 upgraded (no customer impact)
-00:05 - Replica2 upgraded (no customer impact)
-00:08 - Promoted replica1 to primary (~5 sec downtime)
-00:09 - Updated load balancer (no downtime)
-00:11 - Upgraded old primary as replica (no customer impact)
-00:13 - Update complete, all nodes v1.1
+Health-check script suitable for `cron` or a remote watchdog:
 
-Total customer downtime: ~5 seconds
-```
-
----
-
-## Rollback Procedure (If Something Goes Wrong)
-
-**If replica upgrade fails:**
 ```bash
-# Stop failed replica
-sudo systemctl stop graphdb-replica
-
-# Restore old binary
-sudo cp /usr/local/bin/graphdb-replica.v1.0.backup /usr/local/bin/graphdb-replica
-
-# Restart
-sudo systemctl start graphdb-replica
+#!/bin/bash
+set -eu
+HOST=${1:-http://localhost:8080}
+if ! curl -sf "$HOST/health/ready" > /dev/null; then
+  echo "graphdb readiness check failed on $HOST"
+  exit 1
+fi
 ```
 
-**If promotion fails:**
+## Step 5: Backups
+
+The graph storage layer persists via WAL + periodic snapshots (`snapshot.json`). LSA indexes persist alongside (`lsa/<tenantID>.lsa`). Both live under `DATA_DIR`.
+
+Daily backup script:
+
 ```bash
-# Start old primary again
-ssh 10.0.1.10 'sudo systemctl start graphdb-primary'
+#!/bin/bash
+set -eu
+BACKUP_DIR=/var/backups/graphdb
+DATA_DIR=${DATA_DIR:-/var/lib/graphdb}
+DATE=$(date +%Y%m%d-%H%M%S)
 
-# Demote new "primary" back to replica
-ssh 10.0.1.11 'sudo systemctl stop graphdb-primary && sudo systemctl start graphdb-replica'
+# Trigger snapshot (admin-only endpoint; flushes in-memory state to disk)
+curl -sf -X POST http://localhost:8080/v1/admin/snapshot \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# Restore nginx config
-sudo sed -i 's/10.0.1.11:8081/10.0.1.10:8080/' /etc/nginx/conf.d/graphdb.conf
-sudo systemctl reload nginx
+# Brief wait — snapshot is atomic-rename, completes in seconds for typical corpora
+sleep 5
+
+# Archive the data dir
+mkdir -p "$BACKUP_DIR"
+tar -czf "$BACKUP_DIR/graphdb-$DATE.tar.gz" -C "$(dirname "$DATA_DIR")" "$(basename "$DATA_DIR")"
+
+# Retain 7 days
+find "$BACKUP_DIR" -name 'graphdb-*.tar.gz' -mtime +7 -delete
 ```
 
-**If complete disaster:**
+Restore: stop the service, replace `DATA_DIR` contents with the backup, restart.
+
+## Step 6: Update Procedure
+
+Single-node deployment means updates require a brief restart. The procedure:
+
 ```bash
-# Restore from backup
-sudo systemctl stop graphdb-primary
-sudo rm -rf /var/lib/graphdb/primary
-sudo tar -xzf /var/backups/graphdb/graphdb-YYYYMMDD-HHMMSS.tar.gz -C /
-sudo systemctl start graphdb-primary
+# 1. Pre-update: take a fresh backup (see Step 5).
+bash /usr/local/bin/graphdb-backup.sh
+
+# 2. Stop the service.
+sudo systemctl stop graphdb
+
+# 3. Replace the binary.
+sudo cp graphdb-v1.1 /usr/local/bin/graphdb
+sudo chmod +x /usr/local/bin/graphdb
+
+# 4. Start.
+sudo systemctl start graphdb
+
+# 5. Verify.
+curl -sf http://localhost:8080/health/ready
+curl -sf http://localhost:8080/v1/version  # confirm new version
 ```
 
----
+**Typical downtime:** 5-30 seconds depending on snapshot size (the server replays WAL from the most recent snapshot on boot). For corpora under 1M nodes, expect under 15 seconds.
 
-## Production Checklist
+**If the new binary fails to start** (corrupted state, schema-breaking change, etc.): restore from backup, swap the binary back, restart. Keep the previous version's binary on disk during the update window so rollback is one `cp` away.
 
-### Day 1 (Deployment)
-- [ ] 3 servers provisioned
-- [ ] Binaries built and tested
-- [ ] Primary node running
-- [ ] 2 replica nodes running and connected
-- [ ] Load balancer configured
-- [ ] Monitoring script deployed
-- [ ] Backup script deployed
-- [ ] Health checks passing
-- [ ] Write/read tests successful
+## Scale Considerations
 
-### Day 2 (Update)
-- [ ] Backup created
-- [ ] Replication lag = 0
-- [ ] Replica1 upgraded and healthy
-- [ ] Replica2 upgraded and healthy
-- [ ] Promotion successful (check logs)
-- [ ] Load balancer updated
-- [ ] Old primary rejoined as replica
-- [ ] All 3 nodes running v1.1
-- [ ] Write/read tests successful
-- [ ] Monitoring shows healthy state
+Single-node graphdb scales to what one machine can hold — write throughput is bounded by a single Go process, read throughput by CPU and the LSM cache. Documented working ranges:
 
----
+- **Nodes/edges:** comfortable to ~10M nodes + 50M edges on 32GB RAM. Beyond that, expect cache pressure and snapshot times to grow.
+- **LSA scale ceiling:** ~100K-500K documents per tenant at 200 dims. See `docs/F1_1_PER_TENANT_LSA_DESIGN.md` §4 for the memory model. For larger corpora, the OpenAI-compatible `/v1/embeddings` endpoint supports BYO embeddings (point at `text-embedding-3-large` etc.) instead of using the built-in LSA.
+- **Concurrent connections:** bounded by `LimitNOFILE` (set above to 65536); each HTTP request is goroutine-cheap.
+
+**If you need to scale beyond one node:**
+- **Per-tenant deployment** — run one graphdb per tenant behind a router. Simple, no replication. Works today.
+- **Read-only replication** — not currently supported. A future rebuild on top of `cmd/server` is roadmap-tracked (see A8.1 spike doc).
 
 ## Troubleshooting
 
-**Replica won't connect after upgrade:**
+### Service fails to start
+
 ```bash
-# Check network connectivity
-telnet 10.0.1.10 9090
-
-# Check logs for error details
-sudo journalctl -u graphdb-replica -n 100
-
-# Common issues:
-# - Firewall blocking port 9090
-# - Wrong primary address in config
-# - Version incompatibility (check release notes)
-```
-
-**High replication lag:**
-```bash
-# Check primary write rate
-curl http://primary:8080/stats | jq .
-
-# Check replica CPU/disk
-top
-iostat -x 1
+# Check logs
+sudo journalctl -u graphdb -n 100 --no-pager
 
 # Common causes:
-# - High write volume (normal, wait for catch-up)
-# - Slow disk on replica
-# - Network congestion
+# - JWT_SECRET unset (refuses to start)
+# - DATA_DIR not writable by the graphdb user
+# - Port 8080 in use by another process
+# - Corrupted snapshot.json (try moving it aside and replaying from WAL)
 ```
 
-**Need to restore from backup:**
+### LSA queries return 503
+
+The tenant's LSA index hasn't been built yet, or persistence restore failed. Check logs for `LSA snapshot restore:` lines. To rebuild:
+
 ```bash
-# Stop node
-sudo systemctl stop graphdb-primary
-
-# Restore data
-sudo rm -rf /var/lib/graphdb/primary
-sudo tar -xzf /var/backups/graphdb/backup.tar.gz -C /
-
-# Restart
-sudo systemctl start graphdb-primary
+# Via admin endpoint
+curl -X POST http://localhost:8080/v1/admin/lsa/rebuild \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"tenant":"default","labels":["Doc"],"body_properties":["body"]}'
 ```
 
----
+### Slow restart after crash
+
+WAL replay against a large corpus can be slow if there's no recent snapshot. Either:
+- Schedule periodic snapshots more aggressively (admin endpoint `/v1/admin/snapshot`)
+- Increase `BatchSize` / `FlushInterval` on the WAL config to reduce WAL entry count
+
+### High memory usage
+
+The graph storage is in-memory with periodic snapshots; memory scales with corpus size. If the process is OOM-ing:
+- Reduce `MaxVocab` / `Dims` on LSA config to shrink LSA footprint
+- Enable edge compression (default on; see `pkg/storage`)
+- For corpora that don't fit, see Scale Considerations above
 
 ## Next Steps
 
-**After successful deployment:**
-
-1. **Monitor for 24 hours** - Watch metrics, replication lag, error rates
-2. **Test failover** - Intentionally stop primary, verify replica promotion works
-3. **Load test** - Verify performance under production traffic
-4. **Document your setup** - Server IPs, ports, credentials
-5. **Train team** - Make sure ops team knows how to check status, deploy updates
-
-**Future improvements:**
-
-- Add more replicas for higher read capacity
-- Setup multi-region replication for disaster recovery
-- Implement automated failover with consensus
-- Add metrics dashboard (Prometheus + Grafana)
-- Setup alerting (PagerDuty, Slack)
-
----
+- `docs/INTEGRATION_GUIDE.md` — connecting external systems
+- `docs/MONITORING_SETUP.md` — Prometheus + Grafana scrape config
+- `docs/API.md` — full REST + GraphQL surface
+- `docs/AUTOMATED_UPGRADES.md` — admin-orchestrated update paths (single-node restart is the supported path; multi-node coordination from this doc is historical and references retired binaries)
 
 ## Questions?
 
-Common questions addressed in other docs:
-
-- Data format compatibility → See `UPGRADE_GUIDE.md`
-- Replication protocol details → See `pkg/replication/protocol.go`
-- Backup/restore internals → See data persistence analysis
-- Performance tuning → See `PERFORMANCE.md` (if exists)
-
-**You're production ready!** 🚀
+File an issue on GitHub: https://github.com/dd0wney/graphdb/issues

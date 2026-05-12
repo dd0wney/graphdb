@@ -137,7 +137,7 @@ curl -X POST http://localhost:8080/auth/api-keys \
 ### OpenAPI Specification
 
 The complete API specification is available in OpenAPI 3.0 format:
-- **File**: `docs/openapi.yaml`
+- **File**: `docs/internals/openapi.yaml`
 - **Interactive Documentation**: Use [Swagger UI](https://swagger.io/tools/swagger-ui/) or [Redoc](https://redocly.com/redoc/)
 
 ### View with Swagger UI
@@ -146,7 +146,7 @@ The complete API specification is available in OpenAPI 3.0 format:
 # Using Docker
 docker run -p 8081:8080 \
   -e SWAGGER_JSON=/openapi.yaml \
-  -v $(pwd)/docs/openapi.yaml:/openapi.yaml \
+  -v $(pwd)/docs/internals/openapi.yaml:/openapi.yaml \
   swaggerapi/swagger-ui
 
 # Open http://localhost:8081

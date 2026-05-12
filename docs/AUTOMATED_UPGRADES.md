@@ -599,4 +599,4 @@ graphdb-upgrade --cluster cluster.yaml --version v1.2.0
 # Instant rollback (blue-green)
 ```
 
-For questions or advanced scenarios, refer to the [UPGRADE_GUIDE.md](UPGRADE_GUIDE.md) for detailed manual procedures.
+For questions or advanced scenarios, see git history for the legacy `UPGRADE_GUIDE.md` (removed by A8.1 — the standalone primary/replica binaries it documented were retired in PRs #129, #130, #133).
