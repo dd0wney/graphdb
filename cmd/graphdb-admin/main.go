@@ -3,7 +3,22 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/updater"
 )
+
+// Version is the build version, set at compile time via:
+//
+//	go build -ldflags "-X main.Version=v1.2.3"
+//
+// Defaults to "dev" for unset builds. The init() below forwards this to
+// pkg/updater so that `graphdb-admin update` reports the correct
+// running version when checking the release manifest.
+var Version = "dev"
+
+func init() {
+	updater.Version = Version
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -20,7 +35,13 @@ func main() {
 			os.Exit(1)
 		}
 		handleSecurityCommand(os.Args[2:])
+	case "update":
+		handleUpdateCommand(os.Args[2:])
 	case "help", "--help", "-h":
+		if len(os.Args) >= 3 && os.Args[2] == "update" {
+			printUpdateUsage()
+			return
+		}
 		printUsage()
 	case "version", "--version", "-v":
 		printVersion()
@@ -39,6 +60,7 @@ Usage:
 
 Available Commands:
   security    Security management commands
+  update      Check for and apply software updates
   help        Show this help message
   version     Show version information
 
@@ -48,8 +70,7 @@ Use "graphdb-admin <command> --help" for more information about a command.
 }
 
 func printVersion() {
-	fmt.Println("GraphDB Admin CLI v1.0.0")
-	fmt.Println("Build: 2025-11-23")
+	fmt.Printf("GraphDB Admin CLI %s\n", Version)
 }
 
 func printSecurityUsage() {
