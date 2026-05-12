@@ -59,7 +59,6 @@ Project planning, improvements, and progress tracking:
 - `PRODUCTION_QUICKSTART.md` - Quick start guide for production
 - `REAL_WORLD_TESTING.md` - Real-world testing scenarios
 - `TUI_SUMMARY.md` - Terminal UI summary
-- `UPGRADE_GUIDE.md` - Upgrade guide for version migrations
 
 ## Key Achievements
 

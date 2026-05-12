@@ -262,4 +262,3 @@ Test Depth: Unit tests, integration tests, benchmarks, race detection
 
 - QUICK_WINS_SUMMARY.md - Completed quick wins
 - PRODUCTION_QUICKSTART.md - Production deployment guide
-- UPGRADE_GUIDE.md - Database upgrade procedures
