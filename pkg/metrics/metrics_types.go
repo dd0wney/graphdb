@@ -28,14 +28,6 @@ type Registry struct {
 	QueryEdgesScanned *prometheus.HistogramVec
 	SlowQueries       *prometheus.CounterVec
 
-	// Replication Metrics
-	ReplicationLagLSN            prometheus.Gauge
-	ReplicationLagSeconds        prometheus.Gauge
-	ReplicationThroughputBytes   *prometheus.CounterVec
-	ReplicationConnectedReplicas prometheus.Gauge
-	ReplicationWALEntriesTotal   *prometheus.CounterVec
-	ReplicationHeartbeatsTotal   *prometheus.CounterVec
-
 	// Cluster Metrics (HA)
 	ClusterNodesTotal        prometheus.Gauge
 	ClusterHealthyNodesTotal prometheus.Gauge
@@ -97,7 +89,6 @@ func NewRegistry() *Registry {
 	r.initHTTPMetrics()
 	r.initStorageMetrics()
 	r.initQueryMetrics()
-	r.initReplicationMetrics()
 	r.initClusterMetrics()
 	r.initLicensingMetrics()
 	r.initSecurityMetrics()
