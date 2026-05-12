@@ -95,7 +95,7 @@ The OSS repo defines `pkg/plugins/EnterprisePlugin` + specialised sub-interfaces
 
 | Package | Maturity | One-line |
 |---|---|---|
-| `replication` | mature | Primary/replica replication; nng transport (zmq variant deleted in #65). Tenant-scoped apply-path after A8. 14 test files / 45 source files. |
+| `replication` | retired | Deleted 2026-05-12 (A8.1, PR #133). The package contained two forked TCP+NNG role implementations + an NNG-vocabulary socket abstraction; not a foundation for a future cmd/server-native rebuild. The audit-load-bearing primitive (`WriteOperation` + `ApplyWriteOperation` fail-closed tenant gate) was lifted to `pkg/wal/apply/` before deletion. |
 | `cluster` | solid | **Distributed cluster code**: leader election, membership, discovery, voting. 14 source files (2,835 LOC), 4 test files. Notably contradicts the `NEXT_STEPS_2026-05-10.md` "single-node assumption baked in" claim — what the planning doc means is presumably that *write throughput* is single-node (no sharding) even with a cluster, but the cluster substrate exists. **[?] Verification needed on what cluster code is actually wired into the runtime.** |
 | `pubsub` | scaffolding | 2 source files, 1 test. Likely an internal event bus. Possibly the foundation for the planned CDC enterprise plugin. **[?]** |
 | `constraints` | solid | Schema constraints (uniqueness, etc.). 4 test files. |
@@ -122,7 +122,7 @@ The OSS repo defines `pkg/plugins/EnterprisePlugin` + specialised sub-interfaces
 
 ---
 
-## OSS — `cmd/` (29 binaries)
+## OSS — `cmd/` (25 binaries after A8.1)
 
 ### Server binaries
 
@@ -130,10 +130,8 @@ The OSS repo defines `pkg/plugins/EnterprisePlugin` + specialised sub-interfaces
 |---|---|
 | `graphdb` | Primary server entrypoint. |
 | `server` | Alternative server bootstrap. **[?] Relationship to `graphdb` unclear from filenames alone.** |
-| `graphdb-primary` | Standalone replication primary. Default in-process transport. |
-| `graphdb-replica` | Standalone replication replica. |
-| `graphdb-nng-primary` | nng-transport replication primary (build tag `nng`). |
-| `graphdb-nng-replica` | nng-transport replication replica (build tag `nng`). |
+
+> **Retired 2026-05-12 (A8.1, PRs #129/#130/#133):** `graphdb-primary`, `graphdb-replica`, `graphdb-nng-primary`, `graphdb-nng-replica`. The standalone replication binaries pre-dated multi-tenancy and routed writes to the default tenant; the deployment surface is now `cmd/server` only. See `docs/A8_1_SPIKE_2026-05-12.md`.
 
 ### Operations & admin
 

@@ -277,12 +277,16 @@ go build -o bin/tui ./cmd/tui
 go build -o bin/tui-demo ./cmd/tui-demo
 ```
 
-> **Note on `cmd/graphdb-{primary,replica}` and the `nng` variant:**
-> These are legacy standalone-replication binaries that pre-date the
-> multi-tenancy work. They route writes to the default tenant and serve
-> unauthenticated cross-tenant reads — not safe for production. They
-> refuse to start unless `GRAPHDB_LEGACY_BINARY=1` is set. Use
-> `cmd/server` for any real deployment. Tracked under audit A8.
+> **Note on replication:**
+> graphdb is single-node by design. The standalone replication binaries
+> (`cmd/graphdb-{primary,replica}` + `nng` variants) and the
+> `pkg/replication/` library were retired in A8.1 (PRs #129/#130/#133,
+> 2026-05-12) because they pre-dated the multi-tenancy work and routed
+> writes to the default tenant. Use `cmd/server` for any real
+> deployment. Horizontal scale is a multi-quarter roadmap item — see
+> `docs/A8_1_SPIKE_2026-05-12.md` for the architectural decision and
+> `docs/PRODUCTION_QUICKSTART.md` § "Scale Considerations" for the
+> practical workarounds.
 
 ### Try the Interactive TUI Demo
 
