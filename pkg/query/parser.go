@@ -63,6 +63,13 @@ func (p *Parser) Parse() (*Query, error) {
 			}
 			query.Match = matchClause
 
+		case TokenCall:
+			callClause, err := p.parseCall()
+			if err != nil {
+				return nil, err
+			}
+			query.Call = callClause
+
 		case TokenWhere:
 			whereClause, err := p.parseWhere()
 			if err != nil {

@@ -146,13 +146,13 @@ func computeSimilarity(setA, setB map[uint64]bool, metric SimilarityMetric) floa
 }
 
 // NodeSimilarityPair computes similarity between two nodes (tenant-blind).
-func NodeSimilarityPair(graph *storage.GraphStorage, nodeA, nodeB uint64, opts NodeSimilarityOptions) (float64, error) {
+func NodeSimilarityPair(graph storage.StorageReader, nodeA, nodeB uint64, opts NodeSimilarityOptions) (float64, error) {
 	return nodeSimilarityPairView(newTenantBlindView(graph), nodeA, nodeB, opts)
 }
 
 // NodeSimilarityPairForTenant computes similarity restricted to the
 // caller's tenant. Audit A6c-algorithms.
-func NodeSimilarityPairForTenant(graph *storage.GraphStorage, nodeA, nodeB uint64, opts NodeSimilarityOptions, tenantID string) (float64, error) {
+func NodeSimilarityPairForTenant(graph storage.StorageReader, nodeA, nodeB uint64, opts NodeSimilarityOptions, tenantID string) (float64, error) {
 	return nodeSimilarityPairView(newTenantScopedView(graph, tenantID), nodeA, nodeB, opts)
 }
 
@@ -165,13 +165,13 @@ func nodeSimilarityPairView(view graphView, nodeA, nodeB uint64, opts NodeSimila
 // NodeSimilarityFor computes similarity of sourceNodeID against all
 // other nodes (tenant-blind). Multi-tenant API callers must use
 // NodeSimilarityForTenant.
-func NodeSimilarityFor(graph *storage.GraphStorage, sourceNodeID uint64, opts NodeSimilarityOptions) (*NodeSimilarityResult, error) {
+func NodeSimilarityFor(graph storage.StorageReader, sourceNodeID uint64, opts NodeSimilarityOptions) (*NodeSimilarityResult, error) {
 	return nodeSimilarityForView(newTenantBlindView(graph), sourceNodeID, opts)
 }
 
 // NodeSimilarityForForTenant restricts to caller's tenant.
 // Audit A6c-algorithms.
-func NodeSimilarityForForTenant(graph *storage.GraphStorage, sourceNodeID uint64, opts NodeSimilarityOptions, tenantID string) (*NodeSimilarityResult, error) {
+func NodeSimilarityForForTenant(graph storage.StorageReader, sourceNodeID uint64, opts NodeSimilarityOptions, tenantID string) (*NodeSimilarityResult, error) {
 	return nodeSimilarityForView(newTenantScopedView(graph, tenantID), sourceNodeID, opts)
 }
 
@@ -216,13 +216,13 @@ func nodeSimilarityForView(view graphView, sourceNodeID uint64, opts NodeSimilar
 
 // NodeSimilarityAll computes similarity for every node against every
 // other node (tenant-blind).
-func NodeSimilarityAll(graph *storage.GraphStorage, opts NodeSimilarityOptions) ([]NodeSimilarityResult, error) {
+func NodeSimilarityAll(graph storage.StorageReader, opts NodeSimilarityOptions) ([]NodeSimilarityResult, error) {
 	return nodeSimilarityAllView(newTenantBlindView(graph), opts)
 }
 
 // NodeSimilarityAllForTenant restricts to caller's tenant.
 // Audit A6c-algorithms.
-func NodeSimilarityAllForTenant(graph *storage.GraphStorage, opts NodeSimilarityOptions, tenantID string) ([]NodeSimilarityResult, error) {
+func NodeSimilarityAllForTenant(graph storage.StorageReader, opts NodeSimilarityOptions, tenantID string) ([]NodeSimilarityResult, error) {
 	return nodeSimilarityAllView(newTenantScopedView(graph, tenantID), opts)
 }
 

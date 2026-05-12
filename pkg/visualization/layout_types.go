@@ -20,7 +20,7 @@ type LayoutConfig struct {
 
 // Layout interface for different layout algorithms
 type Layout interface {
-	ComputeLayout(gs *storage.GraphStorage, nodeIDs []uint64) (map[uint64]Position, error)
+	ComputeLayout(gs storage.Storage, nodeIDs []uint64) (map[uint64]Position, error)
 }
 
 // Visualization represents a graph visualization with layout

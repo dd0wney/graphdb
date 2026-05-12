@@ -156,7 +156,7 @@ func main() {
 
 	// Save snapshot
 	fmt.Println("\n💾 Saving snapshot...")
-	if err := graph.Snapshot(); err != nil {
+	if err := graph.Snapshot(context.Background()); err != nil {
 		log.Printf("Failed to save snapshot: %v", err)
 	} else {
 		fmt.Println("  ✅ Snapshot saved successfully")

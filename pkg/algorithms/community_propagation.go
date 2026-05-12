@@ -4,15 +4,15 @@ import "github.com/dd0wney/cluso-graphdb/pkg/storage"
 
 // LabelPropagation performs label propagation for community detection
 // Fast, scalable algorithm for large graphs
-func LabelPropagation(graph *storage.GraphStorage, maxIterations int) (*CommunityDetectionResult, error) {
-	stats := graph.GetStatistics()
+func LabelPropagation(graph storage.StorageReader, maxIterations int) (*CommunityDetectionResult, error) {
+	return labelPropagationView(newTenantBlindView(graph), maxIterations)
+}
 
-	// Get all node IDs - use uint64 to avoid overflow
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	for i := uint64(1); i <= stats.NodeCount; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
+func labelPropagationView(view graphView, maxIterations int) (*CommunityDetectionResult, error) {
+	allNodes := view.AllNodes()
+	nodeIDs := make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
 	// Initialize: each node in its own community
@@ -30,8 +30,8 @@ func LabelPropagation(graph *storage.GraphStorage, maxIterations int) (*Communit
 			labelCount := make(map[int]int)
 
 			// Get neighbors
-			outEdges, _ := graph.GetOutgoingEdges(nodeID)
-			inEdges, _ := graph.GetIncomingEdges(nodeID)
+			outEdges, _ := view.OutgoingEdges(nodeID)
+			inEdges, _ := view.IncomingEdges(nodeID)
 
 			for _, edge := range outEdges {
 				neighbor := edge.ToNodeID
@@ -97,6 +97,6 @@ func LabelPropagation(graph *storage.GraphStorage, maxIterations int) (*Communit
 	return &CommunityDetectionResult{
 		Communities:   communities,
 		NodeCommunity: nodeCommunity,
-		Modularity:    CalculateModularity(graph, nodeCommunity),
+		Modularity:    calculateModularityView(view, nodeCommunity),
 	}, nil
 }

@@ -22,7 +22,7 @@ import (
 
 // HospitalModel holds the graph and metadata for a hospital network model.
 type HospitalModel struct {
-	Graph    *storage.GraphStorage
+	Graph    storage.Storage
 	Nodes    map[string]*NodeInfo
 	NodeByID map[uint64]string
 }

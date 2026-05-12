@@ -8,7 +8,7 @@ import (
 )
 
 // createNodesResolverWithSorting creates a resolver with sorting support
-func createNodesResolverWithSorting(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
+func createNodesResolverWithSorting(gs storage.Storage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label query.
 		tenantID := tenant.MustFromContext(p.Context)
@@ -42,7 +42,7 @@ func createNodesResolverWithSorting(gs *storage.GraphStorage, label string) grap
 }
 
 // createEdgesResolverWithSorting creates an edge resolver with sorting support
-func createEdgesResolverWithSorting(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func createEdgesResolverWithSorting(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped enumeration.
 		tenantID := tenant.MustFromContext(p.Context)
@@ -76,7 +76,7 @@ func createEdgesResolverWithSorting(gs *storage.GraphStorage) graphql.FieldResol
 }
 
 // createNodeConnectionResolverWithSorting creates a connection resolver with sorting
-func createNodeConnectionResolverWithSorting(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
+func createNodeConnectionResolverWithSorting(gs storage.Storage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label query.
 		tenantID := tenant.MustFromContext(p.Context)

@@ -24,11 +24,12 @@ import (
 
 // Server represents the HTTP API server
 type Server struct {
-	graph         *storage.GraphStorage
+	graph         storage.Storage
 	executor      *query.Executor
 	searchIndexes *search.TenantIndexes    // Per-tenant full-text indexes; empty until IndexForTenant is called for a given tenant
 	lsaIndexes    *search.TenantLSAIndexes // Per-tenant LSA indexes for /hybrid-search; nil entry means LSA unavailable for that tenant
 	retriever     *retrieval.Retriever     // Graph-augmented retrieval (F2 GraphRAG); composes searchIndexes + lsaIndexes + graph
+	txManager     *storage.TransactionManager // Explicit transaction management (S10)
 
 	// Audit A9 #3 (2026-05-08): per-tenant GraphQL schema cache.
 	// Keyed by tenantID (string — converted at the validation

@@ -56,7 +56,7 @@ func applyLimit(requestedLimit int, config *LimitConfig) int {
 //
 // Masking is disabled (deps = nil); use GenerateSchemaWithLimitsForTenant
 // for the production path that needs per-tenant masking.
-func GenerateSchemaWithLimits(gs *storage.GraphStorage, config *LimitConfig) (graphql.Schema, error) {
+func GenerateSchemaWithLimits(gs storage.Storage, config *LimitConfig) (graphql.Schema, error) {
 	if err := ValidateLimitConfig(config); err != nil {
 		return graphql.Schema{}, err
 	}
@@ -68,14 +68,14 @@ func GenerateSchemaWithLimits(gs *storage.GraphStorage, config *LimitConfig) (gr
 //
 // deps is the F3 masking hookup; nil disables masking. The
 // pkg/api server passes the server's PolicyStore + Masker.
-func GenerateSchemaWithLimitsForTenant(gs *storage.GraphStorage, config *LimitConfig, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+func GenerateSchemaWithLimitsForTenant(gs storage.Storage, config *LimitConfig, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
 	if err := ValidateLimitConfig(config); err != nil {
 		return graphql.Schema{}, err
 	}
 	return generateSchemaWithLimitsForLabels(gs, config, gs.GetLabelsForTenant(tenantID), deps)
 }
 
-func generateSchemaWithLimitsForLabels(gs *storage.GraphStorage, config *LimitConfig, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
+func generateSchemaWithLimitsForLabels(gs storage.Storage, config *LimitConfig, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	nodeTypes := make(map[string]*graphql.Object)
 
 	// Create where input type
@@ -201,7 +201,7 @@ func generateSchemaWithLimitsForLabels(gs *storage.GraphStorage, config *LimitCo
 }
 
 // createNodesResolverWithLimits creates a resolver with filtering and limit enforcement
-func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, config *LimitConfig) graphql.FieldResolveFn {
+func createNodesResolverWithLimits(gs storage.Storage, label string, config *LimitConfig) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label query.
 		tenantID := tenant.MustFromContext(p.Context)
@@ -250,7 +250,7 @@ func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, confi
 }
 
 // createEdgesResolverWithLimits creates an edge resolver with filtering and limit enforcement
-func createEdgesResolverWithLimits(gs *storage.GraphStorage, config *LimitConfig) graphql.FieldResolveFn {
+func createEdgesResolverWithLimits(gs storage.Storage, config *LimitConfig) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped enumeration.
 		tenantID := tenant.MustFromContext(p.Context)

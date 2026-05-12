@@ -11,7 +11,7 @@ import (
 )
 
 // NewNodeDataLoader creates a DataLoader for loading nodes by ID
-func NewNodeDataLoader(gs *storage.GraphStorage) *DataLoader {
+func NewNodeDataLoader(gs storage.Storage) *DataLoader {
 	batchFn := func(ctx context.Context, keys []string) ([]any, []error) {
 		results := make([]any, len(keys))
 		errors := make([]error, len(keys))

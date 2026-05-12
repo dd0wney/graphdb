@@ -144,7 +144,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 }
 
 type model struct {
-	graph       *storage.GraphStorage
+	graph       storage.Storage
 	executor    *query.Executor
 	currentView view
 	queryInput  textinput.Model
@@ -168,7 +168,7 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func initialModel(graph *storage.GraphStorage) model {
+func initialModel(graph storage.Storage) model {
 	ti := textinput.New()
 	ti.Placeholder = "MATCH (n:Person) RETURN n"
 	ti.CharLimit = 200

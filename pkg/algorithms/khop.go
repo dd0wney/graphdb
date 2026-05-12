@@ -38,7 +38,7 @@ type bfsEntry struct {
 // KHopNeighbours performs a BFS from sourceNodeID up to MaxHops levels,
 // returning all discovered nodes grouped by distance.
 // The source node is never included in results.
-func KHopNeighbours(graph *storage.GraphStorage, sourceNodeID uint64, opts KHopOptions) (*KHopResult, error) {
+func KHopNeighbours(graph storage.StorageReader, sourceNodeID uint64, opts KHopOptions) (*KHopResult, error) {
 	if opts.MaxHops < 1 {
 		return nil, fmt.Errorf("MaxHops must be >= 1, got %d", opts.MaxHops)
 	}

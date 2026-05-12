@@ -14,7 +14,7 @@ import (
 // callers (notably the API server) can reference the same index instance
 // as the executor — avoiding a second in-memory index and keeping query-DSL
 // and REST/GraphQL surfaces consistent.
-func WireCapabilities(executor *query.Executor, graph *storage.GraphStorage) (*query.Executor, *search.FullTextIndex) {
+func WireCapabilities(executor *query.Executor, graph storage.Storage) (*query.Executor, *search.FullTextIndex) {
 	// Full-text search
 	idx := search.NewFullTextIndex(graph)
 	executor.SetSearchIndex(idx)

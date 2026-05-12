@@ -19,7 +19,7 @@ import (
 // Masking is disabled (deps = nil). CLI-mode builds don't need
 // per-tenant masking — single-tenant deployments have no tenant
 // boundary to mask across.
-func GenerateSchema(gs *storage.GraphStorage) (graphql.Schema, error) {
+func GenerateSchema(gs storage.Storage) (graphql.Schema, error) {
 	return generateSchemaWithLabels(gs, gs.GetAllLabels(), nil)
 }
 
@@ -35,7 +35,7 @@ func GenerateSchema(gs *storage.GraphStorage) (graphql.Schema, error) {
 //
 // deps is the per-server masking hookup; nil disables masking.
 // Production callers pass non-nil deps; tests pass nil.
-func GenerateSchemaForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+func GenerateSchemaForTenant(gs storage.Storage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
 	return generateSchemaWithLabels(gs, gs.GetLabelsForTenant(tenantID), deps)
 }
 
@@ -43,7 +43,7 @@ func GenerateSchemaForTenant(gs *storage.GraphStorage, tenantID string, deps *Ma
 // caller picks the label source (tenant-blind GetAllLabels vs
 // tenant-scoped GetLabelsForTenant); this function builds the type
 // registry and resolvers from that list.
-func generateSchemaWithLabels(gs *storage.GraphStorage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
+func generateSchemaWithLabels(gs storage.Storage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	// Create GraphQL types for each node label
 	nodeTypes := make(map[string]*graphql.Object)
 	for _, label := range labels {
@@ -183,7 +183,7 @@ func createNodeType(label string, deps *MaskingDeps) *graphql.Object {
 }
 
 // createNodeResolver creates a resolver for fetching a single node by ID
-func createNodeResolver(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
+func createNodeResolver(gs storage.Storage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Get ID argument
 		idStr, ok := p.Args["id"].(string)
@@ -214,7 +214,7 @@ func createNodeResolver(gs *storage.GraphStorage, label string) graphql.FieldRes
 }
 
 // createNodesResolver creates a resolver for fetching all nodes with a label
-func createNodesResolver(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
+func createNodesResolver(gs storage.Storage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label query.
 		tenantID := tenant.MustFromContext(p.Context)

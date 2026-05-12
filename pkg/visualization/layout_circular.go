@@ -20,7 +20,7 @@ func NewCircularLayout(config *LayoutConfig) *CircularLayout {
 }
 
 // ComputeLayout arranges nodes in a circle
-func (cl *CircularLayout) ComputeLayout(gs *storage.GraphStorage, nodeIDs []uint64) (map[uint64]Position, error) {
+func (cl *CircularLayout) ComputeLayout(gs storage.Storage, nodeIDs []uint64) (map[uint64]Position, error) {
 	positions := make(map[uint64]Position)
 
 	if len(nodeIDs) == 0 {

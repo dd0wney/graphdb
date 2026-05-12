@@ -71,7 +71,7 @@ func (rp *RangePartition) GetPartitionCount() int {
 
 // PartitionedGraph wraps a graph with partitioning
 type PartitionedGraph struct {
-	graph     *storage.GraphStorage
+	graph     storage.Storage
 	strategy  PartitionStrategy
 	localPart int // Which partition this instance manages
 
@@ -81,7 +81,7 @@ type PartitionedGraph struct {
 
 // NewPartitionedGraph creates a partitioned graph view
 func NewPartitionedGraph(
-	graph *storage.GraphStorage,
+	graph storage.Storage,
 	strategy PartitionStrategy,
 	localPartition int,
 ) *PartitionedGraph {
@@ -151,7 +151,7 @@ type PartitionMetrics struct {
 }
 
 // ComputePartitionMetrics analyzes partition quality
-func ComputePartitionMetrics(graph *storage.GraphStorage, strategy PartitionStrategy) (*PartitionMetrics, error) {
+func ComputePartitionMetrics(graph storage.Storage, strategy PartitionStrategy) (*PartitionMetrics, error) {
 	partCount := strategy.GetPartitionCount()
 	sizes := make([]int, partCount)
 	cuts := make([]int, partCount)
@@ -209,7 +209,7 @@ func ComputePartitionMetrics(graph *storage.GraphStorage, strategy PartitionStra
 }
 
 // RebalancePartitions suggests node migrations to improve balance
-func RebalancePartitions(graph *storage.GraphStorage, strategy PartitionStrategy) ([]NodeMigration, error) {
+func RebalancePartitions(graph storage.Storage, strategy PartitionStrategy) ([]NodeMigration, error) {
 	metrics, err := ComputePartitionMetrics(graph, strategy)
 	if err != nil {
 		return nil, err

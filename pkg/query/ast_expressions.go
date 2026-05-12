@@ -5,6 +5,7 @@ import "fmt"
 // Expression is an interface for all expression types
 type Expression interface {
 	Eval(context map[string]any) (bool, error)
+	EvalValue(context map[string]any) (any, error)
 }
 
 // BinaryExpression represents binary operations (AND, OR, =, <, >, etc.)
@@ -43,6 +44,10 @@ func (be *BinaryExpression) Eval(context map[string]any) (bool, error) {
 	}
 }
 
+func (be *BinaryExpression) EvalValue(context map[string]any) (any, error) {
+	return be.Eval(context)
+}
+
 // PropertyExpression represents property access (e.g., n.name)
 type PropertyExpression struct {
 	Variable string
@@ -53,6 +58,10 @@ func (pe *PropertyExpression) Eval(context map[string]any) (bool, error) {
 	// This returns the property value, not a boolean
 	// Used in comparisons
 	return false, fmt.Errorf("property expression must be used in comparison")
+}
+
+func (pe *PropertyExpression) EvalValue(context map[string]any) (any, error) {
+	return extractValue(pe, context), nil
 }
 
 // LiteralExpression represents a literal value
@@ -66,6 +75,10 @@ func (le *LiteralExpression) Eval(context map[string]any) (bool, error) {
 		return b, nil
 	}
 	return false, fmt.Errorf("cannot convert literal to boolean")
+}
+
+func (le *LiteralExpression) EvalValue(context map[string]any) (any, error) {
+	return le.Value, nil
 }
 
 // FunctionCallExpression represents a function call (e.g., toLower(n.name))

@@ -539,7 +539,7 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 // row uses no properties; a real adapter would need a
 // map[string]interface{} → map[string]storage.Value conversion.
 type applyAdapter struct {
-	gs *storage.GraphStorage
+	gs storage.Storage
 }
 
 func (a applyAdapter) CreateNodeWithTenant(tenantID string, labels []string, _ map[string]interface{}) (uint64, error) {

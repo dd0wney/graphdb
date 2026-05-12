@@ -11,7 +11,7 @@ import (
 )
 
 // createEdgeResolver creates a resolver for fetching a single edge by ID
-func createEdgeResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func createEdgeResolver(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		idStr, ok := p.Args["id"].(string)
 		if !ok {
@@ -35,7 +35,7 @@ func createEdgeResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 }
 
 // createEdgesResolver creates a resolver for fetching all edges
-func createEdgesResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func createEdgesResolver(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: replace the
 		// "iterate from 1..stats.EdgeCount via GetEdge" anti-pattern
@@ -68,7 +68,7 @@ func createEdgesResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 }
 
 // createEdgeMutationResolver creates a resolver for createEdge mutation
-func createEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func createEdgeMutationResolver(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Get arguments
 		fromNodeIDStr, ok := p.Args["fromNodeId"].(string)
@@ -129,7 +129,7 @@ func createEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 }
 
 // updateEdgeMutationResolver creates a resolver for updateEdge mutation
-func updateEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func updateEdgeMutationResolver(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Get ID argument
 		idStr, ok := p.Args["id"].(string)
@@ -178,7 +178,7 @@ func updateEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 }
 
 // deleteEdgeMutationResolver creates a resolver for deleteEdge mutation
-func deleteEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func deleteEdgeMutationResolver(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		idStr, ok := p.Args["id"].(string)
 		if !ok {

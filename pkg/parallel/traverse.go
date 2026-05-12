@@ -8,13 +8,13 @@ import (
 
 // ParallelTraverser performs parallel graph traversals
 type ParallelTraverser struct {
-	graph      *storage.GraphStorage
+	graph      storage.Storage
 	workerPool *WorkerPool
 	numWorkers int
 }
 
 // NewParallelTraverser creates a new parallel traverser
-func NewParallelTraverser(graph *storage.GraphStorage, numWorkers int) (*ParallelTraverser, error) {
+func NewParallelTraverser(graph storage.Storage, numWorkers int) (*ParallelTraverser, error) {
 	if numWorkers <= 0 {
 		numWorkers = runtime.NumCPU()
 	}

@@ -60,6 +60,8 @@ const (
 	TokenStarts
 	TokenEnds
 	TokenContains
+	TokenCall
+	TokenYield
 
 	// Identifiers and literals
 	TokenParameter // $name
@@ -144,6 +146,8 @@ var keywords = map[string]TokenType{
 	"STARTS":   TokenStarts,
 	"ENDS":     TokenEnds,
 	"CONTAINS": TokenContains,
+	"CALL":     TokenCall,
+	"YIELD":    TokenYield,
 }
 
 func (t TokenType) String() string {

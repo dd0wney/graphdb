@@ -6,13 +6,14 @@ import (
 
 // StreamingQuery executes queries with streaming results
 type StreamingQuery struct {
-	graph *storage.GraphStorage
+	graph storage.StorageReader
 }
 
-// NewStreamingQuery creates a streaming query executor
-func NewStreamingQuery(graph *storage.GraphStorage) *StreamingQuery {
+// NewStreamingQuery creates a new streaming query
+func NewStreamingQuery(graph storage.StorageReader) *StreamingQuery {
 	return &StreamingQuery{graph: graph}
 }
+
 
 // StreamNodes streams all nodes matching a filter
 func (sq *StreamingQuery) StreamNodes(

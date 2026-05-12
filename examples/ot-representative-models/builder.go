@@ -10,7 +10,7 @@ import (
 
 // GraphBuilder provides a fluent interface for building OT network models
 type GraphBuilder struct {
-	graph         *storage.GraphStorage
+	graph         storage.Storage
 	nodeNames     map[uint64]string
 	nodeTypes     map[uint64]string
 	nodeLevels    map[uint64]string

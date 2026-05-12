@@ -2,6 +2,7 @@ package vector
 
 import (
 	"container/heap"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
@@ -19,21 +20,19 @@ type HNSWIndex struct {
 	ml             float64        // Normalization factor for level generation
 	metric         DistanceMetric // Distance metric to use
 
-	nodes      map[uint64]*hnswNode // All nodes by ID
-	entryPoint *hnswNode            // Entry point for search (highest layer node)
-	maxLayer   int                  // Current maximum layer
+	store        nodeStore // Node storage (memory or persistent)
+	entryPointID uint64    // ID of the entry point node
+	maxLayer     int       // Current maximum layer
+
+	// Metadata persistence
+	kv      KVStore
+	metaKey []byte
 }
 
-// NewHNSWIndex creates a new HNSW index
+// NewHNSWIndex creates a new in-memory HNSW index
 func NewHNSWIndex(dimensions, m, efConstruction int, metric DistanceMetric) (*HNSWIndex, error) {
-	if dimensions <= 0 {
-		return nil, fmt.Errorf("dimensions must be > 0, got %d", dimensions)
-	}
-	if m <= 0 {
-		return nil, fmt.Errorf("m must be > 0, got %d", m)
-	}
-	if efConstruction <= 0 {
-		return nil, fmt.Errorf("efConstruction must be > 0, got %d", efConstruction)
+	if dimensions <= 0 || m <= 0 || efConstruction <= 0 {
+		return nil, fmt.Errorf("invalid HNSW parameters")
 	}
 
 	return &HNSWIndex{
@@ -44,9 +43,78 @@ func NewHNSWIndex(dimensions, m, efConstruction int, metric DistanceMetric) (*HN
 		efConstruction: efConstruction,
 		ml:             1.0 / math.Log(float64(m)),
 		metric:         metric,
-		nodes:          make(map[uint64]*hnswNode),
+		store:          &memoryNodeStore{nodes: make(map[uint64]*hnswNode)},
 		maxLayer:       -1,
 	}, nil
+}
+
+// NewPersistentHNSWIndex creates a new HNSW index backed by a KVStore
+func NewPersistentHNSWIndex(kv KVStore, prefix string, metaKey []byte, dimensions, m, efConstruction int, metric DistanceMetric) (*HNSWIndex, error) {
+	h := &HNSWIndex{
+		dimensions:     dimensions,
+		m:              m,
+		mMax:           m,
+		mMax0:          m * 2,
+		efConstruction: efConstruction,
+		ml:             1.0 / math.Log(float64(m)),
+		metric:         metric,
+		store:          &kvNodeStore{kv: kv, prefix: prefix, cache: make(map[uint64]*hnswNode)},
+		kv:             kv,
+		metaKey:        metaKey,
+		maxLayer:       -1,
+	}
+
+	// Load metadata if it exists
+	if data, ok := kv.Get(metaKey); ok {
+		if len(data) >= 21 { // 8 (ep) + 4 (layer) + 4 (dim) + 4 (m) + 1 (metric)
+			h.entryPointID = binary.BigEndian.Uint64(data[0:8])
+			h.maxLayer = int(binary.BigEndian.Uint32(data[8:12]))
+			h.dimensions = int(binary.BigEndian.Uint32(data[12:16]))
+			h.m = int(binary.BigEndian.Uint32(data[16:20]))
+			h.metric = byteToMetric(data[20])
+			// Re-calculate derived fields
+			h.mMax = h.m
+			h.mMax0 = h.m * 2
+			h.ml = 1.0 / math.Log(float64(h.m))
+		}
+	}
+
+	return h, nil
+}
+
+func (h *HNSWIndex) SaveMetadata() error {
+	if h.kv == nil {
+		return nil
+	}
+	data := make([]byte, 21)
+	binary.BigEndian.PutUint64(data[0:8], h.entryPointID)
+	binary.BigEndian.PutUint32(data[8:12], uint32(h.maxLayer))
+	binary.BigEndian.PutUint32(data[12:16], uint32(h.dimensions))
+	binary.BigEndian.PutUint32(data[16:20], uint32(h.m))
+	data[20] = metricToByte(h.metric)
+	return h.kv.Put(h.metaKey, data)
+}
+
+func metricToByte(m DistanceMetric) byte {
+	switch m {
+	case MetricEuclidean:
+		return 1
+	case MetricDotProduct:
+		return 2
+	default:
+		return 0 // MetricCosine
+	}
+}
+
+func byteToMetric(b byte) DistanceMetric {
+	switch b {
+	case 1:
+		return MetricEuclidean
+	case 2:
+		return MetricDotProduct
+	default:
+		return MetricCosine
+	}
 }
 
 // Dimensions returns the vector dimensions
@@ -63,7 +131,7 @@ func (h *HNSWIndex) Metric() DistanceMetric {
 func (h *HNSWIndex) Len() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return len(h.nodes)
+	return h.store.Len()
 }
 
 // Insert adds a vector to the index
@@ -76,7 +144,7 @@ func (h *HNSWIndex) Insert(id uint64, vector []float32) error {
 	defer h.mu.Unlock()
 
 	// Check if already exists
-	if _, exists := h.nodes[id]; exists {
+	if _, exists := h.store.Get(id); exists {
 		return fmt.Errorf("vector with ID %d already exists", id)
 	}
 
@@ -98,23 +166,25 @@ func (h *HNSWIndex) Insert(id uint64, vector []float32) error {
 	}
 
 	// If this is the first node
-	if h.entryPoint == nil {
-		h.entryPoint = node
+	if h.entryPointID == 0 {
+		h.entryPointID = id
 		h.maxLayer = level
-		h.nodes[id] = node
+		h.store.Put(node)
+		h.SaveMetadata()
 		return nil
 	}
 
 	// Find nearest neighbors and insert
-	h.nodes[id] = node
+	h.store.Put(node)
 	h.insertNode(node)
 
 	// Update entry point if necessary
 	if level > h.maxLayer {
 		h.maxLayer = level
-		h.entryPoint = node
+		h.entryPointID = id
 	}
 
+	h.SaveMetadata()
 	return nil
 }
 
@@ -127,12 +197,15 @@ func (h *HNSWIndex) Search(query []float32, k int, ef int) ([]SearchResult, erro
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	if h.entryPoint == nil {
+	if h.entryPointID == 0 {
 		return []SearchResult{}, nil
 	}
 
 	// Search from entry point
-	ep := h.entryPoint
+	ep, ok := h.store.Get(h.entryPointID)
+	if !ok {
+		return []SearchResult{}, nil
+	}
 
 	// Search from top layer to layer 1
 	for layer := h.maxLayer; layer > 0; layer-- {
@@ -169,7 +242,7 @@ func (h *HNSWIndex) Delete(id uint64) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	node, exists := h.nodes[id]
+	node, exists := h.store.Get(id)
 	if !exists {
 		return fmt.Errorf("vector with ID %d not found", id)
 	}
@@ -177,18 +250,26 @@ func (h *HNSWIndex) Delete(id uint64) error {
 	// Remove connections to this node from all neighbors
 	for layer := 0; layer <= node.level; layer++ {
 		for _, friendID := range node.friends[layer] {
-			if friend, ok := h.nodes[friendID]; ok {
+			if friend, ok := h.store.Get(friendID); ok {
 				h.removeConnection(friend, id, layer)
 			}
 		}
 	}
 
 	// Delete the node
-	delete(h.nodes, id)
+	h.store.Delete(id)
 
 	// Update entry point if necessary
-	if h.entryPoint != nil && h.entryPoint.id == id {
-		h.entryPoint = h.findNewEntryPoint()
+	if h.entryPointID == id {
+		newEP := h.findNewEntryPoint()
+		if newEP != nil {
+			h.entryPointID = newEP.id
+			h.maxLayer = newEP.level
+		} else {
+			h.entryPointID = 0
+			h.maxLayer = -1
+		}
+		h.SaveMetadata()
 	}
 
 	return nil

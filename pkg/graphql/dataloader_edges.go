@@ -11,7 +11,7 @@ import (
 )
 
 // NewOutgoingEdgesDataLoader creates a DataLoader for loading outgoing edges
-func NewOutgoingEdgesDataLoader(gs *storage.GraphStorage) *DataLoader {
+func NewOutgoingEdgesDataLoader(gs storage.Storage) *DataLoader {
 	batchFn := func(ctx context.Context, keys []string) ([]any, []error) {
 		results := make([]any, len(keys))
 		errors := make([]error, len(keys))
@@ -61,7 +61,7 @@ func NewOutgoingEdgesDataLoader(gs *storage.GraphStorage) *DataLoader {
 }
 
 // NewIncomingEdgesDataLoader creates a DataLoader for loading incoming edges
-func NewIncomingEdgesDataLoader(gs *storage.GraphStorage) *DataLoader {
+func NewIncomingEdgesDataLoader(gs storage.Storage) *DataLoader {
 	batchFn := func(ctx context.Context, keys []string) ([]any, []error) {
 		results := make([]any, len(keys))
 		errors := make([]error, len(keys))

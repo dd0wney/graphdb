@@ -24,7 +24,7 @@ import (
 // MutationNode's "properties" resolver. The mutation surface emits
 // the just-created / updated node back to the client; that response
 // must respect the same per-tenant masking the read path applies.
-func buildMutationType(gs *storage.GraphStorage, edgeType *graphql.Object, deps *MaskingDeps) *graphql.Object {
+func buildMutationType(gs storage.Storage, edgeType *graphql.Object, deps *MaskingDeps) *graphql.Object {
 	mutationNodeType := createGenericNodeType(deps)
 	deleteResultType := createDeleteResultType()
 

@@ -12,7 +12,7 @@ import (
 // MaskingDeps bundles the per-tenant masking dependencies that GraphQL
 // resolvers need to apply a tenant's masking policy at response-shaping
 // time. The deps are server-lifecycle and captured in resolver closures
-// (mirroring how *storage.GraphStorage is captured); the actual tenant
+// (mirroring how storage.Storage is captured); the actual tenant
 // and policy are resolved per-request via context.
 //
 // A nil *MaskingDeps means masking is disabled for this schema (e.g.,

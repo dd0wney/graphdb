@@ -24,7 +24,7 @@ func NewForceDirectedLayout(config *LayoutConfig) *ForceDirectedLayout {
 }
 
 // ComputeLayout computes positions using force-directed algorithm
-func (fdl *ForceDirectedLayout) ComputeLayout(gs *storage.GraphStorage, nodeIDs []uint64) (map[uint64]Position, error) {
+func (fdl *ForceDirectedLayout) ComputeLayout(gs storage.Storage, nodeIDs []uint64) (map[uint64]Position, error) {
 	if len(nodeIDs) == 0 {
 		return make(map[uint64]Position), nil
 	}

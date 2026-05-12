@@ -21,14 +21,14 @@ import (
 // follow-up that requires threading tenant context through the
 // executor. For now, callers of DSL search() are internal/trusted.
 type TenantIndexes struct {
-	gs *storage.GraphStorage
+	gs storage.Storage
 
 	mu      sync.RWMutex
 	indexes map[string]*FullTextIndex
 }
 
 // NewTenantIndexes returns an empty TenantIndexes backed by gs.
-func NewTenantIndexes(gs *storage.GraphStorage) *TenantIndexes {
+func NewTenantIndexes(gs storage.Storage) *TenantIndexes {
 	return &TenantIndexes{
 		gs:      gs,
 		indexes: make(map[string]*FullTextIndex),

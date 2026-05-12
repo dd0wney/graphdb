@@ -1,9 +1,16 @@
 package vector
 
+import (
+	"math"
+)
+
 // insertNode inserts a node into the graph
 func (h *HNSWIndex) insertNode(node *hnswNode) {
 	// Start from entry point
-	ep := h.entryPoint
+	ep, ok := h.store.Get(h.entryPointID)
+	if !ok {
+		return
+	}
 
 	// Search from top layer to node's level + 1
 	for layer := h.maxLayer; layer > node.level; layer-- {
@@ -26,26 +33,30 @@ func (h *HNSWIndex) insertNode(node *hnswNode) {
 		// Add bidirectional links
 		for _, neighbor := range neighbors {
 			h.addConnection(node, neighbor.ID, layer)
-			h.addConnection(h.nodes[neighbor.ID], node.id, layer)
+			h.store.Put(node)
 
-			// Prune neighbors if needed
-			neighborNode := h.nodes[neighbor.ID]
-			if layer < len(neighborNode.friends) {
-				maxConn := h.mMax
-				if layer == 0 {
-					maxConn = h.mMax0
-				}
+			if neighborNode, ok := h.store.Get(neighbor.ID); ok {
+				if layer < len(neighborNode.friends) {
+					h.addConnection(neighborNode, node.id, layer)
 
-				if len(neighborNode.friends[layer]) > maxConn {
-					h.pruneConnections(neighborNode, layer, maxConn)
+					// Prune neighbors if needed
+					maxConn := h.mMax
+					if layer == 0 {
+						maxConn = h.mMax0
+					}
+
+					if len(neighborNode.friends[layer]) > maxConn {
+						h.pruneConnections(neighborNode, layer, maxConn)
+					}
+					h.store.Put(neighborNode)
 				}
 			}
 		}
 
-		// Update ep for next layer (defensive: check node exists)
+		// Update ep for next layer
 		if len(candidates) > 0 {
-			if node, exists := h.nodes[candidates[0].id]; exists {
-				ep = node
+			if nextEP, ok := h.store.Get(candidates[0].id); ok {
+				ep = nextEP
 			}
 		}
 	}
@@ -65,6 +76,7 @@ func (h *HNSWIndex) removeConnection(from *hnswNode, toID uint64, layer int) {
 		for i, id := range friends {
 			if id == toID {
 				from.friends[layer] = append(friends[:i], friends[i+1:]...)
+				h.store.Put(from)
 				break
 			}
 		}
@@ -84,13 +96,16 @@ func (h *HNSWIndex) pruneConnections(node *hnswNode, layer int, maxConn int) {
 	}, len(node.friends[layer]))
 
 	for i, friendID := range node.friends[layer] {
-		friend := h.nodes[friendID]
+		dist := float32(math.MaxFloat32)
+		if friend, ok := h.store.Get(friendID); ok {
+			dist = h.distance(node.vector, friend.vector)
+		}
 		distances[i] = struct {
 			id   uint64
 			dist float32
 		}{
 			id:   friendID,
-			dist: h.distance(node.vector, friend.vector),
+			dist: dist,
 		}
 	}
 
@@ -108,6 +123,7 @@ func (h *HNSWIndex) pruneConnections(node *hnswNode, layer int, maxConn int) {
 	for i := 0; i < maxConn; i++ {
 		node.friends[layer][i] = distances[i].id
 	}
+	// Note: caller MUST call h.store.Put(node) after this
 }
 
 // findNewEntryPoint finds a new entry point after deletion
@@ -115,12 +131,13 @@ func (h *HNSWIndex) findNewEntryPoint() *hnswNode {
 	var newEntry *hnswNode
 	maxLevel := -1
 
-	for _, node := range h.nodes {
+	h.store.Iterate(func(node *hnswNode) bool {
 		if node.level > maxLevel {
 			maxLevel = node.level
 			newEntry = node
 		}
-	}
+		return true
+	})
 
 	if newEntry != nil {
 		h.maxLayer = maxLevel

@@ -30,7 +30,7 @@ type ExecutionStep interface {
 // tenant on r.Context().
 type ExecutionContext struct {
 	context  context.Context // For cancellation/timeout
-	graph    *storage.GraphStorage
+	graph    storage.Storage
 	tenantID string         // Snapshotted from context at construction.
 	bindings map[string]any // Variable bindings
 	results  []*BindingSet
@@ -39,7 +39,7 @@ type ExecutionContext struct {
 // newExecutionContext constructs an ExecutionContext, snapshotting
 // the tenant ID from ctx so step executions can call *ForTenant
 // graph methods without re-parsing ctx on every call.
-func newExecutionContext(ctx context.Context, graph *storage.GraphStorage) *ExecutionContext {
+func newExecutionContext(ctx context.Context, graph storage.Storage) *ExecutionContext {
 	return &ExecutionContext{
 		context:  ctx,
 		graph:    graph,

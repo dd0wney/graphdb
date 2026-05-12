@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/licensing"
+	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
 // PluginLoader manages Enterprise plugin loading and lifecycle
@@ -18,16 +19,18 @@ type PluginLoader struct {
 	plugins       []EnterprisePlugin
 	pluginsByName map[string]EnterprisePlugin
 	license       *licensing.License
+	storage       storage.Storage
 	logger        *slog.Logger
 	mu            sync.RWMutex
 }
 
 // NewPluginLoader creates a new plugin loader
-func NewPluginLoader(license *licensing.License, logger *slog.Logger) *PluginLoader {
+func NewPluginLoader(license *licensing.License, storage storage.Storage, logger *slog.Logger) *PluginLoader {
 	return &PluginLoader{
 		plugins:       make([]EnterprisePlugin, 0),
 		pluginsByName: make(map[string]EnterprisePlugin),
 		license:       license,
+		storage:       storage,
 		logger:        logger,
 	}
 }
@@ -154,6 +157,28 @@ func (l *PluginLoader) StartAll(ctx context.Context) error {
 	l.logger.Info("starting all plugins", "count", len(l.plugins))
 
 	for _, p := range l.plugins {
+		// Attach to storage if plugin requires it
+		if sp, ok := p.(StoragePlugin); ok {
+			if err := sp.AttachToStorage(l.storage); err != nil {
+				l.logger.Error("failed to attach storage to plugin", "name", p.Name(), "error", err)
+				continue
+			}
+		}
+
+		if bp, ok := p.(BackupPlugin); ok {
+			if err := bp.AttachToStorage(l.storage); err != nil {
+				l.logger.Error("failed to attach storage to backup plugin", "name", p.Name(), "error", err)
+				continue
+			}
+		}
+
+		if mp, ok := p.(MonitoringPlugin); ok {
+			if err := mp.AttachToStorage(l.storage); err != nil {
+				l.logger.Error("failed to attach storage to monitoring plugin", "name", p.Name(), "error", err)
+				continue
+			}
+		}
+
 		if err := p.Start(ctx); err != nil {
 			l.logger.Error("failed to start plugin", "name", p.Name(), "error", err)
 			// Continue starting other plugins

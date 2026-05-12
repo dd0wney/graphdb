@@ -953,18 +953,19 @@ func TestDistanceToScore(t *testing.T) {
 	}
 }
 
-// TestVectorSearch_TenantIsolation asserts that /vector-search filters
-// HNSW results so a caller in tenant A never sees vectors belonging to
-// tenant B's nodes — and vice versa. The HNSW index is global across
-// tenants; isolation is enforced in the handler by post-filtering on
-// Node.TenantID.
+// TestVectorSearch_TenantIsolation asserts that /vector-search enforces
+// strict tenant isolation. Each tenant has its own set of HNSW indexes.
 func TestVectorSearch_TenantIsolation(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	const propertyName = "embedding"
-	if err := server.graph.CreateVectorIndex(propertyName, 3, 16, 200, "cosine"); err != nil {
-		t.Fatalf("CreateVectorIndex: %v", err)
+	// Create index for both tenant A and B
+	if err := server.graph.CreateVectorIndexForTenant("tenant-A", propertyName, 3, 16, 200, "cosine"); err != nil {
+		t.Fatalf("CreateVectorIndex A: %v", err)
+	}
+	if err := server.graph.CreateVectorIndexForTenant("tenant-B", propertyName, 3, 16, 200, "cosine"); err != nil {
+		t.Fatalf("CreateVectorIndex B: %v", err)
 	}
 
 	// Two nodes, near-identical vectors so HNSW returns both regardless
@@ -990,11 +991,12 @@ func TestVectorSearch_TenantIsolation(t *testing.T) {
 	tests := []struct {
 		name        string
 		tenantID    string
+		wantCode    int
 		wantNodeIDs []uint64
 	}{
-		{"tenant-A sees only A's node", "tenant-A", []uint64{nodeA.ID}},
-		{"tenant-B sees only B's node", "tenant-B", []uint64{nodeB.ID}},
-		{"tenant-C (empty) sees nothing", "tenant-C", nil},
+		{"tenant-A sees only A's node", "tenant-A", http.StatusOK, []uint64{nodeA.ID}},
+		{"tenant-B sees only B's node", "tenant-B", http.StatusOK, []uint64{nodeB.ID}},
+		{"tenant-C (no index) returns 404", "tenant-C", http.StatusNotFound, nil},
 	}
 
 	for _, tc := range tests {
@@ -1013,9 +1015,13 @@ func TestVectorSearch_TenantIsolation(t *testing.T) {
 			rr := httptest.NewRecorder()
 			server.handleVectorSearch(rr, req)
 
-			if rr.Code != http.StatusOK {
-				t.Fatalf("want 200, got %d: %s", rr.Code, rr.Body.String())
+			if rr.Code != tc.wantCode {
+				t.Fatalf("want %d, got %d: %s", tc.wantCode, rr.Code, rr.Body.String())
 			}
+			if tc.wantCode != http.StatusOK {
+				return
+			}
+
 			var resp VectorSearchResponse
 			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 				t.Fatalf("unmarshal: %v", err)

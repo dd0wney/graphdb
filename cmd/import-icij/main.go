@@ -111,7 +111,7 @@ func main() {
 	showNodeTypeDistribution(graph, logger)
 }
 
-func importNodes(graph *storage.GraphStorage, filename string, batchSize int, logger *slog.Logger) (int, time.Duration) {
+func importNodes(graph storage.Storage, filename string, batchSize int, logger *slog.Logger) (int, time.Duration) {
 	start := time.Now()
 
 	file, err := os.Open(filename)
@@ -185,7 +185,7 @@ func importNodes(graph *storage.GraphStorage, filename string, batchSize int, lo
 	return count, time.Since(start)
 }
 
-func processBatch(graph *storage.GraphStorage, batch []ICIJNode, nodeIDMap map[string]uint64, logger *slog.Logger) {
+func processBatch(graph storage.Storage, batch []ICIJNode, nodeIDMap map[string]uint64, logger *slog.Logger) {
 	// Use Batch API for better performance
 	graphBatch := graph.BeginBatch()
 
@@ -241,7 +241,7 @@ func processBatch(graph *storage.GraphStorage, batch []ICIJNode, nodeIDMap map[s
 	}
 }
 
-func importEdges(graph *storage.GraphStorage, filename string, batchSize int, logger *slog.Logger) (int, time.Duration) {
+func importEdges(graph storage.Storage, filename string, batchSize int, logger *slog.Logger) (int, time.Duration) {
 	start := time.Now()
 
 	// Load node ID mapping
@@ -320,7 +320,7 @@ func importEdges(graph *storage.GraphStorage, filename string, batchSize int, lo
 	return count, time.Since(start)
 }
 
-func processEdgeBatch(graph *storage.GraphStorage, batch []ICIJEdge, nodeIDMap map[string]uint64, logger *slog.Logger) (int, int) {
+func processEdgeBatch(graph storage.Storage, batch []ICIJEdge, nodeIDMap map[string]uint64, logger *slog.Logger) (int, int) {
 	graphBatch := graph.BeginBatch()
 	imported := 0
 	skipped := 0
@@ -432,7 +432,7 @@ func loadNodeIDMap(logger *slog.Logger) map[string]uint64 {
 	return nodeIDMap
 }
 
-func showNodeTypeDistribution(graph *storage.GraphStorage, logger *slog.Logger) {
+func showNodeTypeDistribution(graph storage.Storage, logger *slog.Logger) {
 	// Query each node type
 	types := []string{"Entity", "Officer", "Intermediary", "Address"}
 

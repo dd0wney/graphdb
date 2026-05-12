@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -20,7 +21,14 @@ type PropertyIndexSnapshot struct {
 }
 
 // Snapshot saves the current state to disk
-func (gs *GraphStorage) Snapshot() error {
+func (gs *GraphStorage) Snapshot(ctx context.Context) error {
+	// Check for cancellation
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	// Compress edge lists before snapshot if compression is enabled
 	if gs.useEdgeCompression {
 		gs.mu.Lock()
@@ -194,7 +202,7 @@ func (gs *GraphStorage) Close() error {
 	}
 
 	// Save snapshot on close (without holding the lock to avoid deadlock)
-	if err := gs.Snapshot(); err != nil {
+	if err := gs.Snapshot(context.Background()); err != nil {
 		return err
 	}
 

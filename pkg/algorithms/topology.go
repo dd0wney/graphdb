@@ -8,7 +8,7 @@ import (
 
 // IsDAG checks if the graph is a Directed Acyclic Graph
 // Returns true if the graph contains no cycles
-func IsDAG(graph *storage.GraphStorage) (bool, error) {
+func IsDAG(graph storage.StorageReader) (bool, error) {
 	hasCycle, err := HasCycle(graph)
 	if err != nil {
 		return false, err
@@ -19,7 +19,7 @@ func IsDAG(graph *storage.GraphStorage) (bool, error) {
 // TopologicalSort returns nodes in topological order using Kahn's algorithm
 // Returns error if graph contains a cycle (not a DAG)
 // The ordering ensures that for every directed edge u->v, u comes before v
-func TopologicalSort(graph *storage.GraphStorage) ([]uint64, error) {
+func TopologicalSort(graph storage.StorageReader) ([]uint64, error) {
 	// First check if it's a DAG
 	isDAG, err := IsDAG(graph)
 	if err != nil {
@@ -103,7 +103,7 @@ func TopologicalSort(graph *storage.GraphStorage) ([]uint64, error) {
 // - Have exactly n-1 edges for n nodes
 // - Contain no cycles
 // - Have a single root (node with in-degree 0)
-func IsTree(graph *storage.GraphStorage) (bool, error) {
+func IsTree(graph storage.StorageReader) (bool, error) {
 	stats := graph.GetStatistics()
 
 	// Empty graph is not a tree
@@ -163,7 +163,7 @@ func IsTree(graph *storage.GraphStorage) (bool, error) {
 
 // IsConnected checks if all nodes in the graph are reachable from any starting node
 // For directed graphs, this checks weak connectivity (treating edges as undirected)
-func IsConnected(graph *storage.GraphStorage) (bool, error) {
+func IsConnected(graph storage.StorageReader) (bool, error) {
 	stats := graph.GetStatistics()
 
 	// Empty graph is considered connected
@@ -227,7 +227,7 @@ func IsConnected(graph *storage.GraphStorage) (bool, error) {
 // IsBipartite checks if the graph can be colored with two colors
 // such that no two adjacent nodes have the same color
 // Returns (is_bipartite, partition1, partition2, error)
-func IsBipartite(graph *storage.GraphStorage) (bool, []uint64, []uint64, error) {
+func IsBipartite(graph storage.StorageReader) (bool, []uint64, []uint64, error) {
 	stats := graph.GetStatistics()
 
 	// Empty graph is bipartite

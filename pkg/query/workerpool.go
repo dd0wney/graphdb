@@ -38,7 +38,7 @@ type WorkerPool struct {
 
 // Task represents a unit of work
 type Task interface {
-	Execute(graph *storage.GraphStorage) (any, error)
+	Execute(graph storage.StorageReader) (any, error)
 	ID() string
 }
 
@@ -76,7 +76,7 @@ func NewWorkerPoolWithTimeout(workers int, taskTimeout time.Duration) *WorkerPoo
 }
 
 // Start starts the worker pool
-func (wp *WorkerPool) Start(graph *storage.GraphStorage) {
+func (wp *WorkerPool) Start(graph storage.StorageReader) {
 	for i := 0; i < wp.workers; i++ {
 		wp.wg.Add(1)
 		go wp.worker(i, graph)
@@ -99,7 +99,7 @@ func (wp *WorkerPool) Start(graph *storage.GraphStorage) {
 // 3. Results channel may block if consumer is slow - handled by select/context
 // 4. Task panic is caught and converted to error result - worker continues
 // 5. Task timeout triggers cancellation and error result
-func (wp *WorkerPool) worker(id int, graph *storage.GraphStorage) {
+func (wp *WorkerPool) worker(id int, graph storage.StorageReader) {
 	defer wp.wg.Done()
 
 	for {
@@ -147,7 +147,7 @@ func (wp *WorkerPool) worker(id int, graph *storage.GraphStorage) {
 // may continue running until the task completes. The result channel is buffered
 // to allow the goroutine to exit cleanly without blocking. For tasks that support
 // context cancellation, consider using ExecuteWithContext instead.
-func (wp *WorkerPool) executeTaskWithTimeout(task Task, graph *storage.GraphStorage) (any, error, bool) {
+func (wp *WorkerPool) executeTaskWithTimeout(task Task, graph storage.StorageReader) (any, error, bool) {
 	// Create a channel for the result - buffered to prevent goroutine leak
 	// The buffer allows the goroutine to send its result even if we've already
 	// returned due to timeout, preventing it from blocking forever

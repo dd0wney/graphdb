@@ -18,7 +18,7 @@ type mockTask struct {
 	delay  time.Duration
 }
 
-func (t *mockTask) Execute(graph *storage.GraphStorage) (any, error) {
+func (t *mockTask) Execute(graph storage.StorageReader) (any, error) {
 	if t.delay > 0 {
 		time.Sleep(t.delay)
 	}

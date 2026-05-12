@@ -137,13 +137,13 @@ type Result struct {
 // Construct one per Server (it's stateless beyond the references
 // it holds; safe to share across requests).
 type Retriever struct {
-	Graph     *storage.GraphStorage
+	Graph     storage.Storage
 	SearchIdx *search.TenantIndexes
 	LSAIdx    *search.TenantLSAIndexes
 }
 
 // NewRetriever wires the retrieval primitives.
-func NewRetriever(graph *storage.GraphStorage, searchIdx *search.TenantIndexes, lsaIdx *search.TenantLSAIndexes) *Retriever {
+func NewRetriever(graph storage.Storage, searchIdx *search.TenantIndexes, lsaIdx *search.TenantLSAIndexes) *Retriever {
 	return &Retriever{
 		Graph:     graph,
 		SearchIdx: searchIdx,
@@ -309,7 +309,7 @@ func (r *Retriever) Retrieve(ctx context.Context, query, tenantID string, opts O
 
 // filterSeedsByLabel keeps only seeds whose node has at least one of
 // the requested labels. Hydrates LSA-only seeds via GetNodeForTenant.
-func filterSeedsByLabel(graph *storage.GraphStorage, tenantID string, seeds []search.HybridHit, labels []string) []search.HybridHit {
+func filterSeedsByLabel(graph storage.Storage, tenantID string, seeds []search.HybridHit, labels []string) []search.HybridHit {
 	wanted := make(map[string]struct{}, len(labels))
 	for _, l := range labels {
 		wanted[l] = struct{}{}

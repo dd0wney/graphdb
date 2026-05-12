@@ -30,13 +30,13 @@ type tarjanState struct {
 // in O(V+E) time, tenant-blind. Only outgoing edges are followed
 // (directed graph semantics). Multi-tenant API callers must use
 // StronglyConnectedComponentsForTenant.
-func StronglyConnectedComponents(graph *storage.GraphStorage) (*SCCResult, error) {
+func StronglyConnectedComponents(graph storage.StorageReader) (*SCCResult, error) {
 	return sccView(newTenantBlindView(graph))
 }
 
 // StronglyConnectedComponentsForTenant computes SCCs within the
 // caller's tenant subgraph. Audit A6c-algorithms (2026-05-08).
-func StronglyConnectedComponentsForTenant(graph *storage.GraphStorage, tenantID string) (*SCCResult, error) {
+func StronglyConnectedComponentsForTenant(graph storage.StorageReader, tenantID string) (*SCCResult, error) {
 	return sccView(newTenantScopedView(graph, tenantID))
 }
 
@@ -141,7 +141,7 @@ func sccView(view graphView) (*SCCResult, error) {
 // Condensation builds the condensation DAG from an SCC result. Each SCC becomes
 // a single node; edges between SCCs are aggregated with their count.
 // Runs in O(E) time over all original edges.
-func Condensation(graph *storage.GraphStorage, scc *SCCResult) ([]CondensationEdge, error) {
+func Condensation(graph storage.StorageReader, scc *SCCResult) ([]CondensationEdge, error) {
 	// Collect all edges and group by (fromSCC, toSCC)
 	type edgeKey struct{ from, to int }
 	counts := make(map[edgeKey]int)

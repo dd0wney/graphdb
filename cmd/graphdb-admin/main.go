@@ -20,6 +20,8 @@ func main() {
 			os.Exit(1)
 		}
 		handleSecurityCommand(os.Args[2:])
+	case "update":
+		handleUpdateCommand(os.Args[2:])
 	case "help", "--help", "-h":
 		printUsage()
 	case "version", "--version", "-v":
@@ -39,6 +41,7 @@ Usage:
 
 Available Commands:
   security    Security management commands
+  update      Update GraphDB software
   help        Show this help message
   version     Show version information
 

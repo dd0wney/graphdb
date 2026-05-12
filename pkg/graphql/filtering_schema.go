@@ -15,7 +15,7 @@ import (
 // GenerateSchemaWithFilteringForTenant per audit A9 (#36).
 //
 // Masking is disabled (deps = nil).
-func GenerateSchemaWithFiltering(gs *storage.GraphStorage) (graphql.Schema, error) {
+func GenerateSchemaWithFiltering(gs storage.Storage) (graphql.Schema, error) {
 	return generateSchemaWithFilteringForLabels(gs, gs.GetAllLabels(), nil)
 }
 
@@ -23,11 +23,11 @@ func GenerateSchemaWithFiltering(gs *storage.GraphStorage) (graphql.Schema, erro
 // tenant's labels. Audit A9.
 //
 // deps is the F3 masking hookup; nil disables masking.
-func GenerateSchemaWithFilteringForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+func GenerateSchemaWithFilteringForTenant(gs storage.Storage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
 	return generateSchemaWithFilteringForLabels(gs, gs.GetLabelsForTenant(tenantID), deps)
 }
 
-func generateSchemaWithFilteringForLabels(gs *storage.GraphStorage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
+func generateSchemaWithFilteringForLabels(gs storage.Storage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	nodeTypes := make(map[string]*graphql.Object)
 
 	// Create where input type (we'll use a generic JSON-like structure)
@@ -145,7 +145,7 @@ func generateSchemaWithFilteringForLabels(gs *storage.GraphStorage, labels []str
 }
 
 // createNodesResolverWithFiltering creates a resolver with filtering support
-func createNodesResolverWithFiltering(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
+func createNodesResolverWithFiltering(gs storage.Storage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label query.
 		tenantID := tenant.MustFromContext(p.Context)
@@ -186,7 +186,7 @@ func createNodesResolverWithFiltering(gs *storage.GraphStorage, label string) gr
 }
 
 // createEdgesResolverWithFiltering creates an edge resolver with filtering support
-func createEdgesResolverWithFiltering(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func createEdgesResolverWithFiltering(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped enumeration.
 		tenantID := tenant.MustFromContext(p.Context)

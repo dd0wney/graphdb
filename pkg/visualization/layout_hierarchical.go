@@ -18,7 +18,7 @@ func NewHierarchicalLayout(config *LayoutConfig) *HierarchicalLayout {
 }
 
 // ComputeLayout arranges nodes hierarchically
-func (hl *HierarchicalLayout) ComputeLayout(gs *storage.GraphStorage, nodeIDs []uint64) (map[uint64]Position, error) {
+func (hl *HierarchicalLayout) ComputeLayout(gs storage.Storage, nodeIDs []uint64) (map[uint64]Position, error) {
 	positions := make(map[uint64]Position)
 
 	if len(nodeIDs) == 0 {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/api/middleware"
 	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
 )
 
@@ -37,70 +38,58 @@ func (s *Server) Start() error {
 	// withTenant injects request-scoped tenant context so the executor
 	// (when migrated in audit task A6) can scope MATCH iteration to the
 	// caller's tenant rather than the global graph.
-	mux.HandleFunc("/query", s.requireAuth(s.withTenant(s.handleQuery)))
+	mux.HandleFunc("/query", s.requireAuth(s.withTenant(middleware.TraceMiddleware("query")(http.HandlerFunc(s.handleQuery)).ServeHTTP)))
 
 	// GraphQL endpoint (protected, tenant-scoped — audit A5).
-	mux.HandleFunc("/graphql", s.requireAuth(s.withTenant(s.handleGraphQL)))
+	mux.HandleFunc("/graphql", s.requireAuth(s.withTenant(middleware.TraceMiddleware("graphql")(http.HandlerFunc(s.handleGraphQL)).ServeHTTP)))
 
 	// Node endpoints (protected, tenant-scoped — audit A5). Closes the
 	// route-level half of Security CRIT #1+#2: the storage layer enforces
 	// tenant ownership (A3b), but handlers must pass the tenant from
 	// request context. withTenant ensures the context is populated; A6
 	// migrates the handlers to use *ForTenant variants.
-	mux.HandleFunc("/nodes", s.requireAuth(s.withTenant(s.handleNodes)))
-	mux.HandleFunc("/nodes/", s.requireAuth(s.withTenant(s.handleNode))) // /nodes/{id}
-	mux.HandleFunc("/nodes/batch", s.requireAuth(s.withTenant(s.handleBatchNodes)))
+	mux.HandleFunc("/nodes", s.requireAuth(s.withTenant(middleware.TraceMiddleware("nodes.list")(http.HandlerFunc(s.handleNodes)).ServeHTTP)))
+	mux.HandleFunc("/nodes/", s.requireAuth(s.withTenant(middleware.TraceMiddleware("nodes.detail")(http.HandlerFunc(s.handleNode)).ServeHTTP)))
+	mux.HandleFunc("/nodes/batch", s.requireAuth(s.withTenant(middleware.TraceMiddleware("nodes.batch")(http.HandlerFunc(s.handleBatchNodes)).ServeHTTP)))
 
 	// Edge endpoints (protected, tenant-scoped — audit A5).
-	mux.HandleFunc("/edges", s.requireAuth(s.withTenant(s.handleEdges)))
-	mux.HandleFunc("/edges/", s.requireAuth(s.withTenant(s.handleEdge))) // /edges/{id}
-	mux.HandleFunc("/edges/batch", s.requireAuth(s.withTenant(s.handleBatchEdges)))
+	mux.HandleFunc("/edges", s.requireAuth(s.withTenant(middleware.TraceMiddleware("edges.list")(http.HandlerFunc(s.handleEdges)).ServeHTTP)))
+	mux.HandleFunc("/edges/", s.requireAuth(s.withTenant(middleware.TraceMiddleware("edges.detail")(http.HandlerFunc(s.handleEdge)).ServeHTTP)))
+	mux.HandleFunc("/edges/batch", s.requireAuth(s.withTenant(middleware.TraceMiddleware("edges.batch")(http.HandlerFunc(s.handleBatchEdges)).ServeHTTP)))
 
 	// Traversal endpoints (protected, tenant-scoped — audit A5).
-	mux.HandleFunc("/traverse", s.requireAuth(s.withTenant(s.handleTraversal)))
-	mux.HandleFunc("/shortest-path", s.requireAuth(s.withTenant(s.handleShortestPath)))
+	mux.HandleFunc("/traverse", s.requireAuth(s.withTenant(middleware.TraceMiddleware("traverse")(http.HandlerFunc(s.handleTraversal)).ServeHTTP)))
+	mux.HandleFunc("/shortest-path", s.requireAuth(s.withTenant(middleware.TraceMiddleware("shortest-path")(http.HandlerFunc(s.handleShortestPath)).ServeHTTP)))
 
 	// Algorithm endpoints (protected, tenant-scoped — audit A5).
-	mux.HandleFunc("/algorithms", s.requireAuth(s.withTenant(s.handleAlgorithm)))
+	mux.HandleFunc("/algorithms", s.requireAuth(s.withTenant(middleware.TraceMiddleware("algorithms")(http.HandlerFunc(s.handleAlgorithm)).ServeHTTP)))
 
 	// Vector search endpoints (protected, tenant-scoped)
-	mux.HandleFunc("/vector-indexes", s.requireAuth(s.withTenant(s.handleVectorIndexes)))
-	mux.HandleFunc("/vector-indexes/", s.requireAuth(s.withTenant(s.handleVectorIndex)))
-	mux.HandleFunc("/vector-search", s.requireAuth(s.withTenant(s.handleVectorSearch)))
+	mux.HandleFunc("/vector-indexes", s.requireAuth(s.withTenant(middleware.TraceMiddleware("vector-indexes.list")(http.HandlerFunc(s.handleVectorIndexes)).ServeHTTP)))
+	mux.HandleFunc("/vector-indexes/", s.requireAuth(s.withTenant(middleware.TraceMiddleware("vector-indexes.detail")(http.HandlerFunc(s.handleVectorIndex)).ServeHTTP)))
+	mux.HandleFunc("/vector-search", s.requireAuth(s.withTenant(middleware.TraceMiddleware("vector-search")(http.HandlerFunc(s.handleVectorSearch)).ServeHTTP)))
 
 	// Full-text search (protected, tenant-scoped)
-	mux.HandleFunc("/search", s.requireAuth(s.withTenant(s.handleSearch)))
+	mux.HandleFunc("/search", s.requireAuth(s.withTenant(middleware.TraceMiddleware("search")(http.HandlerFunc(s.handleSearch)).ServeHTTP)))
 
 	// Hybrid (FTS + LSA) search (protected, tenant-scoped)
-	mux.HandleFunc("/hybrid-search", s.requireAuth(s.withTenant(s.handleHybridSearch)))
+	mux.HandleFunc("/hybrid-search", s.requireAuth(s.withTenant(middleware.TraceMiddleware("hybrid-search")(http.HandlerFunc(s.handleHybridSearch)).ServeHTTP)))
 
-	// OpenAI-compatible embeddings (protected, tenant-scoped). Backed by the
-	// per-tenant LSA index so apps that already speak OpenAI (LangChain,
-	// Vercel AI SDK, etc.) can drop in by setting api_base.
-	mux.HandleFunc("/v1/embeddings", s.requireAuth(s.withTenant(s.handleEmbeddings)))
+	// OpenAI-compatible embeddings (protected, tenant-scoped)
+	mux.HandleFunc("/v1/embeddings", s.requireAuth(s.withTenant(middleware.TraceMiddleware("v1.embeddings")(http.HandlerFunc(s.handleEmbeddings)).ServeHTTP)))
 
-	// Graph-augmented retrieval (F2). LangChain BaseRetriever shape;
-	// composes hybrid search + tenant-scoped BFS expansion. See
-	// docs/F2_GRAPHRAG_DESIGN.md.
-	mux.HandleFunc("/v1/retrieve", s.requireAuth(s.withTenant(s.handleRetrieve)))
+	// Graph-augmented retrieval (F2)
+	mux.HandleFunc("/v1/retrieve", s.requireAuth(s.withTenant(middleware.TraceMiddleware("v1.retrieve")(http.HandlerFunc(s.handleRetrieve)).ServeHTTP)))
 
-	// Compliance API (F3). Tenant-scoped audit log with admin cross-
-	// tenant override (X-Tenant-ID or ?tenant=*). See
-	// docs/F3_COMPLIANCE_API_DESIGN.md.
-	mux.HandleFunc("/v1/compliance/audit-log", s.requireAuth(s.withTenant(s.handleComplianceAuditLog)))
+	// Compliance API (F3)
+	mux.HandleFunc("/v1/compliance/audit-log", s.requireAuth(s.withTenant(middleware.TraceMiddleware("v1.compliance.audit-log")(http.HandlerFunc(s.handleComplianceAuditLog)).ServeHTTP)))
 
-	// F3 masking-policy CRUD. Single mux entry catches both
-	//   POST /v1/compliance/masking-policy           (admin-only Set; target via withTenant)
-	//   GET  /v1/compliance/masking-policy/{tenant}  (admin OR self-tenant)
-	// Dispatch lives in handleComplianceMaskingPolicy; the trailing
-	// slash registration captures path-suffix calls like
-	// /v1/compliance/masking-policy/tenant-a.
-	mux.HandleFunc("/v1/compliance/masking-policy", s.requireAuth(s.withTenant(s.handleComplianceMaskingPolicy)))
-	mux.HandleFunc("/v1/compliance/masking-policy/", s.requireAuth(s.withTenant(s.handleComplianceMaskingPolicy)))
+	mux.HandleFunc("/v1/compliance/masking-policy", s.requireAuth(s.withTenant(middleware.TraceMiddleware("v1.compliance.masking-policy")(http.HandlerFunc(s.handleComplianceMaskingPolicy)).ServeHTTP)))
+	mux.HandleFunc("/v1/compliance/masking-policy/", s.requireAuth(s.withTenant(middleware.TraceMiddleware("v1.compliance.masking-policy")(http.HandlerFunc(s.handleComplianceMaskingPolicy)).ServeHTTP)))
 
 	// Search index population (admin-only, tenant-scoped)
-	mux.HandleFunc("/search/index", s.requireAdmin(s.withTenant(s.handleSearchIndex)))
-	mux.HandleFunc("/hybrid-search/lsa-index", s.requireAdmin(s.withTenant(s.handleLSAIndex)))
+	mux.HandleFunc("/search/index", s.requireAdmin(s.withTenant(middleware.TraceMiddleware("search.index")(http.HandlerFunc(s.handleSearchIndex)).ServeHTTP)))
+	mux.HandleFunc("/hybrid-search/lsa-index", s.requireAdmin(s.withTenant(middleware.TraceMiddleware("hybrid-search.lsa-index")(http.HandlerFunc(s.handleLSAIndex)).ServeHTTP)))
 
 	// User management endpoints (admin only) - handler does its own auth check
 	mux.Handle("/api/users", s.userHandler)
@@ -116,6 +105,14 @@ func (s *Server) Start() error {
 	// API Key management endpoints (admin only)
 	mux.HandleFunc("/api/v1/apikeys", s.requireAdmin(s.handleAPIKeys))
 	mux.HandleFunc("/api/v1/apikeys/", s.requireAdmin(s.handleAPIKey))
+
+	// Software update endpoints (admin only)
+	mux.HandleFunc("/admin/update/check", s.requireAdmin(middleware.TraceMiddleware("admin.update.check")(http.HandlerFunc(s.handleUpdateCheck)).ServeHTTP))
+	mux.HandleFunc("/admin/update/apply", s.requireAdmin(middleware.TraceMiddleware("admin.update.apply")(http.HandlerFunc(s.handleUpdateApply)).ServeHTTP))
+
+	// Transaction management endpoints (protected, tenant-scoped)
+	mux.HandleFunc("/v1/transactions", s.requireAuth(middleware.TraceMiddleware("transactions.begin")(http.HandlerFunc(s.handleTransactions)).ServeHTTP))
+	mux.HandleFunc("/v1/transactions/", s.requireAuth(middleware.TraceMiddleware("transactions.detail")(http.HandlerFunc(s.handleTransactionEndpoint)).ServeHTTP))
 
 	// Multi-tenant management endpoints
 	if s.tenantStore != nil {
@@ -151,6 +148,9 @@ func (s *Server) Start() error {
 	log.Printf("   Liveness:      GET  %s://%s/health/live (public)", protocol, addr)
 	log.Printf("   Metrics:       GET  %s://%s/metrics (public, Prometheus format)", protocol, addr)
 	log.Printf("   API Metrics:   GET  %s://%s/api/metrics (requires auth, JSON format)", protocol, addr)
+	log.Printf("   Updates:       GET  %s://%s/admin/update/check (requires admin)", protocol, addr)
+	log.Printf("   Transactions:  POST %s://%s/v1/transactions (requires auth)", protocol, addr)
+	log.Printf("   Apply Update:  POST %s://%s/admin/update/apply (requires admin)", protocol, addr)
 	log.Printf("   Login:         POST %s://%s/auth/login (public)", protocol, addr)
 	log.Printf("   Register:      POST %s://%s/auth/register (requires admin)", protocol, addr)
 	log.Printf("   Refresh:       POST %s://%s/auth/refresh (public)", protocol, addr)

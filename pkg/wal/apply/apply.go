@@ -16,7 +16,7 @@
 //   - docs/A8_REPLICATION_TENANCY_DESIGN.md §Q1 (TenantID on the wire).
 //   - docs/A8_1_SPIKE_2026-05-12.md §6 (Decision B).
 //   - pkg/api/audit_regression_test.go A8 row (drives ApplyWriteOperation
-//     end-to-end against a real *storage.GraphStorage).
+//     end-to-end against a real storage.Storage).
 package apply
 
 import (

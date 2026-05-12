@@ -4,17 +4,18 @@ import "github.com/dd0wney/cluso-graphdb/pkg/storage"
 
 // ClusteringCoefficient computes local clustering coefficient for all nodes
 // Measures how close a node's neighbors are to being a complete graph.
-//
-// Enumerates nodes via GetAllNodeIDs rather than scanning IDs 1..NodeCount+buffer.
-// The previous scan-based approach was both fragile (relied on stats.NodeCount
-// being accurate at call time) and slow (one GetNode call per scanned ID).
-func ClusteringCoefficient(graph *storage.GraphStorage) (map[uint64]float64, error) {
-	nodeIDs := graph.GetAllNodeIDs()
+func ClusteringCoefficient(graph storage.StorageReader) (map[uint64]float64, error) {
+	return clusteringCoefficientView(newTenantBlindView(graph))
+}
+
+func clusteringCoefficientView(view graphView) (map[uint64]float64, error) {
+	allNodes := view.AllNodes()
 	coefficients := make(map[uint64]float64)
 
-	for _, nodeID := range nodeIDs {
+	for _, node := range allNodes {
+		nodeID := node.ID
 		// Get neighbors
-		outEdges, _ := graph.GetOutgoingEdges(nodeID)
+		outEdges, _ := view.OutgoingEdges(nodeID)
 		neighbors := make(map[uint64]bool)
 
 		for _, edge := range outEdges {
@@ -39,7 +40,7 @@ func ClusteringCoefficient(graph *storage.GraphStorage) (map[uint64]float64, err
 		neighborSets := make(map[uint64]map[uint64]bool, len(neighborsSlice))
 		for _, neighbor := range neighborsSlice {
 			neighborSet := make(map[uint64]bool)
-			edges, err := graph.GetOutgoingEdges(neighbor)
+			edges, err := view.OutgoingEdges(neighbor)
 			if err == nil {
 				for _, edge := range edges {
 					neighborSet[edge.ToNodeID] = true
@@ -72,8 +73,12 @@ func ClusteringCoefficient(graph *storage.GraphStorage) (map[uint64]float64, err
 }
 
 // AverageClusteringCoefficient computes the average clustering coefficient
-func AverageClusteringCoefficient(graph *storage.GraphStorage) (float64, error) {
-	coefficients, err := ClusteringCoefficient(graph)
+func AverageClusteringCoefficient(graph storage.StorageReader) (float64, error) {
+	return averageClusteringCoefficientView(newTenantBlindView(graph))
+}
+
+func averageClusteringCoefficientView(view graphView) (float64, error) {
+	coefficients, err := clusteringCoefficientView(view)
 	if err != nil {
 		return 0.0, err
 	}

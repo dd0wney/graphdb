@@ -16,95 +16,101 @@ import (
 //
 // Methods are added to graphView only when an algorithm needs them —
 // keep the interface minimal so adaptors stay shallow.
+// graphView abstracts graph access so tenant-blind and tenant-scoped
+// algorithm callers share the same algorithm bodies.
+//
+// Audit A6c-algorithms (2026-05-08): updated 2026-05-12 to be backed
+// by the new storage.StorageReader interface (S1).
 type graphView interface {
-	// AllNodes returns every node visible to this view.
 	AllNodes() []*storage.Node
-
-	// Node returns a single node by ID. Returns ErrNodeNotFound for
-	// missing or out-of-view nodes (tenant-scoped views collapse the
-	// two cases — see GetNodeForTenant).
 	Node(id uint64) (*storage.Node, error)
-
-	// OutgoingEdges returns the subset of outgoing edges from id
-	// that this view exposes.
 	OutgoingEdges(id uint64) ([]*storage.Edge, error)
-
-	// IncomingEdges mirrors OutgoingEdges for incoming.
 	IncomingEdges(id uint64) ([]*storage.Edge, error)
-
-	// Edge returns a single edge by ID. Used by algorithms that
-	// dereference edge IDs after a traversal — e.g., edge-betweenness
-	// looking up endpoints by edge ID. Returns ErrEdgeNotFound for
-	// missing or out-of-view edges.
 	Edge(id uint64) (*storage.Edge, error)
 }
 
-// tenantBlindView delegates straight through to the storage's
-// tenant-blind methods. Used by the legacy public algorithm
-// functions (PageRank, DetectCycles, etc.) which intentionally
-// operate across all tenants — CLI, demos, single-tenant
-// deployments.
+// tenantBlindView delegates to storage.StorageReader using the
+// cross-tenant / admin methods where relevant.
 type tenantBlindView struct {
-	g *storage.GraphStorage
+	reader storage.StorageReader
 }
 
-func newTenantBlindView(g *storage.GraphStorage) *tenantBlindView {
-	return &tenantBlindView{g: g}
+func newTenantBlindView(reader storage.StorageReader) *tenantBlindView {
+	return &tenantBlindView{reader: reader}
 }
 
 func (v *tenantBlindView) AllNodes() []*storage.Node {
-	// GetAllNodesAcrossTenants is the deliberately-named tenant-blind
-	// enumerator (see pkg/storage/node_operations.go). Algorithms
-	// running through tenantBlindView are CLI / single-tenant /
-	// admin paths — not API-reachable, so the cross-tenant
-	// "everything" view is the correct semantic.
-	return v.g.GetAllNodesAcrossTenants()
+	// For tenant-blind view (CLI/Admin), we use an empty tenantID
+	// which storage interprets as the default tenant, OR we might
+	// need a way to get "all" if the interface supports it.
+	// Currently GetAllNodesAcrossTenants is not in StorageReader
+	// because it's a security-sensitive admin operation.
+	// GraphStorage still has it.
+	if gs, ok := v.reader.(storage.Storage); ok {
+		return gs.GetAllNodesAcrossTenants()
+	}
+	// Fallback to default tenant if not GraphStorage (less than ideal but safe)
+	return v.reader.GetAllNodesForTenant("")
 }
 
 func (v *tenantBlindView) Node(id uint64) (*storage.Node, error) {
-	return v.g.GetNode(id)
+	// For tenant-blind view, we try to get the node from the default tenant.
+	// Actually, the legacy tenant-blind methods in GraphStorage (GetNode)
+	// were truly tenant-blind.
+	if gs, ok := v.reader.(storage.Storage); ok {
+		return gs.GetNode(id)
+	}
+	return v.reader.GetNodeForTenant(id, "")
 }
 
 func (v *tenantBlindView) OutgoingEdges(id uint64) ([]*storage.Edge, error) {
-	return v.g.GetOutgoingEdges(id)
+	if gs, ok := v.reader.(storage.Storage); ok {
+		return gs.GetOutgoingEdges(id)
+	}
+	return v.reader.GetOutgoingEdgesForTenant(id, "")
 }
 
 func (v *tenantBlindView) IncomingEdges(id uint64) ([]*storage.Edge, error) {
-	return v.g.GetIncomingEdges(id)
+	if gs, ok := v.reader.(storage.Storage); ok {
+		return gs.GetIncomingEdges(id)
+	}
+	return v.reader.GetIncomingEdgesForTenant(id, "")
 }
 
 func (v *tenantBlindView) Edge(id uint64) (*storage.Edge, error) {
-	return v.g.GetEdge(id)
+	if gs, ok := v.reader.(storage.Storage); ok {
+		return gs.GetEdge(id)
+	}
+	return v.reader.GetEdgeForTenant(id, "")
 }
 
-// tenantScopedView delegates to the *ForTenant storage methods,
-// pinning every read to a specific tenant. Used by the new
-// XForTenant public algorithm functions.
+// tenantScopedView delegates to storage.StorageReader pinning
+// every read to a specific tenant.
 type tenantScopedView struct {
-	g        *storage.GraphStorage
+	reader   storage.StorageReader
 	tenantID string
 }
 
-func newTenantScopedView(g *storage.GraphStorage, tenantID string) *tenantScopedView {
-	return &tenantScopedView{g: g, tenantID: tenantID}
+func newTenantScopedView(reader storage.StorageReader, tenantID string) *tenantScopedView {
+	return &tenantScopedView{reader: reader, tenantID: tenantID}
 }
 
 func (v *tenantScopedView) AllNodes() []*storage.Node {
-	return v.g.GetAllNodesForTenant(v.tenantID)
+	return v.reader.GetAllNodesForTenant(v.tenantID)
 }
 
 func (v *tenantScopedView) Node(id uint64) (*storage.Node, error) {
-	return v.g.GetNodeForTenant(id, v.tenantID)
+	return v.reader.GetNodeForTenant(id, v.tenantID)
 }
 
 func (v *tenantScopedView) OutgoingEdges(id uint64) ([]*storage.Edge, error) {
-	return v.g.GetOutgoingEdgesForTenant(id, v.tenantID)
+	return v.reader.GetOutgoingEdgesForTenant(id, v.tenantID)
 }
 
 func (v *tenantScopedView) IncomingEdges(id uint64) ([]*storage.Edge, error) {
-	return v.g.GetIncomingEdgesForTenant(id, v.tenantID)
+	return v.reader.GetIncomingEdgesForTenant(id, v.tenantID)
 }
 
 func (v *tenantScopedView) Edge(id uint64) (*storage.Edge, error) {
-	return v.g.GetEdgeForTenant(id, v.tenantID)
+	return v.reader.GetEdgeForTenant(id, v.tenantID)
 }

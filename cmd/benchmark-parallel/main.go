@@ -101,7 +101,7 @@ type BenchmarkStats struct {
 	Throughput   float64
 }
 
-func createTestGraph(numNodes, avgDegree int) *storage.GraphStorage {
+func createTestGraph(numNodes, avgDegree int) storage.Storage {
 	graph, err := storage.NewGraphStorage("./data/benchmark-parallel")
 	if err != nil {
 		log.Fatalf("Failed to create graph: %v", err)
@@ -134,7 +134,7 @@ func createTestGraph(numNodes, avgDegree int) *storage.GraphStorage {
 	return graph
 }
 
-func benchmarkSequentialBFS(graph *storage.GraphStorage, startNodes []uint64, maxDepth int) BenchmarkStats {
+func benchmarkSequentialBFS(graph storage.Storage, startNodes []uint64, maxDepth int) BenchmarkStats {
 	visited := make(map[uint64]bool)
 	currentLevel := startNodes
 
@@ -177,7 +177,7 @@ func benchmarkSequentialBFS(graph *storage.GraphStorage, startNodes []uint64, ma
 	}
 }
 
-func benchmarkParallelBFS(graph *storage.GraphStorage, startNodes []uint64, maxDepth, numWorkers int) BenchmarkStats {
+func benchmarkParallelBFS(graph storage.Storage, startNodes []uint64, maxDepth, numWorkers int) BenchmarkStats {
 	traverser, err := parallel.NewParallelTraverser(graph, numWorkers)
 	if err != nil {
 		log.Fatalf("Failed to create parallel traverser: %v", err)

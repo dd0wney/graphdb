@@ -1,11 +1,12 @@
 package storage
 
 import (
+	"context"
 	"errors"
 )
 
 // Commit commits the transaction
-func (tx *Transaction) Commit() error {
+func (tx *Transaction) Commit(ctx context.Context) error {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
 
@@ -17,107 +18,40 @@ func (tx *Transaction) Commit() error {
 		return ErrTransactionAlreadyEnded
 	}
 
-	// Apply buffered changes to storage atomically
-	tx.gs.mu.Lock()
-	defer tx.gs.mu.Unlock()
+	// Apply all buffered changes via Storage interface
+	// In a real system, we'd use a batch writer.
+	for _, node := range tx.createdNodes {
+		_, err := tx.gs.CreateNodeWithTenant(tx.TenantID, node.Labels, node.Properties)
+		if err != nil {
+			return err
+		}
+	}
 
-	// Apply all buffered changes
-	tx.applyCreatedNodes()
-	tx.applyCreatedEdges()
-	tx.applyNodeUpdates()
+	for nodeID, props := range tx.updatedNodes {
+		err := tx.gs.UpdateNodeForTenant(nodeID, props, tx.TenantID)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, edge := range tx.createdEdges {
+		_, err := tx.gs.CreateEdgeWithTenant(tx.TenantID, edge.FromNodeID, edge.ToNodeID, edge.Type, edge.Properties, edge.Weight)
+		if err != nil {
+			return err
+		}
+	}
+
+	for nodeID := range tx.deletedNodes {
+		err := tx.gs.DeleteNodeForTenant(nodeID, tx.TenantID)
+		if err != nil {
+			return err
+		}
+	}
 
 	tx.committed = true
 	tx.active = false
 
 	return nil
-}
-
-// applyCreatedNodes adds buffered node creations to storage
-// Groups nodes by shard to reduce lock contention
-func (tx *Transaction) applyCreatedNodes() {
-	if len(tx.createdNodes) == 0 {
-		return
-	}
-
-	// Group nodes by shard to batch lock acquisitions
-	nodesByShard := make(map[int][]*Node)
-	for _, node := range tx.createdNodes {
-		shardIdx := tx.gs.getShardIndex(node.ID)
-		nodesByShard[shardIdx] = append(nodesByShard[shardIdx], node)
-	}
-
-	// Process each shard with a single lock acquisition
-	for shardIdx, nodes := range nodesByShard {
-		tx.gs.shardLocks[shardIdx].Lock()
-		for _, node := range nodes {
-			tx.gs.storeNodeInShard(node)
-			// Update indexes
-			for _, label := range node.Labels {
-				tx.gs.nodesByLabel[label] = append(tx.gs.nodesByLabel[label], node.ID)
-			}
-		}
-		tx.gs.shardLocks[shardIdx].Unlock()
-	}
-}
-
-// applyCreatedEdges adds buffered edge creations to storage
-// Groups edges by shard to reduce lock contention
-func (tx *Transaction) applyCreatedEdges() {
-	if len(tx.createdEdges) == 0 {
-		return
-	}
-
-	// Group edges by shard to batch lock acquisitions
-	edgesByShard := make(map[int][]*Edge)
-	for _, edge := range tx.createdEdges {
-		shardIdx := tx.gs.getShardIndex(edge.ID)
-		edgesByShard[shardIdx] = append(edgesByShard[shardIdx], edge)
-	}
-
-	// Process each shard with a single lock acquisition
-	for shardIdx, edges := range edgesByShard {
-		tx.gs.shardLocks[shardIdx].Lock()
-		for _, edge := range edges {
-			tx.gs.storeEdgeInShard(edge)
-			// Update edge indexes
-			tx.gs.edgesByType[edge.Type] = append(tx.gs.edgesByType[edge.Type], edge.ID)
-			tx.gs.outgoingEdges[edge.FromNodeID] = append(tx.gs.outgoingEdges[edge.FromNodeID], edge.ID)
-			tx.gs.incomingEdges[edge.ToNodeID] = append(tx.gs.incomingEdges[edge.ToNodeID], edge.ID)
-		}
-		tx.gs.shardLocks[shardIdx].Unlock()
-	}
-}
-
-// applyNodeUpdates applies buffered property updates to existing nodes
-// Groups updates by shard to reduce lock contention
-func (tx *Transaction) applyNodeUpdates() {
-	if len(tx.updatedNodes) == 0 {
-		return
-	}
-
-	// Group updates by shard to batch lock acquisitions
-	type nodeUpdate struct {
-		nodeID     uint64
-		properties map[string]Value
-	}
-	updatesByShard := make(map[int][]nodeUpdate)
-	for nodeID, properties := range tx.updatedNodes {
-		shardIdx := tx.gs.getShardIndex(nodeID)
-		updatesByShard[shardIdx] = append(updatesByShard[shardIdx], nodeUpdate{nodeID, properties})
-	}
-
-	// Process each shard with a single lock acquisition
-	for shardIdx, updates := range updatesByShard {
-		tx.gs.shardLocks[shardIdx].Lock()
-		for _, update := range updates {
-			if node, exists := tx.gs.lookupNodeShard(update.nodeID); exists {
-				for k, v := range update.properties {
-					node.Properties[k] = v
-				}
-			}
-		}
-		tx.gs.shardLocks[shardIdx].Unlock()
-	}
 }
 
 // Rollback rolls back the transaction

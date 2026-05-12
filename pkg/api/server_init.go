@@ -27,7 +27,7 @@ import (
 
 // NewServer creates a new API server
 // dataDir is used for persisting auth data (users, API keys)
-func NewServer(graph *storage.GraphStorage, port int) (*Server, error) {
+func NewServer(graph storage.Storage, port int) (*Server, error) {
 	// Get data directory from graph storage or environment
 	dataDir := os.Getenv("DATA_DIR")
 	if dataDir == "" {
@@ -37,7 +37,7 @@ func NewServer(graph *storage.GraphStorage, port int) (*Server, error) {
 }
 
 // NewServerWithDataDir creates a new API server with explicit data directory
-func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string) (*Server, error) {
+func NewServerWithDataDir(graph storage.Storage, port int, dataDir string) (*Server, error) {
 	// Initialize GraphQL limit config from environment
 	limitConfig := &graphql.LimitConfig{
 		DefaultLimit: getEnvInt("GRAPHQL_DEFAULT_LIMIT", 100),
@@ -247,6 +247,7 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		searchIndexes: searchIndexes,
 		lsaIndexes:    lsaIndexes,
 		retriever:     retrieval.NewRetriever(graph, searchIndexes, lsaIndexes),
+		txManager:     storage.NewTransactionManager(graph),
 		// graphqlHandlers + schemaSingleflight zero-value initialised
 		// (sync.Map and singleflight.Group both work zero-valued).
 		complexityConfig:    complexityConfig,

@@ -11,7 +11,7 @@ import (
 
 // ParallelTraversal performs parallel BFS traversal
 type ParallelTraversal struct {
-	graph     *storage.GraphStorage
+	graph     storage.StorageReader
 	startIDs  []uint64
 	maxDepth  int
 	batchSize int
@@ -19,7 +19,7 @@ type ParallelTraversal struct {
 }
 
 // NewParallelTraversal creates a parallel traversal query
-func NewParallelTraversal(graph *storage.GraphStorage, startIDs []uint64, maxDepth int) *ParallelTraversal {
+func NewParallelTraversal(graph storage.StorageReader, startIDs []uint64, maxDepth int) *ParallelTraversal {
 	return &ParallelTraversal{
 		graph:     graph,
 		startIDs:  startIDs,

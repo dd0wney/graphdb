@@ -1,14 +1,22 @@
 package storage
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"sync"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 // Transaction represents a database transaction
 type Transaction struct {
-	gs         *GraphStorage
+	gs         Storage // Changed to Storage interface
 	id         uint64
+	StringID   string // External UUID for API use (S10)
+	TenantID   string // Scoped to a tenant (S10)
+	StartTime  time.Time
 	active     bool
 	committed  bool
 	rolledBack bool
@@ -20,6 +28,76 @@ type Transaction struct {
 	createdEdges map[uint64]*Edge
 	deletedNodes map[uint64]bool
 	deletedEdges map[uint64]bool
+}
+
+// TransactionManager handles active transactions
+type TransactionManager struct {
+	active map[string]*Transaction
+	graph  Storage
+	mu     sync.RWMutex
+}
+
+func NewTransactionManager(graph Storage) *TransactionManager {
+	return &TransactionManager{
+		active: make(map[string]*Transaction),
+		graph:  graph,
+	}
+}
+
+func (tm *TransactionManager) Begin(tenantID string) (*Transaction, error) {
+	// For this spike, we'll try to cast to *GraphStorage for internal ID allocation,
+	// or just generate a new UUID and use it for everything.
+	tx := &Transaction{
+		gs:           tm.graph,
+		StringID:     uuid.New().String(),
+		TenantID:     tenantID,
+		StartTime:    time.Now(),
+		active:       true,
+		createdNodes: make(map[uint64]*Node),
+		updatedNodes: make(map[uint64]map[string]Value),
+		createdEdges: make(map[uint64]*Edge),
+		deletedNodes: make(map[uint64]bool),
+		deletedEdges: make(map[uint64]bool),
+	}
+	
+	tm.mu.Lock()
+	tm.active[tx.StringID] = tx
+	tm.mu.Unlock()
+	
+	return tx, nil
+}
+
+func (tm *TransactionManager) Get(id string) (*Transaction, bool) {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	tx, ok := tm.active[id]
+	return tx, ok
+}
+
+func (tm *TransactionManager) Commit(ctx context.Context, id string) error {
+	tm.mu.Lock()
+	tx, ok := tm.active[id]
+	if !ok {
+		tm.mu.Unlock()
+		return fmt.Errorf("transaction not found: %s", id)
+	}
+	delete(tm.active, id)
+	tm.mu.Unlock()
+
+	return tx.Commit(ctx)
+}
+
+func (tm *TransactionManager) Rollback(id string) error {
+	tm.mu.Lock()
+	tx, ok := tm.active[id]
+	if !ok {
+		tm.mu.Unlock()
+		return fmt.Errorf("transaction not found: %s", id)
+	}
+	delete(tm.active, id)
+	tm.mu.Unlock()
+
+	return tx.Rollback()
 }
 
 var (

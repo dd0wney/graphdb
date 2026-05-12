@@ -19,7 +19,7 @@ type DepthLimitedSchema struct {
 }
 
 // GenerateSchemaWithDepthLimit generates a GraphQL schema with query depth limiting
-func GenerateSchemaWithDepthLimit(gs *storage.GraphStorage, maxDepth int) (graphql.Schema, error) {
+func GenerateSchemaWithDepthLimit(gs storage.Storage, maxDepth int) (graphql.Schema, error) {
 	// Validate depth limit
 	if maxDepth <= 0 {
 		return graphql.Schema{}, fmt.Errorf("max depth must be greater than 0, got %d", maxDepth)

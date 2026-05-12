@@ -97,6 +97,9 @@ type GraphStorage struct {
 	// Encryption (using typed interfaces for compile-time safety)
 	encryptionEngine encryption.EncryptDecrypter // Handles data encryption/decryption
 	keyManager       encryption.KeyProvider      // Manages encryption keys
+
+	// Observers (S11 Intelligence)
+	observers []NodeObserver
 }
 
 // StorageConfig holds configuration for GraphStorage

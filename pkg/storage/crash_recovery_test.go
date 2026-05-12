@@ -34,7 +34,7 @@ func TestCrashRecovery(t *testing.T) {
 		_, _ = gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", map[string]Value{}, 1.0)
 
 		// Save snapshot
-		if err := gs.Snapshot(); err != nil {
+		if err := gs.Snapshot(context.Background()); err != nil {
 			t.Fatalf("Failed to snapshot: %v", err)
 		}
 
@@ -173,7 +173,7 @@ func TestPartialSnapshot(t *testing.T) {
 		// Create 3 nodes
 		_, _ = gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("Alice")})
 		_, _ = gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("Bob")})
-		_ = gs.Snapshot() // Snapshot with 2 nodes
+		_ = gs.Snapshot(context.Background()) // Snapshot with 2 nodes
 
 		// Add 2 more nodes after snapshot
 		_, _ = gs.CreateNode([]string{"User"}, map[string]Value{"name": StringValue("Charlie")})

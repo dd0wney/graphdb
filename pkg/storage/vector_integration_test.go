@@ -330,7 +330,7 @@ func TestStorageVectorUpdateDelete(t *testing.T) {
 	}
 
 	// Delete node from vector indexes
-	err = gs.RemoveNodeFromVectorIndexes(1)
+	err = gs.RemoveNodeFromVectorIndexes(1, "default")
 	if err != nil {
 		t.Errorf("RemoveNodeFromVectorIndexes() error = %v", err)
 	}

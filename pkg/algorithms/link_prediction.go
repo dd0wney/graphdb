@@ -61,13 +61,13 @@ func DefaultLinkPredictionOptions() LinkPredictionOptions {
 
 // PredictLinkScore computes the link prediction score between two
 // specific nodes (tenant-blind).
-func PredictLinkScore(graph *storage.GraphStorage, fromNodeID, toNodeID uint64, opts LinkPredictionOptions) (float64, error) {
+func PredictLinkScore(graph storage.StorageReader, fromNodeID, toNodeID uint64, opts LinkPredictionOptions) (float64, error) {
 	return predictLinkScoreView(newTenantBlindView(graph), fromNodeID, toNodeID, opts)
 }
 
 // PredictLinkScoreForTenant restricts to the caller's tenant.
 // Audit A6c-algorithms.
-func PredictLinkScoreForTenant(graph *storage.GraphStorage, fromNodeID, toNodeID uint64, opts LinkPredictionOptions, tenantID string) (float64, error) {
+func PredictLinkScoreForTenant(graph storage.StorageReader, fromNodeID, toNodeID uint64, opts LinkPredictionOptions, tenantID string) (float64, error) {
 	return predictLinkScoreView(newTenantScopedView(graph, tenantID), fromNodeID, toNodeID, opts)
 }
 
@@ -79,13 +79,13 @@ func predictLinkScoreView(view graphView, fromNodeID, toNodeID uint64, opts Link
 
 // PredictLinksFor predicts links for a source node against all other
 // nodes (tenant-blind).
-func PredictLinksFor(graph *storage.GraphStorage, sourceNodeID uint64, opts LinkPredictionOptions) (*LinkPredictionResult, error) {
+func PredictLinksFor(graph storage.StorageReader, sourceNodeID uint64, opts LinkPredictionOptions) (*LinkPredictionResult, error) {
 	return predictLinksForView(newTenantBlindView(graph), sourceNodeID, opts)
 }
 
 // PredictLinksForForTenant restricts to caller's tenant.
 // Audit A6c-algorithms.
-func PredictLinksForForTenant(graph *storage.GraphStorage, sourceNodeID uint64, opts LinkPredictionOptions, tenantID string) (*LinkPredictionResult, error) {
+func PredictLinksForForTenant(graph storage.StorageReader, sourceNodeID uint64, opts LinkPredictionOptions, tenantID string) (*LinkPredictionResult, error) {
 	return predictLinksForView(newTenantScopedView(graph, tenantID), sourceNodeID, opts)
 }
 

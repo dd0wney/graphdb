@@ -15,7 +15,7 @@ import (
 // deps is the F3 masking hookup; nil disables masking on the search-result
 // node properties (the result type contains the matched node's full
 // property bag JSON-encoded; masking flows through there).
-func GenerateSchemaWithSearch(gs *storage.GraphStorage, searchIndex *search.FullTextIndex, deps *MaskingDeps) (graphql.Schema, error) {
+func GenerateSchemaWithSearch(gs storage.Storage, searchIndex *search.FullTextIndex, deps *MaskingDeps) (graphql.Schema, error) {
 	// Create a simple SearchResult type
 	searchResultType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "SearchResult",

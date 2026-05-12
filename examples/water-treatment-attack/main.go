@@ -31,7 +31,7 @@ type NodeMeta struct {
 
 // WaterModel holds the complete graph model and metadata lookups.
 type WaterModel struct {
-	Graph    *storage.GraphStorage
+	Graph    storage.Storage
 	Nodes    map[string]*NodeMeta // name -> metadata
 	NodeByID map[uint64]string    // id -> name
 	MetaByID map[uint64]*NodeMeta // id -> full metadata

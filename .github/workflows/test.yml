@@ -48,8 +48,21 @@ jobs:
     - name: Run tests
       run: make test-verbose
 
-    - name: Run tests with race detector
-      run: make test-race
+    - name: Run storage tests with race detector
+      run: make test-race-storage
+      timeout-minutes: 15
+
+    - name: Run query tests with race detector
+      run: make test-race-query
+      timeout-minutes: 10
+
+    - name: Run algorithms tests with race detector
+      run: make test-race-algorithms
+      timeout-minutes: 10
+
+    - name: Run other tests with race detector
+      run: make test-race-other
+      timeout-minutes: 10
 
   coverage:
     name: Code Coverage

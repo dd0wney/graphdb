@@ -386,7 +386,7 @@ func TestGraphStorage_DiskBackedEdges_SnapshotIntegration(t *testing.T) {
 		edgeID = edge.ID
 
 		// Create snapshot
-		err = gs.Snapshot()
+		err = gs.Snapshot(context.Background())
 		if err != nil {
 			t.Fatalf("Snapshot failed: %v", err)
 		}

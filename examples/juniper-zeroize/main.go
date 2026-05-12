@@ -25,7 +25,7 @@ import (
 
 // ISPModel holds the graph and metadata for the ISP backbone network.
 type ISPModel struct {
-	Graph    *storage.GraphStorage
+	Graph    storage.Storage
 	Nodes    map[string]*NodeInfo
 	NodeByID map[uint64]string
 }

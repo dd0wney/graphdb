@@ -14,7 +14,7 @@ import (
 // GenerateSchemaWithEdgesForTenant per audit A9 (#36).
 //
 // Masking is disabled (deps = nil).
-func GenerateSchemaWithEdges(gs *storage.GraphStorage) (graphql.Schema, error) {
+func GenerateSchemaWithEdges(gs storage.Storage) (graphql.Schema, error) {
 	return generateSchemaWithEdgesForLabels(gs, gs.GetAllLabels(), nil)
 }
 
@@ -23,13 +23,13 @@ func GenerateSchemaWithEdges(gs *storage.GraphStorage) (graphql.Schema, error) {
 // introspection metadata leak.
 //
 // deps is the F3 masking hookup; nil disables masking.
-func GenerateSchemaWithEdgesForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+func GenerateSchemaWithEdgesForTenant(gs storage.Storage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
 	return generateSchemaWithEdgesForLabels(gs, gs.GetLabelsForTenant(tenantID), deps)
 }
 
 // generateSchemaWithEdgesForLabels is the shared body. Caller picks
 // the label source.
-func generateSchemaWithEdgesForLabels(gs *storage.GraphStorage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
+func generateSchemaWithEdgesForLabels(gs storage.Storage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	// Create edge type (shared across schema)
 	edgeType := createEdgeType()
 

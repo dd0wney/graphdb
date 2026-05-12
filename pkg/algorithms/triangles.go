@@ -14,13 +14,13 @@ type TriangleCountResult struct {
 // CountTriangles counts triangles in the graph, treating all edges
 // as undirected (tenant-blind). Multi-tenant API callers must use
 // CountTrianglesForTenant.
-func CountTriangles(graph *storage.GraphStorage) (*TriangleCountResult, error) {
+func CountTriangles(graph storage.StorageReader) (*TriangleCountResult, error) {
 	return countTrianglesView(newTenantBlindView(graph))
 }
 
 // CountTrianglesForTenant counts triangles within the caller's
 // tenant subgraph. Audit A6c-algorithms (2026-05-08).
-func CountTrianglesForTenant(graph *storage.GraphStorage, tenantID string) (*TriangleCountResult, error) {
+func CountTrianglesForTenant(graph storage.StorageReader, tenantID string) (*TriangleCountResult, error) {
 	return countTrianglesView(newTenantScopedView(graph, tenantID))
 }
 

@@ -104,13 +104,13 @@ func brandesCentrality(view graphView) (nodeBetweenness map[uint64]float64, edge
 
 // BetweennessCentrality computes betweenness centrality for all nodes
 // (tenant-blind). Measures how often a node appears on shortest paths.
-func BetweennessCentrality(graph *storage.GraphStorage) (map[uint64]float64, error) {
+func BetweennessCentrality(graph storage.StorageReader) (map[uint64]float64, error) {
 	return betweennessCentralityView(newTenantBlindView(graph))
 }
 
 // BetweennessCentralityForTenant restricts computation to the
 // caller's tenant subgraph. Audit A6c-algorithms.
-func BetweennessCentralityForTenant(graph *storage.GraphStorage, tenantID string) (map[uint64]float64, error) {
+func BetweennessCentralityForTenant(graph storage.StorageReader, tenantID string) (map[uint64]float64, error) {
 	return betweennessCentralityView(newTenantScopedView(graph, tenantID))
 }
 
@@ -152,13 +152,13 @@ type EdgeBetweennessResult struct {
 // EdgeBetweennessCentrality computes betweenness centrality for all
 // edges (tenant-blind). Measures how often an edge appears on
 // shortest paths between all node pairs.
-func EdgeBetweennessCentrality(graph *storage.GraphStorage) (*EdgeBetweennessResult, error) {
+func EdgeBetweennessCentrality(graph storage.StorageReader) (*EdgeBetweennessResult, error) {
 	return edgeBetweennessCentralityView(newTenantBlindView(graph))
 }
 
 // EdgeBetweennessCentralityForTenant restricts computation to the
 // caller's tenant subgraph. Audit A6c-algorithms.
-func EdgeBetweennessCentralityForTenant(graph *storage.GraphStorage, tenantID string) (*EdgeBetweennessResult, error) {
+func EdgeBetweennessCentralityForTenant(graph storage.StorageReader, tenantID string) (*EdgeBetweennessResult, error) {
 	return edgeBetweennessCentralityView(newTenantScopedView(graph, tenantID))
 }
 
@@ -292,7 +292,7 @@ type CentralityResult struct {
 
 // ComputeAllCentrality computes all centrality measures in a single pass where
 // possible. Node and edge betweenness share one Brandes traversal.
-func ComputeAllCentrality(graph *storage.GraphStorage) (*CentralityResult, error) {
+func ComputeAllCentrality(graph storage.StorageReader) (*CentralityResult, error) {
 	view := newTenantBlindView(graph)
 	nodeBetweenness, edgeBetweennessRaw, nodeIDs, err := brandesCentrality(view)
 	if err != nil {
@@ -357,14 +357,21 @@ func ComputeAllCentrality(graph *storage.GraphStorage) (*CentralityResult, error
 
 // ClosenessCentrality computes closeness centrality for all nodes.
 // Measures average distance from a node to all other nodes.
-func ClosenessCentrality(graph *storage.GraphStorage) (map[uint64]float64, error) {
-	stats := graph.GetStatistics()
+func ClosenessCentrality(graph storage.StorageReader) (map[uint64]float64, error) {
+	return closenessCentralityView(newTenantBlindView(graph))
+}
 
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	for i := uint64(1); i <= stats.NodeCount; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
+// ClosenessCentralityForTenant restricts computation to the
+// caller's tenant subgraph.
+func ClosenessCentralityForTenant(graph storage.StorageReader, tenantID string) (map[uint64]float64, error) {
+	return closenessCentralityView(newTenantScopedView(graph, tenantID))
+}
+
+func closenessCentralityView(view graphView) (map[uint64]float64, error) {
+	allNodes := view.AllNodes()
+	nodeIDs := make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
 	closeness := make(map[uint64]float64)
@@ -385,7 +392,7 @@ func ClosenessCentrality(graph *storage.GraphStorage) (map[uint64]float64, error
 				continue
 			}
 
-			edges, err := graph.GetOutgoingEdges(v)
+			edges, err := view.OutgoingEdges(v)
 			if err != nil {
 				continue
 			}
@@ -420,21 +427,28 @@ func ClosenessCentrality(graph *storage.GraphStorage) (map[uint64]float64, error
 
 // DegreeCentrality computes degree centrality for all nodes.
 // Simple count of connections (in-degree + out-degree).
-func DegreeCentrality(graph *storage.GraphStorage) (map[uint64]float64, error) {
-	stats := graph.GetStatistics()
+func DegreeCentrality(graph storage.StorageReader) (map[uint64]float64, error) {
+	return degreeCentralityView(newTenantBlindView(graph))
+}
 
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	for i := uint64(1); i <= stats.NodeCount; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
+// DegreeCentralityForTenant restricts computation to the
+// caller's tenant subgraph.
+func DegreeCentralityForTenant(graph storage.StorageReader, tenantID string) (map[uint64]float64, error) {
+	return degreeCentralityView(newTenantScopedView(graph, tenantID))
+}
+
+func degreeCentralityView(view graphView) (map[uint64]float64, error) {
+	allNodes := view.AllNodes()
+	nodeIDs := make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
 	degree := make(map[uint64]float64)
 
 	for _, nodeID := range nodeIDs {
-		inEdges, _ := graph.GetIncomingEdges(nodeID)
-		outEdges, _ := graph.GetOutgoingEdges(nodeID)
+		inEdges, _ := view.IncomingEdges(nodeID)
+		outEdges, _ := view.OutgoingEdges(nodeID)
 		totalDegree := len(inEdges) + len(outEdges)
 
 		if len(nodeIDs) > 1 {

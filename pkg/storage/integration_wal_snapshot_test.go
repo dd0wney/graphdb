@@ -442,7 +442,7 @@ func TestGraphStorage_IndexesDurableAcrossSnapshot(t *testing.T) {
 		// After recovery, the index needs to be rebuilt from WAL or snapshot
 		//
 		// CRITICAL QUESTION: Are property indexes serialized in the snapshot?
-		// Looking at the Snapshot() code, I don't see property indexes being saved!
+		// Looking at the Snapshot(context.Background()) code, I don't see property indexes being saved!
 
 		// Try to query by property index
 		nodes, err := gs.FindNodesByPropertyIndexed("age", IntValue(25))

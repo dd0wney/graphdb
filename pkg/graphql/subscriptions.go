@@ -163,7 +163,7 @@ func PublishEdgeDeleted(ps *pubsub.PubSub, edge *storage.Edge) {
 }
 
 // GenerateSchemaWithSubscriptions creates a GraphQL schema with subscription support
-func GenerateSchemaWithSubscriptions(gs *storage.GraphStorage, ps *pubsub.PubSub) (graphql.Schema, error) {
+func GenerateSchemaWithSubscriptions(gs storage.Storage, ps *pubsub.PubSub) (graphql.Schema, error) {
 	// For now, just return the base schema
 	// Full subscription implementation requires WebSocket support
 	// which is typically handled at the transport layer

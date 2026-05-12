@@ -8,7 +8,7 @@ import (
 
 // FullTextIndex provides full-text search capabilities
 type FullTextIndex struct {
-	gs *storage.GraphStorage
+	gs storage.Storage
 
 	// Inverted index: term -> list of (nodeID, positions)
 	index   map[string]map[uint64][]int
@@ -41,7 +41,7 @@ type SearchResult struct {
 }
 
 // NewFullTextIndex creates a new full-text search index
-func NewFullTextIndex(gs *storage.GraphStorage) *FullTextIndex {
+func NewFullTextIndex(gs storage.Storage) *FullTextIndex {
 	return &FullTextIndex{
 		gs:          gs,
 		index:       make(map[string]map[uint64][]int),

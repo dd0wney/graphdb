@@ -109,15 +109,16 @@ type Path struct {
 	Edges []*storage.Edge
 }
 
-// Traverser performs graph traversals
+// Traverser explores the graph
 type Traverser struct {
-	storage *storage.GraphStorage
+	storage storage.StorageReader
 }
 
 // NewTraverser creates a new traverser
-func NewTraverser(storage *storage.GraphStorage) *Traverser {
+func NewTraverser(storage storage.StorageReader) *Traverser {
 	return &Traverser{storage: storage}
 }
+
 
 // Helper function
 func contains(slice []string, item string) bool {

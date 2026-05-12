@@ -38,7 +38,7 @@ type StoragePlugin interface {
 	EnterprisePlugin
 
 	// AttachToStorage integrates the plugin with the graph storage
-	AttachToStorage(storage *storage.GraphStorage) error
+	AttachToStorage(storage storage.Storage) error
 }
 
 // APIPlugin extends EnterprisePlugin for API-related features
@@ -53,6 +53,9 @@ type APIPlugin interface {
 // BackupPlugin extends EnterprisePlugin for backup features
 type BackupPlugin interface {
 	EnterprisePlugin
+
+	// AttachToStorage integrates the plugin with the graph storage
+	AttachToStorage(storage storage.Storage) error
 
 	// Backup performs a backup operation
 	Backup(ctx context.Context, destination string) error
@@ -76,6 +79,9 @@ type BackupInfo struct {
 // MonitoringPlugin extends EnterprisePlugin for monitoring features
 type MonitoringPlugin interface {
 	EnterprisePlugin
+
+	// AttachToStorage integrates the plugin with the graph storage
+	AttachToStorage(storage storage.Storage) error
 
 	// GetMetrics returns plugin-specific metrics
 	GetMetrics(ctx context.Context) (map[string]any, error)

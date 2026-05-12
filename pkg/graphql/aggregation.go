@@ -14,7 +14,7 @@ import (
 // GenerateSchemaWithAggregationForTenant per audit A9 (#36).
 //
 // Masking is disabled (deps = nil).
-func GenerateSchemaWithAggregation(gs *storage.GraphStorage) (graphql.Schema, error) {
+func GenerateSchemaWithAggregation(gs storage.Storage) (graphql.Schema, error) {
 	return generateSchemaWithAggregationForLabels(gs, gs.GetAllLabels(), nil)
 }
 
@@ -22,11 +22,11 @@ func GenerateSchemaWithAggregation(gs *storage.GraphStorage) (graphql.Schema, er
 // tenant's labels. Audit A9.
 //
 // deps is the F3 masking hookup; nil disables masking.
-func GenerateSchemaWithAggregationForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+func GenerateSchemaWithAggregationForTenant(gs storage.Storage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
 	return generateSchemaWithAggregationForLabels(gs, gs.GetLabelsForTenant(tenantID), deps)
 }
 
-func generateSchemaWithAggregationForLabels(gs *storage.GraphStorage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
+func generateSchemaWithAggregationForLabels(gs storage.Storage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	nodeTypes := make(map[string]*graphql.Object)
 	aggregateTypes := make(map[string]*graphql.Object)
 

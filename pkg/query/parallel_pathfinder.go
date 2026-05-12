@@ -10,13 +10,14 @@ import (
 
 // ParallelPathFinder finds paths in parallel
 type ParallelPathFinder struct {
-	graph *storage.GraphStorage
+	graph storage.StorageReader
 }
 
-// NewParallelPathFinder creates a parallel path finder
-func NewParallelPathFinder(graph *storage.GraphStorage) *ParallelPathFinder {
+// NewParallelPathFinder creates a new parallel path finder
+func NewParallelPathFinder(graph storage.StorageReader) *ParallelPathFinder {
 	return &ParallelPathFinder{graph: graph}
 }
+
 
 // FindAllPaths finds all paths between multiple pairs of nodes in parallel
 //

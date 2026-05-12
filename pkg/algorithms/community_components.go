@@ -7,15 +7,15 @@ import (
 )
 
 // ConnectedComponents finds all connected components in the graph
-func ConnectedComponents(graph *storage.GraphStorage) (*CommunityDetectionResult, error) {
-	stats := graph.GetStatistics()
+func ConnectedComponents(graph storage.StorageReader) (*CommunityDetectionResult, error) {
+	return connectedComponentsView(newTenantBlindView(graph))
+}
 
-	// Get all node IDs - use uint64 to avoid overflow
-	nodeIDs := make([]uint64, 0, stats.NodeCount)
-	for i := uint64(1); i <= stats.NodeCount; i++ {
-		if node, err := graph.GetNode(i); err == nil && node != nil {
-			nodeIDs = append(nodeIDs, i)
-		}
+func connectedComponentsView(view graphView) (*CommunityDetectionResult, error) {
+	allNodes := view.AllNodes()
+	nodeIDs := make([]uint64, 0, len(allNodes))
+	for _, n := range allNodes {
+		nodeIDs = append(nodeIDs, n.ID)
 	}
 
 	visited := make(map[uint64]bool)
@@ -48,8 +48,8 @@ func ConnectedComponents(graph *storage.GraphStorage) (*CommunityDetectionResult
 			nodeCommunity[nodeID] = communityID
 
 			// Get all neighbors (both incoming and outgoing)
-			outEdges, _ := graph.GetOutgoingEdges(nodeID)
-			inEdges, _ := graph.GetIncomingEdges(nodeID)
+			outEdges, _ := view.OutgoingEdges(nodeID)
+			inEdges, _ := view.IncomingEdges(nodeID)
 
 			for _, edge := range outEdges {
 				if !visited[edge.ToNodeID] {
@@ -74,6 +74,6 @@ func ConnectedComponents(graph *storage.GraphStorage) (*CommunityDetectionResult
 	return &CommunityDetectionResult{
 		Communities:   communities,
 		NodeCommunity: nodeCommunity,
-		Modularity:    CalculateModularity(graph, nodeCommunity),
+		Modularity:    calculateModularityView(view, nodeCommunity),
 	}, nil
 }

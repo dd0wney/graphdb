@@ -6,7 +6,7 @@ import (
 
 // Optimizer optimizes query execution plans
 type Optimizer struct {
-	graph *storage.GraphStorage
+	graph storage.StorageReader
 	stats *storage.Statistics
 
 	// Vector search closures (set via Executor.SetVectorSearch)
@@ -17,7 +17,7 @@ type Optimizer struct {
 }
 
 // NewOptimizer creates a new query optimizer
-func NewOptimizer(graph *storage.GraphStorage) *Optimizer {
+func NewOptimizer(graph storage.StorageReader) *Optimizer {
 	return &Optimizer{
 		graph: graph,
 		stats: &storage.Statistics{}, // Would get from graph.GetStatistics()

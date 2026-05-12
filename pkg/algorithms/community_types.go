@@ -27,7 +27,11 @@ type CommunityDetectionResult struct {
 //   - m = total number of edges
 //   - l_c = number of edges within community c
 //   - d_c = sum of degrees of nodes in community c
-func CalculateModularity(graph *storage.GraphStorage, nodeCommunity map[uint64]int) float64 {
+func CalculateModularity(graph storage.StorageReader, nodeCommunity map[uint64]int) float64 {
+	return calculateModularityView(newTenantBlindView(graph), nodeCommunity)
+}
+
+func calculateModularityView(view graphView, nodeCommunity map[uint64]int) float64 {
 	if len(nodeCommunity) == 0 {
 		return 0.0
 	}
@@ -37,11 +41,11 @@ func CalculateModularity(graph *storage.GraphStorage, nodeCommunity map[uint64]i
 	nodeDegree := make(map[uint64]int)
 
 	for nodeID := range nodeCommunity {
-		outEdges, err := graph.GetOutgoingEdges(nodeID)
+		outEdges, err := view.OutgoingEdges(nodeID)
 		if err != nil {
 			continue
 		}
-		inEdges, err := graph.GetIncomingEdges(nodeID)
+		inEdges, err := view.IncomingEdges(nodeID)
 		if err != nil {
 			continue
 		}
@@ -84,7 +88,7 @@ func CalculateModularity(graph *storage.GraphStorage, nodeCommunity map[uint64]i
 		for _, nodeID := range nodes {
 			degreeSum += nodeDegree[nodeID]
 
-			outEdges, err := graph.GetOutgoingEdges(nodeID)
+			outEdges, err := view.OutgoingEdges(nodeID)
 			if err != nil {
 				continue
 			}

@@ -51,12 +51,31 @@ test-short:
 		./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
 		./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/...
 
-## test-race: Run tests with race detector
-test-race:
-	@echo "Running tests with race detector..."
+## test-race: Run tests with race detector (monolithic)
+test-race: test-race-storage test-race-query test-race-algorithms test-race-other
+	@echo "✅ All race tests passed!"
+
+## test-race-storage: Run storage race tests
+test-race-storage:
+	@echo "Running storage tests with race detector..."
+	$(GO) test -race -timeout $(TEST_TIMEOUT) ./pkg/storage/...
+
+## test-race-query: Run query race tests
+test-race-query:
+	@echo "Running query tests with race detector..."
+	$(GO) test -race -timeout $(TEST_TIMEOUT) ./pkg/query/...
+
+## test-race-algorithms: Run algorithms race tests
+test-race-algorithms:
+	@echo "Running algorithms tests with race detector..."
+	$(GO) test -race -timeout $(TEST_TIMEOUT) ./pkg/algorithms/...
+
+## test-race-other: Run remaining package race tests
+test-race-other:
+	@echo "Running other package tests with race detector..."
 	$(GO) test -race -timeout $(TEST_TIMEOUT) \
-		./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
-		./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/...
+		./pkg/lsm/... ./pkg/parallel/... ./pkg/wal/... \
+		./pkg/api/... ./pkg/auth/... ./pkg/tenant/...
 
 ## test-cover: Run tests with coverage analysis
 test-cover:

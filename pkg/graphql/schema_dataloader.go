@@ -14,7 +14,7 @@ type DataLoaderContext struct {
 }
 
 // GenerateSchemaWithDataLoader creates a GraphQL schema with DataLoader integration
-func GenerateSchemaWithDataLoader(gs *storage.GraphStorage) (graphql.Schema, *DataLoaderContext) {
+func GenerateSchemaWithDataLoader(gs storage.Storage) (graphql.Schema, *DataLoaderContext) {
 	// Create DataLoaders
 	loaders := &DataLoaderContext{
 		Nodes:         NewNodeDataLoader(gs),

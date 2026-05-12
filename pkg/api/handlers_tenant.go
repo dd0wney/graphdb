@@ -148,7 +148,7 @@ func (s *Server) handleGetTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID := extractPathParam(r.URL.Path, "/api/v1/tenants/")
+	tenantID := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
 	if tenantID == "" {
 		s.respondError(w, http.StatusBadRequest, "Tenant ID is required")
 		return
@@ -190,7 +190,7 @@ func (s *Server) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID := extractPathParam(r.URL.Path, "/api/v1/tenants/")
+	tenantID := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
 	if tenantID == "" {
 		s.respondError(w, http.StatusBadRequest, "Tenant ID is required")
 		return
@@ -258,7 +258,7 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID := extractPathParam(r.URL.Path, "/api/v1/tenants/")
+	tenantID := strings.TrimPrefix(r.URL.Path, "/api/v1/tenants/")
 	if tenantID == "" {
 		s.respondError(w, http.StatusBadRequest, "Tenant ID is required")
 		return
@@ -481,13 +481,6 @@ func tenantToResponse(t *tenant.Tenant) TenantResponse {
 	}
 }
 
-// extractPathParam extracts a path parameter after a prefix
-func extractPathParam(path, prefix string) string {
-	if !strings.HasPrefix(path, prefix) {
-		return ""
-	}
-	return strings.TrimPrefix(path, prefix)
-}
 
 // handleTenantsEndpoint routes /api/v1/tenants based on HTTP method
 func (s *Server) handleTenantsEndpoint(w http.ResponseWriter, r *http.Request) {

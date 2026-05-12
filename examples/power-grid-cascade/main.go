@@ -25,7 +25,7 @@ import (
 
 // GridModel holds the graph and metadata for a power grid scenario.
 type GridModel struct {
-	Graph    *storage.GraphStorage
+	Graph    storage.Storage
 	Nodes    map[string]*NodeInfo
 	NodeByID map[uint64]string
 }

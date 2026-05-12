@@ -29,7 +29,7 @@ type HybridSearchOpts struct {
 // FTSNode is the storage node when the FTS stage returned it. LSA-only
 // candidates have FTSNode == nil; the caller is responsible for
 // hydrating them via storage if needed (we don't pull
-// *storage.GraphStorage into pkg/search just for that — it's a
+// storage.Storage into pkg/search just for that — it's a
 // caller-side concern).
 type HybridHit struct {
 	NodeID  uint64

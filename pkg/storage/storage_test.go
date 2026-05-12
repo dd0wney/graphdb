@@ -241,7 +241,7 @@ func TestGraphStorage_Snapshot(t *testing.T) {
 	_, _ = gs.CreateEdge(node1.ID, node2.ID, "VERIFIED_BY", map[string]Value{}, 1.0)
 
 	// Save snapshot
-	err = gs.Snapshot()
+	err = gs.Snapshot(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to save snapshot: %v", err)
 	}
@@ -396,7 +396,7 @@ func BenchmarkGraphStorage_Snapshot(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = gs.Snapshot()
+		_ = gs.Snapshot(context.Background())
 	}
 }
 

@@ -14,7 +14,7 @@ import (
 // values to the response. Threaded through so the deps reach
 // createNodeAggregateResolver and any future response-emitting
 // resolvers added here.
-func buildNodeAggregateTypes(gs *storage.GraphStorage, label string, _ *MaskingDeps) (*graphql.Object, *graphql.Object) {
+func buildNodeAggregateTypes(gs storage.Storage, label string, _ *MaskingDeps) (*graphql.Object, *graphql.Object) {
 	// Create regular node type
 	nodeType := graphql.NewObject(graphql.ObjectConfig{
 		Name: label,

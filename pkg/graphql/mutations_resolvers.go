@@ -34,7 +34,7 @@ const (
 )
 
 // createNodeMutationResolver creates a resolver for createNode mutation
-func createNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func createNodeMutationResolver(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Get labels argument
 		labelsArg, ok := p.Args["labels"].([]any)
@@ -100,7 +100,7 @@ func createNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 }
 
 // updateNodeMutationResolver creates a resolver for updateNode mutation
-func updateNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func updateNodeMutationResolver(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Get ID argument
 		idStr, ok := p.Args["id"].(string)
@@ -148,7 +148,7 @@ func updateNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 }
 
 // deleteNodeMutationResolver creates a resolver for deleteNode mutation
-func deleteNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func deleteNodeMutationResolver(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Get ID argument
 		idStr, ok := p.Args["id"].(string)

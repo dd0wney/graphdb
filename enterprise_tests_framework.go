@@ -27,7 +27,7 @@ import (
 
 // TestSuite provides enterprise validation testing
 type TestSuite struct {
-	storage *storage.GraphStorage
+	storage storage.Storage
 	server  *api.Server
 	mu      sync.RWMutex
 }
@@ -306,7 +306,7 @@ func (ts *TestSuite) TestBackupRestoreCycle(t *testing.T) {
 			}
 
 			// Step 2: Backup
-			// backup, _ := ts.storage.CreateSnapshot()
+			// backup, _ := ts.storage.CreateSnapshot(context.Background())
 
 			// Step 3: Verify backup integrity
 			// checksum_backup := hashSnapshot(backup)

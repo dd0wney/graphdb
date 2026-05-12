@@ -17,13 +17,11 @@ func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int
 	visited[ep.id] = true
 
 	for candidates.Len() > 0 {
-		// Defensive: safe type assertion with ok check
 		c, ok := heap.Pop(&candidates).(*queueItem)
 		if !ok {
 			continue
 		}
 
-		// Get furthest point in w (defensive: check w is not empty)
 		if w.Len() == 0 {
 			break
 		}
@@ -33,16 +31,16 @@ func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int
 			break
 		}
 
-		// Check neighbors (defensive: verify node exists in map)
-		node, exists := h.nodes[c.id]
-		if !exists {
+		// Check neighbors
+		node, ok := h.store.Get(c.id)
+		if !ok {
 			continue
 		}
 		if layer < len(node.friends) {
 			for _, friendID := range node.friends[layer] {
 				if !visited[friendID] {
 					visited[friendID] = true
-					friend, friendExists := h.nodes[friendID]
+					friend, friendExists := h.store.Get(friendID)
 					if !friendExists {
 						continue
 					}
@@ -64,7 +62,9 @@ func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int
 	// Return nearest
 	if w.Len() > 0 {
 		nearest := w[len(w)-1]
-		return h.nodes[nearest.id], nearest.distance
+		if nearestNode, ok := h.store.Get(nearest.id); ok {
+			return nearestNode, nearest.distance
+		}
 	}
 
 	return ep, dist
@@ -82,7 +82,6 @@ func (h *HNSWIndex) searchLayerKNN(query []float32, ep *hnswNode, ef int, layer 
 	visited[ep.id] = true
 
 	for candidates.Len() > 0 {
-		// Defensive: safe type assertion with ok check
 		c, ok := heap.Pop(&candidates).(*queueItem)
 		if !ok {
 			continue
@@ -94,16 +93,15 @@ func (h *HNSWIndex) searchLayerKNN(query []float32, ep *hnswNode, ef int, layer 
 			break
 		}
 
-		// Defensive: check node exists in map
-		node, nodeExists := h.nodes[c.id]
-		if !nodeExists {
+		node, ok := h.store.Get(c.id)
+		if !ok {
 			continue
 		}
 		if layer < len(node.friends) {
 			for _, friendID := range node.friends[layer] {
 				if !visited[friendID] {
 					visited[friendID] = true
-					friend, friendExists := h.nodes[friendID]
+					friend, friendExists := h.store.Get(friendID)
 					if !friendExists {
 						continue
 					}

@@ -154,6 +154,9 @@ func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, prope
 		return nil, err
 	}
 
+	// Notify observers (S11 Intelligence)
+	go gs.notifyNodeCreated(node.Clone())
+
 	// Write to WAL for durability
 	gs.writeToWAL(wal.OpCreateNode, node)
 
@@ -329,6 +332,7 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	// Per-shard write lock (A4) excludes shard.RLock readers during
 	// the in-place Node-struct mutation that follows.
 	gs.lockShard(nodeID)
+	oldNode := node.Clone()
 	for k, v := range properties {
 		node.Properties[k] = v
 	}
@@ -339,6 +343,9 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	if err := gs.UpdateNodeVectorIndexes(node); err != nil {
 		return err
 	}
+
+	// Notify observers (S11 Intelligence)
+	go gs.notifyNodeUpdated(node.Clone(), oldNode)
 
 	// Write to WAL for durability
 	gs.writeToWAL(wal.OpUpdateNode, struct {
@@ -501,7 +508,11 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	}
 
 	// Remove from vector indexes
-	if err := gs.RemoveNodeFromVectorIndexes(nodeID); err != nil {
+	tenantID := node.TenantID
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	if err := gs.RemoveNodeFromVectorIndexes(nodeID, tenantID); err != nil {
 		return err
 	}
 
@@ -521,6 +532,9 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 
 	// Atomic decrement with underflow protection
 	atomicDecrementWithUnderflowProtection(&gs.stats.NodeCount)
+
+	// Notify observers (S11 Intelligence)
+	go gs.notifyNodeDeleted(nodeID, tenantID)
 
 	// Write to WAL for durability
 	gs.writeToWAL(wal.OpDeleteNode, node)

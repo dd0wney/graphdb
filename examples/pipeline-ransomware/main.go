@@ -24,7 +24,7 @@ import (
 
 // PipelineModel holds the graph and metadata for the pipeline network.
 type PipelineModel struct {
-	Graph    *storage.GraphStorage
+	Graph    storage.Storage
 	Nodes    map[string]*NodeInfo
 	NodeByID map[uint64]string
 }

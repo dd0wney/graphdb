@@ -35,7 +35,7 @@ func ValidateComplexityConfig(config *ComplexityConfig) error {
 }
 
 // GenerateSchemaWithComplexity generates a GraphQL schema with complexity analysis
-func GenerateSchemaWithComplexity(gs *storage.GraphStorage, config *ComplexityConfig) (graphql.Schema, error) {
+func GenerateSchemaWithComplexity(gs storage.Storage, config *ComplexityConfig) (graphql.Schema, error) {
 	// Validate config
 	if err := ValidateComplexityConfig(config); err != nil {
 		return graphql.Schema{}, err

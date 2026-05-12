@@ -10,7 +10,7 @@ import (
 )
 
 // GenerateSchemaWithCursors generates a GraphQL schema with cursor-based pagination
-func GenerateSchemaWithCursors(gs *storage.GraphStorage) (graphql.Schema, error) {
+func GenerateSchemaWithCursors(gs storage.Storage) (graphql.Schema, error) {
 	// Discover all node labels
 	labels := gs.GetAllLabels()
 

@@ -14,7 +14,7 @@ import (
 // GenerateSchemaWithMutationsForTenant per audit A9 (#36).
 //
 // Masking is disabled (deps = nil).
-func GenerateSchemaWithMutations(gs *storage.GraphStorage) (graphql.Schema, error) {
+func GenerateSchemaWithMutations(gs storage.Storage) (graphql.Schema, error) {
 	return generateSchemaWithMutationsForLabels(gs, gs.GetAllLabels(), nil)
 }
 
@@ -22,11 +22,11 @@ func GenerateSchemaWithMutations(gs *storage.GraphStorage) (graphql.Schema, erro
 // tenant's labels. Audit A9.
 //
 // deps is the F3 masking hookup; nil disables masking.
-func GenerateSchemaWithMutationsForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
+func GenerateSchemaWithMutationsForTenant(gs storage.Storage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
 	return generateSchemaWithMutationsForLabels(gs, gs.GetLabelsForTenant(tenantID), deps)
 }
 
-func generateSchemaWithMutationsForLabels(gs *storage.GraphStorage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
+func generateSchemaWithMutationsForLabels(gs storage.Storage, labels []string, deps *MaskingDeps) (graphql.Schema, error) {
 	// Create GraphQL types for each node label
 	nodeTypes := make(map[string]*graphql.Object)
 	for _, label := range labels {

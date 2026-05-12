@@ -28,7 +28,7 @@ type (
 // Metadata holds node mappings for a graph model.
 // This unified type replaces the former ModelMetadata and TelecomMetadata.
 type Metadata struct {
-	Graph         *storage.GraphStorage
+	Graph         storage.Storage
 	NodeNames     map[uint64]string // ID -> display name
 	NodeTypes     map[uint64]string // ID -> "technical", "human", "process", "external"
 	NodeLevels    map[uint64]string // ID -> level description

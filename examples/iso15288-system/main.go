@@ -381,7 +381,7 @@ func main() {
 }
 
 // checkPriorityFlows validates that all flows respect priority ordering
-func checkPriorityFlows(graph *storage.GraphStorage) []string {
+func checkPriorityFlows(graph storage.Storage) []string {
 	violations := []string{}
 	stats := graph.GetStatistics()
 
@@ -431,7 +431,7 @@ func checkPriorityFlows(graph *storage.GraphStorage) []string {
 }
 
 // runSteveTest checks for low-priority humans with high betweenness
-func runSteveTest(graph *storage.GraphStorage) []string {
+func runSteveTest(graph storage.Storage) []string {
 	violations := []string{}
 
 	// Note: BetweennessCentrality not yet implemented in this demo

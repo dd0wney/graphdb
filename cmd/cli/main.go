@@ -16,7 +16,7 @@ import (
 )
 
 type CLI struct {
-	graph    *storage.GraphStorage
+	graph    storage.Storage
 	executor *query.Executor
 	scanner  *bufio.Scanner
 }

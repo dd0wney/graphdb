@@ -10,7 +10,7 @@ import (
 )
 
 // GenerateSchemaWithSorting generates a GraphQL schema with sorting support
-func GenerateSchemaWithSorting(gs *storage.GraphStorage) (graphql.Schema, error) {
+func GenerateSchemaWithSorting(gs storage.Storage) (graphql.Schema, error) {
 	// Discover all node labels
 	labels := gs.GetAllLabels()
 

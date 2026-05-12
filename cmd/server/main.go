@@ -20,6 +20,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/licensing"
 	"github.com/dd0wney/cluso-graphdb/pkg/plugins"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/cluso-graphdb/pkg/telemetry"
 	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
 )
 
@@ -248,6 +249,18 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 
+	// Initialize tracing
+	otelEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if otelEndpoint != "" {
+		shutdown, err := telemetry.InitTracerProvider(context.Background(), "graphdb", otelEndpoint)
+		if err != nil {
+			logger.Error("failed to initialize tracing", "error", err)
+			os.Exit(1)
+		}
+		defer shutdown(context.Background())
+		logger.Info("tracing initialized", "endpoint", otelEndpoint)
+	}
+
 	// Initialize license validation with server-based licensing
 	licenseKey := os.Getenv("GRAPHDB_LICENSE_KEY")
 	licenseServerURL := os.Getenv("LICENSE_SERVER_URL")
@@ -340,8 +353,25 @@ func main() {
 	}
 
 	// Create graph storage (will load from disk if snapshot exists)
-	logger.Info("initializing graph storage", "data_dir", *dataDir)
-	graph, err := storage.NewGraphStorage(*dataDir)
+	backend := os.Getenv("GRAPHDB_STORAGE_BACKEND")
+	if backend == "" {
+		backend = "memory"
+	}
+
+	var graph storage.Storage
+	var err error
+	logger.Info("initializing graph storage", "data_dir", *dataDir, "backend", backend)
+
+	switch strings.ToLower(backend) {
+	case "btree":
+		graph, err = storage.NewBTreeGraphStorage(*dataDir)
+	case "memory":
+		graph, err = storage.NewGraphStorage(*dataDir)
+	default:
+		logger.Error("unsupported storage backend", "backend", backend)
+		os.Exit(1)
+	}
+
 	if err != nil {
 		logger.Error("failed to create graph storage", "error", err)
 		os.Exit(1)
@@ -395,7 +425,7 @@ func main() {
 			pluginDir = "./plugins"
 		}
 
-		pluginLoader := plugins.NewPluginLoader(license, logger)
+		pluginLoader := plugins.NewPluginLoader(license, graph, logger)
 		ctx := context.Background()
 
 		if err := pluginLoader.LoadPluginsFromDir(ctx, pluginDir); err != nil {

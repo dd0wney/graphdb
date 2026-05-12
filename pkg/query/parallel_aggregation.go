@@ -10,13 +10,14 @@ import (
 
 // ParallelAggregation performs parallel aggregation operations
 type ParallelAggregation struct {
-	graph *storage.GraphStorage
+	graph storage.StorageReader
 }
 
-// NewParallelAggregation creates a parallel aggregation engine
-func NewParallelAggregation(graph *storage.GraphStorage) *ParallelAggregation {
+// NewParallelAggregation creates a new parallel aggregation
+func NewParallelAggregation(graph storage.StorageReader) *ParallelAggregation {
 	return &ParallelAggregation{graph: graph}
 }
+
 
 // CountNodesByLabel counts nodes with a label in parallel
 //

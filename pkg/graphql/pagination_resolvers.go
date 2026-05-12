@@ -8,7 +8,7 @@ import (
 )
 
 // createNodeConnectionResolver creates a resolver for node connections with cursor pagination
-func createNodeConnectionResolver(gs *storage.GraphStorage, label string) graphql.FieldResolveFn {
+func createNodeConnectionResolver(gs storage.Storage, label string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label lookup.
 		tenantID := tenant.MustFromContext(p.Context)
@@ -116,7 +116,7 @@ func createNodeConnectionResolver(gs *storage.GraphStorage, label string) graphq
 }
 
 // createEdgeConnectionResolver creates a resolver for edge connections with cursor pagination
-func createEdgeConnectionResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func createEdgeConnectionResolver(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped edge enumeration.
 		tenantID := tenant.MustFromContext(p.Context)

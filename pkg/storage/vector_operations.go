@@ -6,7 +6,22 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/vector"
 )
 
-// CreateVectorIndex creates a vector index for a node property
+// CreateVectorIndexForTenant creates a vector index for a node property within a specific tenant
+func (gs *GraphStorage) CreateVectorIndexForTenant(
+	tenantID string,
+	propertyName string,
+	dimensions int,
+	m int,
+	efConstruction int,
+	metric vector.DistanceMetric,
+) error {
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	return gs.vectorIndex.CreateIndex(tenantID, propertyName, dimensions, m, efConstruction, metric)
+}
+
+// CreateVectorIndex creates a vector index for the default tenant
 func (gs *GraphStorage) CreateVectorIndex(
 	propertyName string,
 	dimensions int,
@@ -14,59 +29,109 @@ func (gs *GraphStorage) CreateVectorIndex(
 	efConstruction int,
 	metric vector.DistanceMetric,
 ) error {
-	return gs.vectorIndex.CreateIndex(propertyName, dimensions, m, efConstruction, metric)
+	return gs.CreateVectorIndexForTenant("default", propertyName, dimensions, m, efConstruction, metric)
 }
 
-// VectorSearch performs k-NN search on a vector-indexed property
+// VectorSearch performs k-NN search on a vector-indexed property for the default tenant
 func (gs *GraphStorage) VectorSearch(
 	propertyName string,
 	query []float32,
 	k int,
 	ef int,
 ) ([]vector.SearchResult, error) {
-	return gs.vectorIndex.Search(propertyName, query, k, ef)
+	return gs.vectorIndex.Search("default", propertyName, query, k, ef)
 }
 
-// DropVectorIndex removes a vector index
+// VectorSearchForTenant performs k-NN search on a vector-indexed property,
+// scoped to a specific tenant.
+func (gs *GraphStorage) VectorSearchForTenant(
+	tenantID string,
+	propertyName string,
+	query []float32,
+	k int,
+	ef int,
+) ([]vector.SearchResult, error) {
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	return gs.vectorIndex.Search(tenantID, propertyName, query, k, ef)
+}
+
+// DropVectorIndexForTenant removes a vector index for a specific tenant
+func (gs *GraphStorage) DropVectorIndexForTenant(tenantID string, propertyName string) error {
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	return gs.vectorIndex.DropIndex(tenantID, propertyName)
+}
+
+// DropVectorIndex removes a vector index for the default tenant
 func (gs *GraphStorage) DropVectorIndex(propertyName string) error {
-	return gs.vectorIndex.DropIndex(propertyName)
+	return gs.DropVectorIndexForTenant("default", propertyName)
 }
 
-// HasVectorIndex checks if a vector index exists
+// HasVectorIndexForTenant checks if a vector index exists for a specific tenant
+func (gs *GraphStorage) HasVectorIndexForTenant(tenantID string, propertyName string) bool {
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	return gs.vectorIndex.HasIndex(tenantID, propertyName)
+}
+
+// HasVectorIndex checks if a vector index exists for the default tenant
 func (gs *GraphStorage) HasVectorIndex(propertyName string) bool {
-	return gs.vectorIndex.HasIndex(propertyName)
+	return gs.HasVectorIndexForTenant("default", propertyName)
 }
 
-// ListVectorIndexes returns names of all vector-indexed properties
+// ListVectorIndexesForTenant returns names of all vector-indexed properties for a tenant
+func (gs *GraphStorage) ListVectorIndexesForTenant(tenantID string) []string {
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	return gs.vectorIndex.ListIndexes(tenantID)
+}
+
+// ListVectorIndexes returns names of all vector-indexed properties for the default tenant
 func (gs *GraphStorage) ListVectorIndexes() []string {
-	return gs.vectorIndex.ListIndexes()
+	return gs.ListVectorIndexesForTenant("default")
 }
 
-// GetVectorIndexMetric returns the distance metric for a specific vector index
-func (gs *GraphStorage) GetVectorIndexMetric(propertyName string) (vector.DistanceMetric, error) {
-	return gs.vectorIndex.GetIndexMetric(propertyName)
+// GetVectorIndexMetricForTenant returns the distance metric for a specific vector index for a tenant
+func (gs *GraphStorage) GetVectorIndexMetricForTenant(tenantID string, propertyName string) (vector.DistanceMetric, error) {
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	return gs.vectorIndex.GetIndexMetric(tenantID, propertyName)
 }
+
+// GetVectorIndexMetric returns the distance metric for a specific vector index (default tenant)
+func (gs *GraphStorage) GetVectorIndexMetric(propertyName string) (vector.DistanceMetric, error) {
+	return gs.GetVectorIndexMetricForTenant("default", propertyName)
+}
+
 
 // UpdateNodeVectorIndexes updates vector indexes when a node is added/updated
-// This should be called after a node with vector properties is created/updated
 func (gs *GraphStorage) UpdateNodeVectorIndexes(node *Node) error {
+	tenantID := node.TenantID
+	if tenantID == "" {
+		tenantID = "default"
+	}
+
 	// Check each property for vector type
 	for propName, propVal := range node.Properties {
 		if propVal.Type == TypeVector {
-			// If index exists for this property, add/update the vector
-			if gs.vectorIndex.HasIndex(propName) {
+			// If index exists for this property and tenant, add/update the vector
+			if gs.vectorIndex.HasIndex(tenantID, propName) {
 				vec, err := propVal.AsVector()
 				if err != nil {
 					return fmt.Errorf("failed to decode vector for property %s: %w", propName, err)
 				}
 
-				// Try to remove old vector first (in case of update).
-				// Ignore errors — if the index is empty for this node,
-				// RemoveVector is a no-op and returns a missing-entry error.
-				_ = gs.vectorIndex.RemoveVector(propName, node.ID)
+				// Try to remove old vector first (in case of update)
+				_ = gs.vectorIndex.RemoveVector(tenantID, propName, node.ID)
 
 				// Add new vector
-				if err := gs.vectorIndex.AddVector(propName, node.ID, vec); err != nil {
+				if err := gs.vectorIndex.AddVector(tenantID, propName, node.ID, vec); err != nil {
 					return fmt.Errorf("failed to add vector to index %s: %w", propName, err)
 				}
 			}
@@ -75,13 +140,15 @@ func (gs *GraphStorage) UpdateNodeVectorIndexes(node *Node) error {
 	return nil
 }
 
-// RemoveNodeFromVectorIndexes removes node vectors from all indexes
-// This should be called when a node is deleted
-func (gs *GraphStorage) RemoveNodeFromVectorIndexes(nodeID uint64) error {
-	// Remove from all vector indexes
-	for _, indexName := range gs.vectorIndex.ListIndexes() {
-		// Ignore errors - node might not be in all indexes
-		_ = gs.vectorIndex.RemoveVector(indexName, nodeID)
+// RemoveNodeFromVectorIndexes removes node vectors from all indexes for a tenant
+func (gs *GraphStorage) RemoveNodeFromVectorIndexes(nodeID uint64, tenantID string) error {
+	if tenantID == "" {
+		tenantID = "default"
+	}
+
+	// Remove from all vector indexes for this tenant
+	for _, indexName := range gs.vectorIndex.ListIndexes(tenantID) {
+		_ = gs.vectorIndex.RemoveVector(tenantID, indexName, nodeID)
 	}
 	return nil
 }

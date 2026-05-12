@@ -201,7 +201,7 @@ func main() {
 	// Benchmark 7: Snapshot Performance
 	fmt.Printf("\n💾 Benchmark 7: Snapshot Performance\n")
 	start = time.Now()
-	err = graph.Snapshot()
+	err = graph.Snapshot(context.Background())
 	if err != nil {
 		log.Fatalf("Failed to snapshot: %v", err)
 	}

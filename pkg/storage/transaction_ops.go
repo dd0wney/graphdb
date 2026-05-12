@@ -2,9 +2,9 @@ package storage
 
 import (
 	"errors"
+	"time"
 )
 
-// CreateNode creates a node within the transaction
 func (tx *Transaction) CreateNode(labels []string, properties map[string]Value) (*Node, error) {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
@@ -13,31 +13,24 @@ func (tx *Transaction) CreateNode(labels []string, properties map[string]Value) 
 		return nil, ErrTransactionNotActive
 	}
 
-	// Allocate ID but don't add to storage yet
-	nodeID, err := tx.gs.allocateNodeID()
-	if err != nil {
-		return nil, err
-	}
+	// Internal ID for intra-transaction referencing
+	nodeID := uint64(time.Now().UnixNano())
 
-	// Create node object
 	node := &Node{
 		ID:         nodeID,
 		Labels:     labels,
 		Properties: make(map[string]Value),
+		TenantID:   tx.TenantID,
 	}
 
-	// Copy properties
 	for k, v := range properties {
 		node.Properties[k] = v
 	}
 
-	// Buffer the node (don't add to storage until commit)
 	tx.createdNodes[nodeID] = node
-
 	return node, nil
 }
 
-// UpdateNode updates a node within the transaction
 func (tx *Transaction) UpdateNode(nodeID uint64, properties map[string]Value) error {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
@@ -46,16 +39,13 @@ func (tx *Transaction) UpdateNode(nodeID uint64, properties map[string]Value) er
 		return ErrTransactionNotActive
 	}
 
-	// Check if node was created in this transaction
 	if node, ok := tx.createdNodes[nodeID]; ok {
-		// Update the buffered node
 		for k, v := range properties {
 			node.Properties[k] = v
 		}
 		return nil
 	}
 
-	// For existing nodes, buffer the update (don't apply until commit)
 	if tx.updatedNodes[nodeID] == nil {
 		tx.updatedNodes[nodeID] = make(map[string]Value)
 	}
@@ -66,7 +56,6 @@ func (tx *Transaction) UpdateNode(nodeID uint64, properties map[string]Value) er
 	return nil
 }
 
-// CreateEdge creates an edge within the transaction
 func (tx *Transaction) CreateEdge(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
@@ -75,13 +64,8 @@ func (tx *Transaction) CreateEdge(fromID, toID uint64, edgeType string, properti
 		return nil, ErrTransactionNotActive
 	}
 
-	// Allocate ID but don't add to storage yet
-	edgeID, err := tx.gs.allocateEdgeID()
-	if err != nil {
-		return nil, err
-	}
+	edgeID := uint64(time.Now().UnixNano())
 
-	// Create edge object
 	edge := &Edge{
 		ID:         edgeID,
 		FromNodeID: fromID,
@@ -89,20 +73,17 @@ func (tx *Transaction) CreateEdge(fromID, toID uint64, edgeType string, properti
 		Type:       edgeType,
 		Properties: make(map[string]Value),
 		Weight:     weight,
+		TenantID:   tx.TenantID,
 	}
 
-	// Copy properties
 	for k, v := range properties {
 		edge.Properties[k] = v
 	}
 
-	// Buffer the edge (don't add to storage until commit)
 	tx.createdEdges[edgeID] = edge
-
 	return edge, nil
 }
 
-// GetNodeByID gets a node by ID within the transaction context
 func (tx *Transaction) GetNodeByID(nodeID uint64) (*Node, error) {
 	tx.mu.RLock()
 	defer tx.mu.RUnlock()
@@ -111,21 +92,17 @@ func (tx *Transaction) GetNodeByID(nodeID uint64) (*Node, error) {
 		return nil, ErrTransactionNotActive
 	}
 
-	// Check if node was deleted in this transaction
 	if tx.deletedNodes[nodeID] {
 		return nil, errors.New("node not found")
 	}
 
-	// Check if node was created in this transaction
 	if node, ok := tx.createdNodes[nodeID]; ok {
 		return node, nil
 	}
 
-	// Otherwise get from storage
-	return tx.gs.GetNodeByID(nodeID)
+	return tx.gs.GetNodeForTenant(nodeID, tx.TenantID)
 }
 
-// GetEdgeByID gets an edge by ID within the transaction context
 func (tx *Transaction) GetEdgeByID(edgeID uint64) (*Edge, error) {
 	tx.mu.RLock()
 	defer tx.mu.RUnlock()
@@ -134,16 +111,13 @@ func (tx *Transaction) GetEdgeByID(edgeID uint64) (*Edge, error) {
 		return nil, ErrTransactionNotActive
 	}
 
-	// Check if edge was deleted in this transaction
 	if tx.deletedEdges[edgeID] {
 		return nil, errors.New("edge not found")
 	}
 
-	// Check if edge was created in this transaction
 	if edge, ok := tx.createdEdges[edgeID]; ok {
 		return edge, nil
 	}
 
-	// Otherwise get from storage
-	return tx.gs.GetEdgeByID(edgeID)
+	return tx.gs.GetEdgeForTenant(edgeID, tx.TenantID)
 }

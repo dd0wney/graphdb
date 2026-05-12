@@ -108,7 +108,7 @@ func createEdgeType() *graphql.Object {
 // pass nil; the production-tenant schema-build through
 // generateSchemaWithLimitsForLabels doesn't reach this helper (it uses
 // createNodeType — the no-edges variant).
-func createNodeTypeWithEdges(label string, edgeType *graphql.Object, gs *storage.GraphStorage, deps *MaskingDeps) *graphql.Object {
+func createNodeTypeWithEdges(label string, edgeType *graphql.Object, gs storage.Storage, deps *MaskingDeps) *graphql.Object {
 	return graphql.NewObject(graphql.ObjectConfig{
 		Name: label,
 		Fields: graphql.Fields{

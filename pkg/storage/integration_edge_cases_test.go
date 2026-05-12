@@ -68,7 +68,7 @@ func TestEdgeCase_SnapshotDuringHeavyLoad(t *testing.T) {
 		time.Sleep(10 * time.Millisecond) // Brief pause for in-flight writes to complete
 
 		startTime := time.Now()
-		err := gs.Snapshot()
+		err := gs.Snapshot(context.Background())
 		duration := time.Since(startTime)
 
 		// Resume writes
@@ -157,7 +157,7 @@ func TestEdgeCase_CorruptedSnapshot(t *testing.T) {
 			})
 		}
 
-		_ = gs.Snapshot()
+		_ = gs.Snapshot(context.Background())
 		_ = gs.Close()
 	}
 

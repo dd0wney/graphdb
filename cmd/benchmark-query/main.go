@@ -68,7 +68,7 @@ func main() {
 	fmt.Printf("\n✅ Benchmark complete!\n")
 }
 
-func createTestGraph(nodeCount, edgeCount int) (*storage.GraphStorage, []uint64) {
+func createTestGraph(nodeCount, edgeCount int) (storage.Storage, []uint64) {
 	graph, err := storage.NewGraphStorage("./data/benchmark-query")
 	if err != nil {
 		log.Fatalf("Failed to create graph: %v", err)
@@ -115,7 +115,7 @@ func createTestGraph(nodeCount, edgeCount int) (*storage.GraphStorage, []uint64)
 	return graph, nodeIDs
 }
 
-func benchmarkFindAllUsers(graph *storage.GraphStorage) {
+func benchmarkFindAllUsers(graph storage.Storage) {
 	// Procedural approach
 	fmt.Printf("🔹 Procedural: Iterate all nodes...\n")
 	start := time.Now()
@@ -178,7 +178,7 @@ func benchmarkFindAllUsers(graph *storage.GraphStorage) {
 	fmt.Printf("  ✨ Declarative code: 1 line vs ~15 lines procedural\n")
 }
 
-func benchmarkPropertyFilter(graph *storage.GraphStorage) {
+func benchmarkPropertyFilter(graph storage.Storage) {
 	// Procedural approach
 	fmt.Printf("🔹 Procedural: Filter age > 30...\n")
 	start := time.Now()
@@ -234,7 +234,7 @@ func benchmarkPropertyFilter(graph *storage.GraphStorage) {
 	fmt.Printf("  ✨ Declarative code: 1 line vs ~20 lines procedural\n")
 }
 
-func benchmarkFindFriends(graph *storage.GraphStorage, nodeIDs []uint64) {
+func benchmarkFindFriends(graph storage.Storage, nodeIDs []uint64) {
 	targetID := nodeIDs[rand.Intn(len(nodeIDs))]
 
 	// Procedural approach
@@ -289,7 +289,7 @@ func benchmarkFindFriends(graph *storage.GraphStorage, nodeIDs []uint64) {
 	fmt.Printf("  ✨ Declarative code: 1 line vs ~25 lines procedural\n")
 }
 
-func benchmarkCreateNodes(graph *storage.GraphStorage) {
+func benchmarkCreateNodes(graph storage.Storage) {
 	// Procedural approach
 	fmt.Printf("🔹 Procedural: Create 100 nodes...\n")
 	start := time.Now()
@@ -339,7 +339,7 @@ func benchmarkCreateNodes(graph *storage.GraphStorage) {
 	fmt.Printf("  ✨ Declarative code: cleaner syntax, database-independent\n")
 }
 
-func benchmarkFriendsOfFriends(graph *storage.GraphStorage, nodeIDs []uint64) {
+func benchmarkFriendsOfFriends(graph storage.Storage, nodeIDs []uint64) {
 	targetID := nodeIDs[rand.Intn(len(nodeIDs))]
 
 	// Procedural approach

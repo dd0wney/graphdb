@@ -52,7 +52,7 @@ func main() {
 	analyzeGraph(graph, stats.NodeCount)
 }
 
-func runShortestPathBenchmark(graph *storage.GraphStorage, nodeCount uint64, numQueries, maxDepth int) {
+func runShortestPathBenchmark(graph storage.Storage, nodeCount uint64, numQueries, maxDepth int) {
 	rand.Seed(time.Now().UnixNano())
 
 	results := struct {
@@ -131,7 +131,7 @@ func runShortestPathBenchmark(graph *storage.GraphStorage, nodeCount uint64, num
 		float64(numQueries)/results.totalTime.Seconds())
 }
 
-func runTraversalBenchmark(graph *storage.GraphStorage, nodeCount uint64, numQueries int) {
+func runTraversalBenchmark(graph storage.Storage, nodeCount uint64, numQueries int) {
 	rand.Seed(time.Now().UnixNano())
 
 	depths := []int{1, 2, 3, 5}
@@ -193,7 +193,7 @@ func runTraversalBenchmark(graph *storage.GraphStorage, nodeCount uint64, numQue
 	}
 }
 
-func analyzeGraph(graph *storage.GraphStorage, nodeCount uint64) {
+func analyzeGraph(graph storage.Storage, nodeCount uint64) {
 	rand.Seed(time.Now().UnixNano())
 
 	// Sample nodes to analyze degree distribution

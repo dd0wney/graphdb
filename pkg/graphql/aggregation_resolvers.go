@@ -14,7 +14,7 @@ import (
 // Policy.ApplyToStorageValues) and the numeric switch below skips it —
 // the operator-named-mask semantics propagate to aggregates without
 // special-casing. Nil deps = no masking, aggregates over raw values.
-func createNodeAggregateResolver(gs *storage.GraphStorage, label string, deps *MaskingDeps) graphql.FieldResolveFn {
+func createNodeAggregateResolver(gs storage.Storage, label string, deps *MaskingDeps) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label lookup.
 		tenantID := tenant.MustFromContext(p.Context)
@@ -103,7 +103,7 @@ func createNodeAggregateResolver(gs *storage.GraphStorage, label string, deps *M
 }
 
 // createEdgeAggregateResolver creates a resolver for edge aggregations
-func createEdgeAggregateResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
+func createEdgeAggregateResolver(gs storage.Storage) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped edge enumeration
 		// (replaces "1..stats.EdgeCount via GetEdge" cross-tenant scan).

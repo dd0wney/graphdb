@@ -8,29 +8,23 @@
 
 A high-performance, feature-rich graph database built from scratch in Go. GraphDB combines modern storage techniques with powerful graph algorithms and multiple query interfaces.
 
-## v0.2.0 Released! 🎉
+## 🚀 Getting Started
 
-**New in v0.2.0:** Vector Search with HNSW indexes for semantic similarity queries.
+The fastest way to evaluate GraphDB is with our **[5-Minute Quickstart](./docs/QUICKSTART.md)**.
 
-## What's New
-
-**Try it in 30 seconds:**
+### Run in 30 seconds
 
 ```bash
-# Docker (recommended)
 docker run -p 8080:8080 dd0wney/graphdb:latest
-
-# Or download pre-built binary
-wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Linux_x86_64.tar.gz
-tar -xzf graphdb_0.1.0_Linux_x86_64.tar.gz
-./cluso-server --port 8080
 ```
 
-**Available for:**
-- **Docker**: Multi-arch images (amd64, arm64) on [Docker Hub](https://hub.docker.com/r/dd0wney/graphdb)
-- **macOS**: arm64 (M1/M2/M3) & x86_64 (Intel)
-- **Linux**: arm64 & x86_64
-- **Windows**: arm64 & x86_64
+### Try a Query
+
+```bash
+curl -X POST http://localhost:8080/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "CREATE (n:Person {name: '\''Alice'\''}) RETURN n"}'
+```
 
 **Performance Highlights:**
 - **5M nodes + 50M edges** in just **73MB RAM** (15.31 bytes/node)
@@ -98,6 +92,19 @@ curl -X POST http://localhost:8080/query \
 ```
 
 #### 3. Interactive CLI
+
+...
+
+## Scalability & Limitations
+
+GraphDB is designed for high performance on a single node. While it includes advanced multi-tenancy and high-throughput primitives, users should be aware of the following architectural trade-offs:
+
+- **Single-Node by Design**: The core engine is optimized for single-machine deployments. While it supports Primary/Replica replication for read scaling, write throughput is bounded by the resources of a single Go process.
+- **In-Memory + LSM Architecture**: By default, GraphDB prioritizes low-latency access by keeping the graph topology in memory. Persistent storage (LSM/B+Tree) is used for durability and cold data tiering. 
+- **LSA Scale Ceiling**: The built-in Latent Semantic Analysis (LSA) for vector embeddings is optimized for corpora of ~100K-500K documents (at 200 dimensions). For larger datasets, we recommend using dedicated embedding models (e.g., OpenAI, Anthropic, or BGE) via the standard `/v1/embeddings` interface.
+- **Horizontal Scaling**: Horizontal scaling (sharding, distributed consensus) is currently the responsibility of the operator (e.g., deploying per-tenant instances behind a load balancer).
+
+---
 
 ```bash
 ./bin/cli

@@ -20,7 +20,7 @@ import (
 // so a tenant-stamped edge cannot point at a foreign-tenant node.
 // That means the edge-tenant filter is sufficient — no per-neighbor
 // GetNodeForTenant in the BFS hot loop.
-func ShortestPathForTenant(graph *storage.GraphStorage, startID, endID uint64, tenantID string) ([]uint64, error) {
+func ShortestPathForTenant(graph storage.StorageReader, startID, endID uint64, tenantID string) ([]uint64, error) {
 	if startID == endID {
 		return []uint64{startID}, nil
 	}
@@ -56,7 +56,7 @@ func ShortestPathForTenant(graph *storage.GraphStorage, startID, endID uint64, t
 // expandFrontierForTenant mirrors expandFrontier but only follows
 // edges owned by tenantID.
 func expandFrontierForTenant(
-	graph *storage.GraphStorage,
+	graph storage.StorageReader,
 	queue *list.List,
 	visited map[uint64]uint64,
 	otherVisited map[uint64]uint64,
@@ -94,7 +94,7 @@ func expandFrontierForTenant(
 
 // ShortestPath finds the shortest path between two nodes using bidirectional BFS
 // This is 2x faster than unidirectional BFS for large graphs
-func ShortestPath(graph *storage.GraphStorage, startID, endID uint64) ([]uint64, error) {
+func ShortestPath(graph storage.StorageReader, startID, endID uint64) ([]uint64, error) {
 	if startID == endID {
 		return []uint64{startID}, nil
 	}
@@ -135,7 +135,7 @@ func ShortestPath(graph *storage.GraphStorage, startID, endID uint64) ([]uint64,
 
 // expandFrontier expands one level of BFS from the queue
 func expandFrontier(
-	graph *storage.GraphStorage,
+	graph storage.StorageReader,
 	queue *list.List,
 	visited map[uint64]uint64,
 	otherVisited map[uint64]uint64,
@@ -211,7 +211,7 @@ func reconstructPath(
 }
 
 // AllShortestPaths finds all shortest paths from a source node using BFS
-func AllShortestPaths(graph *storage.GraphStorage, sourceID uint64) (map[uint64]int, error) {
+func AllShortestPaths(graph storage.StorageReader, sourceID uint64) (map[uint64]int, error) {
 	distances := make(map[uint64]int)
 	distances[sourceID] = 0
 
@@ -243,7 +243,7 @@ func AllShortestPaths(graph *storage.GraphStorage, sourceID uint64) (map[uint64]
 }
 
 // WeightedShortestPath finds shortest path with edge weights using Dijkstra's algorithm
-func WeightedShortestPath(graph *storage.GraphStorage, startID, endID uint64) ([]uint64, float64, error) {
+func WeightedShortestPath(graph storage.StorageReader, startID, endID uint64) ([]uint64, float64, error) {
 	// Priority queue using simple slice (for simplicity, not optimal)
 	type pqItem struct {
 		nodeID   uint64
