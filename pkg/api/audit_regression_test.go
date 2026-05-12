@@ -47,7 +47,7 @@ import (
 //	A6c-query   → pkg/api/handlers_query_a6c_test.go    (/query)
 //	A6c-algorithms → pkg/api/handlers_algorithms_a6c_test.go (/algorithms)
 //	A8   → pkg/replication/apply_test.go                (replication apply path)
-//	A8.2 → cmd/graphdb-replica/server_test.go            (no /nodes route on replica)
+//	A8.2 → (closed by A8.1 deletion — replica binary no longer exists)
 //	A9   → pkg/api/handlers_graphql_introspection_a9_test.go (/graphql introspection)
 //	F2   → pkg/api/handlers_retrieve_test.go            (/v1/retrieve)
 //	F3   → pkg/api/handlers_compliance_test.go          (/v1/compliance/audit-log)
