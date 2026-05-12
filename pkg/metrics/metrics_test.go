@@ -234,46 +234,11 @@ func TestQuorumMetric(t *testing.T) {
 	}
 }
 
-func TestReplicationMetrics(t *testing.T) {
-	r := NewRegistry()
-
-	// Test replication lag
-	r.ReplicationLagLSN.Set(100)
-
-	var metric dto.Metric
-	if err := r.ReplicationLagLSN.Write(&metric); err != nil {
-		t.Fatalf("Failed to write metric: %v", err)
-	}
-
-	if metric.Gauge.GetValue() != 100 {
-		t.Errorf("ReplicationLagLSN = %v, want 100", metric.Gauge.GetValue())
-	}
-
-	// Test connected replicas
-	r.ReplicationConnectedReplicas.Set(2)
-
-	if err := r.ReplicationConnectedReplicas.Write(&metric); err != nil {
-		t.Fatalf("Failed to write metric: %v", err)
-	}
-
-	if metric.Gauge.GetValue() != 2 {
-		t.Errorf("ConnectedReplicas = %v, want 2", metric.Gauge.GetValue())
-	}
-
-	// Test WAL entries counter
-	r.ReplicationWALEntriesTotal.WithLabelValues("sent").Inc()
-	r.ReplicationWALEntriesTotal.WithLabelValues("sent").Inc()
-	r.ReplicationWALEntriesTotal.WithLabelValues("received").Inc()
-
-	sentCounter, _ := r.ReplicationWALEntriesTotal.GetMetricWithLabelValues("sent")
-	if err := sentCounter.Write(&metric); err != nil {
-		t.Fatalf("Failed to write metric: %v", err)
-	}
-
-	if metric.Counter.GetValue() != 2 {
-		t.Errorf("WAL sent counter = %v, want 2", metric.Counter.GetValue())
-	}
-}
+// TestReplicationMetrics removed by A8.1 (PR #133) when pkg/replication
+// and the standalone replication binaries were retired. The metrics
+// registry no longer exposes ReplicationLagLSN / Replication{Lag,Throughput,
+// Connected,WALEntries,Heartbeats}* — see metrics_types.go for the
+// current field set.
 
 func TestElectionMetrics(t *testing.T) {
 	r := NewRegistry()
