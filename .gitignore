@@ -125,9 +125,9 @@ benchmark_*.txt
 *.wal
 snapshot.json
 
-# Integration test artifacts
-integration-test
-import-dimacs
+# Integration test artifacts — anchor to repo root so source dirs under cmd/ aren't matched
+/integration-test
+/import-dimacs
 
 # Mac specific
 .AppleDouble
