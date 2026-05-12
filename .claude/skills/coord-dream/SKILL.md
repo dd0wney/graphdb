@@ -1,6 +1,7 @@
 ---
 name: coord-dream
 description: Run the coord dreaming layer — out-of-band synthesis that proposes graph mutations (`:Pattern` nodes + GENERALIZES_TO edges) by clustering related `:Lesson` content. Use when the user says "run a dreaming pass," "dream over the lessons," "what patterns have we accumulated," "list proposed dreams," "apply dream X," "reject dream Y," or when the lesson corpus has grown enough (≥5–10 lessons) that cross-lesson clustering might find something. Lifecycle is propose → review (via `list`/`show`) → decide (apply or reject). Apply materialises the proposed mutations into the graph; reject closes the proposal with an audit-trail reason.
+allowed-tools: Bash(../graphdb-coord/coord *) Bash(jq *) Bash(wc *)
 ---
 
 # Coord dream

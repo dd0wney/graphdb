@@ -1,6 +1,7 @@
 ---
 name: coord-insight
 description: Record, list, show, or promote an `:Insight` in the coord daemon — the raw-observation layer. An insight is a cheaper, lower-bar version of `:Lesson` for "I noticed X but not sure if it generalizes yet." Use when the agent observes something potentially-but-not-obviously useful, when the user says "record an insight," "note that down," "I noticed X," "promote this insight to a lesson," or when reviewing accumulated observations on a topic. Insights can be promoted to lessons via `coord insight promote` once evidence accumulates; promotion creates a `PROMOTED_TO` edge so the lineage is traceable.
+allowed-tools: Bash(../graphdb-coord/coord *) Bash(jq *)
 ---
 
 # Coord insight
