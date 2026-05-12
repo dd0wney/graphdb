@@ -2,12 +2,16 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/audit"
+	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/cluso-graphdb/pkg/masking"
 	"github.com/dd0wney/cluso-graphdb/pkg/replication"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
@@ -15,8 +19,9 @@ import (
 
 // TestAuditRegressionSuite_CrossTenantIsolation is the consolidated
 // security gate for audit Track A (PRs #17-#26), F2 retrieval
-// (PR #31), A9 GraphQL introspection (PR #36-#39), and A8 replication
-// tenancy (PRs #40+). It pins every cross-tenant guardrail introduced
+// (PR #31), A9 GraphQL introspection (PR #36-#39), A8 replication
+// tenancy (PRs #40+), and F3 Compliance API (PRs #111/#114/#122).
+// It pins every cross-tenant guardrail introduced
 // across audit + feature work in one readable matrix — each subtest
 // names the task that introduced the contract. CI runs this as a
 // single-shot regression check; if any row fails, a guarantee has
@@ -45,6 +50,9 @@ import (
 //	A8.2 → cmd/graphdb-replica/server_test.go            (no /nodes route on replica)
 //	A9   → pkg/api/handlers_graphql_introspection_a9_test.go (/graphql introspection)
 //	F2   → pkg/api/handlers_retrieve_test.go            (/v1/retrieve)
+//	F3   → pkg/api/handlers_compliance_test.go          (/v1/compliance/audit-log)
+//	F3   → pkg/api/handlers_nodes_masking_test.go       (read-path masking, REST)
+//	F3   → pkg/api/handlers_graphql_masking_test.go     (read-path masking, GraphQL)
 func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 	fix := setupAuditRegressionFixture(t)
 	defer fix.cleanup()
@@ -390,6 +398,98 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 		}
 		if containsString(typeNames, "BSecret") {
 			t.Errorf("tenant-A introspection LEAKED tenant-B type 'BSecret' (A9 regression; got: %v)", typeNames)
+		}
+	})
+
+	// ---- F3 compliance API — PRs #111 (audit-log), #114 (masking REST), #122 (masking GraphQL) ----
+
+	t.Run("F3/audit-log-only-returns-caller-tenant-events", func(t *testing.T) {
+		// PR #111: GET /v1/compliance/audit-log defaults to the
+		// caller's tenant (withTenant resolution). Non-admin callers
+		// cannot widen with ?tenant=* (handler-internal admin gate).
+		//
+		// Per-package authoritative tests:
+		//   pkg/api/handlers_compliance_test.go::TestComplianceAuditLog_TenantIsolation
+		//   pkg/api/handlers_compliance_test.go::TestComplianceAuditLog_NonAdminCannotWidenCrossTenant
+		//
+		// This row pins the umbrella contract: seed events for both
+		// tenants directly into the in-memory logger, call the
+		// handler as tenant-A (no admin claims), assert the result
+		// contains only tenant-A's event.
+		if err := fix.server.inMemoryAuditLogger.Log(&audit.Event{
+			TenantID: "tenant-A", UserID: "u-a", Username: "alice",
+			Action: audit.ActionRead, ResourceType: audit.ResourceNode, Status: audit.StatusSuccess,
+		}); err != nil {
+			t.Fatalf("seed tenant-A audit event: %v", err)
+		}
+		if err := fix.server.inMemoryAuditLogger.Log(&audit.Event{
+			TenantID: "tenant-B", UserID: "u-b", Username: "bob",
+			Action: audit.ActionRead, ResourceType: audit.ResourceNode, Status: audit.StatusSuccess,
+		}); err != nil {
+			t.Fatalf("seed tenant-B audit event: %v", err)
+		}
+
+		rr := httptest.NewRecorder()
+		fix.server.handleComplianceAuditLog(rr, fix.req(t, http.MethodGet, "/v1/compliance/audit-log", nil, "tenant-A"))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status %d body=%s", rr.Code, rr.Body.String())
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if resp["tenant"] != "tenant-A" {
+			t.Errorf("tenant: want tenant-A, got %v", resp["tenant"])
+		}
+		events, _ := resp["events"].([]any)
+		for i, ev := range events {
+			m, _ := ev.(map[string]any)
+			if m["tenant_id"] != "tenant-A" {
+				t.Errorf("event[%d] tenant_id: want tenant-A, got %v (audit-log leaked across tenants)", i, m["tenant_id"])
+			}
+		}
+	})
+
+	t.Run("F3/masking-policy-GET-cross-tenant-non-admin-403", func(t *testing.T) {
+		// PR #114: GET /v1/compliance/masking-policy/{tenant} for a
+		// non-admin caller targeting a different tenant returns 403.
+		// Admin or self-tenant return 200; cross-tenant non-admin is
+		// the rejected case.
+		//
+		// Per-package authoritative test:
+		//   pkg/api/handlers_nodes_masking_test.go::TestMasking_PolicyFollowsTenant
+		fix.server.maskingPolicyStore.Set("tenant-B", &masking.Policy{
+			Properties: map[string]masking.MaskingStrategy{"email": masking.StrategyRedact},
+		})
+
+		req := fix.req(t, http.MethodGet, "/v1/compliance/masking-policy/tenant-B", nil, "tenant-A")
+		req = req.WithContext(context.WithValue(req.Context(), claimsContextKey, &auth.Claims{
+			UserID: "u-a", Username: "alice", Role: auth.RoleViewer,
+		}))
+		rr := httptest.NewRecorder()
+		fix.server.handleComplianceMaskingPolicy(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("non-admin tenant-A reading tenant-B's policy: want 403, got %d body=%s", rr.Code, rr.Body.String())
+		}
+	})
+
+	t.Run("F3/masking-policy-POST-non-admin-403", func(t *testing.T) {
+		// PR #114: POST /v1/compliance/masking-policy is admin-only.
+		// A non-admin caller (regardless of target tenant) receives
+		// 403 "Admin role required" before any tenant-resolution
+		// runs. This row pins that the admin gate fires before the
+		// X-Tenant-ID override path could be abused.
+		body := maskingPolicyRequest{
+			Properties: map[string]masking.MaskingStrategy{"ssn": masking.StrategyFull},
+		}
+		req := fix.req(t, http.MethodPost, "/v1/compliance/masking-policy", body, "tenant-A")
+		req = req.WithContext(context.WithValue(req.Context(), claimsContextKey, &auth.Claims{
+			UserID: "u-a", Username: "alice", Role: auth.RoleViewer,
+		}))
+		rr := httptest.NewRecorder()
+		fix.server.handleComplianceMaskingPolicy(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("non-admin POST masking-policy: want 403, got %d body=%s", rr.Code, rr.Body.String())
 		}
 	})
 
