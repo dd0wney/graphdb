@@ -27,7 +27,14 @@ import (
 // version-mismatched file can be diagnosed without first having to
 // reflectively parse the body.
 const (
-	lsaSnapshotVersion uint32 = 1
+	// lsaSnapshotVersion bumps when the on-disk format changes incompatibly.
+	// v1 (B1): initial format with augmented-TF × IDF weighting.
+	// v2 (A2): IDF replaced with log-entropy global weight (Dumais 1991);
+	//          local weight switched to log(1 + tf). Snapshot field name
+	//          renamed IDF → GlobalWeight to reflect the new meaning. v1
+	//          snapshots fail to load with the operator-actionable
+	//          "regenerate via admin endpoint" message.
+	lsaSnapshotVersion uint32 = 2
 	// lsaSnapshotExt is the on-disk extension for a single tenant's
 	// LSA snapshot. Per-tenant file naming gives tenant isolation
 	// for free at the filesystem layer — `<dir>/<tenantID>.lsa`.
@@ -46,17 +53,17 @@ var lsaSnapshotMagic = [4]byte{'G', 'L', 'S', 'A'}
 // derived index over NodeIDs that reconstructs on load in O(D) without
 // adding to the file size.
 type lsaSnapshot struct {
-	Dims      int
-	Vocab     map[string]int32
-	IDF       []float32
-	B         [][]float32 // sketch matrix l×T
-	UB        [][]float32 // top-k eigenvectors l×k
-	DocVecs   [][]float32 // L2-normalized doc embeddings D×k
-	NodeIDs   []uint64
-	Content   map[uint64]string
-	BM25Post  map[string][]bm25Entry
-	BM25Dlen  []int
-	BM25Avgdl float64
+	Dims         int
+	Vocab        map[string]int32
+	GlobalWeight []float32   // log-entropy per term (v2; was IDF in v1, see lsaSnapshotVersion doc)
+	B            [][]float32 // sketch matrix l×T
+	UB           [][]float32 // top-k eigenvectors l×k
+	DocVecs      [][]float32 // L2-normalized doc embeddings D×k
+	NodeIDs      []uint64
+	Content      map[uint64]string
+	BM25Post     map[string][]bm25Entry
+	BM25Dlen     []int
+	BM25Avgdl    float64
 }
 
 // WriteSnapshot serializes the index to w in the on-disk format described
@@ -72,17 +79,17 @@ func (i *LSAIndex) WriteSnapshot(w io.Writer) error {
 		return fmt.Errorf("write version: %w", err)
 	}
 	snap := lsaSnapshot{
-		Dims:      i.dims,
-		Vocab:     i.vocab,
-		IDF:       i.idf,
-		B:         i.b,
-		UB:        i.ub,
-		DocVecs:   i.docVecs,
-		NodeIDs:   i.nodeIDs,
-		Content:   i.content,
-		BM25Post:  i.bm25Post,
-		BM25Dlen:  i.bm25Dlen,
-		BM25Avgdl: i.bm25Avgdl,
+		Dims:         i.dims,
+		Vocab:        i.vocab,
+		GlobalWeight: i.globalWeight,
+		B:            i.b,
+		UB:           i.ub,
+		DocVecs:      i.docVecs,
+		NodeIDs:      i.nodeIDs,
+		Content:      i.content,
+		BM25Post:     i.bm25Post,
+		BM25Dlen:     i.bm25Dlen,
+		BM25Avgdl:    i.bm25Avgdl,
 	}
 	if err := gob.NewEncoder(w).Encode(&snap); err != nil {
 		return fmt.Errorf("encode snapshot: %w", err)
@@ -121,18 +128,18 @@ func ReadLSASnapshot(r io.Reader) (*LSAIndex, error) {
 		nodeIDMap[id] = idx
 	}
 	return &LSAIndex{
-		dims:      snap.Dims,
-		vocab:     snap.Vocab,
-		idf:       snap.IDF,
-		b:         snap.B,
-		ub:        snap.UB,
-		docVecs:   snap.DocVecs,
-		nodeIDs:   snap.NodeIDs,
-		nodeIDMap: nodeIDMap,
-		content:   snap.Content,
-		bm25Post:  snap.BM25Post,
-		bm25Dlen:  snap.BM25Dlen,
-		bm25Avgdl: snap.BM25Avgdl,
+		dims:         snap.Dims,
+		vocab:        snap.Vocab,
+		globalWeight: snap.GlobalWeight,
+		b:            snap.B,
+		ub:           snap.UB,
+		docVecs:      snap.DocVecs,
+		nodeIDs:      snap.NodeIDs,
+		nodeIDMap:    nodeIDMap,
+		content:      snap.Content,
+		bm25Post:     snap.BM25Post,
+		bm25Dlen:     snap.BM25Dlen,
+		bm25Avgdl:    snap.BM25Avgdl,
 	}, nil
 }
 

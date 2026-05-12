@@ -77,15 +77,22 @@ func DefaultLSAConfig() LSAConfig {
 // LSAIndex holds the LSA model and BM25 index built once at corpus load.
 // After BuildLSAIndex returns, queries (FoldQuery, BM25Score) are sub-millisecond.
 type LSAIndex struct {
-	dims      int
-	vocab     map[string]int32 // term → column index
-	idf       []float32        // IDF weight per vocab term
-	b         [][]float32      // l×T: B = Q^T × X, used for query folding
-	ub        [][]float32      // l×k: top-k eigenvectors of Gram(B)
-	docVecs   [][]float32      // D×k: L2-normalized document embeddings
-	nodeIDs   []uint64         // row index → graphdb NodeID
-	nodeIDMap map[uint64]int   // NodeID → row index
-	content   map[uint64]string
+	dims  int
+	vocab map[string]int32 // term → column index
+	// globalWeight is the per-term global weighting factor applied during
+	// both build and query folding. Switched from inverse document
+	// frequency (IDF: log(D/df + 1)) to log-entropy (Dumais 1991:
+	// 1 + sum_d(p_dt * log p_dt) / log D, where p_dt = tf_dt / gf_t) in
+	// the A2 PR. Quality delta is corpus-dependent — log-entropy tends
+	// to down-weight terms whose distribution across documents is close
+	// to uniform (low signal) more aggressively than IDF.
+	globalWeight []float32
+	b            [][]float32    // l×T: B = Q^T × X, used for query folding
+	ub           [][]float32    // l×k: top-k eigenvectors of Gram(B)
+	docVecs      [][]float32    // D×k: L2-normalized document embeddings
+	nodeIDs      []uint64       // row index → graphdb NodeID
+	nodeIDMap    map[uint64]int // NodeID → row index
+	content      map[uint64]string
 
 	// BM25 inverted index over the same tokenization used for LSA, so query
 	// stemming is consistent across both scorers.
@@ -254,22 +261,60 @@ func BuildLSAIndex(docs []Document, cfg LSAConfig) (*LSAIndex, error) {
 	}
 
 	vocab := make(map[string]int32, T)
-	idf := make([]float32, T)
 	for i, c := range cands {
 		vocab[c.term] = int32(i)
-		idf[i] = float32(math.Log(float64(D)/float64(c.df) + 1))
 	}
 
-	// --- Sparse TF-IDF matrix X (D×T) ---
-	X := make([]sparseRow, D)
-	for d, tf := range allTF {
-		maxTF := 0
-		for _, c := range tf {
-			if c > maxTF {
-				maxTF = c
+	// --- Log-entropy global weighting (Dumais 1991) ---
+	//
+	// Global weight g_t = 1 + (1/log D) * sum_d (p_dt * log p_dt) where
+	// p_dt = tf_dt / gf_t and gf_t is the corpus-total frequency of term t.
+	// The summand is 0 by convention when p_dt is 0 (term doesn't appear in
+	// that doc); log(1)=0 falls out naturally when p_dt=1 (term concentrated
+	// in a single doc). For D==1 the log(D) divisor is 0 and the entropy
+	// adjustment is undefined — degrade to global weight 1 (pure local
+	// weighting), which is the only sensible single-doc behavior.
+	//
+	// Replaces the previous IDF weighting log(D/df + 1). The two formulas
+	// produce similar shapes for typical corpora; log-entropy down-weights
+	// near-uniform terms more aggressively, which is the headline
+	// retrieval-quality win.
+	gf := make([]int, T)
+	for _, tf := range allTF {
+		for term, c := range tf {
+			if tidx, ok := vocab[term]; ok {
+				gf[tidx] += c
 			}
 		}
-		if maxTF == 0 {
+	}
+	var invLogD float64
+	if D > 1 {
+		invLogD = 1.0 / math.Log(float64(D))
+	}
+	entropyAccum := make([]float64, T)
+	for _, tf := range allTF {
+		for term, c := range tf {
+			tidx, ok := vocab[term]
+			if !ok || gf[tidx] == 0 {
+				continue
+			}
+			p := float64(c) / float64(gf[tidx])
+			entropyAccum[tidx] += p * math.Log(p)
+		}
+	}
+	globalWeight := make([]float32, T)
+	for i := range globalWeight {
+		globalWeight[i] = float32(1.0 + entropyAccum[i]*invLogD)
+	}
+
+	// --- Sparse weighted-term matrix X (D×T) ---
+	//
+	// Local weight: log(1 + tf_dt). Combined with globalWeight from above,
+	// each cell is log(1+tf) * g_t. Rows are L2-normalized — keeps cosine
+	// similarity well-defined regardless of doc length.
+	X := make([]sparseRow, D)
+	for d, tf := range allTF {
+		if len(tf) == 0 {
 			continue
 		}
 		// Deterministic insertion order: iterate tf map keys in sorted order.
@@ -284,9 +329,9 @@ func BuildLSAIndex(docs []Document, cfg LSAConfig) (*LSAIndex, error) {
 				continue
 			}
 			count := tf[term]
-			tfw := float32(0.5 + 0.5*float64(count)/float64(maxTF))
+			local := float32(math.Log(1.0 + float64(count)))
 			X[d].idx = append(X[d].idx, tidx)
-			X[d].val = append(X[d].val, tfw*idf[tidx])
+			X[d].val = append(X[d].val, local*globalWeight[tidx])
 		}
 		norm := float32(0)
 		for _, v := range X[d].val {
@@ -386,18 +431,18 @@ func BuildLSAIndex(docs []Document, cfg LSAConfig) (*LSAIndex, error) {
 	bm25Avgdl := float64(totalLen) / float64(D)
 
 	return &LSAIndex{
-		dims:      k,
-		vocab:     vocab,
-		idf:       idf,
-		b:         B,
-		ub:        UB,
-		docVecs:   docVecs,
-		nodeIDs:   nodeIDs,
-		nodeIDMap: nodeIDMap,
-		content:   content,
-		bm25Post:  bm25Post,
-		bm25Dlen:  bm25Dlen,
-		bm25Avgdl: bm25Avgdl,
+		dims:         k,
+		vocab:        vocab,
+		globalWeight: globalWeight,
+		b:            B,
+		ub:           UB,
+		docVecs:      docVecs,
+		nodeIDs:      nodeIDs,
+		nodeIDMap:    nodeIDMap,
+		content:      content,
+		bm25Post:     bm25Post,
+		bm25Dlen:     bm25Dlen,
+		bm25Avgdl:    bm25Avgdl,
 	}, nil
 }
 
@@ -418,20 +463,18 @@ func (i *LSAIndex) FoldQuery(query string) (vec []float32, tokens []string, err 
 	if len(tfMap) == 0 {
 		return nil, tokens, fmt.Errorf("no vocabulary terms matched in query %q", query)
 	}
-	maxTF := float32(0)
-	for _, v := range tfMap {
-		if v > maxTF {
-			maxTF = v
-		}
-	}
 
+	// Mirror the build-side weighting (Dumais 1991 log-entropy): local =
+	// log(1 + tf), global = stored entropy weight per term. The maxTF
+	// normalization the previous augmented-TF formula used is no longer
+	// needed; log(1 + tf) is its own attenuation curve.
 	l := len(i.b)
 	lVec := make([]float32, l)
 	for row := 0; row < l; row++ {
 		bi := i.b[row]
 		for tidx, count := range tfMap {
-			tfw := float32(0.5) + float32(0.5)*count/maxTF
-			lVec[row] += bi[tidx] * tfw * i.idf[tidx]
+			local := float32(math.Log(1.0 + float64(count)))
+			lVec[row] += bi[tidx] * local * i.globalWeight[tidx]
 		}
 	}
 
