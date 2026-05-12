@@ -153,7 +153,7 @@ Comprehensive API documentation is available at **[graphdb.pages.dev](https://dd
 - **[CLI Admin Guide](docs/CLI-ADMIN.md)** - Command-line tools for security management
 - **[Security Quick Start](docs/SECURITY-QUICKSTART.md)** - Get started with encryption and security features
 - **[Security Integration Summary](SECURITY-INTEGRATION-SUMMARY.md)** - Architecture and implementation details
-- **[Encryption Architecture](docs/ENCRYPTION_ARCHITECTURE.md)** - Deep dive into encryption design
+- **[Encryption Architecture](docs/internals/design/ENCRYPTION_ARCHITECTURE.md)** - Deep dive into encryption design
 
 The documentation covers:
 - Authentication (JWT tokens and API keys)
@@ -284,7 +284,7 @@ go build -o bin/tui-demo ./cmd/tui-demo
 > 2026-05-12) because they pre-dated the multi-tenancy work and routed
 > writes to the default tenant. Use `cmd/server` for any real
 > deployment. Horizontal scale is a multi-quarter roadmap item — see
-> `docs/A8_1_SPIKE_2026-05-12.md` for the architectural decision and
+> `docs/internals/design/A8_1_SPIKE_2026-05-12.md` for the architectural decision and
 > `docs/PRODUCTION_QUICKSTART.md` § "Scale Considerations" for the
 > practical workarounds.
 
@@ -610,7 +610,7 @@ curl -X POST http://localhost:8080/v1/retrieve \
 | `labels` | string[] | — | Optional seed-stage label filter |
 | `include_node` | bool | false | Hydrate full node into `metadata.node` |
 
-A hard 50-node cap prevents pathological expansion in dense graphs. See [`docs/F2_GRAPHRAG_DESIGN.md`](docs/F2_GRAPHRAG_DESIGN.md) for the design rationale and [`pkg/retrieval/retrieval_bench_test.go`](pkg/retrieval/retrieval_bench_test.go) for measured latency (p95=82µs on 1k nodes).
+A hard 50-node cap prevents pathological expansion in dense graphs. See [`docs/internals/design/F2_GRAPHRAG_DESIGN.md`](docs/internals/design/F2_GRAPHRAG_DESIGN.md) for the design rationale and [`pkg/retrieval/retrieval_bench_test.go`](pkg/retrieval/retrieval_bench_test.go) for measured latency (p95=82µs on 1k nodes).
 
 ## Benchmarks
 

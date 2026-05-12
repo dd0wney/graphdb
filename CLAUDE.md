@@ -10,7 +10,7 @@ In this order:
 
 1. **`docs/CAPABILITIES_2026-05-10.md`** — what exists in `pkg/` + `cmd/` + the enterprise repo, with maturity tags. Read this before claiming anything is "missing" or "scaffolding only" — coarse grep is misleading because the codebase is large.
 2. **`docs/NEXT_STEPS_2026-05-10.md`** — current planning checkpoint. Critical-path queue + already-tracked work. The header date is the source of truth; if a newer `NEXT_STEPS_<DATE>.md` exists, that supersedes.
-3. **`docs/AUDIT_*_2026-05-06.md`** — multi-specialist audits (architecture, security, performance, code-quality). Most of the current work derives from these. Skim only if your task touches the named area.
+3. **`docs/internals/design/AUDIT_*_2026-05-06.md`** — multi-specialist audits (architecture, security, performance, code-quality). Most of the current work derives from these. Skim only if your task touches the named area.
 
 If the user names a task by track letter (`A4-edges`, `H2`, `F1.1`, `S1`, etc.) or audit-finding ID (`CRIT-1`, `HIGH-2`), that resolves via `NEXT_STEPS_<DATE>.md` or the audit docs. Don't guess what these mean — look them up.
 
@@ -82,7 +82,7 @@ Snapshot on-disk format is a flat `map[uint64]*Node` / `map[uint64]*Edge` even t
 
 ### `//nolint:` per-site convention
 
-`//nolint:` directives MUST include a reason after the lint name. Plain `//nolint` is rejected by lint policy. See `docs/AUDIT_code_quality_2026-05-06.md` and PR #63 for the rationale.
+`//nolint:` directives MUST include a reason after the lint name. Plain `//nolint` is rejected by lint policy. See `docs/internals/design/AUDIT_code_quality_2026-05-06.md` and PR #63 for the rationale.
 
 ### `getEdge` / `getNode` benchmarks: prevent Clone elision
 
@@ -113,7 +113,7 @@ This codebase has had multiple audits and the planning doc sometimes misframes t
 
 ## Preparing a new session (handoff convention)
 
-When a session is about to end with substantive multi-PR work (≥3 merged PRs, or any work that left non-obvious state), write a session handoff at `docs/SESSION_HANDOFF_<YYYY-MM-DD>-<HHMM>Z.md` before stopping. The next session opens by reading the most recent one.
+When a session is about to end with substantive multi-PR work (≥3 merged PRs, or any work that left non-obvious state), write a session handoff at `docs/internals/design/SESSION_HANDOFF_<YYYY-MM-DD>-<HHMM>Z.md` before stopping. The next session opens by reading the most recent one.
 
 **Skill**: `session-handoff` (`.claude/skills/session-handoff/SKILL.md`) automates this — it gathers state, fills the 7-section template, and opens a PR. Use it instead of writing the doc by hand. The convention below is what the skill follows; if you're inspecting why the skill produces what it does, this is the spec.
 
@@ -141,7 +141,7 @@ Single-agent / session-lifecycle skills live in `.claude/skills/<name>/SKILL.md`
 
 | Skill | When | Output |
 |---|---|---|
-| `session-handoff` | At session-end with substantive multi-PR work, or "prepare a handoff." | `docs/SESSION_HANDOFF_<...>.md` + PR. Stops before merge. |
+| `session-handoff` | At session-end with substantive multi-PR work, or "prepare a handoff." | `docs/internals/design/SESSION_HANDOFF_<...>.md` + PR. Stops before merge. |
 | `planning-doc-update` | After a tracked task closes, or "mark X done in the planning doc." | Targeted edits to `docs/NEXT_STEPS_<DATE>.md` + PR. Single-file diff. |
 | `ci-status-triage` | Before any merge (this repo's normal state is `UNSTABLE`-but-mergeable; manual classification required). | Categorised failure list + merge/hold/investigate recommendation. Doesn't modify anything. |
 | `branch-cleanup` | After multi-PR work, or "clean up stale branches." | Local `git branch -D` of confirmed-merged branches. Asks user before bulk delete. |
