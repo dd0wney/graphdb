@@ -204,7 +204,7 @@ scrape_configs:
     static_configs:
       - targets: ['host.docker.internal:9090']
         labels:
-          instance: 'graphdb-primary'
+          instance: 'graphdb-server'
           datacenter: 'nyc1'
 
   # GraphDB health checks

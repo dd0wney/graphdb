@@ -53,17 +53,17 @@ make build-linux
 
 ```bash
 # Create 8GB RAM droplet
-doctl compute droplet create cluso-graphdb-primary \
+doctl compute droplet create cluso-graphdb \
   --size s-4vcpu-8gb \
   --image ubuntu-22-04-x64 \
   --region nyc3 \
   --ssh-keys $(doctl compute ssh-key list --format ID --no-header) \
-  --tag-names production,graphdb,primary \
+  --tag-names production,graphdb \
   --enable-monitoring \
   --enable-backups
 
 # Get IP
-DROPLET_IP=$(doctl compute droplet get cluso-graphdb-primary --format PublicIPv4 --no-header)
+DROPLET_IP=$(doctl compute droplet get cluso-graphdb --format PublicIPv4 --no-header)
 echo "Droplet IP: $DROPLET_IP"
 ```
 
