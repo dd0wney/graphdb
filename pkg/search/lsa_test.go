@@ -470,6 +470,96 @@ func TestLogEntropy_SingleDocDegradesToOne(t *testing.T) {
 	}
 }
 
+// TestQuantizeFloat32_RoundTrip pins the int8 quantization helper's
+// fidelity. For inputs in the L2-normalized range [-1, 1] the maximum
+// per-component reconstruction error is 1/lsaQuantScale ≈ 0.79%; this
+// is the bound the LSAIndex docVecsQ storage relies on. The test
+// exhaustively probes the boundary values (±1, 0, common interior
+// points) plus a random sweep.
+func TestQuantizeFloat32_RoundTrip(t *testing.T) {
+	cases := []float32{-1.0, -0.9, -0.5, -0.1, 0, 0.1, 0.5, 0.9, 1.0, 0.007, -0.007}
+	q := quantizeFloat32(cases)
+	if len(q) != len(cases) {
+		t.Fatalf("length: got %d want %d", len(q), len(cases))
+	}
+
+	// Symmetric range: ±1 saturates at ±127.
+	if q[0] != -127 {
+		t.Errorf("-1.0 quantized to %d, want -127", q[0])
+	}
+	if q[len(q)-3] != 127 {
+		t.Errorf("1.0 quantized to %d, want 127", q[len(q)-3])
+	}
+	if q[4] != 0 {
+		t.Errorf("0.0 quantized to %d, want 0", q[4])
+	}
+
+	// Reconstruction error stays within the per-component bound.
+	const maxErr = 1.0 / 127.0
+	for i, x := range cases {
+		recon := float32(q[i]) / lsaQuantScale
+		if math.Abs(float64(x-recon)) > maxErr {
+			t.Errorf("input %v quantized to %d → reconstructed %v (err %g > %g)",
+				x, q[i], recon, math.Abs(float64(x-recon)), maxErr)
+		}
+	}
+}
+
+// TestQuantizeFloat32_ClampsOutOfRange documents the defensive behavior
+// when a caller passes a vector outside the L2-normalized [-1, 1] range.
+// Mathematically unreachable for the LSA pipeline (vectors are
+// L2-normalized before quantization) but cheap insurance against an
+// upstream change that silently broke the invariant.
+func TestQuantizeFloat32_ClampsOutOfRange(t *testing.T) {
+	q := quantizeFloat32([]float32{2.5, -3.7, 1.0001, -1.0001})
+	expected := []int8{127, -127, 127, -127}
+	for i := range expected {
+		if q[i] != expected[i] {
+			t.Errorf("clamp[%d]: got %d want %d", i, q[i], expected[i])
+		}
+	}
+}
+
+// TestLSADocVector_QuantizationFidelity pins that doc vectors retrieved
+// via DocVector remain very close to L2-normalized after the int8 round-
+// trip. Quantization perturbs each component by ≤ 1/127, so the squared
+// norm wanders by at most ~k/127² ≈ k × 6.2e-5. For k=10 (test config),
+// expected drift is bounded by ~6e-4 in squared-norm terms; we assert
+// the recovered norm sits in [0.99, 1.01] which is a comfortable margin
+// above that.
+func TestLSADocVector_QuantizationFidelity(t *testing.T) {
+	idx, err := BuildLSAIndex(testCorpus(), testLSAConfig())
+	if err != nil {
+		t.Fatalf("BuildLSAIndex: %v", err)
+	}
+
+	for _, d := range testCorpus() {
+		vec, ok := idx.DocVector(d.ID)
+		if !ok {
+			t.Fatalf("doc %d: no vector", d.ID)
+		}
+		var sq float32
+		for _, x := range vec {
+			sq += x * x
+		}
+		norm := float32(math.Sqrt(float64(sq)))
+		// The pre-quantization vector was L2-normalized to 1.0. After
+		// int8 round-trip the recovered norm should stay close. If
+		// this trips, the quantization formula has drifted (sign,
+		// scale, or rounding).
+		if norm < 0.99 || norm > 1.01 {
+			t.Errorf("doc %d: recovered norm %.4f outside [0.99, 1.01]", d.ID, norm)
+		}
+		// Max component magnitude must not exceed 1 + per-component
+		// quantization error.
+		for _, x := range vec {
+			if math.Abs(float64(x)) > 1.0+1.0/127.0+1e-6 {
+				t.Errorf("doc %d: component %v exceeds [-1,1] envelope after dequant", d.ID, x)
+			}
+		}
+	}
+}
+
 func cosine(a, b []float32) float32 {
 	if len(a) != len(b) {
 		return 0

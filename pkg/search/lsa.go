@@ -87,12 +87,25 @@ type LSAIndex struct {
 	// to down-weight terms whose distribution across documents is close
 	// to uniform (low signal) more aggressively than IDF.
 	globalWeight []float32
-	b            [][]float32    // l×T: B = Q^T × X, used for query folding
-	ub           [][]float32    // l×k: top-k eigenvectors of Gram(B)
-	docVecs      [][]float32    // D×k: L2-normalized document embeddings
-	nodeIDs      []uint64       // row index → graphdb NodeID
-	nodeIDMap    map[uint64]int // NodeID → row index
-	content      map[uint64]string
+	b            [][]float32 // l×T: B = Q^T × X, used for query folding
+	ub           [][]float32 // l×k: top-k eigenvectors of Gram(B)
+	// docVecsQ holds the L2-normalized document embeddings quantized to int8
+	// using fixed scale lsaQuantScale (=127). Trades ~0.8% max per-component
+	// quantization error for 4× memory reduction vs the previous float32
+	// representation. For an L2-normalized vector all components lie in
+	// [-1, 1], so the scale-127 mapping never overflows int8 range. Lookups
+	// dequantize on demand (DocVector); the inner loop in TopKByVector folds
+	// the dequantization into the dot product so the only cost is one
+	// int8→float32 cast per term plus a single division at the loop tail.
+	//
+	// Per-vector scale was considered (better resolution for vectors whose
+	// max-abs component is well below 1) but rejected: ~17% extra storage
+	// for ≤2× resolution gain on the typical L2-normalized vector where
+	// components are O(1/sqrt(dims)).
+	docVecsQ  [][]int8
+	nodeIDs   []uint64       // row index → graphdb NodeID
+	nodeIDMap map[uint64]int // NodeID → row index
+	content   map[uint64]string
 
 	// BM25 inverted index over the same tokenization used for LSA, so query
 	// stemming is consistent across both scorers.
@@ -114,6 +127,41 @@ type bm25Entry struct {
 type sparseRow struct {
 	idx []int32
 	val []float32
+}
+
+// lsaQuantScale is the fixed int8 quantization scale for L2-normalized
+// document embeddings. Multiplying a float in [-1, 1] by 127 maps it to
+// [-127, 127], the symmetric int8 range. Dequantization is float32(q) /
+// lsaQuantScale. Max per-component error is 1/127 ≈ 0.79%, which is well
+// below the LSA-noise-floor that the algorithm itself introduces. The
+// constant is internal — callers see only float32 vectors at the
+// DocVector / TopKByVector / FoldQuery boundaries.
+const lsaQuantScale float32 = 127.0
+
+// quantizeFloat32 maps a slice of L2-normalized floats to symmetric int8
+// using lsaQuantScale. Components outside [-1, 1] are clamped (defensive
+// against numerical drift; mathematically unreachable for a properly
+// L2-normalized vector but cheap insurance against signed-overflow
+// surprises if the invariant is ever broken upstream).
+func quantizeFloat32(v []float32) []int8 {
+	out := make([]int8, len(v))
+	for i, x := range v {
+		q := x * lsaQuantScale
+		switch {
+		case q > 127:
+			out[i] = 127
+		case q < -127:
+			out[i] = -127
+		default:
+			// round-to-nearest via +0.5 / -0.5 then truncate.
+			if q >= 0 {
+				out[i] = int8(q + 0.5)
+			} else {
+				out[i] = int8(q - 0.5)
+			}
+		}
+	}
+	return out
 }
 
 // lsaStop filters common English and wiki-noise tokens. The "wiki/tags/created/
@@ -374,7 +422,13 @@ func BuildLSAIndex(docs []Document, cfg LSAConfig) (*LSAIndex, error) {
 	}
 
 	// --- Document embeddings ---
-	docVecs := make([][]float32, D)
+	//
+	// Compute each doc's projection into the k-dim latent space, L2-normalize
+	// it, then quantize to int8 via lsaQuantScale. The quantization step
+	// happens last so the L2 invariant the cosine math relies on is preserved
+	// in the (logical) float-space representation; downstream code dequantizes
+	// on demand.
+	docVecsQ := make([][]int8, D)
 	nodeIDs := make([]uint64, D)
 	nodeIDMap := make(map[uint64]int, D)
 	content := make(map[uint64]string, D)
@@ -403,7 +457,7 @@ func BuildLSAIndex(docs []Document, cfg LSAConfig) (*LSAIndex, error) {
 				vec[j] *= inv
 			}
 		}
-		docVecs[d] = vec
+		docVecsQ[d] = quantizeFloat32(vec)
 	}
 
 	// --- BM25 inverted index ---
@@ -436,7 +490,7 @@ func BuildLSAIndex(docs []Document, cfg LSAConfig) (*LSAIndex, error) {
 		globalWeight: globalWeight,
 		b:            B,
 		ub:           UB,
-		docVecs:      docVecs,
+		docVecsQ:     docVecsQ,
 		nodeIDs:      nodeIDs,
 		nodeIDMap:    nodeIDMap,
 		content:      content,
@@ -539,14 +593,21 @@ func (i *LSAIndex) BM25Score(tokens []string, candidates map[uint64]bool) map[ui
 
 // DocVector returns the L2-normalized LSA embedding for the given NodeID.
 // The second return is false if the NodeID was not present in the corpus.
+//
+// The returned slice is freshly allocated and dequantized from the int8
+// in-memory representation; callers can hold it without worrying about
+// index-state mutation. Re-quantization error vs the original float32 is
+// at most lsaQuantScale^-1 per component (~0.79%).
 func (i *LSAIndex) DocVector(id uint64) ([]float32, bool) {
 	d, ok := i.nodeIDMap[id]
 	if !ok {
 		return nil, false
 	}
-	// Return a copy so callers can't mutate index state.
-	out := make([]float32, len(i.docVecs[d]))
-	copy(out, i.docVecs[d])
+	qv := i.docVecsQ[d]
+	out := make([]float32, len(qv))
+	for j, x := range qv {
+		out[j] = float32(x) / lsaQuantScale
+	}
 	return out, true
 }
 
@@ -594,21 +655,26 @@ type LSAResult struct {
 // A mismatched dimension returns an error; it's a programming bug, not
 // a user error.
 //
-// No storage I/O — operates entirely on in-memory docVecs.
+// No storage I/O — operates entirely on the in-memory int8-quantized doc
+// vectors. The dot product fuses the dequantization into the accumulator
+// (multiply int8 component then divide once at the loop tail) so the
+// quantization shows up as a single division per doc rather than per
+// component.
 func (i *LSAIndex) TopKByVector(qvec []float32, k int) ([]LSAResult, error) {
 	if len(qvec) != i.dims {
 		return nil, fmt.Errorf("qvec dim %d != index dim %d", len(qvec), i.dims)
 	}
 	if k <= 0 {
-		k = len(i.docVecs)
+		k = len(i.docVecsQ)
 	}
 
-	scored := make([]LSAResult, 0, len(i.docVecs))
-	for d, dv := range i.docVecs {
+	scored := make([]LSAResult, 0, len(i.docVecsQ))
+	for d, dvq := range i.docVecsQ {
 		sim := float32(0)
-		for j := range dv {
-			sim += dv[j] * qvec[j]
+		for j, x := range dvq {
+			sim += qvec[j] * float32(x)
 		}
+		sim /= lsaQuantScale
 		scored = append(scored, LSAResult{NodeID: i.nodeIDs[d], Similarity: sim})
 	}
 
