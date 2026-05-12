@@ -139,6 +139,15 @@ Interactive terminal interface with:
 
 See the [CLI Admin documentation](docs/CLI-ADMIN.md) for complete usage.
 
+## Scalability & Limitations
+
+GraphDB is designed for high performance on a single node. While it includes advanced multi-tenancy and high-throughput primitives, users should be aware of the following architectural trade-offs:
+
+- **Single-Node by Design**: The core engine is optimized for single-machine deployments. While it supports Primary/Replica replication for read scaling, write throughput is bounded by the resources of a single Go process.
+- **In-Memory + LSM Architecture**: By default, GraphDB prioritizes low-latency access by keeping the graph topology in memory. Persistent storage (LSM/B+Tree) is used for durability and cold data tiering.
+- **LSA Scale Ceiling**: The built-in Latent Semantic Analysis (LSA) for vector embeddings is optimized for corpora of ~100K-500K documents (at 200 dimensions). For larger datasets, we recommend using dedicated embedding models (e.g., OpenAI, Anthropic, or BGE) via the standard `/v1/embeddings` interface.
+- **Horizontal Scaling**: Horizontal scaling (sharding, distributed consensus) is currently the responsibility of the operator (e.g., deploying per-tenant instances behind a load balancer).
+
 ## Documentation
 
 Comprehensive API documentation is available at **[graphdb.pages.dev](https://dd0wney.github.io/graphdb/)**
