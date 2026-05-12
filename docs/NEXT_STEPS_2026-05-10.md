@@ -45,14 +45,14 @@ All M1–M6 items shipped. PRs #2, #3, #4, #5, #15, #16 merged into `main`.
 - **A8.1**: Deprecate or rebuild standalone primary/replica binaries on top of `cmd/server` infrastructure. The current `GRAPHDB_LEGACY_BINARY` gate is a holding action, not a fix. **Off critical path.**
 - **A8.2**: Replica's `/nodes` GET unauth'd cross-tenant dump. **✅ Done 2026-05-10 (PR #81)** — removed route from both `cmd/graphdb-replica` (real leak via `GetAllNodesAcrossTenants()`) and `cmd/graphdb-nng-replica` (empty-stub, removed for symmetry). See A8.2 section below for the remove-vs-add-auth decision.
 
-### Track F — Killer features
+### Track F — Killer features ✅ **CLOSED — F1 + F1.1 + F2 + F3 done; two off-critical-path cleanup tasks remain**
 
 | Original task | Status | Evidence |
 |---|---|---|
 | F1: `/v1/embeddings` OpenAI-compat endpoint | ✅ Done | PR #7 (`09d527b`) |
 | F1.1: per-tenant LSA (named as follow-up) | ✅ Shipped 2026-04-20 (`cf57251` + `d7f74d5`) | Per-tenant `TenantLSAIndexes` registry, tenant-scoped corpus assembly, per-tenant `/v1/embeddings`. Verified by `TestEmbeddings_TenantIsolation`. Spike-on-discovery: `docs/F1_1_PER_TENANT_LSA_DESIGN.md` |
 | F2: GraphRAG retrieval — **shipped as `/v1/retrieve` (design pivot)** | ✅ Done | F2 #1–#7: spike `b2943d3`, factor `079a3c6`, package `039e8d1`, handler `01afe54`, regression `3a84cdf`, bench `80bbdc9`, docs `0f673b6` |
-| F3: Compliance API package | 🟡 In progress (3-of-5 sub-PRs landed) | PR-1 design (#104), PR-0 prereq (#107), PR-2 audit-log endpoint (#111) done; PR-3a masking policy + read-path (#114, in CI); PR-3b GraphQL + PR-4 docs pending. Decomposed in §"F3" below. |
+| F3: Compliance API package | ✅ Done 2026-05-12 | PR-1 design (#104), PR-0 audit-collector prereq (#107), PR-2 audit-log endpoint (#111), PR-3a masking policy + read-path (#114), PR-3b GraphQL resolvers (#122), PR-4 docs + audit-regression (#124). Decomposed in §"F3" below. |
 
 **F2 design pivot** is documented in `F2_GRAPHRAG_DESIGN.md` and rationalized in commit `b2943d3`: LangChain BaseRetriever shape (not OpenAI-compat — OpenAI defines no retrieval endpoint), new `POST /v1/retrieve` (not `expand_hops` on `/hybrid-search`), avoid "graphrag" in the URL. The May 8 plan's F2 task description is superseded; the spike doc is authoritative going forward.
 
@@ -118,18 +118,18 @@ The spike (`docs/F1_1_PER_TENANT_LSA_DESIGN.md`) found that per-tenant LSA alrea
 
 **Acceptance**: spike conclusion + cleanup PR (this one) cover the original intent. F1.1-impl Task in coord retired, not closed.
 
-#### F3. Compliance API package 🟡 IN PROGRESS
+#### F3. Compliance API package ✅ DONE 2026-05-12 (PRs #104, #107, #111, #114, #122, #124)
 
-Decomposed into 5 sub-PRs per `docs/F3_COMPLIANCE_API_DESIGN.md`. Coord tracks the sub-PRs as `graphdb:F3.1`/`.2`/`.3` (subtasks of `graphdb:F3`); see `dd0wney/graphdb-coord` for the dependency graph.
+Decomposed into 6 sub-PRs per `docs/F3_COMPLIANCE_API_DESIGN.md` and shipped on the design's two-week budget. Coord tracked the sub-PRs as `graphdb:F3.1`/`.2`/`.3` (subtasks of `graphdb:F3`); all three closed by 2026-05-12T00:17Z.
 
 - [x] **F3 PR-1 (design)** ✅ DONE 2026-05-10 (PR #104): `docs/F3_COMPLIANCE_API_DESIGN.md` — 4 design decisions, audit-collector prereq scoped out as PR-0.
 - [x] **F3 PR-0 (audit-collector prereq)** ✅ DONE 2026-05-10 (PR #107): audit middleware now sees auth+tenant via collector pattern.
 - [x] **F3 PR-2 (audit-log endpoint)** ✅ DONE 2026-05-11 (PR #111): `GET /v1/compliance/audit-log` — tenant-scoped, paginated, follows existing handler-tenant-context pattern.
-- [ ] **F3 PR-3a (masking policy + read-path masking)** — PR #114 *(in CI, UNSTABLE-but-mergeable; known infra exit-143)*. Adds `pkg/masking/Policy` + `PolicyStore` + `Apply`; `POST/GET /v1/compliance/masking-policy[/{tenant}]` endpoints; per-tenant read-path masking sweep across 13 sites (`handlers_{nodes,edges,search,vectors,retrieve,hybrid_search,algorithms_traversal}.go`) via signature-change to `nodeToResponse`/`edgeToResponse` taking `context.Context`. Load-bearing test: `TestMasking_PolicyFollowsTenant`. Tracked as `graphdb:F3.1` in coord.
-- [ ] **F3 PR-3b (GraphQL resolver integration)** — pending. Six resolver sites in `pkg/graphql/` per design doc §3 Decision 3; mirror PR-3a's `applyMaskingPolicy` pattern, reusing `Policy.Apply` + `Masker`. Tracked as `graphdb:F3.2` in coord (DEPENDS_ON F3.1).
-- [ ] **F3 PR-4 (docs + audit-regression test)** — pending. `docs/COMPLIANCE.md` (SOC2 control mapping, GDPR Article 32 evidence, masking-policy semantics, retention) + regression row in `pkg/api/audit_regression_test.go` per design doc §5 template. Tracked as `graphdb:F3.3` in coord (DEPENDS_ON F3.2).
+- [x] **F3 PR-3a (masking policy + read-path masking)** ✅ DONE 2026-05-11 (PR #114): `pkg/masking/Policy` + `PolicyStore` + `Apply`; `POST/GET /v1/compliance/masking-policy[/{tenant}]`; per-tenant read-path masking sweep across 13 sites via signature-change to `nodeToResponse`/`edgeToResponse` taking `context.Context`. Pinned by `TestMasking_PolicyFollowsTenant`.
+- [x] **F3 PR-3b (GraphQL resolver integration)** ✅ DONE 2026-05-11 (PR #122): six resolver sites in `pkg/graphql/` mirror PR-3a's `applyMaskingPolicy` pattern using the shared `Policy.Apply` + `Masker`. Closes the REST-vs-GraphQL contract-drift gap.
+- [x] **F3 PR-4 (docs + audit-regression test)** ✅ DONE 2026-05-12 (PR #124): `docs/COMPLIANCE.md` (~290 lines: SOC2 control mapping, GDPR Article 32 evidence, masking-policy semantics, retention) + three F3 rows in `TestAuditRegressionSuite_CrossTenantIsolation`. These regression rows are now the umbrella check catching contract drift across REST + GraphQL — keep them green on any future masking or audit-log change.
 
-**Acceptance**: Audit log returns tenant's events in append-only order; masking policy applies to all read paths across **both REST and GraphQL**; cross-tenant policy access denied (pinned by `TestMasking_PolicyFollowsTenant` for REST + planned GraphQL equivalent in PR-3b/PR-4).
+**Acceptance met**: audit log returns tenant's events in append-only order; masking policy applies to all read paths across **both REST and GraphQL** (six GraphQL resolvers + thirteen REST handler sites); cross-tenant policy access denied; pinned by `TestMasking_PolicyFollowsTenant` for REST and the F3 rows in `TestAuditRegressionSuite_CrossTenantIsolation` for both surfaces.
 
 #### F3-related cleanup (off critical path)
 
@@ -195,10 +195,10 @@ Surfaced by PR #82 (`docs/COORD_GAP_2026-05-10.md`) when the 2026-05-10 02:36Z s
 H1 ✅ ──┐
         ├─→ A4 ✅ ──→ A4-edges ✅ ──→ A8.2 ✅ ──┐
 H3 ✅ ──┘                                       ├─→ F1.1 ✅ (spike-on-discovery 2026-05-10) ──┐
-                                                └─→ H2 ─────────────────────────────────────── ├─→ F3 → A8.1 → S1
+                                                └─→ H2 ─────────────────────────────────────── ├─→ F3 ✅ → **A8.1** → S1
 ```
 
-**Critical path**: ~~H1~~ → ~~A4~~ → ~~A4-edges~~ → ~~A8.2~~ → ~~F1.1-spike~~ → **F3** → A8.1 → S1.
+**Critical path**: ~~H1~~ → ~~A4~~ → ~~A4-edges~~ → ~~A8.2~~ → ~~F1.1-spike~~ → ~~F3~~ → **A8.1** → S1.
 
 Off-path parallel work: ~~H3~~ ✅ (branches), ~~H4~~ ✅ (coord-deploy gap — closed via B-lite + skill rewrite + multi-project, PRs #85–#93), ~~H2~~ ✅ (requireAdmin, PR #102). The H4.x net-new sub-tracks are now closed or in review: ~~H4.1~~ ✅ (#105), ~~H4.5~~ ✅ (graphdb-coord `e3e1986`), ~~H4.6~~ ✅ (graphdb-coord `af1a835`), ~~H4.7~~ ✅ (graphdb-coord `5b190a1`); H4.3 (#108), H4.3-followup (#110), H4.4 (#109) in review — none blocking.
 
@@ -207,9 +207,9 @@ Off-path parallel work: ~~H3~~ ✅ (branches), ~~H4~~ ✅ (coord-deploy gap — 
 - **A4 early** ✅ — the audit's HIGH-1/HIGH-2/CRIT-1 collapsed into one operation; closed via PR #67 (with the throughput-criterion reframe documented).
 - **A4-edges after A4** ✅ — the partition idiom and helper shape were fresh from A4; landed PR #70 with the three-surfaces-to-one collapse documented (Commit() holds gs.mu around apply* calls, neutralizing surfaces 2+3).
 - **A8.2 after A4-edges** ✅ — A8.2 is a security finding but the legacy-binary gate (`GRAPHDB_LEGACY_BINARY` fail-closed, PR #47) meant exposure was mitigated-in-depth, so A4-edges (real concurrency bug class manifesting as `TestGraphStorage_ConcurrentDeletion` flakes) went first. PR #81 closed A8.2 via removal rather than auth-wrap.
-- **F1.1 resolved by spike-on-discovery (2026-05-10)** — per-tenant LSA already shipped 2026-04-20; the spike's discovery output retires the original ordering rationale. F3 takes the head of the queue.
-- **F3 ahead of A8.1** because F3 introduces new market surface and customer-facing claims; A8.1 is internal architectural cleanup of binaries already gated by `GRAPHDB_LEGACY_BINARY`. F3 has higher external value per unit of work.
-- **A8.1 late** because it's an architectural cleanup of binaries that are already gated by `GRAPHDB_LEGACY_BINARY`; the urgency is lower.
+- **F1.1 resolved by spike-on-discovery (2026-05-10)** — per-tenant LSA already shipped 2026-04-20; the spike's discovery output retires the original ordering rationale. F3 took the head of the queue.
+- **F3 ahead of A8.1** ✅ — F3 introduced new market surface and customer-facing claims; A8.1 is internal architectural cleanup of binaries already gated by `GRAPHDB_LEGACY_BINARY`. F3 had higher external value per unit of work. Closed 2026-05-12 (PRs #104, #107, #111, #114, #122, #124); A8.1 is now the head of the queue.
+- **A8.1 next** — architectural cleanup of binaries that are already gated by `GRAPHDB_LEGACY_BINARY`; the urgency is lower than F3 but no longer blocked. Spike's go/no-go (rebuild on `cmd/server` vs delete the legacy binaries) is the binary deliverable per `A8_REPLICATION_TENANCY_DESIGN.md` §5.
 - **S1 last** because its output is the **input to the next planning checkpoint**, not work for this one.
 
 ---
@@ -229,7 +229,7 @@ These are explicit questions the user should weigh in on rather than decisions b
 ## Carry-forward decision points from May 8 plan (still open)
 
 1. **GraphRAG SSE vs. WebSocket** — `/v1/retrieve` shipped synchronously per F2 spike. SSE/WebSocket streaming is now a *future* enhancement on the existing handler, not a launch question. Reframe in next planning round.
-2. **Compliance API: REST-only or also GraphQL?** — folds into F3 scoping; defer until F3 starts.
+2. **Compliance API: REST-only or also GraphQL?** — RESOLVED 2026-05-11 (PR #122). Both surfaces ship masking; six GraphQL resolvers + thirteen REST handler sites mirror the same `Policy.Apply` + `Masker` pattern. Contract drift is now pinned by the F3 audit-regression rows added in PR #124.
 3. **Cypher revisit timing** — still gated on storage interface extraction. S1's go/no-go is the trigger.
 
 ---
@@ -262,7 +262,7 @@ Surfaced from a session-end audit of "what would block a serious enterprise cust
 
 - **S1** — storage interface extraction. Without it, the codebase is one big package and the plugin/extension story is undefined. Spike scheduled at the end of the 90-day window; if its go/no-go says "do this NOW" the rest of the plan re-orders. The largest unlock for "third-party storage backends" or "embedded engine for other products."
 - **~~F1.1~~** — per-tenant LSA. RESOLVED 2026-05-10. The "cross-tenant embedding leakage" framing was stale; per-tenant routing + tenant-scoped corpus assembly shipped 2026-04-20 (`cf57251` + `d7f74d5`). Verified by `TestEmbeddings_TenantIsolation`. See `docs/F1_1_PER_TENANT_LSA_DESIGN.md` for the full discovery + storage model.
-- **F3** — Compliance API package. SOC2/GDPR integration is named as a deliverable but not built; the underlying primitives (`pkg/masking/`, per-tenant property filter, `pkg/audit/`) all exist, but the customer-facing surface tying them together is absent.
+- **~~F3~~** — Compliance API package. ✅ DONE 2026-05-12 (PRs #104, #107, #111, #114, #122, #124). SOC2/GDPR control mapping is now documented in `docs/COMPLIANCE.md`; audit-log endpoint + per-tenant masking policy ship with regression rows that umbrella-check REST + GraphQL contract drift.
 - **A8.1** — standalone-binary architectural cleanup. The `GRAPHDB_LEGACY_BINARY` fail-closed gate (PR #47) is a holding action, not a fix; the legacy binaries still exist and an operator that opts in still gets the old code path.
 
 ### Architectural ceilings (net-new — not on the 90-day plan)
