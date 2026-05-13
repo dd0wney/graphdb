@@ -7,6 +7,14 @@ import (
 	"sync"
 )
 
+// TODO: tombstone compaction. Tree.Delete writes zero-length values
+// as tombstones rather than removing keys; over time, pages
+// accumulate dead slots that the pager cannot reclaim without a
+// passive scan. A compaction pass would rewrite leaves whose
+// tombstone fraction exceeds a threshold. Out of scope for the
+// btree primitive; expected to live in a higher layer that owns
+// scheduling (e.g. the storage backend that consumes Tree).
+
 const (
 	// PageSize is the standard size for a B+Tree page (4KB)
 	PageSize = 4096

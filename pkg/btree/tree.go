@@ -1,10 +1,4 @@
 // Package btree implements a disk-backed B+Tree primitive.
-//
-// TODO(C1.1): this package has no btree-level unit tests. The
-// integration-level coverage in pkg/storage/btree_storage_test.go
-// exercises Put/Get/Delete via BTreeGraphStorage, but Put/Get/Delete
-// behavior, cursor iteration, split/merge boundaries, and persistence
-// across pager reopens are not directly tested here.
 package btree
 
 import (
@@ -133,14 +127,19 @@ func (t *Tree) Put(key, value []byte) error {
 	return t.insertNonFull(rootNode, key, value)
 }
 
-// Delete marks a key as deleted by writing a zero-length value.
-// Get and the cursor's Next() treat zero-length values as absent.
+// Delete marks a key as deleted by writing a zero-length value as
+// a tombstone. Get and Cursor.Next treat zero-length values as
+// absent, so reads behave as expected.
 //
-// TODO(C1.1): replace with real B+Tree delete (key removal + leaf
-// underflow rebalance) or document tombstone semantics as the
-// intended behavior. Tombstone-only Delete leaks space on the
-// delete-and-rewrite-key pattern (a re-Put of the same key
-// overwrites in place, but pure deletes never reclaim).
+// Tombstone semantics are the intended contract — they trade space
+// for simplicity, deferring the leaf-underflow-rebalance complexity
+// of a real B+Tree delete. A re-Put of a tombstoned key overwrites
+// in place, so the delete-and-rewrite pattern reclaims space; pure
+// deletes do not. A periodic compaction pass would reclaim leaked
+// tombstone slots — see the TODO at the top of pager.go.
+//
+// Callers that need real-removal semantics (e.g. for storage-tier
+// compaction) should layer that on top, not expect Delete to do it.
 func (t *Tree) Delete(key []byte) error {
 	return t.Put(key, nil)
 }
@@ -155,7 +154,7 @@ func (t *Tree) findLeaf(nodeID uint64, key []byte) (*Node, error) {
 		return node, nil
 	}
 
-	idx := node.findKey(key)
+	idx := node.findChild(key)
 	return t.findLeaf(node.Children[idx], key)
 }
 
@@ -167,22 +166,29 @@ func (t *Tree) readNode(pageID uint64) (*Node, error) {
 	return DeserializeNode(page)
 }
 
-// TODO(C1.1): name this 20 (e.g. maxKeysPerNode) and explain the
-// derivation — page size vs. average key/value size. As a literal
-// it makes split-rebalance behavior opaque to readers.
+// maxKeysPerNode is the soft cap that triggers a node split.
+//
+// 20 is a heuristic chosen for typical small-key, small-value
+// workloads. With ~16-byte keys and ~64-byte values it fits well
+// inside a 4KB page (~1.7KB of payload, leaving headroom for
+// fragmentation). At worst case (MaxKeySize + MaxValueSize) only
+// ~3 entries fit per page — the real safety net is Serialize's
+// `pos > PageSize` overflow check, not this constant.
+const maxKeysPerNode = 20
+
 func (t *Tree) isNodeFull(n *Node) bool {
-	return len(n.Keys) >= 20
+	return len(n.Keys) >= maxKeysPerNode
 }
 
 func (t *Tree) insertNonFull(n *Node, key, value []byte) error {
-	idx := n.findKey(key)
-
 	if n.IsLeaf {
+		// findKey's >= semantics is correct for in-leaf positioning:
+		// equal-to-key means update-in-place; otherwise insert at the
+		// returned slot to preserve sort order.
+		idx := n.findKey(key)
 		if idx < len(n.Keys) && bytes.Equal(n.Keys[idx], key) {
-			// Update existing
 			n.Values[idx] = value
 		} else {
-			// Insert new
 			n.Keys = append(n.Keys, nil)
 			copy(n.Keys[idx+1:], n.Keys[idx:])
 			n.Keys[idx] = key
@@ -197,6 +203,11 @@ func (t *Tree) insertNonFull(n *Node, key, value []byte) error {
 		return t.pager.WritePage(n.page)
 	}
 
+	// Internal-node descent: findChild's > semantics is required so
+	// that a key equal to the split-boundary descends to the right
+	// child (which holds it after a leaf split). See findChild's doc
+	// comment in node.go for the full leaf-split rationale.
+	idx := n.findChild(key)
 	child, err := t.readNode(n.Children[idx])
 	if err != nil {
 		return err
@@ -206,7 +217,9 @@ func (t *Tree) insertNonFull(n *Node, key, value []byte) error {
 		if err := t.splitChild(n, idx, child); err != nil {
 			return err
 		}
-		if bytes.Compare(key, n.Keys[idx]) > 0 {
+		// After splitChild, n.Keys[idx] is the new split key. Same
+		// rule: keys >= split go right.
+		if bytes.Compare(key, n.Keys[idx]) >= 0 {
 			child, err = t.readNode(n.Children[idx+1])
 			if err != nil {
 				return err

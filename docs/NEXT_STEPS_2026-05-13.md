@@ -87,12 +87,13 @@ Split into C1.0 + C1.1 after archive inspection (2026-05-13) found three issues 
 - [ ] No consumers yet — pure new package; verified zero coupling (stdlib-only imports).
 - **Acceptance**: package builds, `go vet` clean, `golangci-lint run ./pkg/btree/...` clean. **No test acceptance** — `pkg/btree/` ships without unit tests in this PR; deferred to C1.1.
 
-##### C1.1 — Tests + real Delete + named constant (follow-up)
+##### C1.1 — Tests + Delete contract + named constant ✅ **DONE (this PR)**
 
-- [ ] Write btree-level unit tests: `Put`/`Get` round-trip; `Delete` semantics (whether tombstone or real removal); cursor `Next()` skipping zero-length values; pager close+reopen persistence; split/merge boundary conditions.
-- [ ] Decide `Delete` behavior: replace stub with real key removal + leaf underflow rebalance, OR keep tombstone semantics and document them as the intended contract (and add a TODO for compaction).
-- [ ] Replace literal `20` with named constant (e.g. `maxKeysPerNode`) and add a comment deriving the value from page size + average key/value size.
-- **Acceptance**: btree-level tests pass under `-race -count=3`; `Delete` behavior is either real or explicitly documented as tombstone; no magic numbers.
+- [x] Write btree-level unit tests: `Put`/`Get` round-trip; `Delete` semantics (whether tombstone or real removal); cursor `Next()` skipping zero-length values; pager close+reopen persistence; split/merge boundary conditions. (10 tests in `tree_test.go`, 3 in `node_test.go`.)
+- [x] Decide `Delete` behavior: kept tombstone semantics, documented in `Delete` docstring as the intended contract. Compaction TODO added in `pager.go` for the higher-layer concern.
+- [x] Replace literal `20` with named `maxKeysPerNode` constant and add a comment explaining the heuristic derivation.
+- [x] **Bonus correctness fix surfaced by tests**: `findLeaf` and `insertNonFull` were using `findKey` (`>=`) for internal-node descent, but the leaf-split convention (where `splitKey` lives in the *right* leaf) requires strict `>` for child-selection. Added `findChild` and routed both navigations through it. Without the fix, queries for keys exactly at a split boundary returned not-found.
+- **Acceptance met**: btree-level tests pass under `-race -count=3`; `Delete` behavior is documented as tombstone; no magic numbers.
 
 #### C2. `pkg/storage/btree_storage.go` — B+Tree as a `Storage` backend
 

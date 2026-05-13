@@ -148,10 +148,30 @@ func DeserializeNode(page *Page) (*Node, error) {
 	return n, nil
 }
 
-// findKey returns the index of the first key >= target
+// findKey returns the index of the first key >= target. Used for
+// in-leaf operations: locating an existing key for update, finding
+// the slot where a new key would be inserted, etc.
 func (n *Node) findKey(target []byte) int {
 	for i, key := range n.Keys {
 		if bytes.Compare(key, target) >= 0 {
+			return i
+		}
+	}
+	return len(n.Keys)
+}
+
+// findChild returns the index of the child to descend into for
+// target on an internal node. Returns the first i where Keys[i] >
+// target, or len(Keys) if target is >= all keys.
+//
+// This is distinct from findKey because of the leaf-split convention:
+// when a leaf splits, the split key is the first key of the right
+// leaf (the right leaf keeps [mid:end]) and is also copied into the
+// parent. So a lookup for a key equal to splitKey must descend right,
+// not left — i.e. comparisons must be strict, not >=.
+func (n *Node) findChild(target []byte) int {
+	for i, key := range n.Keys {
+		if bytes.Compare(key, target) > 0 {
 			return i
 		}
 	}
