@@ -1,7 +1,11 @@
 package intelligence
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"log"
 	"sync"
 	"testing"
 
@@ -548,7 +552,213 @@ func TestAutoEmbedObserver_Integration_RejectsMockShape(t *testing.T) {
 	}
 }
 
+// TestAutoEmbedObserver_LogsEmbedderError_SanitizesUserText pins the M-1
+// sanitization contract at the observer site. When the Embedder returns an
+// error whose message contains the user's source text, the log line must
+// surface the error *category* but never the raw error string. A regression
+// here re-opens the audit M-1 leak at the worker layer.
+func TestAutoEmbedObserver_LogsEmbedderError_SanitizesUserText(t *testing.T) {
+	writer := &fakeWriter{}
+	// Simulate the LSAEmbedder pattern: wrap an err whose message contains the
+	// raw user text (FoldQuery formats it with %q). The observer must NOT
+	// log this verbatim.
+	sensitiveText := "user-secret-correlation-id-12345"
+	embedder := &fakeAutoEmbedder{
+		err: fmt.Errorf("lsa embed: no vocabulary terms matched in query %q", sensitiveText),
+	}
+	pool := synchronousPool()
+	defer pool.Shutdown(context.Background())
+
+	obs, _ := NewAutoEmbedObserver(writer, embedder, pool, []EmbeddingPolicy{newDocPolicy()})
+
+	node := &storage.Node{
+		ID:       7,
+		TenantID: "acme",
+		Labels:   []string{"Doc"},
+		Properties: map[string]storage.Value{
+			"body": storage.StringValue(sensitiveText),
+		},
+	}
+
+	out := captureLog(t, func() {
+		obs.OnNodeCreated(context.Background(), node)
+	})
+
+	if !contains(out, "embedder failed") {
+		t.Errorf("log should record the embedder-failed category; got: %s", out)
+	}
+	if !contains(out, "embed-failed") {
+		t.Errorf("log should record the embed-failed category token; got: %s", out)
+	}
+	// M-1 contract: the user-controlled text must NOT appear in the log.
+	if contains(out, sensitiveText) {
+		t.Errorf("M-1 regression: log contains user-controlled source text %q; got: %s",
+			sensitiveText, out)
+	}
+	// Belt and braces: the raw FoldQuery-style fragment also must not appear.
+	if contains(out, "no vocabulary terms matched") {
+		t.Errorf("M-1 regression: log contains raw embedder error message fragment; got: %s", out)
+	}
+	// Useful context that SHOULD appear: tenant, node, policy.
+	for _, expected := range []string{"tenant=acme", "node=7", "policy=Doc"} {
+		if !contains(out, expected) {
+			t.Errorf("log missing diagnostic field %q; got: %s", expected, out)
+		}
+	}
+}
+
+// TestAutoEmbedObserver_LogsEmbedderError_NoIndexCategory pins that the
+// no-index case surfaces with its dedicated category (so operators can
+// distinguish "admin needs to build the index" from generic embed failures).
+func TestAutoEmbedObserver_LogsEmbedderError_NoIndexCategory(t *testing.T) {
+	embedder := &fakeAutoEmbedder{err: ErrNoIndexForTenant{TenantID: "acme"}}
+	pool := synchronousPool()
+	defer pool.Shutdown(context.Background())
+
+	obs, _ := NewAutoEmbedObserver(&fakeWriter{}, embedder, pool, []EmbeddingPolicy{newDocPolicy()})
+	node := &storage.Node{
+		ID: 1, TenantID: "acme", Labels: []string{"Doc"},
+		Properties: map[string]storage.Value{"body": storage.StringValue("hello")},
+	}
+
+	out := captureLog(t, func() {
+		obs.OnNodeCreated(context.Background(), node)
+	})
+
+	if !contains(out, "no-index-for-tenant") {
+		t.Errorf("log should record the no-index-for-tenant category; got: %s", out)
+	}
+}
+
+// TestAutoEmbedObserver_LogsWritebackError pins the writeback-error log
+// path. The error here originates from storage and does not echo user
+// input — safe to log the raw err.Error().
+func TestAutoEmbedObserver_LogsWritebackError(t *testing.T) {
+	writer := &fakeWriter{err: errors.New("storage: tenant index closed")}
+	embedder := &fakeAutoEmbedder{vec: []float32{0.1, 0.2}}
+	pool := synchronousPool()
+	defer pool.Shutdown(context.Background())
+
+	obs, _ := NewAutoEmbedObserver(writer, embedder, pool, []EmbeddingPolicy{newDocPolicy()})
+	node := &storage.Node{
+		ID: 99, TenantID: "acme", Labels: []string{"Doc"},
+		Properties: map[string]storage.Value{"body": storage.StringValue("hello")},
+	}
+
+	out := captureLog(t, func() {
+		obs.OnNodeCreated(context.Background(), node)
+	})
+
+	if !contains(out, "writeback failed") {
+		t.Errorf("log should record writeback-failed; got: %s", out)
+	}
+	if !contains(out, "tenant index closed") {
+		t.Errorf("log should propagate the storage error (no user-text concern here); got: %s", out)
+	}
+}
+
+// TestAutoEmbedObserver_LogsSourceTypeMismatch pins the source-property
+// type-mismatch log path. A node whose source property exists but is not
+// a string is a config bug worth surfacing.
+func TestAutoEmbedObserver_LogsSourceTypeMismatch(t *testing.T) {
+	writer := &fakeWriter{}
+	embedder := &fakeAutoEmbedder{vec: []float32{1, 2}}
+	pool := synchronousPool()
+	defer pool.Shutdown(context.Background())
+
+	obs, _ := NewAutoEmbedObserver(writer, embedder, pool, []EmbeddingPolicy{newDocPolicy()})
+	node := &storage.Node{
+		ID: 13, TenantID: "acme", Labels: []string{"Doc"},
+		// "body" is an int instead of string — typical config error.
+		Properties: map[string]storage.Value{"body": storage.IntValue(42)},
+	}
+
+	out := captureLog(t, func() {
+		obs.OnNodeCreated(context.Background(), node)
+	})
+
+	if !contains(out, "not a string-typed value") {
+		t.Errorf("log should surface the source-type mismatch; got: %s", out)
+	}
+	if len(embedder.snapshot()) != 0 {
+		t.Errorf("embedder should not have been called for non-string source")
+	}
+}
+
+// TestAutoEmbedObserver_NoLogOnNormalSkip pins that the *normal* skip
+// conditions (target already set, source absent, label mismatch) do NOT
+// log — those are not failures, just opt-in misses. A regression here
+// would flood operator logs.
+func TestAutoEmbedObserver_NoLogOnNormalSkip(t *testing.T) {
+	cases := []struct {
+		name string
+		node *storage.Node
+	}{
+		{
+			name: "target-already-set",
+			node: &storage.Node{
+				ID: 1, TenantID: "acme", Labels: []string{"Doc"},
+				Properties: map[string]storage.Value{
+					"body":      storage.StringValue("hi"),
+					"embedding": storage.VectorValue([]float32{1, 2, 3}),
+				},
+			},
+		},
+		{
+			name: "source-property-missing",
+			node: &storage.Node{
+				ID: 2, TenantID: "acme", Labels: []string{"Doc"},
+				Properties: map[string]storage.Value{},
+			},
+		},
+		{
+			name: "label-mismatch",
+			node: &storage.Node{
+				ID: 3, TenantID: "acme", Labels: []string{"NotADoc"},
+				Properties: map[string]storage.Value{"body": storage.StringValue("hi")},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			obs, _ := NewAutoEmbedObserver(
+				&fakeWriter{},
+				&fakeAutoEmbedder{vec: []float32{1, 2}},
+				synchronousPool(),
+				[]EmbeddingPolicy{newDocPolicy()},
+			)
+			out := captureLog(t, func() {
+				obs.OnNodeCreated(context.Background(), tc.node)
+			})
+			if out != "" {
+				t.Errorf("normal-skip path should produce no log output; got: %s", out)
+			}
+		})
+	}
+}
+
 // ---------- helpers ----------
+
+// captureLog redirects the default logger's output to a buffer for the
+// duration of fn, returning whatever was logged. log.Flags is cleared so
+// captured strings don't carry the test process's timestamp prefix.
+//
+// The default logger is process-global, so tests using captureLog must
+// not run with t.Parallel() — concurrent log capture would interleave.
+func captureLog(t *testing.T, fn func()) string {
+	t.Helper()
+	var buf bytes.Buffer
+	oldOutput := log.Writer()
+	oldFlags := log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	defer func() {
+		log.SetOutput(oldOutput)
+		log.SetFlags(oldFlags)
+	}()
+	fn()
+	return buf.String()
+}
 
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {

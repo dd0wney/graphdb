@@ -19,6 +19,7 @@ package intelligence
 
 import (
 	"context"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -245,14 +246,19 @@ func (p *Pool) worker() {
 	}
 }
 
-// executeWithRecover runs task.Execute(ctx) and swallows any panic. A
-// panicking task does not crash the worker; it is logged via the runtime
-// default and execution continues. The contract still says "must not
-// panic" — recovery is a safety net.
+// executeWithRecover runs task.Execute(ctx) and recovers from panics so a
+// misbehaving Task does not crash the worker. Recovery is a safety net,
+// not the contract — tasks must not panic.
+//
+// The recovered panic value is logged so operators have visibility into
+// the fact that recovery fired. A panic that recovers silently is a
+// recipe for "production looks fine but is actually losing work"
+// (audit O-1 framing).
 func (p *Pool) executeWithRecover(ctx context.Context, task Task) {
 	defer func() {
-		//nolint:errcheck // recover() returns any (not error); we intentionally discard the panic value to keep workers alive per the docstring's "safety net" framing.
-		_ = recover()
+		if r := recover(); r != nil {
+			log.Printf("intelligence/pool: worker recovered from task panic: %v", r)
+		}
 	}()
 	task.Execute(ctx)
 }

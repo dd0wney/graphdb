@@ -147,6 +147,8 @@ The docstring acknowledges this and says "errors are logged + metered at the wir
 
 **Recommendation:** Add structured logging in the task's Execute (rate-limited so a misconfigured tenant doesn't flood the log) + a per-error-type counter visible via Prometheus.
 
+**Status (2026-05-13):** Log dimension addressed in a follow-up PR that adds M-1-sanitized structured logs at the embedder-error, writeback-error, source-type-mismatch, and pool-panic-recovery paths. Pool drop events deliberately remain silent (S11 spike §7.5 — counters, not logs). Metrics dimension (Prometheus counters) remains open for a future track.
+
 ### O-2. Vector embedding inversion (generic concern; not graphdb-specific)
 
 Vectors produced by LSA encode the source text in a lossy projection. For known corpora and a small attacker-recoverable vocabulary, partial source-text recovery from the projection is feasible (cosine-similarity-based reverse search). This is a property of vector embeddings generally and applies equally to graphdb's LSAEmbedder and any future enterprise-plugin embedder.

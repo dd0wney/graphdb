@@ -2,7 +2,9 @@ package intelligence
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
@@ -193,12 +195,27 @@ type autoEmbedTask struct {
 
 // Execute runs the embed+writeback pipeline for one node/policy pair.
 //
-// The task returns silently on any error condition (missing source,
-// non-string source, embedder error, writeback error) because there is
-// no caller to surface the error to — the task is dispatched from
-// OnNodeCreated which has already returned by the time Execute runs. The
-// canonical observability for these conditions is via metrics + structured
-// logs at the wire-up layer (R2.5b will add these).
+// Error handling:
+//
+// The task is dispatched from OnNodeCreated which has already returned by
+// the time Execute runs — there is no caller-side error channel. Real
+// errors (source-property type mismatch, embedder backend failure,
+// writeback failure) are surfaced via structured logs at the operator's
+// log stream. Normal "skip" conditions (target already set, source
+// property absent) stay silent — they aren't failures.
+//
+// The embedder-error log path is M-1 sanitized: the raw error from
+// Embedder.Embed may include user text (LSAEmbedder wraps FoldQuery's
+// error, which formats the query string into its message via %q). The log
+// records only an error *category* — never the raw err.Error() — so
+// operator log streams never carry user query content. See
+// docs/internals/design/AUDIT_vector_embedding_side_channels_2026-05-15.md
+// finding M-1.
+//
+// Backpressure-drop events (Pool.Submit returning false because the queue
+// is full) deliberately do NOT log here — they happen at high frequency
+// in normal operation and would dominate the log. The Pool.Dropped()
+// counter is the operator interface for that signal (S11 spike §7.5).
 func (t *autoEmbedTask) Execute(ctx context.Context) {
 	if err := ctx.Err(); err != nil {
 		return
@@ -211,31 +228,57 @@ func (t *autoEmbedTask) Execute(ctx context.Context) {
 		return
 	}
 
-	// Read source text. Skip silently if the source is missing or non-string —
-	// the policy is opt-in by label; a label-matching node without source is
-	// a normal "this node doesn't need embedding" case.
+	// Read source text. Missing source is a normal "this node doesn't need
+	// embedding" case (policy is opt-in by label); skip silently. A
+	// present-but-non-string value is a config bug worth surfacing.
 	sourceVal, ok := t.node.Properties[t.policy.SourceProperty]
 	if !ok {
 		return
 	}
 	text, err := sourceVal.AsString()
 	if err != nil {
+		log.Printf("auto-embed: tenant=%s node=%d policy=%s: source property %q is not a string-typed value",
+			t.node.TenantID, t.node.ID, t.policy.Label, t.policy.SourceProperty)
 		return
 	}
 
-	// Compute embedding. Errors here (ErrNoIndexForTenant, out-of-vocab,
-	// backend-specific failures) are logged + metered at the wire-up layer.
 	vec, err := t.embedder.Embed(ctx, t.node.TenantID, text)
 	if err != nil {
+		// M-1 sanitization: don't log err.Error() — it may contain the
+		// user's query text. Log a category instead.
+		log.Printf("auto-embed: tenant=%s node=%d policy=%s: embedder failed (%s)",
+			t.node.TenantID, t.node.ID, t.policy.Label, embedErrorCategory(err))
 		return
 	}
 
 	// Writeback. UpdateNodeForTenant is the tenant-strict path; the node's
 	// captured TenantID ensures the writeback lands in the same tenant the
-	// node was created in.
+	// node was created in. Writeback errors come from storage (closed
+	// storage, concurrent delete) — they don't echo user input, safe to log
+	// verbatim.
 	update := map[string]storage.Value{
 		t.policy.TargetProperty: storage.VectorValue(vec),
 	}
-	//nolint:errcheck // Writeback failures (closed storage, concurrent delete) are logged + metered at the wire-up layer; no caller to surface to from the worker goroutine.
-	_ = t.writer.UpdateNodeForTenant(t.node.ID, update, t.node.TenantID)
+	if err := t.writer.UpdateNodeForTenant(t.node.ID, update, t.node.TenantID); err != nil {
+		log.Printf("auto-embed: tenant=%s node=%d policy=%s: writeback failed: %v",
+			t.node.TenantID, t.node.ID, t.policy.Label, err)
+	}
+}
+
+// embedErrorCategory returns a short, content-free category string for an
+// Embedder error. The result never contains user-controlled text — only
+// fixed identifiers — so it is safe to include in operator log streams.
+//
+// Categories:
+//   - "no-index-for-tenant" — ErrNoIndexForTenant (admin must build the
+//     index; permanent until acted on).
+//   - "embed-failed" — anything else (out-of-vocab, zero-vector projection,
+//     backend-specific failures). The Embedder docstring is the audit
+//     trail for what's reachable here.
+func embedErrorCategory(err error) string {
+	var noIndex ErrNoIndexForTenant
+	if errors.As(err, &noIndex) {
+		return "no-index-for-tenant"
+	}
+	return "embed-failed"
 }
