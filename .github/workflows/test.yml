@@ -14,7 +14,12 @@ jobs:
       fail-fast: false
       matrix:
         go-version: ['1.23', '1.24', '1.25']
-        os: [ubuntu-latest, macos-latest]
+        # Ubuntu runners hit external-SIGTERM exit-143 on test-verbose/test-race
+        # consistently (CLAUDE.md § "Known infra patterns"; NEXT_STEPS_2026-05-13.md
+        # § Track H). macOS-only matrix until the contention root cause is addressed.
+        # Build/tagged-build jobs below stay on ubuntu-latest (short-running; produce
+        # Linux artifacts; not subject to the SIGTERM pattern).
+        os: [macos-latest]
 
     steps:
     - name: Checkout code
