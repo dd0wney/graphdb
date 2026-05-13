@@ -1,26 +1,25 @@
 // Package query's planner.go translates a Query AST into a tree of
-// PhysicalOperators (C4.0 extraction). Consumes C3.0's operator types.
+// PhysicalOperators (C4.0 extraction + C4.1 q.Call reinstate). Consumes
+// C3.0's operator types + C3.1's CallOperator.
 //
-// Status: PARTIAL. C4.0 lifts the planner from
-// origin/archive/gemini-bulk-2026-05-13^3 with no consumers — the existing
-// Step-based Executor (executor.go + executor_steps.go) keeps serving
-// /v1/cypher. The Planner runs only when wired by C5 (parser additions
-// for CALL/CREATE/SET/DELETE/REMOVE/MERGE) and a planner-driven executor
-// path in a later PR.
+// Status: PARTIAL. The planner runs only when wired by a planner-driven
+// executor path; the existing Step-based Executor (executor.go +
+// executor_steps.go) keeps serving /v1/cypher. C5 (parser CALL/YIELD) +
+// C3.1 (CallOperator) + this file's q.Call block now form the full
+// AST → operator translation for CALL ... YIELD; execution requires
+// C6's procedure bodies (Decision-6-gated in NEXT_STEPS_2026-05-13.md).
 //
 // Deferred:
-//   - CALL clause handling — q.Call references CallClause (C5 parser
-//     territory; field doesn't exist on Query yet) and emits CallOperator
-//     (C3-deferred to C6 co-land). The block lives commented at its
-//     original position so the next agent reinstates it cleanly.
-//   - Planner-level unit tests — deferred to C4.1, mirroring the C1.0/C1.1
-//     and C3.0/C3.1 splits.
+//   - Planner-level unit tests — deferred (mirroring the C1.0/C1.1 and
+//     C3.0/C3.1 splits). The q.Call reinstate in C4.1 specifically should
+//     get a planner test that confirms a parsed CALL query produces a
+//     plan tree containing CallOperator at the right position.
 //
 // Several archive comments are preserved verbatim: "Simplified" on the
 // OPTIONAL MATCH path, "for the spike" on the linear-expansion comment,
 // "redundant but safe" on isWhereConsumedByIndex. These are honest spike
-// markers — left intact to keep the C4.0 lift surgical; cleanup is C4.1
-// territory once tests anchor the contract.
+// markers — left intact to keep the lift surgical; cleanup belongs in a
+// follow-up once tests anchor the contract.
 package query
 
 import (
@@ -108,12 +107,16 @@ func (p *Planner) PlanSub(ctx context.Context, q *Query, input PhysicalOperator)
 		}
 	}
 
-	// CALL clause handling is intentionally NOT extracted in C4.0.
-	// q.Call references the parser-side CallClause type (C5 territory) and
-	// emits a CallOperator (C3-deferred to C6 co-land). Once C5 lands the
-	// AST + parser additions and CallOperator lands with C6, the block at
-	// this position will be reinstated.
-	// TODO(C5/C6 co-land): if q.Call != nil { op = &CallOperator{...} }
+	// 1.5 Handle CALL clause
+	if q.Call != nil {
+		op = &CallOperator{
+			Input:         op,
+			ProcedureName: q.Call.ProcedureName,
+			Arguments:     q.Call.Arguments,
+			YieldItems:    q.Call.YieldItems,
+		}
+	}
+
 	// 2. Handle WHERE clause (if not fully consumed by index seek)
 	if q.Where != nil && !p.isWhereConsumedByIndex(q.Where) {
 		op = &FilterOperator{
