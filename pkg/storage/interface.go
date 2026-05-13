@@ -94,9 +94,11 @@ type StorageWriter interface {
 	// Batching
 	BeginBatch() *Batch
 
-	// Vector index maintenance
+	// Vector index maintenance. RemoveNodeFromVectorIndexes takes a tenantID
+	// as of R1.2 so deletes route to the per-tenant index; empty tenantID
+	// falls back to tenantid.Default for legacy tenant-blind callers.
 	UpdateNodeVectorIndexes(node *Node) error
-	RemoveNodeFromVectorIndexes(nodeID uint64) error
+	RemoveNodeFromVectorIndexes(nodeID uint64, tenantID string) error
 }
 
 // Storage is the unified interface for GraphDB storage engines.

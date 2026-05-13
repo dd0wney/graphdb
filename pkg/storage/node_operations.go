@@ -500,8 +500,10 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 		return err
 	}
 
-	// Remove from vector indexes
-	if err := gs.RemoveNodeFromVectorIndexes(nodeID); err != nil {
+	// Remove from vector indexes (R1.2: routes by node.TenantID; empty
+	// TenantID on legacy tenant-blind nodes falls back to tenantid.Default
+	// inside RemoveNodeFromVectorIndexes).
+	if err := gs.RemoveNodeFromVectorIndexes(nodeID, node.TenantID); err != nil {
 		return err
 	}
 
