@@ -76,10 +76,23 @@ Subset 🟢 from `AUDIT_gemini_track_claims_2026-05-13.md` lands as a series of 
 
 #### C1. `pkg/btree/{node,pager,tree}.go` — B+Tree primitive
 
-- [ ] Extract `pkg/btree/node.go`, `pager.go`, `tree.go` from `origin/archive/gemini-bulk-2026-05-13^3` (~649 LOC + tests).
-- [ ] Verify tests run clean (`go test ./pkg/btree/ -race -count=3`).
-- [ ] No consumers yet — pure new package; lowest integration risk.
-- **Acceptance**: package builds, tests pass under race detector, `go vet` clean, golangci-lint clean.
+Split into C1.0 + C1.1 after archive inspection (2026-05-13) found three issues that prevent a clean lift-and-shift: archive contains zero btree-level tests (only integration tests in `pkg/storage/btree_storage_test.go`, which is C2 scope); `Tree.Delete` is a stub `Put(key, nil)` with `// for spike` comment; and `isNodeFull` uses literal `20` for max keys per node.
+
+##### C1.0 — Lift-and-shift extraction (this PR)
+
+- [ ] Extract `pkg/btree/node.go`, `pager.go`, `tree.go` from `origin/archive/gemini-bulk-2026-05-13^3` (~649 LOC).
+- [ ] Apply `gofmt` (archive files have stale formatting).
+- [ ] Fix two staticcheck S1009 nil-checks (`val == nil || len(val) == 0` → `len(val) == 0`).
+- [ ] Add `TODO(C1.1)` comments documenting the three deferred issues (no tests, stub Delete, magic-20).
+- [ ] No consumers yet — pure new package; verified zero coupling (stdlib-only imports).
+- **Acceptance**: package builds, `go vet` clean, `golangci-lint run ./pkg/btree/...` clean. **No test acceptance** — `pkg/btree/` ships without unit tests in this PR; deferred to C1.1.
+
+##### C1.1 — Tests + real Delete + named constant (follow-up)
+
+- [ ] Write btree-level unit tests: `Put`/`Get` round-trip; `Delete` semantics (whether tombstone or real removal); cursor `Next()` skipping zero-length values; pager close+reopen persistence; split/merge boundary conditions.
+- [ ] Decide `Delete` behavior: replace stub with real key removal + leaf underflow rebalance, OR keep tombstone semantics and document them as the intended contract (and add a TODO for compaction).
+- [ ] Replace literal `20` with named constant (e.g. `maxKeysPerNode`) and add a comment deriving the value from page size + average key/value size.
+- **Acceptance**: btree-level tests pass under `-race -count=3`; `Delete` behavior is either real or explicitly documented as tombstone; no magic numbers.
 
 #### C2. `pkg/storage/btree_storage.go` — B+Tree as a `Storage` backend
 
@@ -159,19 +172,20 @@ The bulk-stash had usable architectural skeletons for three features whose *outp
 ## Sequencing graph
 
 ```
-A8.1 ✅ ──→ S1 (narrowed) ✅ ──→ Linux CI ─→ C1 (btree) ─→ C2 (btree_storage) ──┐
-                                                                                 ├─→ R1 (F4 redesign) ──┐
-Path C ✅ (#149-#153) ──→ R2 (S11 redesign) ─────────────────────────────────── ┤                       ├─→ R3 (S1 close)
-                                                                                 └─→ C3-C6 (cypher) ────┘
+A8.1 ✅ ──→ S1 (narrowed) ✅ ──→ Linux CI ─→ C1.0 (btree extract) ─→ C1.1 (btree tests + Delete) ─→ C2 (btree_storage) ──┐
+                                                                                                                          ├─→ R1 (F4 redesign) ──┐
+Path C ✅ (#149-#153) ──→ R2 (S11 redesign) ───────────────────────────────────────────────────────────────────────────  ┤                       ├─→ R3 (S1 close)
+                                                                                                                          └─→ C3-C6 (cypher) ────┘
 ```
 
-**Critical path**: ~~A8.1~~ → ~~S1 narrowed~~ → Linux CI → **C1 → C2** → C3..C6 (Cypher engine) → R1 + R2 (parallel) → R3 (S1 closure).
+**Critical path**: ~~A8.1~~ → ~~S1 narrowed~~ → Linux CI → **C1.0 → C1.1 → C2** → C3..C6 (Cypher engine) → R1 + R2 (parallel) → R3 (S1 closure).
 
-Off-path: H5 (CLAUDE.md fold) — any time.
+Off-path: ~~H5 (CLAUDE.md fold)~~ ✅ closed by #160.
 
 **Why this ordering**:
 - **Linux CI before Track C** — Track C is 6 PRs each carrying race tests; noisy infra failures would muddy review signal. The May-10 plan already flagged this gap.
-- **C1 (btree) before C2 (btree_storage)** — btree is a pure new package, zero coupling. Lowest-risk way to validate the extraction methodology before we add an S1-interface integration in C2.
+- **C1 split into C1.0 + C1.1** — archive inspection found the btree files have no btree-level tests, a stub `Delete`, and a magic `20`. C1.0 lifts the files cleanly with TODOs marking the gaps; C1.1 closes them. Splitting keeps each PR's review surface bounded and lets C2 wait on C1.1's test surface rather than C1.0's untested extraction.
+- **C1 before C2 (btree_storage)** — btree is a pure new package, zero coupling. Lowest-risk way to validate the extraction methodology before we add an S1-interface integration in C2.
 - **C2 before C3..C6** — C2 is the first external consumer of S1. If S1's narrowing was wrong somewhere, C2 will surface it before the larger Cypher engine drops in.
 - **C3..C6 before R1/R2** — the Cypher engine wires to S1 as-narrowed (which excludes the F4 and S11 surfaces). Landing Cypher first proves the narrowed S1 is sufficient for query work, then R1/R2 expand for vector/observer work without query-engine coupling.
 - **R1 and R2 parallel** — they touch disjoint surfaces (vector ops vs. observer hooks). Two agents (or one agent across two work sessions) can hold them.
