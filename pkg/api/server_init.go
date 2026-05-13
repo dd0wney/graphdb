@@ -247,6 +247,7 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		searchIndexes: searchIndexes,
 		lsaIndexes:    lsaIndexes,
 		retriever:     retrieval.NewRetriever(graph, searchIndexes, lsaIndexes),
+		updateJobs:    newUpdateJobManager(),
 		// graphqlHandlers + schemaSingleflight zero-value initialised
 		// (sync.Map and singleflight.Group both work zero-valued).
 		complexityConfig:    complexityConfig,

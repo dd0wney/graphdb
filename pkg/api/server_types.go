@@ -29,6 +29,7 @@ type Server struct {
 	searchIndexes *search.TenantIndexes    // Per-tenant full-text indexes; empty until IndexForTenant is called for a given tenant
 	lsaIndexes    *search.TenantLSAIndexes // Per-tenant LSA indexes for /hybrid-search; nil entry means LSA unavailable for that tenant
 	retriever     *retrieval.Retriever     // Graph-augmented retrieval (F2 GraphRAG); composes searchIndexes + lsaIndexes + graph
+	updateJobs    *updateJobManager        // In-memory tracker for /admin/update/apply jobs; lost on restart by design (a successful update IS the restart)
 
 	// Audit A9 #3 (2026-05-08): per-tenant GraphQL schema cache.
 	// Keyed by tenantID (string — converted at the validation
