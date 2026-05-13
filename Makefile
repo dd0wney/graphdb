@@ -52,9 +52,11 @@ test-short:
 		./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/...
 
 ## test-race: Run tests with race detector
+# -p 2 caps package-parallelism to fit the race detector's memory footprint
+# inside the GitHub-hosted ubuntu runner's 7GB.
 test-race:
 	@echo "Running tests with race detector..."
-	$(GO) test -race -timeout $(TEST_TIMEOUT) \
+	$(GO) test -race -p 2 -timeout $(TEST_TIMEOUT) \
 		./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
 		./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/...
 
