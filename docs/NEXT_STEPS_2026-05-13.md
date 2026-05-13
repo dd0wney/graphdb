@@ -95,38 +95,79 @@ Split into C1.0 + C1.1 after archive inspection (2026-05-13) found three issues 
 - [x] **Bonus correctness fix surfaced by tests**: `findLeaf` and `insertNonFull` were using `findKey` (`>=`) for internal-node descent, but the leaf-split convention (where `splitKey` lives in the *right* leaf) requires strict `>` for child-selection. Added `findChild` and routed both navigations through it. Without the fix, queries for keys exactly at a split boundary returned not-found.
 - **Acceptance met**: btree-level tests pass under `-race -count=3`; `Delete` behavior is documented as tombstone; no magic numbers.
 
-#### C2. `pkg/storage/btree_storage.go` — B+Tree as a `Storage` backend
+#### C2. `pkg/storage/btree_storage.go` — B+Tree as a `Storage` backend ✅ **DONE (PR #165)**
 
-- [ ] Extract `pkg/storage/btree_storage.go` + `btree_storage_test.go` + `btree_bench_test.go` (~818 LOC + ~200 LOC tests).
-- [ ] **First external consumer of S1's `Storage` interface beyond `*GraphStorage`.** Validates the interface holds against a second backend.
-- [ ] May need fixups: S1's narrowing omitted vector methods and `AddObserver`; B+Tree backend may require either trimmed-interface satisfaction or stub implementations of the omitted methods. Decide PR-locally; document the choice.
-- **Acceptance**: backend satisfies S1's `Storage` interface (or trimmed variant); tests pass; bench tests run.
+- [x] Extract `pkg/storage/btree_storage.go` + `btree_storage_test.go` + `btree_bench_test.go` (~818 LOC + ~200 LOC tests).
+- [x] **First external consumer of S1's `Storage` interface beyond `*GraphStorage`.** Validated the interface holds against a second backend.
+- [x] Fixups landed PR-locally as documented in #165.
+- **Acceptance met**: backend satisfies S1's `Storage` interface; tests pass; bench tests run.
 
 #### C3. `pkg/query/physical_plan.go` — Volcano operators
 
-- [ ] Extract `physical_plan.go` (~1233 LOC) defining 17 operators (NodeScan, IndexSeek, Expand, Filter, Project, Call, Create, Set, Delete, Remove, Merge, Unwind, Union, OptionalMatch, Aggregate, NestedLoopJoin, HashJoin).
-- [ ] **May need to split** if the LOC count makes review impractical. Suggested split axis: scan/index ops in one PR, mutation ops (Create/Set/Delete/Remove/Merge) in a second, join/aggregate ops in a third.
-- [ ] **Carries S7 OTEL spans per operator** — per the audit verdict matrix, the per-operator span wiring is real. Land alongside the operators (don't strip it).
-- **Acceptance**: operators implement the existing physical-operator interface; tests pass; OTEL spans visible in `pkg/telemetry/` exporter integration test.
+Split into C3.0 + C3.1 after C3.0 landed with `CallOperator` deferred.
+
+##### C3.0 — 16 of 17 operators ✅ **DONE (PR #167)**
+
+- [x] Extract `physical_plan.go` (~1233 LOC) defining 16 of 17 operators (NodeScan, IndexSeek, Expand, Filter, Project, Create, Set, Delete, Remove, Merge, Unwind, Union, OptionalMatch, Aggregate, NestedLoopJoin, HashJoin).
+- [x] **CallOperator deferred** — depends on C5's `CallClause` AST + C6's `procedureRegistry`. Reinstatement is C3.1.
+- [x] **Carries S7 OTEL spans per operator** — landed alongside, not stripped.
+- [x] **Workaround introduced**: private `valueEvaluator` interface in `physical_plan.go:34-47` — type-asserts at call sites instead of promoting `EvalValue` to the `Expression` interface. Retire this in C3.1 alongside CallOperator reinstatement.
+- **Acceptance met**: operators implement the existing physical-operator interface; tests pass.
+
+##### C3.1 — CallOperator reinstatement + EvalValue interface promotion
+
+- [ ] Reinstate `CallOperator` (consumes C5's `CallClause` AST + C6's `procedureRegistry`).
+- [ ] Promote `EvalValue` from the private `valueEvaluator` workaround to the public `Expression` interface. Archive's `ast_expressions.go` diff adds `EvalValue` to BinaryExpression / PropertyExpression / LiteralExpression — the 3 implementers currently missing it (the other 5 already have `EvalValue` as a method on main).
+- [ ] Retire the `valueEvaluator` private interface + its type-assertion fallbacks to `extractValue` (the fallback silently absorbs evaluation errors per `executor_results.go` parity; explicit-error-handling now restored).
+- **Acceptance**: CallOperator dispatches into procedureRegistry; `EvalValue` is the only call site (no type-assert dance); existing query tests pass.
 
 #### C4. `pkg/query/planner.go` — logical→physical mapping
 
-- [ ] Extract `planner.go` (~329 LOC). Consumes C3's operators.
-- **Acceptance**: planner emits valid physical plans for the Cypher AST shapes C3 supports; tests pass.
+Split into C4.0 + C4.1 after `q.Call` planner block was stripped from C4.0 (depends on C5's `CallClause` field).
 
-#### C5. Cypher parser additions — CALL / CREATE / SET / DELETE / REMOVE / MERGE
+##### C4.0 — Planner (sans q.Call block) 🟡 **OPEN (PR #168)**
 
-- [ ] Extract the parser-clauses additions for the six mutation/procedure verbs from the archive's `pkg/query/parser_clauses.go` diff.
-- [ ] **Tied to C3's `CreateOperator` / `SetOperator` / `DeleteOperator` / `RemoveOperator` / `MergeOperator` / `CallOperator`** — land after C3 so the operators exist to wire to.
-- **Acceptance**: cypher_spike_test cases (extracted from `pkg/query/cypher_spike_test.go`) pass end-to-end through parser → planner → executor.
+- [ ] Extract `planner.go` (~325 LOC). Stripped `q.Call` block at the marker comment.
+- [ ] Coexists with the existing Step-based `Executor` — NO consumers in this PR.
+- **Acceptance**: build/vet/lint clean; `go test -short ./pkg/query/` passes; planner-level unit tests deferred to C4.1.
+
+##### C4.1 — Reinstate q.Call block + planner unit tests
+
+- [ ] Un-strip the `q.Call` block at C4.0's marker comment (now that C5 lands `Query.Call` field).
+- [ ] Planner-level unit tests (mirrors C1.0/C1.1, C3.0/C3.1 pattern).
+- **Acceptance**: planner emits valid physical plans for the Cypher AST shapes including CALL; tests pass.
+
+#### C5. Cypher parser additions — CALL/YIELD ✅ **DONE (PRs #170, #171)**
+
+**Scope reframe** (2026-05-13 — surfaced during C5 extraction): the planning-doc original framing listed six verbs (`CALL / CREATE / SET / DELETE / REMOVE / MERGE`). Verified on main: `TokenCreate` / `TokenDelete` / `TokenSet` / `TokenMerge` / `TokenRemove` are all defined in `lexer_types.go` with `case` clauses in `parser.go`. The archive's net-new contribution is only **`CALL` / `YIELD`** + `parseCall` + `CallClause` AST. C5 is therefore narrower than originally described.
+
+##### C5.0 — Parser additions ✅ **DONE (PR #170)**
+
+- [x] `ast.go`: `Query.Call *CallClause` field + `CallClause` struct.
+- [x] `lexer_types.go`: `TokenCall`, `TokenYield` constants + keyword-map entries.
+- [x] `parser.go`: `case TokenCall:` in main `Parse()` dispatch.
+- [x] `parser_clauses.go`: `parseCall()` — dotted procedure names, parenthesized expression args, optional `YIELD` identifier list.
+- [x] **EvalValue interface promotion deferred to C3.1** — the natural home is alongside CallOperator reinstatement; promoting it in C5 would have bundled unrelated cleanup with parser extraction.
+
+##### C5.1 — Parser unit tests ✅ **DONE (PR #171, stacked on #170)**
+
+- [x] 9 happy-path + 4 error-path table-driven tests covering: bare procedure (with/without parens), dotted + multi-dot names, single + multi arguments, YIELD with single + multi items, full combos, missing closing paren, dangling dot, missing YIELD identifier, trailing YIELD comma.
+- [x] **No correctness bugs surfaced** — unlike C1.1's `findKey`/`findChild` fix, this extraction was clean. Validates that the surgical-extraction effort budget should be calibrated by file class (flat parser grammar carries less hidden-invariant risk than multi-level B+Tree navigation).
 
 #### C6. `pkg/query/procedures.go` — procedure registry
 
-- [ ] Extract `procedures.go` (~102 LOC) defining the `procedureRegistry` with three entries.
-- [ ] **DO NOT carry the `algo.shortestPath` stub.** The archive's version has `// Stub for now - in real life this calls pkg/algorithms` and returns fake `[srcID, dstID]` path data. Replace with a real wire-up to `pkg/algorithms` shortest-path. Single-tenant-scoping must round-trip through the existing `*ForTenant` algorithm signatures.
-- [ ] **DO NOT carry the `gnn.messagePass` procedure** unless S6 redesign (Track R) is done first — the archive's `pkg/gnn` is spike-quality (BFS-as-message-pass) and shouldn't reach users via Cypher.
-- [ ] **Audit `llm.generate` for the mock-fallback issue** flagged in `AUDIT_gemini_track_claims_2026-05-13.md` (Subset 🟡, `pkg/intelligence/llm.go:28`). The handler silently returns `[MOCK RESPONSE...]` when `APIKey == ""`. Either gate the procedure on a populated key (return an error, don't mock), or drop the procedure for now.
-- **Acceptance**: procedure registry has only real implementations; mock fallbacks return errors instead of silently lying.
+**Scope reframe** (2026-05-13 — surfaced while sizing C6): the planning-doc original framing assumed three procedures (`algo.shortestPath`, `gnn.messagePass`, `llm.generate`). Verified on main: **`pkg/gnn` and `pkg/intelligence` do not exist on the OSS side of the open-core split**. The archive's `procedures.go` imports both. Consequences:
+
+- `gnn.messagePass` → already deferred per S6; package absence makes deferral the only option. Drop.
+- `llm.generate` → original framing offered "gate on APIKey OR drop." `pkg/intelligence/llm.go` doesn't exist on main; only "drop" is viable today.
+- `algo.shortestPath` → `pkg/algorithms.ShortestPathForTenant` exists, **but takes `*storage.GraphStorage` (concrete) while the archive's `Procedure` signature passes `storage.Storage` (the S1-narrowed interface)**. This is a real signature mismatch that requires a design decision (see Decision point 6 below).
+
+C6 is therefore **1 procedure, not 3**, gated on resolving the algorithm-signature decision.
+
+- [ ] Extract the `Procedure` type, `RegisterProcedure` exported func, and `procedureRegistry` map (single entry: `algo.shortestPath`).
+- [ ] Resolve Decision point 6 first — the procedure body's storage type is a function of that answer.
+- [ ] Drop `gnn.messagePass` and `llm.generate` from the registry (packages absent on OSS).
+- **Acceptance**: registry has 1 real-implementation entry; algorithm wire-up matches the resolved Decision 6 choice; no mock fallbacks.
 
 ### Track R — Redesign work (NEW)
 
@@ -187,15 +228,23 @@ Each is independent; combine if signal warrants.
 ## Sequencing graph
 
 ```
-A8.1 ✅ ──→ S1 (narrowed) ✅ ──→ Linux CI ─→ C1.0 (btree extract) ─→ C1.1 (btree tests + Delete) ─→ C2 (btree_storage) ──┐
-                                                                                                                          ├─→ R1 (F4 redesign) ──┐
-Path C ✅ (#149-#153) ──→ R2 (S11 redesign) ───────────────────────────────────────────────────────────────────────────  ┤                       ├─→ R3 (S1 close)
-                                                                                                                          └─→ C3-C6 (cypher) ────┘
+A8.1 ✅ ──→ S1 (narrowed) ✅ ──→ Linux CI ─→ C1.0 ✅ ─→ C1.1 ✅ ─→ C2 ✅ ─→ C3.0 ✅ ─→ C4.0 🟡 ─→ C5.0 🟡 ─→ C5.1 🟡 ─→ C3.1/C4.1/C6 ──┐
+                                                                                                                                       ├─→ R1 (F4 redesign) ──┐
+Path C ✅ (#149-#153) ──→ R2 (S11 redesign) ─────────────────────────────────────────────────────────────────────────────────────────  ┤                       ├─→ R3 (S1 close)
+                                                                                                                                       └─→ C3.1/C4.1/C6 ──────┘
 ```
 
-**Critical path**: ~~A8.1~~ → ~~S1 narrowed~~ → Linux CI → **C1.0 → C1.1 → C2** → C3..C6 (Cypher engine) → R1 + R2 (parallel) → R3 (S1 closure).
+Status legend: ✅ merged; 🟡 PR open at planning-doc-update time (#168 C4.0, #170 C5.0, #171 C5.1).
 
-Off-path: ~~H5 (CLAUDE.md fold)~~ ✅ closed by #160.
+**Critical path**: ~~A8.1~~ → ~~S1 narrowed~~ → Linux CI → ~~C1.0~~ → ~~C1.1~~ → ~~C2~~ → ~~C3.0~~ → C4.0 → C5.0 → C5.1 → **{ C3.1, C4.1, C6 }** → R1 + R2 (parallel) → R3 (S1 closure).
+
+**C3.1 / C4.1 / C6 ordering (NEW)**:
+- C3.1 needs C5.0 merged (`CallClause`) AND retires the `valueEvaluator` workaround.
+- C4.1 needs C5.0 merged + C4.0 merged (un-strips block in C4.0's file).
+- C6 needs Decision 6 resolved (S1↔algorithms) before extraction.
+- Recommended order: **C4.1 first** (smallest, ~5-line reinstate); **C3.1 second** (interface promotion + CallOperator); **C6 last** (after Decision 6).
+
+Off-path: ~~H5 (CLAUDE.md fold)~~ ✅ closed by #160. Linux CI escalation — still open; 3 candidates listed in § Track H.
 
 **Why this ordering**:
 - **Linux CI before Track C** — Track C is 6 PRs each carrying race tests; noisy infra failures would muddy review signal. The May-10 plan already flagged this gap.
@@ -212,11 +261,17 @@ Off-path: ~~H5 (CLAUDE.md fold)~~ ✅ closed by #160.
 
 These are explicit questions the user should weigh in on rather than decisions baked into the plan.
 
-1. **C3 split or single PR?** `physical_plan.go` is ~1233 LOC. Single PR is faster but heavy review; 3-way split (scan/index, mutation, join/aggregate) is reviewable but slower. Recommendation: start as single PR; split if review surfaces it.
+1. ~~**C3 split or single PR?**~~ RESOLVED 2026-05-13 — `physical_plan.go` landed as a single PR (#167) with CallOperator deferred. Review surface stayed reasonable; split was unnecessary.
 2. **R1 (F4) design** — per-tenant HNSW index (full isolation, higher memory) vs. shared index + tenant-keyed filter (lower memory, tenant-tagged vectors). Spike must decide.
 3. **R2 (S11) default embedder** — pluggable interface with no default? LSA as default (deterministic, in-tree, already shipped)? External API only (BYO embeddings)? Spike must decide.
-4. **C6 `llm.generate` procedure** — drop entirely, or gate on populated `APIKey` and return errors instead of `[MOCK RESPONSE...]`?
+4. ~~**C6 `llm.generate` procedure**~~ RESOLVED 2026-05-13 by package absence — `pkg/intelligence` doesn't exist on OSS main; the procedure is dropped.
 5. **Should the GNN procedure (S6) get a Track R entry**, or is it deferred indefinitely as a "research kernel" with no ship date? Current plan defers; revisit if a GNN customer appears.
+6. **C6 `algo.shortestPath` storage-type wiring** — NEW (2026-05-13). `pkg/algorithms.ShortestPathForTenant` takes `*storage.GraphStorage` (concrete); the archive's `Procedure` signature passes `storage.Storage` (the S1-narrowed interface). Four options, in increasing cleanliness:
+   - **A**: Change `Procedure` to take `*storage.GraphStorage` directly. Concrete-type coupling; undoes part of S1's interface narrowing for the procedure registry.
+   - **B**: Add a `ShortestPathForTenant(storage.Storage, ...)` variant in `pkg/algorithms`. Interface widening at the algorithm boundary; requires implementing without graph-internal access (likely needs new `Storage` methods anyway, so this collapses into option D).
+   - **C**: Type-assert `graph.(*storage.GraphStorage)` inside the procedure; return an error if the backend is something else (e.g., C2's `BTreeGraphStorage`). Pragmatic now; breaks if the backend changes at runtime.
+   - **D**: Add `ShortestPathForTenant` as a method on the `Storage` interface; implement on both backends; have the procedure delegate to it. Cleanest; Track-R-shaped concern (expands the interface set).
+   Recommendation: **D** is the principled answer but lives in Track R, not Track C. C6 is blocked until this is resolved. If the user picks A or C, C6 ships small; if D, C6 waits on a Track-R-style sub-PR.
 
 ---
 
