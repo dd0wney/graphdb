@@ -18,6 +18,7 @@ type Query struct {
 	Union           *UnionClause
 	UnionNext       *Query // For UNION chaining
 	Next            *Query // For WITH chaining
+	Call            *CallClause
 	Limit           int
 	Skip            int
 	Explain         bool
@@ -136,6 +137,13 @@ type Assignment struct {
 type UnwindClause struct {
 	Expression *PropertyExpression
 	Alias      string
+}
+
+// CallClause represents a procedure call (e.g. CALL algo.shortestPath(...))
+type CallClause struct {
+	ProcedureName string
+	Arguments     []Expression
+	YieldItems    []string // Variables to bind from result
 }
 
 // MergeClause represents a MERGE operation (match-or-create)
