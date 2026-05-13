@@ -25,6 +25,8 @@ Before claiming a feature is "missing" or that a `pkg/plugins`-style interface i
 
 This caught the productization-gaps PR (#71) — corrected in `docs/CAPABILITIES_2026-05-10.md`. Don't repeat the pattern.
 
+**The inverse direction also bites**: the gemini-bulk archive (`origin/archive/gemini-bulk-2026-05-13`) imports packages that **don't exist on OSS main**. C6 sizing (2026-05-13) found that `pkg/query/procedures.go` imports `pkg/gnn` (Subset 🟢 spike) and `pkg/intelligence` (Subset 🟡 mock-prone) — both absent from this repo. The archive was prepared against a tree that included unbundled experimental packages; what compiled there won't compile here. Before lifting from the archive, `git ls-tree origin/archive/gemini-bulk-2026-05-13^3 -- <path>` for the target files AND `grep -E '^\s*"github\.com/dd0wney/cluso-graphdb/' <file>` to enumerate imports, then verify each import resolves on current main. If it doesn't, the lift narrows — sometimes substantially (C6 collapsed from 3 procedures to 1 because of this).
+
 ## Repo layout quick reference
 
 - `pkg/` — 37 packages. `storage` and `query` are the largest (~50/30 test files); see `CAPABILITIES_2026-05-10.md` for the per-package map.
