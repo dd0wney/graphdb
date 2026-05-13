@@ -97,6 +97,12 @@ type GraphStorage struct {
 	// Encryption (using typed interfaces for compile-time safety)
 	encryptionEngine encryption.EncryptDecrypter // Handles data encryption/decryption
 	keyManager       encryption.KeyProvider      // Manages encryption keys
+
+	// observers is the registered NodeObserver slice. Mutated by
+	// AddObserver under gs.mu.Lock; snapshot-copied for dispatch under
+	// gs.mu.RLock by snapshotObservers (pkg/storage/observation.go).
+	// R2.1 / S11 spike §7.4.
+	observers []NodeObserver
 }
 
 // StorageConfig holds configuration for GraphStorage

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync/atomic"
@@ -16,10 +17,20 @@ func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value)
 }
 
 // CreateNodeWithTenant creates a new node for a specific tenant.
+//
+// Lock discipline (R2.1, S11 spike §7.4): the gs.mu.Lock is released
+// before notifyNodeCreated runs so observer code never executes under
+// any storage lock. Direct unlock + nil-check on err mirrors what
+// `defer gs.mu.Unlock()` would do but lets the notify call land after
+// the lock release.
 func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, properties map[string]Value) (*Node, error) {
 	gs.mu.Lock()
-	defer gs.mu.Unlock()
-	return gs.createNodeLocked(tenantID, labels, properties)
+	node, err := gs.createNodeLocked(tenantID, labels, properties)
+	gs.mu.Unlock()
+	if err == nil && node != nil {
+		gs.notifyNodeCreated(context.Background(), node)
+	}
+	return node, err
 }
 
 // CreateNodeWithUniquePropertyForTenant creates a node only if no other
@@ -61,9 +72,9 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 	}
 
 	gs.mu.Lock()
-	defer gs.mu.Unlock()
 
 	if err := gs.checkClosed(); err != nil {
+		gs.mu.Unlock()
 		return nil, err
 	}
 
@@ -75,6 +86,7 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 				continue
 			}
 			if existingVal, has := existing.Properties[uniquePropertyKey]; has && valuesEqual(existingVal, newVal) {
+				gs.mu.Unlock()
 				return nil, &UniqueConstraintError{
 					Label:             uniqueLabel,
 					PropertyKey:       uniquePropertyKey,
@@ -85,7 +97,13 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 		}
 	}
 
-	return gs.createNodeLocked(tenantID, labels, properties)
+	node, err := gs.createNodeLocked(tenantID, labels, properties)
+	gs.mu.Unlock()
+	// R2.1: dispatch after lock release. See CreateNodeWithTenant.
+	if err == nil && node != nil {
+		gs.notifyNodeCreated(context.Background(), node)
+	}
+	return node, err
 }
 
 // createNodeLocked is the body of CreateNodeWithTenant minus the lock.
@@ -312,17 +330,31 @@ func (gs *GraphStorage) UpdateNodeForTenant(nodeID uint64, properties map[string
 // UpdateNode updates a node's properties.
 //
 // Tenant-blind. New callers should prefer UpdateNodeForTenant.
+//
+// Lock discipline (R2.1, S11 spike §7.4): notifyNodeUpdated dispatches
+// after gs.mu.Lock is released. The oldNode / newNode clones are taken
+// inside the lock window (when the live shard pointer is safe) and are
+// only allocated when observers are registered — observerless callers pay
+// zero clone cost.
 func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) error {
 	gs.mu.Lock()
-	defer gs.mu.Unlock()
 
 	node, exists := gs.lookupNodeShard(nodeID)
 	if !exists {
+		gs.mu.Unlock()
 		return ErrNodeNotFound
+	}
+
+	// R2.1: snapshot pre-update state for observer dispatch. Only allocate
+	// when observers are registered.
+	var oldNode *Node
+	if len(gs.observers) > 0 {
+		oldNode = node.Clone()
 	}
 
 	// Update property indexes (global structures — under gs.mu.Lock).
 	if err := gs.updatePropertyIndexes(nodeID, node, properties); err != nil {
+		gs.mu.Unlock()
 		return err
 	}
 
@@ -337,6 +369,7 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 
 	// Update vector indexes for any vector properties
 	if err := gs.UpdateNodeVectorIndexes(node); err != nil {
+		gs.mu.Unlock()
 		return err
 	}
 
@@ -349,6 +382,17 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 		Properties: properties,
 	})
 
+	// R2.1: snapshot post-update state before releasing the lock so the
+	// observer sees a consistent view.
+	var newNode *Node
+	if oldNode != nil {
+		newNode = node.Clone()
+	}
+	gs.mu.Unlock()
+
+	if newNode != nil {
+		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
+	}
 	return nil
 }
 
@@ -358,11 +402,18 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 // paths should prefer RemoveNodePropertiesForTenant.
 func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error {
 	gs.mu.Lock()
-	defer gs.mu.Unlock()
 
 	node, exists := gs.lookupNodeShard(nodeID)
 	if !exists {
+		gs.mu.Unlock()
 		return ErrNodeNotFound
+	}
+
+	// R2.1: snapshot pre-removal state for observer dispatch. Only
+	// allocate when observers are registered.
+	var oldNode *Node
+	if len(gs.observers) > 0 {
+		oldNode = node.Clone()
 	}
 
 	// Per-shard write lock (A4) covers the property-map mutations and
@@ -400,6 +451,16 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 		Properties: walProps,
 	})
 
+	// R2.1: snapshot post-removal state before releasing the lock.
+	var newNode *Node
+	if oldNode != nil {
+		newNode = node.Clone()
+	}
+	gs.mu.Unlock()
+
+	if newNode != nil {
+		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
+	}
 	return nil
 }
 
@@ -447,14 +508,24 @@ func (gs *GraphStorage) DeleteNodeForTenant(nodeID uint64, tenantID string) erro
 // DeleteNode deletes a node and all its edges.
 //
 // Tenant-blind. New callers should prefer DeleteNodeForTenant.
+//
+// Lock discipline (R2.1, S11 spike §7.4): defer-unlock was replaced with
+// explicit unlock at every return path so notifyNodeDeleted can dispatch
+// strictly after gs.mu.Lock is released. The deleted node's TenantID is
+// captured under lock (from the lookup at line 514) and passed to the
+// notify call after unlock — the node's data is not accessible by then.
 func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	gs.mu.Lock()
-	defer gs.mu.Unlock()
 
 	node, exists := gs.lookupNodeShard(nodeID)
 	if !exists {
+		gs.mu.Unlock()
 		return ErrNodeNotFound
 	}
+
+	// Capture for OnNodeDeleted dispatch after unlock. node.TenantID is
+	// stable for the lifetime of the node (immutable after creation).
+	tenantID := node.TenantID
 
 	// Get edges to delete (disk-backed or in-memory)
 	var outgoingEdgeIDs, incomingEdgeIDs []uint64
@@ -462,10 +533,12 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 		var err error
 		outgoingEdgeIDs, err = gs.edgeStore.GetOutgoingEdges(nodeID)
 		if err != nil {
+			gs.mu.Unlock()
 			return fmt.Errorf("failed to get outgoing edges for node %d: %w", nodeID, err)
 		}
 		incomingEdgeIDs, err = gs.edgeStore.GetIncomingEdges(nodeID)
 		if err != nil {
+			gs.mu.Unlock()
 			return fmt.Errorf("failed to get incoming edges for node %d: %w", nodeID, err)
 		}
 	} else {
@@ -476,6 +549,7 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	// Cascade delete all outgoing edges
 	for _, edgeID := range outgoingEdgeIDs {
 		if err := gs.cascadeDeleteOutgoingEdge(edgeID); err != nil {
+			gs.mu.Unlock()
 			return fmt.Errorf("failed to cascade delete outgoing edge %d: %w", edgeID, err)
 		}
 	}
@@ -483,6 +557,7 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	// Cascade delete all incoming edges
 	for _, edgeID := range incomingEdgeIDs {
 		if err := gs.cascadeDeleteIncomingEdge(edgeID); err != nil {
+			gs.mu.Unlock()
 			return fmt.Errorf("failed to cascade delete incoming edge %d: %w", edgeID, err)
 		}
 	}
@@ -497,6 +572,7 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 
 	// Remove from property indexes
 	if err := gs.removeNodeFromPropertyIndexes(nodeID, node.Properties); err != nil {
+		gs.mu.Unlock()
 		return err
 	}
 
@@ -504,6 +580,7 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	// TenantID on legacy tenant-blind nodes falls back to tenantid.Default
 	// inside RemoveNodeFromVectorIndexes).
 	if err := gs.RemoveNodeFromVectorIndexes(nodeID, node.TenantID); err != nil {
+		gs.mu.Unlock()
 		return err
 	}
 
@@ -518,6 +595,7 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 
 	// Delete adjacency lists (disk-backed or in-memory)
 	if err := gs.clearNodeAdjacency(nodeID); err != nil {
+		gs.mu.Unlock()
 		return fmt.Errorf("failed to clear adjacency for node %d: %w", nodeID, err)
 	}
 
@@ -527,6 +605,11 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	// Write to WAL for durability
 	gs.writeToWAL(wal.OpDeleteNode, node)
 
+	gs.mu.Unlock()
+
+	// R2.1: dispatch after lock release. See lock-discipline comment in
+	// pkg/storage/observation.go.
+	gs.notifyNodeDeleted(context.Background(), nodeID, tenantID)
 	return nil
 }
 
