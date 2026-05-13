@@ -12,6 +12,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
 	gqlpkg "github.com/dd0wney/cluso-graphdb/pkg/graphql"
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
+	"github.com/dd0wney/cluso-graphdb/pkg/intelligence"
 	"github.com/dd0wney/cluso-graphdb/pkg/masking"
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
@@ -71,4 +72,11 @@ type Server struct {
 	environment         string         // "live" or "test" - for API key environment enforcement
 	metricsStopCh       chan struct{}  // Stop channel for metrics goroutine
 	metricsWg           sync.WaitGroup // WaitGroup for metrics goroutine
+
+	// autoEmbedPool is the worker pool that backs the AutoEmbedObserver
+	// when GRAPHDB_AUTO_EMBED_ENABLED is true. nil when auto-embed is
+	// disabled (the default). Lifetime is process-bound; the pool's
+	// goroutines die with the process. If/when Server gains a formal
+	// Close, the pool's Shutdown should run as part of that flow.
+	autoEmbedPool *intelligence.Pool
 }

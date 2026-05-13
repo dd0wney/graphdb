@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"log"
@@ -15,6 +16,7 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/auth/oidc"
 	"github.com/dd0wney/cluso-graphdb/pkg/graphql"
 	"github.com/dd0wney/cluso-graphdb/pkg/health"
+	"github.com/dd0wney/cluso-graphdb/pkg/intelligence"
 	"github.com/dd0wney/cluso-graphdb/pkg/masking"
 	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
 	"github.com/dd0wney/cluso-graphdb/pkg/query"
@@ -284,6 +286,12 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 	// rather than refusing to boot.
 	server.bootstrapIndexesFromEnv()
 
+	// Bootstrap the auto-embed observer (R2.5b). Must run AFTER
+	// bootstrapIndexesFromEnv so the LSA index that LSAEmbedder reads
+	// is already registered for any tenants the auto-embed wiring will
+	// fire for. Fails soft — missing config = no observer registered.
+	server.bootstrapAutoEmbedFromEnv()
+
 	return server, nil
 }
 
@@ -396,6 +404,89 @@ func (s *Server) buildAndRegisterLSA(tenantID string, labels []string, titleProp
 	s.lsaIndexes.Set(tenantID, idx)
 	log.Printf("✅ Bootstrapped LSA index for %s (%d docs, %d dims)", tenantID, idx.NumDocs(), idx.Dimensions())
 	return nil
+}
+
+// bootstrapAutoEmbedFromEnv constructs and registers an AutoEmbedObserver
+// when GRAPHDB_AUTO_EMBED_ENABLED is "true" / "1" and the required policy
+// env vars are set. The observer dispatches embed tasks to a worker Pool
+// (stored on s.autoEmbedPool) on every node creation matching the
+// configured label, computing an embedding via LSAEmbedder backed by the
+// server's TenantLSAIndexes registry.
+//
+// Required env vars (all three must be non-empty to trigger):
+//
+//	GRAPHDB_AUTO_EMBED_ENABLED          "true" or "1"
+//	GRAPHDB_AUTO_EMBED_LABEL            e.g. "Doc"
+//	GRAPHDB_AUTO_EMBED_SOURCE_PROPERTY  e.g. "body"
+//	GRAPHDB_AUTO_EMBED_TARGET_PROPERTY  e.g. "embedding"
+//
+// Optional env vars:
+//
+//	GRAPHDB_AUTO_EMBED_WORKERS          worker pool size (default 4)
+//	GRAPHDB_AUTO_EMBED_QUEUE_DEPTH      pool queue capacity (default 256)
+//
+// Fails soft: missing required vars or constructor errors log a warning
+// and leave s.autoEmbedPool nil. The observer is not registered, so node
+// creates pass through unchanged. Operators inspecting logs see exactly
+// why auto-embed is inactive.
+//
+// Bootstrap ordering: this method runs AFTER bootstrapIndexesFromEnv so
+// any LSA index built from env vars is already registered. Auto-embed
+// fires at node-create time; if the LSA index isn't built yet,
+// LSAEmbedder returns ErrNoIndexForTenant and the observer drops the
+// task (no panic, no writeback). Operators can build the LSA index
+// later via POST /hybrid-search/lsa-index without restarting.
+func (s *Server) bootstrapAutoEmbedFromEnv() {
+	enabled := os.Getenv("GRAPHDB_AUTO_EMBED_ENABLED")
+	if enabled != "true" && enabled != "1" {
+		return
+	}
+
+	label := os.Getenv("GRAPHDB_AUTO_EMBED_LABEL")
+	sourceProp := os.Getenv("GRAPHDB_AUTO_EMBED_SOURCE_PROPERTY")
+	targetProp := os.Getenv("GRAPHDB_AUTO_EMBED_TARGET_PROPERTY")
+	if label == "" || sourceProp == "" || targetProp == "" {
+		log.Printf("bootstrap: GRAPHDB_AUTO_EMBED_ENABLED set but LABEL/SOURCE_PROPERTY/TARGET_PROPERTY missing; skipping auto-embed bootstrap")
+		return
+	}
+
+	cfg := intelligence.PoolConfig{
+		Workers:    getEnvInt("GRAPHDB_AUTO_EMBED_WORKERS", 0),
+		QueueDepth: getEnvInt("GRAPHDB_AUTO_EMBED_QUEUE_DEPTH", 0),
+	}
+	pool := intelligence.NewPool(cfg)
+
+	embedder := intelligence.NewLSAEmbedder(s.lsaIndexes)
+
+	policies := []intelligence.EmbeddingPolicy{{
+		Label:          label,
+		SourceProperty: sourceProp,
+		TargetProperty: targetProp,
+	}}
+
+	obs, err := intelligence.NewAutoEmbedObserver(s.graph, embedder, pool, policies)
+	if err != nil {
+		log.Printf("bootstrap: NewAutoEmbedObserver failed: %v; skipping auto-embed bootstrap", err)
+		_ = pool.Shutdown(context.Background())
+		return
+	}
+
+	s.graph.AddObserver(obs)
+	s.autoEmbedPool = pool
+	log.Printf("✅ Bootstrapped auto-embed observer (label=%q, source=%q, target=%q, workers=%d, queue=%d)",
+		label, sourceProp, targetProp,
+		nonZeroOrDefault(cfg.Workers, intelligence.DefaultWorkers),
+		nonZeroOrDefault(cfg.QueueDepth, intelligence.DefaultQueueDepth))
+}
+
+// nonZeroOrDefault returns v if v > 0, otherwise defaultVal. Used to
+// surface the actual configured value in startup logs (NewPool's internal
+// defaults are otherwise invisible to operators).
+func nonZeroOrDefault(v, defaultVal int) int {
+	if v > 0 {
+		return v
+	}
+	return defaultVal
 }
 
 // splitEnvCSV reads a comma-separated env var and returns non-empty
