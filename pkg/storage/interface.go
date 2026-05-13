@@ -1,14 +1,30 @@
 // Package storage's interface.go declares the Storage / StorageReader /
 // StorageWriter interfaces extracted from the concrete *GraphStorage receiver.
 //
-// Scope: this is S1's first landing — narrow to the surface today's
-// GraphStorage already implements (51 methods). Tenant-isolated vector
-// methods (CreateVectorIndexForTenant, etc.) and the NodeObserver
-// observation hook are deliberately omitted; they expand the interface
-// in later tracks (F4 once redesigned with tenant-strict semantics, S11
-// once auto-embeddings stops being a 3-float mock). See
-// docs/internals/design/AUDIT_gemini_track_claims_2026-05-13.md for the
-// rationale.
+// History:
+//   - S1 (R1.0, PR #145): initial landing at 51 of 58 originally-declared
+//     methods. Tenant-isolated vector methods and the NodeObserver hook
+//     were deliberately omitted pending F4 (vector tenant redesign) and
+//     S11 (auto-embedder redesign) — those tracks needed to ship before
+//     the interface could be closed honestly.
+//   - F4 / R1.x (PRs #184, #185): per-tenant VectorIndex data structure
+//     and the 6 *VectorIndexForTenant methods land on *GraphStorage.
+//   - S11 / R2.1 (PR #186): NodeObserver interface and AddObserver
+//     method land on *GraphStorage.
+//   - R3 (this file post-R3): the 6 *VectorIndexForTenant methods join
+//     StorageReader; AddObserver joins Storage's admin section. The
+//     interface surface is now complete with respect to the original
+//     S1 / F4 / S11 designs.
+//
+// Snapshot signature: kept as `Snapshot() error` (no ctx). The archive
+// parent had `Snapshot(ctx)` for cancellability, but no production
+// caller passes a meaningful context — adding ctx now would be
+// speculative. A future streaming/cancelable snapshot would be a new
+// method (e.g., SnapshotStream(ctx, w)) rather than a signature change.
+//
+// See docs/internals/design/AUDIT_gemini_track_claims_2026-05-13.md for
+// the bulk-stash audit framing that scoped these decisions, and
+// docs/NEXT_STEPS_2026-05-14.md § Track R / R3 for the closure plan.
 
 package storage
 
@@ -53,12 +69,24 @@ type StorageReader interface {
 	FindNodesByPropertyForTenant(key string, value Value, tenantID string) ([]*Node, error)
 	FindNodesByPropertyIndexedForTenant(key string, value Value, tenantID string) ([]*Node, error)
 
-	// Vector index (tenant-blind; tenant-scoped variants will be added by F4)
+	// Vector index — tenant-blind variants (legacy / single-tenant / test).
+	// New callers should prefer the *ForTenant variants below.
 	VectorSearch(propertyName string, query []float32, k int, ef int) ([]vector.SearchResult, error)
 	ListVectorIndexes() []string
 	HasVectorIndex(propertyName string) bool
 	CreateVectorIndex(propertyName string, dimensions int, m int, efConstruction int, metric vector.DistanceMetric) error
 	DropVectorIndex(propertyName string) error
+
+	// Vector index — tenant-scoped variants (R1.x / F4 spike). Per F4
+	// spike §1.3, these reject empty tenantID at the public layer and
+	// return ErrNodeNotFound (unified error) for cross-tenant lookups
+	// to prevent existence-leak via response shape.
+	VectorSearchForTenant(tenantID string, propertyName string, query []float32, k int, ef int) ([]vector.SearchResult, error)
+	ListVectorIndexesForTenant(tenantID string) []string
+	HasVectorIndexForTenant(tenantID string, propertyName string) bool
+	CreateVectorIndexForTenant(tenantID string, propertyName string, dimensions int, m int, efConstruction int, metric vector.DistanceMetric) error
+	DropVectorIndexForTenant(tenantID string, propertyName string) error
+	GetVectorIndexMetricForTenant(tenantID string, propertyName string) (vector.DistanceMetric, error)
 
 	// Performance optimization: callback with live reference (no clone)
 	WithNodeRefForTenant(nodeID uint64, tenantID string, fn func(*Node) error) error
@@ -111,6 +139,13 @@ type Storage interface {
 	GetAllNodesAcrossTenants() []*Node
 	SetEncryption(engine encryption.EncryptDecrypter, keyManager encryption.KeyProvider)
 	Snapshot() error
+
+	// Observer registration (S11 / R2.1). AddObserver is typically called
+	// once at startup before serving requests. Backends without
+	// notification support implement this as a no-op (e.g.,
+	// BTreeGraphStorage); observers attached to a no-op backend simply
+	// never fire.
+	AddObserver(obs NodeObserver)
 
 	Close() error
 }

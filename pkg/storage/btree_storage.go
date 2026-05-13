@@ -574,13 +574,44 @@ func (gs *BTreeGraphStorage) GetVectorIndexMetric(propertyName string) (vector.D
 	return "", errBTreeBackendUnsupported
 }
 
+// Tenant-scoped vector index stubs (R3 / S1 closure). Same shapes as the
+// tenant-blind variants above — the BTree backend does not implement
+// vector indexes (mutating methods return errBTreeBackendUnsupported,
+// probing methods return false/empty/error per the F4 spike's unified-
+// response convention).
+func (gs *BTreeGraphStorage) VectorSearchForTenant(tenantID string, propertyName string, query []float32, k int, ef int) ([]vector.SearchResult, error) {
+	return nil, errBTreeBackendUnsupported
+}
+func (gs *BTreeGraphStorage) ListVectorIndexesForTenant(tenantID string) []string {
+	return nil
+}
+func (gs *BTreeGraphStorage) HasVectorIndexForTenant(tenantID string, propertyName string) bool {
+	return false
+}
+func (gs *BTreeGraphStorage) CreateVectorIndexForTenant(tenantID string, propertyName string, dimensions int, m int, efConstruction int, metric vector.DistanceMetric) error {
+	return errBTreeBackendUnsupported
+}
+func (gs *BTreeGraphStorage) DropVectorIndexForTenant(tenantID string, propertyName string) error {
+	return errBTreeBackendUnsupported
+}
+func (gs *BTreeGraphStorage) GetVectorIndexMetricForTenant(tenantID string, propertyName string) (vector.DistanceMetric, error) {
+	return "", errBTreeBackendUnsupported
+}
+
 // UpdateNodeVectorIndexes / RemoveNodeFromVectorIndexes are best-effort
 // maintenance hooks; returning nil keeps callers like CreateNodeWithTenant
-// quiet. Real maintenance happens once R1 lands.
+// quiet. Real maintenance is the in-memory backend's domain (R1.x).
 func (gs *BTreeGraphStorage) UpdateNodeVectorIndexes(node *Node) error { return nil }
 func (gs *BTreeGraphStorage) RemoveNodeFromVectorIndexes(nodeID uint64, tenantID string) error {
 	return nil
 }
+
+// AddObserver is a no-op on the BTree backend: the underlying observer
+// notify mechanism lives on *GraphStorage. Observers attached to a
+// BTreeGraphStorage simply never fire. This is intentional — the BTree
+// backend is a C2-stage experimental write surface, not an observer
+// dispatch host.
+func (gs *BTreeGraphStorage) AddObserver(obs NodeObserver) {}
 
 // --- Storage: encryption + snapshot + close -----------------------------
 
@@ -592,8 +623,12 @@ func (gs *BTreeGraphStorage) SetEncryption(engine encryption.EncryptDecrypter, k
 
 // Snapshot persists ID counters and flushes the underlying B+Tree.
 //
-// Signature note: matches S1 (no ctx). The archive parent had Snapshot(ctx)
-// for cancellability; R3 (S1 closure) decides the final shape post-R1/R2.
+// Signature note: matches S1 (`Snapshot() error`, no ctx). The archive
+// parent had `Snapshot(ctx)` for cancellability, but R3 (this S1
+// closure) deliberately kept the no-ctx shape — see interface.go's
+// header comment for the rationale. A future cancelable/streaming
+// snapshot would be a new method (e.g., SnapshotStream), not a
+// signature change to Snapshot.
 func (gs *BTreeGraphStorage) Snapshot() error {
 	gs.persistCounters()
 	return gs.tree.Flush()
