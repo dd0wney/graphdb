@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"strings"
 )
 
 // parseMatch parses a MATCH clause
@@ -491,4 +492,70 @@ func (p *Parser) parseUnwind() (*UnwindClause, error) {
 		Expression: propExpr,
 		Alias:      aliasToken.Value,
 	}, nil
+}
+
+// parseCall parses a CALL clause: CALL procedure(args) YIELD items
+func (p *Parser) parseCall() (*CallClause, error) {
+	if _, err := p.expect(TokenCall); err != nil {
+		return nil, err
+	}
+
+	// Procedure name (can be multiple parts joined by dots, e.g. algo.shortestPath)
+	var procName strings.Builder
+	for {
+		token, err := p.expect(TokenIdentifier)
+		if err != nil {
+			return nil, err
+		}
+		procName.WriteString(token.Value)
+
+		if p.peek().Type == TokenDot {
+			p.advance()
+			procName.WriteString(".")
+		} else {
+			break
+		}
+	}
+
+	call := &CallClause{
+		ProcedureName: procName.String(),
+	}
+
+	// Arguments
+	if p.peek().Type == TokenLeftParen {
+		p.advance()
+		for p.peek().Type != TokenRightParen && !p.isAtEnd() {
+			arg, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			call.Arguments = append(call.Arguments, arg)
+
+			if p.peek().Type == TokenComma {
+				p.advance()
+			}
+		}
+		if _, err := p.expect(TokenRightParen); err != nil {
+			return nil, err
+		}
+	}
+
+	// YIELD (optional)
+	if p.peek().Type == TokenYield {
+		p.advance()
+		for {
+			item, err := p.expect(TokenIdentifier)
+			if err != nil {
+				return nil, err
+			}
+			call.YieldItems = append(call.YieldItems, item.Value)
+
+			if p.peek().Type != TokenComma {
+				break
+			}
+			p.advance()
+		}
+	}
+
+	return call, nil
 }
