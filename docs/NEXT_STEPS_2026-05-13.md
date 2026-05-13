@@ -163,10 +163,24 @@ The bulk-stash had usable architectural skeletons for three features whose *outp
 - [x] Single-file PR adding to CLAUDE.md § "Known pitfalls". Makes it apply on any machine/user.
 - **Acceptance**: CLAUDE.md updated; user-private memory can stay (or be retired) at the user's option.
 
-#### Linux CI infra tax (carry-forward from May-10)
+#### Linux CI infra tax (carry-forward from May-10; diagnosis corrected 2026-05-13)
 
-- [ ] May-10 §"Known limitations" item still open. `make test-race` consistently exits 143 on Linux runners. Two structural fixes: split race target across packages, or bump the runner timeout in `.github/workflows/`. Single small PR either way.
-- [ ] Worth doing **before** Track C starts — Subset 🟢 PRs will each carry race-test runs, and noisy red checks would obscure real failures.
+May-10 §"Known limitations" item still open. Both `make test-race` AND `make test-verbose` consistently exit 143 on Ubuntu runners with `runner has received a shutdown signal`.
+
+**Hypotheses ruled out** by PR #159 + this session's evidence:
+- ~~Internal `go test -timeout 10m` firing~~ — kills happen at varying offsets (2:42, 2821s); some hit `make` itself, not `go test`.
+- ~~Race-detector OOM~~ — capping `-p 2` (PR #159) had no observed effect.
+- ~~Splitting race target across packages~~ — same per-job memory + wall clock + preemption exposure (advisor's catch).
+- ~~Bumping `go test -timeout` in `.github/workflows/`~~ — internal timeout never fires; external SIGTERM beats it.
+
+**Real cause**: external SIGTERM to the runner agent — likely account-level concurrent-job contention or runner-pool eviction. Even docs-only PRs (e.g. #146) hit the same fast-fail.
+
+**Escalation candidates** (single small PR each; pick one):
+- [ ] `concurrency: cancel-in-progress: true` on `test.yml` — frees runner slots when superseded SHAs land. Advisor's recommendation.
+- [ ] Matrix-breadth reduction: drop Go 1.23 + 1.24, keep 1.25 only — halves Linux runner pressure.
+- [ ] Move race tests to macOS-only — macOS finishes in ~3 min reliably; Ubuntu race coverage is consistently lost to SIGTERM anyway.
+
+Each is independent; combine if signal warrants.
 
 ---
 

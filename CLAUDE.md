@@ -90,7 +90,7 @@ When writing benchmarks that mirror production paths (e.g., comparing a per-shar
 
 ## Known infra patterns
 
-- **CI Ubuntu `test-race` consistently exits 143.** This is `make test-race`'s 10-minute timeout against the runner's idle-timeout budget — runner cancellation, not a real test failure. macOS runs pass. Tolerated; don't re-investigate without new evidence. PR descriptions can flag it as "known exit-143 infra pattern."
+- **CI Ubuntu jobs (both `test-verbose` AND `test-race`) consistently exit 143 with `runner has received a shutdown signal`.** The kill is **external SIGTERM to the runner agent** — NOT internal `go test -timeout`, NOT race-detector OOM (PR #159 capped `-p 2` with no observed change, ruling out OOM). Likely cause: account-level concurrent-job contention or runner-pool eviction; even **docs-only PRs** (e.g. #146) hit the same fast-fail, confirming the cause is infra not workload. Some runs die at 2:42, others at exactly 2821s (47:01) — a hard cap, not random preemption. macOS runs pass. Tolerated; escalation candidates are documented in `docs/NEXT_STEPS_2026-05-13.md` § Track H "Linux CI infra tax." PR descriptions can flag it as "known exit-143 infra pattern."
 - **CI benchmark workflow consistently fails on the comment step.** Permission-scope issue, not a benchmark regression. Same toleration as exit-143.
 - **`mergeStateStatus: UNSTABLE`** is the normal state for green PRs in this repo (because of the two known-infra failures above). Verify the failure set matches the expected pattern before merging; net-new failures need investigation.
 
