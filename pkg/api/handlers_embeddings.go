@@ -89,7 +89,9 @@ const lsaModelName = "graphdb-lsa-v1"
 //     OpenAI's neural models always return *some* vector; LSA cannot.
 //   - Scale ceiling ~100K-500K docs at the default 200 dims (audit perf finding).
 //   - LSA must be built first via POST /hybrid-search/lsa-index. Calling
-//     /v1/embeddings before the index exists returns 503.
+//     /v1/embeddings before the index exists returns 404 (matches the
+//     "missing index" idiom from /vector-search; 503 implies transient, but
+//     the index-missing condition is permanent until an admin builds it).
 func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -118,7 +120,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	tenantID := getTenantFromContext(r)
 	lsa := s.lsaIndexes.Get(tenantID)
 	if lsa == nil {
-		s.respondError(w, http.StatusServiceUnavailable,
+		s.respondError(w, http.StatusNotFound,
 			"LSA index not built for this tenant; build via POST /hybrid-search/lsa-index")
 		return
 	}
@@ -150,7 +152,11 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 			// Don't echo the input string in the response (caller already
 			// has it; we'd just be wasting bytes). Don't leak FoldQuery's
 			// internal phrasing either — keep the client-facing message stable.
-			log.Printf("embeddings: tenant=%s input[%d]: %v", tenantID, i, err)
+			//
+			// Log a category, not the raw error: FoldQuery formats the user's
+			// query into its error string (%q), so `%v err` would propagate
+			// user query content into operator log streams.
+			log.Printf("embeddings: tenant=%s input[%d]: FoldQuery failed (out-of-vocab or zero-vector projection)", tenantID, i)
 			s.respondError(w, http.StatusBadRequest,
 				fmt.Sprintf("input[%d]: out of vocabulary or zero-vector projection (LSA is vocabulary-bound; ensure the index covers your query terms)", i))
 			return

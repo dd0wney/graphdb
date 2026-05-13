@@ -219,7 +219,7 @@ sudo journalctl -u graphdb -n 100 --no-pager
 # - Corrupted snapshot.json (try moving it aside and replaying from WAL)
 ```
 
-### LSA queries return 503
+### LSA queries return 404
 
 The tenant's LSA index hasn't been built yet, or persistence restore failed. Check logs for `LSA snapshot restore:` lines. To rebuild:
 
