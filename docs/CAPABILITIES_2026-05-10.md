@@ -137,8 +137,7 @@ The OSS repo defines `pkg/plugins/EnterprisePlugin` + specialised sub-interfaces
 
 | Binary | Purpose |
 |---|---|
-| `graphdb-admin` | Admin CLI. 3 source files. |
-| `graphdb-upgrade` | In-place upgrade tool (data migration across versions). |
+| `graphdb-admin` | Admin CLI. 4 source files — includes `update` subcommand for in-place binary updates (added 2026-05-13 with `pkg/updater`). |
 | `cli` | General-purpose CLI client. **[?] Relationship to `graphdb-admin` unclear.** |
 | `license-server` | License issuance + validation server (separate process from main graphdb). |
 
