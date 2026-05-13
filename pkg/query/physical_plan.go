@@ -31,21 +31,6 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
 )
 
-// valueEvaluator is the structural-subtype interface that ProjectOperator
-// and SetOperator use to extract values from the broader ValueExpr field on
-// ReturnItem / SetClause assignments. Several concrete Expression
-// implementations (FunctionCallExpression, ArithmeticExpression, etc.)
-// satisfy this; the public Expression interface deliberately does not (it
-// only requires Eval(...) (bool, error), and adding EvalValue would force
-// every implementor to gain a method). C3.0 keeps the interface narrow and
-// type-asserts at call sites; falling back to extractValue (the existing
-// executor's helper) when the assertion misses preserves behavior parity
-// with executor_steps.go / executor_results.go (which both call
-// extractValue and silently absorb evaluation errors).
-type valueEvaluator interface {
-	EvalValue(context map[string]any) (any, error)
-}
-
 // PhysicalOperator is the interface for physical query operators (Volcano model).
 type PhysicalOperator interface {
 	// Open initializes the operator and its children.
@@ -297,15 +282,11 @@ func (o *ProjectOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 		}
 
 		if item.ValueExpr != nil {
-			if ve, ok := item.ValueExpr.(valueEvaluator); ok {
-				val, err := ve.EvalValue(binding.bindings)
-				if err != nil {
-					return nil, err
-				}
-				newBindings[alias] = val
-			} else {
-				newBindings[alias] = extractValue(item.ValueExpr, binding.bindings)
+			val, err := item.ValueExpr.EvalValue(binding.bindings)
+			if err != nil {
+				return nil, err
 			}
+			newBindings[alias] = val
 		} else if item.Expression != nil {
 			if item.Expression.Property == "" {
 				newBindings[alias] = binding.bindings[item.Expression.Variable]
@@ -447,15 +428,11 @@ func (o *SetOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 
 		val := asgn.Value
 		if asgn.ValueExpr != nil {
-			if ve, ok := asgn.ValueExpr.(valueEvaluator); ok {
-				v, err := ve.EvalValue(row.bindings)
-				if err != nil {
-					return nil, err
-				}
-				val = v
-			} else {
-				val = extractValue(asgn.ValueExpr, row.bindings)
+			v, err := asgn.ValueExpr.EvalValue(row.bindings)
+			if err != nil {
+				return nil, err
 			}
+			val = v
 		}
 
 		if node, ok := obj.(*storage.Node); ok {
