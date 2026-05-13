@@ -143,10 +143,10 @@ The bulk-stash had usable architectural skeletons for three features whose *outp
 
 ### Track H — Housekeeping (carry-forward)
 
-#### H5. Fold stacked-PR `--delete-branch` gotcha into in-repo CLAUDE.md (NEW)
+#### H5. Fold stacked-PR `--delete-branch` gotcha into in-repo CLAUDE.md ✅ **DONE (this PR)**
 
-- [ ] The user-private memory `feedback_stacked_pr_delete_branch_gotcha.md` captures a pitfall hit twice this session: merging a stack-bottom PR with `--delete-branch` auto-closes dependent PRs that GitHub then refuses to reopen. Retarget the base before merging parent, or skip `--delete-branch` on non-leaf PRs.
-- [ ] Single-file PR adding to CLAUDE.md § "Known pitfalls". Makes it apply on any machine/user.
+- [x] The user-private memory `feedback_stacked_pr_delete_branch_gotcha.md` captures a pitfall hit twice this session: merging a stack-bottom PR with `--delete-branch` auto-closes dependent PRs that GitHub then refuses to reopen. Retarget the base before merging parent, or skip `--delete-branch` on non-leaf PRs.
+- [x] Single-file PR adding to CLAUDE.md § "Known pitfalls". Makes it apply on any machine/user.
 - **Acceptance**: CLAUDE.md updated; user-private memory can stay (or be retired) at the user's option.
 
 #### Linux CI infra tax (carry-forward from May-10)
