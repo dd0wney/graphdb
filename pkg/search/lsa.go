@@ -94,9 +94,13 @@ type LSAIndex struct {
 	bm25Avgdl float64                // corpus-average document length
 }
 
+// bm25Entry is one term's posting for one document. Fields are exported
+// because LSAIndex round-trips through encoding/gob in lsa_persistence.go;
+// gob skips unexported fields. The struct itself stays unexported because
+// no caller outside this package needs to construct one.
 type bm25Entry struct {
-	doc int
-	tf  int
+	Doc int
+	TF  int
 }
 
 // sparseRow is one document's TF-IDF vector in compressed form.
@@ -478,12 +482,12 @@ func (i *LSAIndex) BM25Score(tokens []string, candidates map[uint64]bool) map[ui
 		df := float64(len(postings))
 		idf := math.Log(1 + (N-df+0.5)/(df+0.5))
 		for _, e := range postings {
-			nodeID := i.nodeIDs[e.doc]
+			nodeID := i.nodeIDs[e.Doc]
 			if candidates != nil && !candidates[nodeID] {
 				continue
 			}
-			dl := float64(i.bm25Dlen[e.doc])
-			tf := float64(e.tf)
+			dl := float64(i.bm25Dlen[e.Doc])
+			tf := float64(e.TF)
 			scores[nodeID] += idf * (tf * (k1 + 1)) / (tf + k1*(1-b+b*dl/i.bm25Avgdl))
 		}
 	}

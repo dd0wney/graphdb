@@ -27,7 +27,14 @@ func setupTestServer(t *testing.T) (*Server, func()) {
 		t.Fatalf("Failed to create graph storage: %v", err)
 	}
 
-	server, err := NewServer(gs, 8080)
+	// Pass tmpDir as dataDir so the server's persistent state (auth,
+	// LSA snapshots, etc.) lives inside the test's isolated temp dir
+	// instead of the shared ./data/server default. Tests share the
+	// process-level DATA_DIR env var otherwise, which produces hard-
+	// to-diagnose cross-test pollution (e.g., one test's saved LSA
+	// snapshot getting restored by an unrelated later test that
+	// expected an empty registry).
+	server, err := NewServerWithDataDir(gs, 8080, tmpDir)
 	if err != nil {
 		_ = gs.Close()
 		_ = os.RemoveAll(tmpDir)

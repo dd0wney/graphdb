@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -243,6 +244,18 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 	searchIndexes := search.NewTenantIndexes(graph)
 	lsaIndexes := search.NewTenantLSAIndexes()
 
+	// Restore any LSA indexes persisted by a previous run. Missing dir
+	// (fresh deployment) is not an error — LoadAll returns nil and the
+	// admin bootstrap path / env-bootstrap handles first-time builds.
+	// Per-tenant decode errors are logged but don't block boot; the
+	// affected tenant simply lacks an index until an admin rebuilds.
+	lsaSnapshotDir := filepath.Join(dataDir, "lsa")
+	if err := lsaIndexes.LoadAll(lsaSnapshotDir); err != nil {
+		log.Printf("LSA snapshot restore: %v (boot continues; affected tenants need rebuild)", err)
+	} else if tenants := lsaIndexes.Tenants(); len(tenants) > 0 {
+		log.Printf("✅ Restored LSA indexes from disk for %d tenant(s): %v", len(tenants), tenants)
+	}
+
 	server := &Server{
 		graph:         graph,
 		executor:      executor,
@@ -403,6 +416,15 @@ func (s *Server) buildAndRegisterLSA(tenantID string, labels []string, titleProp
 	}
 	s.lsaIndexes.Set(tenantID, idx)
 	log.Printf("✅ Bootstrapped LSA index for %s (%d docs, %d dims)", tenantID, idx.NumDocs(), idx.Dimensions())
+
+	// Persist so a subsequent server restart restores this index from
+	// disk instead of returning 503 on /v1/embeddings until admin
+	// re-triggers a build. Save failure is non-fatal — the in-memory
+	// index is still usable; we just lose the post-restart guarantee.
+	snapshotPath := filepath.Join(s.dataDir, "lsa", tenantID+".lsa")
+	if err := idx.SaveToFile(snapshotPath); err != nil {
+		log.Printf("LSA snapshot save for %s: %v (in-memory index still active; restart will require rebuild)", tenantID, err)
+	}
 	return nil
 }
 
