@@ -256,6 +256,29 @@ func TestPoolPanicRecovery(t *testing.T) {
 	}
 }
 
+// TestPoolPanicRecovery_LogsPanicValue pins the audit-O-1 observability
+// contract for panic recovery: the recovered value MUST surface in the
+// operator log stream so a silent panic doesn't masquerade as "production
+// is fine but losing work." Synchronous mode keeps the assertion
+// deterministic — the panic recovers on the caller's goroutine.
+func TestPoolPanicRecovery_LogsPanicValue(t *testing.T) {
+	pool := NewPool(PoolConfig{Synchronous: true})
+	defer pool.Shutdown(context.Background())
+
+	out := captureLog(t, func() {
+		pool.Submit(context.Background(), TaskFunc(func(_ context.Context) {
+			panic("intentional test panic")
+		}))
+	})
+
+	if !contains(out, "worker recovered from task panic") {
+		t.Errorf("log should record the recovery event; got: %s", out)
+	}
+	if !contains(out, "intentional test panic") {
+		t.Errorf("log should carry the panic value (Go runtime errors here, not user input by contract); got: %s", out)
+	}
+}
+
 // TestPoolDefaults pins that zero-value PoolConfig fields receive the
 // documented defaults.
 func TestPoolDefaults(t *testing.T) {
