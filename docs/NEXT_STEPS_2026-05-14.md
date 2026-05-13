@@ -36,8 +36,8 @@ S1 (`Storage`, `StorageReader`, `StorageWriter`) shipped at 51 of 58 method sign
 
 After Track C + Track H Linux CI closure, the critical path is bounded by Track R (R1 + R2 → R3) plus housekeeping (inherited-PR triage). Track R recommendation:
 
-1. **R1 (F4 vector ops redesign)** — spike has shipped a recommendation; implementation is ready once user confirms Decision 2.
-2. **R2 (S11 auto-embedder redesign)** — spike has shipped a recommendation; implementation is ready once user confirms Decision 3.
+1. **R1 (F4 vector ops redesign)** — Decision 2 RESOLVED via tier-based split (2026-05-14): OSS ships Option A (per-tenant HNSW); enterprise plugin holds Option B (filtered HNSW). Implementation ready to start.
+2. **R2 (S11 auto-embedder redesign)** — Decision 3 RESOLVED via tier-based split (2026-05-14): OSS ships Option A (pluggable Embedder + LSA adapter); enterprise plugin holds zero-config bundled-model embedder. Implementation ready to start.
 3. **R3 (S1 surface re-closure)** — sequential after R1 + R2.
 
 **Parallel-agent disposition (NEW)**: R1 and R2 touch disjoint surfaces (`pkg/vector/*` + `pkg/storage/vector_operations.go` vs. `pkg/storage/observer_*.go` + `pkg/intelligence/embedder.go`). They are parallel-eligible via the `graphdb-coord` sibling repo skills. **Default recommendation: sequential R1 → R2 with a single agent unless the user signals interest in exercising graphdb-coord on real work.** Reason: the user has not yet validated graphdb-coord against multi-agent real work; doing it here adds a coordination-correctness risk to a redesign that already carries threat-model risk. The graphdb-coord skills exist; testing them on a smaller, lower-risk PR pair first would be cheaper insurance.
@@ -49,7 +49,7 @@ After Track C + Track H Linux CI closure, the critical path is bounded by Track 
 ### R1 — F4 tenant-isolated vector ops
 
 - [x] Spike: [`F4_VECTOR_TENANT_REDESIGN.md`](./internals/design/F4_VECTOR_TENANT_REDESIGN.md) — recommends **Option A (per-tenant HNSW)**.
-- [ ] **Decision 2 (CONFIRM)**: spike picks Option A (per-tenant HNSW: full isolation, higher memory). **Reverses if expected tenant count is thousands with dense vector usage** — at that scale Option A's memory overhead becomes prohibitive and Option B (filtered HNSW, B1 variant) should be implemented instead. User must confirm tenant-count ceiling before implementation.
+- [x] **Decision 2 RESOLVED (2026-05-14, tier-based)**: OSS = Option A (per-tenant HNSW); enterprise plugin = Option B (filtered HNSW) when thousands-of-tenants-with-dense-vectors is a customer requirement. The OSS `VectorIndex` interface accommodates both implementations without an API change. See § Decision points for the full resolution.
 - [ ] **Implementation**: 6 `*VectorIndexForTenant` methods. Tenant-strict empty-tenant rejection (NOT silent route to "default"; diverges from `GetNodeForTenant`'s convention — see spike §1.3 for the justification). Return `ErrNodeNotFound` for cross-tenant existence-leak prevention.
 - [ ] **Files to expect**: `pkg/storage/vector_operations.go` (rewrite 6 wrappers), `pkg/vector/hnsw_index.go` (data structure change: `map[string]*HNSWIndex` → `map[tenantID]map[property]*HNSWIndex`). Tests pin cross-tenant search returns `ErrNodeNotFound`-equivalent.
 - [ ] **Sub-PRs expected**: R1.0 spike → already landed. R1.1 data-structure change. R1.2 the 6 methods + tests. R1.3 (if needed) snapshot format for persisted tenant-keyed HNSW.
@@ -58,7 +58,7 @@ After Track C + Track H Linux CI closure, the critical path is bounded by Track 
 ### R2 — S11 auto-embedder + NodeObserver hook
 
 - [x] Spike: [`S11_AUTO_EMBEDDER_REDESIGN.md`](./internals/design/S11_AUTO_EMBEDDER_REDESIGN.md) — recommends **Option A (pluggable `Embedder` interface, no default) + ship an in-tree `LSAEmbedder` adapter as the canonical first-party implementation**.
-- [ ] **Decision 3 (CONFIRM)**: spike picks pluggable + LSA-adapter. **Caveat: if the product requires a zero-configuration auto-embedding experience (create a node, get a vector, no admin steps), none of the spiked options satisfy it.** That would require a bundled embedding model (ONNX runtime or similar) not in this codebase — deferred to a future track.
+- [x] **Decision 3 RESOLVED (2026-05-14, tier-based)**: OSS = Option A (pluggable Embedder interface, no default, in-tree `LSAEmbedder` as canonical first-party adapter); enterprise plugin = zero-configuration auto-embed (bundled ONNX-runtime or hosted-API embedder) registers via the same `Embedder` interface from spike §7.1, no OSS interface change required. See § Decision points for the full resolution.
 - [ ] **Implementation**: `Embedder` interface (`Embed(ctx, tenantID, text) ([]float32, error)`); `NodeObserver` interface (`OnNodeCreated` / `OnNodeUpdated` / `OnNodeDeleted` with `context.Context` and no error return); bounded worker pool for async dispatch (default 4 workers, 256 queue depth, shutdown drain, synchronous test mode); `LSAEmbedder` adapter that returns `ErrNoIndexForTenant{tenantID}` when the LSA index is absent; wiring in `server_init.go` similar to the existing `BuildLSAIndex` wiring.
 - [ ] **Files to expect**: `pkg/storage/observer_*.go` (new), `pkg/intelligence/embedder.go` (rewrite), `pkg/api/server_init.go` (wire `AddObserver`), possibly `pkg/intelligence/lsa_embedder.go` or `pkg/search/lsa_embedder.go` (new adapter).
 - [ ] **Sub-PRs expected**: R2.1 Observer interface + bounded pool. R2.2 Embedder interface + LSA adapter. R2.3 wiring + tests.
@@ -173,10 +173,10 @@ The 0826Z handoff §6 identified three stale or partially-stale CLAUDE.md bullet
 ## Sequencing graph
 
 ```
-R1 spike ✅ ─→ Decision 2 (confirm) ─→ R1.1 (data-struct) ─→ R1.2 (6 methods + tests) ─┐
-                                                                                       ├─→ R3 (S1 close)
-R2 spike ✅ ─→ Decision 3 (confirm) ─→ R2.1 (Observer + pool) ─→ R2.2 (Embedder + LSA) ┘
-                                                              └─→ R2.3 (wire + tests)
+R1 spike ✅ ─→ Decision 2 ✅ (tier-split) ─→ R1.1 (data-struct) ─→ R1.2 (6 methods + tests) ─┐
+                                                                                              ├─→ R3 (S1 close)
+R2 spike ✅ ─→ Decision 3 ✅ (tier-split) ─→ R2.1 (Observer + pool) ─→ R2.2 (Embedder + LSA) ┘
+                                                                    └─→ R2.3 (wire + tests)
 
 Off-path (parallel-eligible, NOT blocking R-track):
   Inherited PRs (#108-#140) — see § Inherited PRs disposition
@@ -184,7 +184,7 @@ Off-path (parallel-eligible, NOT blocking R-track):
   CLAUDE.md stale-bullet cleanup — single doc-update PR
 ```
 
-**Critical path**: Decision 2 → R1 (3 sub-PRs) → Decision 3 → R2 (3 sub-PRs) → R3 (1 PR). **Capacity estimate** at ~2–3 PRs/week: 7 PRs total ≈ 3–4 weeks if sequential. Inherited-PR triage adds another ~1 session of work; the CLAUDE.md cleanup is a single PR.
+**Critical path**: R1 (3 sub-PRs) → R2 (3 sub-PRs) → R3 (1 PR). Decisions 2 and 3 resolved 2026-05-14 (tier-based split). **Capacity estimate** at ~2–3 PRs/week: 7 PRs total ≈ 3–4 weeks if sequential. Inherited-PR triage adds another ~1 session of work; the CLAUDE.md cleanup is a single PR.
 
 ---
 
@@ -192,17 +192,23 @@ Off-path (parallel-eligible, NOT blocking R-track):
 
 These need user weigh-in before implementation, not just inheritance from the prior planning doc.
 
-### Decision 2 — R1 (F4): per-tenant HNSW (Option A) — CONFIRM
+### Decision 2 — R1 (F4): per-tenant HNSW (Option A) — RESOLVED (2026-05-14, tier-based)
 
-Spike picks **Option A: per-tenant HNSW index**. Recommendation is conditional on tenant-count ceiling. **Question for user**: is the expected tenant-count ceiling in low hundreds (Option A is fine, ~3.2 GB at 100 tenants × 10k vectors × 768 dims) or in thousands (Option A's memory becomes prohibitive; switch to Option B with filtered HNSW)?
+User framing (2026-05-14): **"it will depend on whether its an enterprise or not."** Resolution maps to the open-core split (CLAUDE.md § "Open-core: a sibling private repo exists"):
 
-**Default if no answer**: proceed with Option A on the assumption of SaaS-with-dozens-to-hundreds tenants. Revisit if the missing-constraint surfaces.
+- **OSS (this repo)**: ship **Option A — per-tenant HNSW** as the in-tree implementation. Fits the operator-managed, low-hundreds-tenant baseline. Memory footprint (~3.2 GB at 100 tenants × 10k vectors × 768 dims) is within typical cloud-instance budgets.
+- **Enterprise (`graphdb-enterprise` `.so` plugin)**: the filtered-HNSW (Option B, B1 variant) is an enterprise-plugin extension when thousands-of-tenants-with-dense-vectors deployment is a customer requirement. The OSS `VectorIndex` interface must accommodate the replacement without an API change — the spike's per-tenant `map[tenantID]map[property]*HNSWIndex` is already a pluggable shape.
 
-### Decision 3 — R2 (S11): pluggable Embedder + LSA adapter (Option A) — CONFIRM
+**What this means for R1.1**: the OSS data-structure change is the per-tenant map. The interface signatures in F4 spike §6 are the contract; both the OSS implementation and any future enterprise filtered-HNSW plugin satisfy the same contract.
 
-Spike picks **Option A: pluggable interface with no default, ship `LSAEmbedder` in-tree as the first NodeObserver implementation**. Recommendation is conditional on the product question. **Question for user**: is "create a node, get a vector, no admin steps" a launch requirement (none of the spiked options satisfy this; needs a bundled ONNX-runtime-style packaged model — out of scope) or an aspirational-only goal (Option A is fine; LSA-with-corpus-build is the operator's responsibility)?
+### Decision 3 — R2 (S11): pluggable Embedder + LSA adapter (Option A) — RESOLVED (2026-05-14, tier-based)
 
-**Default if no answer**: proceed with Option A. The pluggable interface accommodates a future packaged-model adapter without interface changes.
+Same tier-based framing as Decision 2:
+
+- **OSS (this repo)**: ship **Option A — pluggable `Embedder` interface (no default), in-tree `LSAEmbedder` as the first NodeObserver implementation**. The operator builds the per-tenant LSA corpus before auto-embed produces results; `LSAEmbedder` returns `ErrNoIndexForTenant{tenantID}` until they do.
+- **Enterprise (`graphdb-enterprise` `.so` plugin)**: the zero-configuration auto-embed experience ("create a node, get a vector, no admin steps") is an enterprise-plugin extension. Implementation candidates: bundled ONNX-runtime embedder, hosted-API `RemoteAPIEmbedder` adapter, or a model-package distribution mechanism. **All satisfy the same `Embedder` interface from spike §7.1** — no OSS interface change required.
+
+**What this means for R2.1/R2.2**: the OSS pluggable interface is the contract; `LSAEmbedder` is the canonical in-tree adapter. Enterprise plugins register additional `Embedder` implementations at startup via the same `AddObserver` mechanism.
 
 ### Decision 5 — GNN procedure (S6): defer indefinitely — UNCHANGED
 
@@ -226,7 +232,7 @@ The default in § Inherited PRs disposition is "rebase + merge if green" for all
 
 ## Risks specific to this window
 
-- **Spike-recommendation lag**: both R1 and R2 spikes recommend Option A based on default assumptions (low-hundreds tenant count; non-zero-config-OK). If either assumption is wrong, implementation effort is wasted. Reconfirm Decision 2 + Decision 3 with the user before sub-PRs R1.1 / R2.1 begin.
+- **OSS / enterprise interface contract is load-bearing**: Decisions 2 + 3 resolved tier-based — OSS ships Option A; enterprise plugins extend. The OSS interfaces (`VectorIndex`, `Embedder`, `NodeObserver`) must remain stable enough that an enterprise `.so` plugin can swap in Option B for R1 (filtered HNSW backend) or a bundled-model embedder for R2 without an interface change. Treat the spike-doc signatures (F4 §6, S11 §7) as the contract, not as one tier's implementation detail. If R1/R2 implementation surfaces a signature change, evaluate against both tier consumers, not just OSS.
 - **R1 data-structure change is the load-bearing PR.** Once `VectorIndex` switches from `map[string]*HNSWIndex` to `map[tenantID]map[property]*HNSWIndex`, every consumer (`UpdateNodeVectorIndexes`, `RemoveNodeFromVectorIndexes`, snapshot/replay paths) must route through `node.TenantID`. Single-PR shape; review surface is wide. Expect at least one fix-forward PR.
 - **R2 Observer dispatch placement is correctness-critical.** Spike §7.4 requires the observer dispatch to run AFTER all shard and global mutex locks are released, NOT inside them. The archive's pattern (RLock over the slice copy, dispatch under that lock) is wrong and must be fixed structurally in R2.1, not deferred.
 - **Inherited-PR rebases may surface drift.** The 11 PRs sat across the Track C arc (#160–#179). Group A (H4 storage fixes) touches `pkg/storage`, which absorbed most of the partitioned-shard-map churn. Group C (A8.1 step 4) touches docs and `pkg/metrics`. Expect at least one merge conflict per group at rebase time.
@@ -261,14 +267,14 @@ The default in § Inherited PRs disposition is "rebase + merge if green" for all
 
 This is a planning checkpoint, not a backlog. When picking up the next PR:
 
-1. **Confirm Decision 2 + Decision 3 with the user first** if they have not already weighed in. Both R1 and R2 implementations branch on these answers.
+1. **Decisions 2 + 3 are resolved (tier-based, 2026-05-14)** — see § Decision points. R1 and R2 implementations can begin without user re-confirmation. Treat the spike-doc interface signatures (F4 §6, S11 §7) as the OSS contract that enterprise plugins also satisfy.
 2. If picking R1: re-read the spike doc § 6 (Final Method Signatures) before writing.
 3. If picking R2: re-read the spike doc § 7 (Final Interface Signatures) before writing.
 4. If picking inherited-PR triage: § Inherited PRs disposition has the recipe; the LSA stack needs the 8-step careful-merge order.
 5. **After ~3–5 PRs land, this checkpoint should itself be revisited and superseded** by `NEXT_STEPS_<DATE>.md` for the next window.
 
 **Revisit triggers** (any one is sufficient to start a new checkpoint immediately, not after the 3–5 PR cadence):
-- **R1 implementation surfaces a `pkg/vector` design issue not anticipated by the spike** — e.g., HNSW persistence format constraints that change Decision 2.
+- **R1 implementation surfaces a `pkg/vector` design issue not anticipated by the spike** — e.g., HNSW persistence-format constraints that would require a `VectorIndex` interface change (which would also affect the enterprise-plugin extension point).
 - **R2 implementation surfaces an `LSAEmbedder` dimension-mismatch issue** with existing HNSW indexes — the spike anticipates this but the resolution may change scope.
 - **A customer-driven priority lands on the queue** — re-plan in the customer's terms.
 - **The inherited-PR triage closes** — that resolves a 3-session carry-forward; re-evaluating the remaining queue with that decking cleared may shift priorities.
