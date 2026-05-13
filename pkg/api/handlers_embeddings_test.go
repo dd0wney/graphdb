@@ -160,10 +160,14 @@ func TestEmbeddings_AcceptsArrayInput(t *testing.T) {
 	}
 }
 
-// TestEmbeddings_NoLSAIndex asserts the 503 response when the tenant has
+// TestEmbeddings_NoLSAIndex asserts the 404 response when the tenant has
 // no LSA index built. Important: this is the *normal* state for new tenants
 // or any tenant that hasn't called the admin /hybrid-search/lsa-index
 // endpoint yet — the error message must guide the caller to fix it.
+//
+// 404 (not 503) because the missing-index condition is permanent until an
+// admin acts; 503 implies transient and would invite ineffective client
+// retries. Matches the /vector-search idiom (see handlers_vectors.go).
 func TestEmbeddings_NoLSAIndex(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
@@ -174,8 +178,8 @@ func TestEmbeddings_NoLSAIndex(t *testing.T) {
 		Input: embeddingsInput{"any input"},
 	})
 
-	if rr.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status: want 503, got %d. Body: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status: want 404, got %d. Body: %s", rr.Code, rr.Body.String())
 	}
 	if !strings.Contains(rr.Body.String(), "/hybrid-search/lsa-index") {
 		t.Error("error message should guide caller to the index-build endpoint")
@@ -379,13 +383,13 @@ func TestEmbeddings_TenantIsolation(t *testing.T) {
 		t.Fatalf("tenant-A baseline FoldQuery failed: %v", err)
 	}
 
-	// Tenant-B has no LSA → 503. This is the test signal: per-tenant
+	// Tenant-B has no LSA → 404. This is the test signal: per-tenant
 	// indexes are independent (tenant-A's index does NOT serve tenant-B).
 	rr, _ := embeddingsRequest(t, server, "tenant-B", EmbeddingsRequest{
 		Input: embeddingsInput{"graph databases"},
 	})
-	if rr.Code != http.StatusServiceUnavailable {
-		t.Errorf("tenant-B (no index) should get 503, got %d", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("tenant-B (no index) should get 404, got %d", rr.Code)
 	}
 
 	// Tenant-A succeeds.
