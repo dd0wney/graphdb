@@ -2,10 +2,8 @@ package intelligence
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/search"
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -560,11 +558,3 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
-
-// Reference time.Duration and errors.Is to keep the imports honest in
-// future test additions; otherwise the linter will flag unused imports
-// if the relevant tests are deleted. (No-op at runtime.)
-var (
-	_ = time.Microsecond
-	_ = errors.Is
-)
