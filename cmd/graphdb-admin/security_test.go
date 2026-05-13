@@ -675,8 +675,12 @@ func TestPrintFunctions(t *testing.T) {
 		t.Error("Expected usage output to contain 'GraphDB Admin CLI'")
 	}
 
-	if !strings.Contains(output, "v1.0.0") {
-		t.Error("Expected version output to contain version number")
+	// Don't pin the literal version string — Version is set via ldflags at
+	// release-build time and defaults to "dev" in tests. Verify the printed
+	// line carries whatever Version is at the test's link time.
+	expectedVersionLine := "GraphDB Admin CLI " + Version
+	if !strings.Contains(output, expectedVersionLine) {
+		t.Errorf("Expected version output to contain %q; got: %s", expectedVersionLine, output)
 	}
 
 	if !strings.Contains(output, "security") {
