@@ -100,7 +100,12 @@ When `lsa.FoldQuery(input)` fails (out-of-vocabulary or zero-vector projection),
 log.Printf("embeddings: tenant=%s input[%d]: %v", tenantID, i, err)
 ```
 
-`FoldQuery`'s error message at `pkg/search/lsa.go:415,451` is `fmt.Errorf("no vocabulary terms matched in query %q", query)` — **it includes the full query string verbatim**. Logs are therefore an unbounded sink for client-supplied text that triggered an out-of-vocab failure.
+`FoldQuery` has two error paths and both echo the query string verbatim:
+
+- `pkg/search/lsa.go:415` — `fmt.Errorf("no vocabulary terms matched in query %q", query)` (out-of-vocabulary failure: no tokens map to the per-tenant LSA vocabulary)
+- `pkg/search/lsa.go:451` — `fmt.Errorf("query %q maps to zero vector in LSA space", query)` (zero-vector projection: vocab matched but SVD projection collapses to origin)
+
+Logs are therefore an unbounded sink for client-supplied text that triggered either FoldQuery failure mode.
 
 **Attacker impact:** Not cross-tenant; a tenant cannot read another tenant's logs. But operators with log access (which in many SaaS setups includes shared support staff, error-tracking pipelines like Sentry, or aggregated structured-log indexes) can read every out-of-vocab query string passed to `/v1/embeddings`. Query strings may contain user PII, confidential queries, or sensitive contextual text.
 
@@ -109,6 +114,8 @@ log.Printf("embeddings: tenant=%s input[%d]: %v", tenantID, i, err)
 - Log only error class (use a typed error in `pkg/search`): `log.Printf("embeddings: tenant=%s input[%d]: %T", tenantID, i, err)`
 
 The user-facing response (line 154-156) is already stable and doesn't echo the query; only the server-side log needs hardening.
+
+**Status (2026-05-13):** Closed by PR #200 — `/v1/embeddings` handler now logs a fixed sanitization tag (`"out-of-vocab or zero-vector projection"`) at the log site rather than passing the FoldQuery error string through `%v`. Sanitization at the log site (handler) covers both `pkg/search/lsa.go:415` and `pkg/search/lsa.go:451` uniformly without needing per-error-type typed errors in `pkg/search`. The worker-side analogue (auto-embed observer's structured error logs) reuses the same fixed-vocabulary discipline via `embedErrorCategory` in PR #202.
 
 ### Low
 
