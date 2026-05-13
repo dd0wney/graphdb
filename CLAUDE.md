@@ -9,7 +9,7 @@ Keep this file under ~200 lines. If something only matters once a quarter, it do
 In this order:
 
 1. **`docs/CAPABILITIES_2026-05-10.md`** — what exists in `pkg/` + `cmd/` + the enterprise repo, with maturity tags. Read this before claiming anything is "missing" or "scaffolding only" — coarse grep is misleading because the codebase is large.
-2. **`docs/NEXT_STEPS_2026-05-10.md`** — current planning checkpoint. Critical-path queue + already-tracked work. The header date is the source of truth; if a newer `NEXT_STEPS_<DATE>.md` exists, that supersedes.
+2. **`docs/NEXT_STEPS_2026-05-13.md`** — current planning checkpoint. Critical-path queue + already-tracked work. The header date is the source of truth; if a newer `NEXT_STEPS_<DATE>.md` exists, that supersedes. (Predecessor: `NEXT_STEPS_2026-05-10.md`, historical only.)
 3. **`docs/internals/design/AUDIT_*_2026-05-06.md`** — multi-specialist audits (architecture, security, performance, code-quality). Most of the current work derives from these. Skim only if your task touches the named area.
 
 If the user names a task by track letter (`A4-edges`, `H2`, `F1.1`, `S1`, etc.) or audit-finding ID (`CRIT-1`, `HIGH-2`), that resolves via `NEXT_STEPS_<DATE>.md` or the audit docs. Don't guess what these mean — look them up.
