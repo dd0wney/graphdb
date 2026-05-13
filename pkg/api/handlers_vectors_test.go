@@ -953,22 +953,30 @@ func TestDistanceToScore(t *testing.T) {
 	}
 }
 
-// TestVectorSearch_TenantIsolation asserts that /vector-search filters
-// HNSW results so a caller in tenant A never sees vectors belonging to
-// tenant B's nodes — and vice versa. The HNSW index is global across
-// tenants; isolation is enforced in the handler by post-filtering on
-// Node.TenantID.
+// TestVectorSearch_TenantIsolation asserts that /vector-search returns
+// only the caller's tenant's vectors.
+//
+// Pre-R1.2 the HNSW index was global and the handler post-filtered by
+// Node.TenantID. Post-R1.2 isolation is structural: vectors live in
+// per-tenant HNSW indexes and search routes through *VectorIndexForTenant.
+// This test sets up per-tenant indexes for tenant-A and tenant-B, then
+// verifies cross-tenant searches don't see other tenants' vectors. Tenant-C
+// has its own (empty) index — search returns 200 with no results.
 func TestVectorSearch_TenantIsolation(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	const propertyName = "embedding"
-	if err := server.graph.CreateVectorIndex(propertyName, 3, 16, 200, "cosine"); err != nil {
-		t.Fatalf("CreateVectorIndex: %v", err)
+	// Per-tenant indexes (R1.2 model). Tenant-C registers but adds no
+	// nodes — its search should return 200 with empty results, not 404.
+	for _, tid := range []string{"tenant-A", "tenant-B", "tenant-C"} {
+		if err := server.graph.CreateVectorIndexForTenant(tid, propertyName, 3, 16, 200, "cosine"); err != nil {
+			t.Fatalf("CreateVectorIndexForTenant(%s): %v", tid, err)
+		}
 	}
 
-	// Two nodes, near-identical vectors so HNSW returns both regardless
-	// of tenant — the handler is what must filter.
+	// Two nodes, near-identical vectors. UpdateNodeVectorIndexes routes
+	// each vector into its node.TenantID's per-tenant index (R1.2).
 	vecA := []float32{1.0, 0.0, 0.0}
 	vecB := []float32{1.0, 0.001, 0.0}
 
