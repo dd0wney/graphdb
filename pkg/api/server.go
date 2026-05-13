@@ -113,6 +113,13 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/security/audit/export", s.requireAdmin(s.handleSecurityAuditExport))
 	mux.HandleFunc("/api/v1/security/health", s.requireAdmin(s.handleSecurityHealth))
 
+	// Software update endpoints (admin only). See pkg/updater for the
+	// download/verify/swap pipeline and docs/internals/design/AUDIT_pkg_updater_2026-05-13.md
+	// for the threat model this surface implements.
+	mux.HandleFunc("/admin/update/check", s.requireAdmin(s.handleUpdateCheck))
+	mux.HandleFunc("/admin/update/apply", s.requireAdmin(s.handleUpdateApply))
+	mux.HandleFunc("/admin/update/jobs/", s.requireAdmin(s.handleUpdateJob))
+
 	// API Key management endpoints (admin only)
 	mux.HandleFunc("/api/v1/apikeys", s.requireAdmin(s.handleAPIKeys))
 	mux.HandleFunc("/api/v1/apikeys/", s.requireAdmin(s.handleAPIKey))
