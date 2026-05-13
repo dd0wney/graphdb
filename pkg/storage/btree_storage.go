@@ -577,8 +577,10 @@ func (gs *BTreeGraphStorage) GetVectorIndexMetric(propertyName string) (vector.D
 // UpdateNodeVectorIndexes / RemoveNodeFromVectorIndexes are best-effort
 // maintenance hooks; returning nil keeps callers like CreateNodeWithTenant
 // quiet. Real maintenance happens once R1 lands.
-func (gs *BTreeGraphStorage) UpdateNodeVectorIndexes(node *Node) error        { return nil }
-func (gs *BTreeGraphStorage) RemoveNodeFromVectorIndexes(nodeID uint64) error { return nil }
+func (gs *BTreeGraphStorage) UpdateNodeVectorIndexes(node *Node) error { return nil }
+func (gs *BTreeGraphStorage) RemoveNodeFromVectorIndexes(nodeID uint64, tenantID string) error {
+	return nil
+}
 
 // --- Storage: encryption + snapshot + close -----------------------------
 

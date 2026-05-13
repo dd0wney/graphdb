@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"math"
 	"testing"
 
@@ -329,8 +330,10 @@ func TestStorageVectorUpdateDelete(t *testing.T) {
 		t.Error("Should find node 1 before delete")
 	}
 
-	// Delete node from vector indexes
-	err = gs.RemoveNodeFromVectorIndexes(1)
+	// Delete node from vector indexes. R1.2 signature: empty tenantID
+	// preserves this test's tenant-blind intent — RemoveNodeFromVectorIndexes
+	// falls back to tenantid.Default, which is where the index lives.
+	err = gs.RemoveNodeFromVectorIndexes(1, "")
 	if err != nil {
 		t.Errorf("RemoveNodeFromVectorIndexes() error = %v", err)
 	}
@@ -341,5 +344,213 @@ func TestStorageVectorUpdateDelete(t *testing.T) {
 		if r.ID == 1 {
 			t.Error("VectorSearch() should not return deleted node")
 		}
+	}
+}
+
+// TestStorageVectorCrossTenantIsolation pins the existence-leak channel
+// closed: a tenant with no vector index cannot observe another tenant's
+// indexes or contents via any *VectorIndexForTenant method. F4 spike §1.2.
+func TestStorageVectorCrossTenantIsolation(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := StorageConfig{DataDir: tmpDir, BulkImportMode: true}
+	gs, err := NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	// Tenant A creates an index and indexes a vector.
+	if err := gs.CreateVectorIndexForTenant("tenantA", "embedding", 3, 16, 200, vector.MetricCosine); err != nil {
+		t.Fatalf("CreateVectorIndexForTenant(tenantA) error = %v", err)
+	}
+	nodeA := &Node{
+		ID:       1,
+		Labels:   []string{"Doc"},
+		TenantID: "tenantA",
+		Properties: map[string]Value{
+			"embedding": VectorValue([]float32{1, 0, 0}),
+		},
+	}
+	gs.storeNodeInShard(nodeA)
+	if err := gs.UpdateNodeVectorIndexes(nodeA); err != nil {
+		t.Fatalf("UpdateNodeVectorIndexes(nodeA) error = %v", err)
+	}
+
+	// (1) HasVectorIndexForTenant(B) returns false even though A has it.
+	if gs.HasVectorIndexForTenant("tenantB", "embedding") {
+		t.Error("HasVectorIndexForTenant(tenantB) = true, want false (cross-tenant existence leak)")
+	}
+
+	// (2) VectorSearchForTenant(B) returns ErrNodeNotFound — unified
+	// error prevents existence-leak via error-shape inference.
+	if _, err := gs.VectorSearchForTenant("tenantB", "embedding", []float32{1, 0, 0}, 1, 50); !errors.Is(err, ErrNodeNotFound) {
+		t.Errorf("VectorSearchForTenant(tenantB) error = %v, want ErrNodeNotFound", err)
+	}
+
+	// (3) GetVectorIndexMetricForTenant(B) returns ErrNodeNotFound.
+	if _, err := gs.GetVectorIndexMetricForTenant("tenantB", "embedding"); !errors.Is(err, ErrNodeNotFound) {
+		t.Errorf("GetVectorIndexMetricForTenant(tenantB) error = %v, want ErrNodeNotFound", err)
+	}
+
+	// (4) ListVectorIndexesForTenant(B) returns []string{}.
+	if indexes := gs.ListVectorIndexesForTenant("tenantB"); len(indexes) != 0 {
+		t.Errorf("ListVectorIndexesForTenant(tenantB) = %v, want []", indexes)
+	}
+
+	// (5) Tenant A still sees its index — data is not lost.
+	if !gs.HasVectorIndexForTenant("tenantA", "embedding") {
+		t.Error("HasVectorIndexForTenant(tenantA) = false, want true (data lost)")
+	}
+	resultsA, err := gs.VectorSearchForTenant("tenantA", "embedding", []float32{1, 0, 0}, 1, 50)
+	if err != nil {
+		t.Fatalf("VectorSearchForTenant(tenantA) error = %v", err)
+	}
+	if len(resultsA) != 1 || resultsA[0].ID != 1 {
+		t.Errorf("VectorSearchForTenant(tenantA) = %v, want [{ID: 1, ...}]", resultsA)
+	}
+}
+
+// TestStorageVectorEmptyTenantID pins that empty tenantID is treated as
+// rejection / unified-not-found / unified-false per F4 spike §1.3 — the
+// no-silent-default-routing rationale. Empty must not silently route to
+// tenantid.Default for the public *VectorIndexForTenant surface.
+func TestStorageVectorEmptyTenantID(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := StorageConfig{DataDir: tmpDir, BulkImportMode: true}
+	gs, err := NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	// Pre-seed an index in the default tenant — empty-tenantID probes
+	// must NOT see it via the public *ForTenant surface.
+	if err := gs.CreateVectorIndex("embedding", 3, 16, 200, vector.MetricCosine); err != nil {
+		t.Fatalf("CreateVectorIndex(seed) error = %v", err)
+	}
+
+	if err := gs.CreateVectorIndexForTenant("", "embedding2", 3, 16, 200, vector.MetricCosine); err == nil {
+		t.Error("CreateVectorIndexForTenant(\"\") = nil, want error")
+	}
+	if gs.HasVectorIndexForTenant("", "embedding") {
+		t.Error("HasVectorIndexForTenant(\"\", existing) = true, want false")
+	}
+	if _, err := gs.VectorSearchForTenant("", "embedding", []float32{1, 0, 0}, 1, 50); !errors.Is(err, ErrNodeNotFound) {
+		t.Errorf("VectorSearchForTenant(\"\") error = %v, want ErrNodeNotFound", err)
+	}
+	if _, err := gs.GetVectorIndexMetricForTenant("", "embedding"); !errors.Is(err, ErrNodeNotFound) {
+		t.Errorf("GetVectorIndexMetricForTenant(\"\") error = %v, want ErrNodeNotFound", err)
+	}
+	if indexes := gs.ListVectorIndexesForTenant(""); len(indexes) != 0 {
+		t.Errorf("ListVectorIndexesForTenant(\"\") = %v, want []", indexes)
+	}
+	if err := gs.DropVectorIndexForTenant("", "embedding"); err == nil {
+		t.Error("DropVectorIndexForTenant(\"\") = nil, want error")
+	}
+}
+
+// TestStorageVectorPerTenantRouting pins that UpdateNodeVectorIndexes
+// routes vectors into the per-tenant index keyed by node.TenantID. This
+// is the R1.2 behavior change — previously all vectors landed in
+// tenantid.Default's namespace and isolation was post-filter.
+func TestStorageVectorPerTenantRouting(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := StorageConfig{DataDir: tmpDir, BulkImportMode: true}
+	gs, err := NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	// Both tenants register the same property name.
+	if err := gs.CreateVectorIndexForTenant("tenantA", "embedding", 3, 16, 200, vector.MetricCosine); err != nil {
+		t.Fatalf("CreateVectorIndexForTenant(tenantA) error = %v", err)
+	}
+	if err := gs.CreateVectorIndexForTenant("tenantB", "embedding", 3, 16, 200, vector.MetricCosine); err != nil {
+		t.Fatalf("CreateVectorIndexForTenant(tenantB) error = %v", err)
+	}
+
+	// Each tenant has a distinct node with a different vector.
+	nodeA := &Node{ID: 1, TenantID: "tenantA",
+		Properties: map[string]Value{"embedding": VectorValue([]float32{1, 0, 0})}}
+	nodeB := &Node{ID: 2, TenantID: "tenantB",
+		Properties: map[string]Value{"embedding": VectorValue([]float32{0, 1, 0})}}
+	gs.storeNodeInShard(nodeA)
+	gs.storeNodeInShard(nodeB)
+	if err := gs.UpdateNodeVectorIndexes(nodeA); err != nil {
+		t.Fatalf("UpdateNodeVectorIndexes(nodeA) error = %v", err)
+	}
+	if err := gs.UpdateNodeVectorIndexes(nodeB); err != nil {
+		t.Fatalf("UpdateNodeVectorIndexes(nodeB) error = %v", err)
+	}
+
+	// Tenant A's search finds only A's vector (not B's, even though B's
+	// vector is identical to A's query direction would have ranked it).
+	resultsA, err := gs.VectorSearchForTenant("tenantA", "embedding", []float32{1, 0, 0}, 5, 50)
+	if err != nil {
+		t.Fatalf("VectorSearchForTenant(tenantA) error = %v", err)
+	}
+	if len(resultsA) != 1 || resultsA[0].ID != 1 {
+		t.Errorf("VectorSearchForTenant(tenantA) = %v, want exactly [{ID: 1}]", resultsA)
+	}
+
+	// Tenant B's search finds only B's vector.
+	resultsB, err := gs.VectorSearchForTenant("tenantB", "embedding", []float32{0, 1, 0}, 5, 50)
+	if err != nil {
+		t.Fatalf("VectorSearchForTenant(tenantB) error = %v", err)
+	}
+	if len(resultsB) != 1 || resultsB[0].ID != 2 {
+		t.Errorf("VectorSearchForTenant(tenantB) = %v, want exactly [{ID: 2}]", resultsB)
+	}
+}
+
+// TestStorageVectorRemoveRoutesByTenant pins that RemoveNodeFromVectorIndexes
+// with an explicit tenantID removes only from that tenant's indexes, not
+// any other tenant's. Empty tenantID falls back to tenantid.Default.
+func TestStorageVectorRemoveRoutesByTenant(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := StorageConfig{DataDir: tmpDir, BulkImportMode: true}
+	gs, err := NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	_ = gs.CreateVectorIndexForTenant("tenantA", "embedding", 3, 16, 200, vector.MetricCosine)
+	_ = gs.CreateVectorIndexForTenant("tenantB", "embedding", 3, 16, 200, vector.MetricCosine)
+
+	// Both tenants index a node with id=1 (allowed because indexes are
+	// per-tenant; collision is only inside one tenant's namespace).
+	nodeA := &Node{ID: 1, TenantID: "tenantA",
+		Properties: map[string]Value{"embedding": VectorValue([]float32{1, 0, 0})}}
+	nodeB := &Node{ID: 1, TenantID: "tenantB",
+		Properties: map[string]Value{"embedding": VectorValue([]float32{0, 1, 0})}}
+	_ = gs.UpdateNodeVectorIndexes(nodeA)
+	_ = gs.UpdateNodeVectorIndexes(nodeB)
+
+	// Remove from A only.
+	if err := gs.RemoveNodeFromVectorIndexes(1, "tenantA"); err != nil {
+		t.Fatalf("RemoveNodeFromVectorIndexes(1, tenantA) error = %v", err)
+	}
+
+	// A's search no longer finds it.
+	resultsA, _ := gs.VectorSearchForTenant("tenantA", "embedding", []float32{1, 0, 0}, 5, 50)
+	for _, r := range resultsA {
+		if r.ID == 1 {
+			t.Error("VectorSearchForTenant(tenantA) returned removed node")
+		}
+	}
+
+	// B's search still finds its node — the remove did not cross tenants.
+	resultsB, _ := gs.VectorSearchForTenant("tenantB", "embedding", []float32{0, 1, 0}, 5, 50)
+	foundInB := false
+	for _, r := range resultsB {
+		if r.ID == 1 {
+			foundInB = true
+			break
+		}
+	}
+	if !foundInB {
+		t.Error("VectorSearchForTenant(tenantB) failed to find tenantB's node — remove leaked across tenants")
 	}
 }

@@ -128,9 +128,10 @@ func (s *Server) handleVectorSearch(w http.ResponseWriter, r *http.Request) {
 	s.vectorSearch(w, r)
 }
 
-// listVectorIndexes returns all vector indexes
+// listVectorIndexes returns all vector indexes for the request's tenant.
 func (s *Server) listVectorIndexes(w http.ResponseWriter, r *http.Request) {
-	indexNames := s.graph.ListVectorIndexes()
+	tenantID := getTenantFromContext(r)
+	indexNames := s.graph.ListVectorIndexesForTenant(tenantID)
 
 	indexes := make([]VectorIndexResponse, 0, len(indexNames))
 	for _, name := range indexNames {
@@ -173,14 +174,16 @@ func (s *Server) createVectorIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	metric := parseMetric(req.Metric)
 
-	// Check if index already exists
-	if s.graph.HasVectorIndex(req.PropertyName) {
+	tenantID := getTenantFromContext(r)
+
+	// Check if index already exists for this tenant
+	if s.graph.HasVectorIndexForTenant(tenantID, req.PropertyName) {
 		s.respondError(w, http.StatusConflict, "Vector index already exists for property: "+req.PropertyName)
 		return
 	}
 
-	// Create the index
-	err := s.graph.CreateVectorIndex(req.PropertyName, req.Dimensions, m, efConstruction, metric)
+	// Create the index for this tenant
+	err := s.graph.CreateVectorIndexForTenant(tenantID, req.PropertyName, req.Dimensions, m, efConstruction, metric)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create vector index"))
 		return
@@ -193,14 +196,16 @@ func (s *Server) createVectorIndex(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getVectorIndex gets info about a specific vector index
+// getVectorIndex gets info about a specific vector index for the request's tenant.
 func (s *Server) getVectorIndex(w http.ResponseWriter, r *http.Request) {
 	propertyName, ok := s.NewPathExtractor(w, r).ExtractString("/vector-indexes/")
 	if !ok {
 		return
 	}
 
-	if !s.graph.HasVectorIndex(propertyName) {
+	tenantID := getTenantFromContext(r)
+
+	if !s.graph.HasVectorIndexForTenant(tenantID, propertyName) {
 		s.respondError(w, http.StatusNotFound, "Vector index not found: "+propertyName)
 		return
 	}
@@ -210,19 +215,21 @@ func (s *Server) getVectorIndex(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// deleteVectorIndex deletes a vector index
+// deleteVectorIndex deletes a vector index for the request's tenant.
 func (s *Server) deleteVectorIndex(w http.ResponseWriter, r *http.Request) {
 	propertyName, ok := s.NewPathExtractor(w, r).ExtractString("/vector-indexes/")
 	if !ok {
 		return
 	}
 
-	if !s.graph.HasVectorIndex(propertyName) {
+	tenantID := getTenantFromContext(r)
+
+	if !s.graph.HasVectorIndexForTenant(tenantID, propertyName) {
 		s.respondError(w, http.StatusNotFound, "Vector index not found: "+propertyName)
 		return
 	}
 
-	err := s.graph.DropVectorIndex(propertyName)
+	err := s.graph.DropVectorIndexForTenant(tenantID, propertyName)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete vector index"))
 		return
@@ -278,14 +285,16 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check index exists
-	if !s.graph.HasVectorIndex(req.PropertyName) {
+	tenantID := getTenantFromContext(r)
+
+	// Check index exists for this tenant
+	if !s.graph.HasVectorIndexForTenant(tenantID, req.PropertyName) {
 		s.respondError(w, http.StatusNotFound, "Vector index not found: "+req.PropertyName)
 		return
 	}
 
 	// Get the metric for correct score calculation
-	metric, err := s.graph.GetVectorIndexMetric(req.PropertyName)
+	metric, err := s.graph.GetVectorIndexMetricForTenant(tenantID, req.PropertyName)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "get index metric"))
 		return
@@ -300,18 +309,16 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Perform search
-	searchResults, err := s.graph.VectorSearch(req.PropertyName, req.QueryVector, req.K, ef)
+	// Perform search scoped to the tenant. R1.2: tenant isolation is now
+	// structural (per-tenant HNSW indexes via R1.1) — search returns only
+	// this tenant's vectors. The WithNodeRefForTenant post-filter below is
+	// kept as defense-in-depth tenant validation AND for the per-shard
+	// RLock around label/property filter evaluation.
+	searchResults, err := s.graph.VectorSearchForTenant(tenantID, req.PropertyName, req.QueryVector, req.K, ef)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "vector search"))
 		return
 	}
-
-	// Tenant isolation: HNSW indexes are global across tenants, so the
-	// handler post-filters by Node.TenantID to ensure a caller never sees
-	// vectors from another tenant. This adds one GetNode per candidate
-	// result, but K is bounded (default 50, max 1000).
-	tenantID := getTenantFromContext(r)
 
 	// Lift the property predicate into storage.Value form once so the
 	// per-node check is a cheap byte comparison.
