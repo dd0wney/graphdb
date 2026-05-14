@@ -18,11 +18,12 @@ Then read (in order, only if relevant to your task):
 
 Default next action — Track R (1a) finish OR pivot to (1b)/(1c):
 
-  (0) IF the in-flight bench from the prior session completed cleanly
-      (check /tmp/hnsw_count_scale.log for the count_scale_1000 line
-      and PASS on count_scale_linearity), append the number to the
-      verification doc as a single-line table edit + remove the "pending"
-      caveat. ~5 min, single-file PR. Highest-leverage cheap win.
+  (0) Single follow-up PR: re-run count_scale_1000 with -timeout 2700s
+      (prior session's 1800s killed it in trailing GC; inserts had
+      completed). Append the 1000-tenant number to
+      TRACK_R_COUNT_SCALING_VERIFICATION_2026-05-14.md AND fix the doc's
+      "How to reproduce" section to use 2700s+. ~10 min implementation,
+      ≥45 min wall for the re-run. Highest-leverage cheap win.
 
   (1b) Auto-embed observer load test. Needs a load harness that
        sustains node-create traffic and observes pool drops. O-1

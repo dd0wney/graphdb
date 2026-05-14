@@ -40,7 +40,7 @@
   - `verify/track-r-hnsw-count-scaling` (matches #209; will auto-delete on merge with `--delete-branch`)
   - `docs/session-handoff-2026-05-13-0826Z` (matches #182, intentional)
 - **Uncommitted changes on main**: none except `.claude/scheduled_tasks.lock` (runtime lock; ignored).
-- **In-flight background work**: A `GRAPHDB_BENCH_LARGE=1 go test ...` process (PID 32132 at session-end check) was still running `count_scale_1000` at session end. Expected to complete in ~25 more wall-clock minutes after session-end. The test result will land in `/tmp/hnsw_count_scale.log`; if a follow-up session re-checks and the file shows the count_scale_1000 line and a `PASS` for `count_scale_linearity`, append the number to the doc as a single-line table edit. If the linearity test FAILED, that's a real signal — it would mean per-tenant cost grows non-trivially at 1000 tenants and Option A's bet doesn't extend that far.
+- **In-flight bench result (resolved post-session-start)**: The `GRAPHDB_BENCH_LARGE=1 go test ... -timeout 1800s` process timed out at 30 min with the workload mid-trailing-GC. Stack trace places the kill at `measureVectorIndexHeapDelta:172` (the post-insertion `runtime.GC()`), meaning the 1M inserts succeeded but final-GC drain pushed total over 1800s. **Per-tenant byte count for count_scale_1000 is still unknown empirically.** Recommended fix: `-timeout 2700s` (45 min) or higher when re-running. The verification doc (`TRACK_R_COUNT_SCALING_VERIFICATION_2026-05-14.md`) currently instructs `-timeout 1800s` — that's wrong and needs a follow-up PR. **Important nuance for the next session**: this is NOT evidence that Option A scales poorly — the inserts completed, only the trailing GC took longer than budgeted. The count_scale_linearity assertion did not run.
 - **Test / lint state**: PR #209's storage package `go vet`-clean, `gofmt`-clean, `golangci-lint`-clean. Default test scenarios (small + medium) pass in ~7s. The `count_scale_*` scenarios are gated; default CI doesn't run them.
 
 ## 4. What's next
@@ -49,7 +49,7 @@
 
 Unchanged from the 0242Z handoff, narrowed by this session's work:
 
-1. **`count_scale_1000` data point append.** Single-line table edit to `TRACK_R_COUNT_SCALING_VERIFICATION_2026-05-14.md`, plus removing the "pending" caveat. If the in-flight bench completed cleanly, the number is in `/tmp/hnsw_count_scale.log`. If not, re-run the full sweep: `GRAPHDB_BENCH_LARGE=1 go test -v -run 'TestVectorIndex_PerTenantMemoryFootprint/count_scale' -timeout 1800s ./pkg/storage/` (≥ 45 min wall). Smallest possible PR.
+1. **`count_scale_1000` data point + timeout fix.** Single follow-up PR: (a) re-run with `-timeout 2700s` (the prior session's 1800s timeout died in the trailing GC), (b) append the 1000-tenant number to `TRACK_R_COUNT_SCALING_VERIFICATION_2026-05-14.md`, (c) fix the "How to reproduce" section in that same doc to use 2700s+. ~10 min implementation, ≥45 min wall for the re-run.
 2. **Auto-embed observer load test under production-shaped traffic** (component 1b). O-1 structured logging shipped via #202; never exercised under load. Needs a sustained node-create harness.
 3. **Docker/k8s exercise of `GRAPHDB_AUTO_EMBED_ENABLED`** (component 1c). Largest scope — end-to-end container build + env-driven bootstrap.
 
@@ -106,11 +106,12 @@ Then read (in order, only if relevant to your task):
 
 Default next action — Track R (1a) finish OR pivot to (1b)/(1c):
 
-  (0) IF the in-flight bench from the prior session completed cleanly
-      (check /tmp/hnsw_count_scale.log for the count_scale_1000 line
-      and PASS on count_scale_linearity), append the number to the
-      verification doc as a single-line table edit + remove the "pending"
-      caveat. ~5 min, single-file PR. Highest-leverage cheap win.
+  (0) Single follow-up PR: re-run count_scale_1000 with -timeout 2700s
+      (prior session's 1800s killed it in trailing GC; inserts had
+      completed). Append the 1000-tenant number to
+      TRACK_R_COUNT_SCALING_VERIFICATION_2026-05-14.md AND fix the doc's
+      "How to reproduce" section to use 2700s+. ~10 min implementation,
+      ≥45 min wall for the re-run. Highest-leverage cheap win.
 
   (1b) Auto-embed observer load test. Needs a load harness that
        sustains node-create traffic and observes pool drops. O-1
