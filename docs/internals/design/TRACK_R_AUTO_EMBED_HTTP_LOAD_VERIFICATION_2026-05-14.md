@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-The auto-embed pipeline's drop-on-full backpressure design (S11 spike §7.5) holds under three new verification angles: **sustained-saturation steady-state** (drops keep accumulating in the second half of a 3-second run, not just at the initial burst), **erroring-embedder under saturation** (O-1 structured logs from PR #202 fire correctly from pool-dispatched tasks, and log volume is bounded by drain count, not submit count), and **HTTP-surface backpressure** (POST /nodes returns 201 for every request even under 96% drop rate; HTTP latency stays well below the catastrophic-blocking ceiling). **Decision 6's bet (drop-on-full preferable to blocking CreateNode) holds empirically across the full surface — Go-direct burst, Go-direct sustained, Go-direct under-error, and HTTP-direct.**
+The auto-embed pipeline's drop-on-full backpressure design (S11 spike §7.5) holds under three new verification angles: **sustained-saturation steady-state** (drops keep accumulating in the second half of a 3-second run, not just at the initial burst), **erroring-embedder under saturation** (O-1 structured logs from PR #202 fire correctly from pool-dispatched tasks, and log volume is bounded by drain count, not submit count), and **HTTP-surface backpressure** (POST /nodes returns 201 for every request even under 96% drop rate; HTTP latency stays well below the catastrophic-blocking ceiling). **The S11 §7.5 bet (drop-on-full preferable to blocking CreateNode) holds empirically across the full surface — Go-direct burst, Go-direct sustained, Go-direct under-error, and HTTP-direct.**
 
 ## Context
 
@@ -88,7 +88,7 @@ All HTTP requests succeed even with 83% of embed tasks dropped — the drop sign
 
 ## Conclusion
 
-**Decision 6 (drop-on-full backpressure) is validated across all four surface combinations**:
+**S11 spike §7.5 (drop-on-full backpressure) is validated across all four surface combinations**:
 
 | Surface | Erroring? | Shape | Test |
 |---|---|---|---|
