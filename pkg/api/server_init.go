@@ -197,8 +197,23 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 					log.Printf("Warning: Failed to generate admin password: %v", err)
 				} else {
 					adminPassword = fmt.Sprintf("%x", randomBytes)
-					// Write password to a secure file with restrictive permissions
-					pwFile := ".graphdb_admin_password"
+					// Write password to a secure file under dataDir (where
+					// auth state lives) rather than CWD. Bare relative path
+					// led to per-CWD password files that drifted away from
+					// the persisted admin user — confusing in development,
+					// outright broken if the daemon ever ran from a
+					// different working directory across restarts.
+					pwFile := filepath.Join(dataDir, ".graphdb_admin_password")
+					// dataDir may not exist yet on first boot. SaveAuthData's
+					// own MkdirAll runs later in the bootstrap path, but the
+					// password write happens before that, so do it here.
+					// #nosec G703 -- dataDir is operator-supplied via the
+					// daemon's --data flag, not user input from a request.
+					if err := os.MkdirAll(filepath.Dir(pwFile), 0700); err != nil {
+						log.Printf("Warning: Failed to create dataDir for password file: %v", err)
+					}
+					// #nosec G703 -- same justification as above; pwFile
+					// is rooted at the operator-supplied dataDir.
 					if err := os.WriteFile(pwFile, []byte(adminPassword+"\n"), 0600); err != nil {
 						log.Printf("Warning: Failed to write admin password file: %v", err)
 					} else {

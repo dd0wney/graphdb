@@ -448,8 +448,13 @@ func main() {
 		)
 	}
 
-	// Create and start API server
-	server, err := api.NewServer(graph, *port)
+	// Create and start API server. Pass the --data flag through so auth
+	// state (users.json, apikeys.json) lands in the same directory as
+	// graph state. NewServer alone falls back to $DATA_DIR or
+	// "./data/server" (CWD-relative), which silently splits auth from
+	// graph and means every daemon restart loses the in-memory HMAC
+	// secret — invalidating every previously-issued X-API-Key.
+	server, err := api.NewServerWithDataDir(graph, *port, *dataDir)
 	if err != nil {
 		logger.Error("Failed to create API server", "error", err)
 		os.Exit(1)
