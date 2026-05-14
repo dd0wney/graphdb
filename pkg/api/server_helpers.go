@@ -97,9 +97,39 @@ func (s *Server) convertToValue(v any) storage.Value {
 		return storage.FloatValue(val)
 	case bool:
 		return storage.BoolValue(val)
+	case []any:
+		// JSON arrays. Without this case, every array — embedding
+		// vectors, tag lists, weight arrays — falls through to the
+		// fmt.Sprintf default and gets stored as a Go-stringified
+		// "[0.1 0.2 0.3]" form that no client can JSON-parse back.
+		// Dispatch on element type for the all-same-type cases and
+		// preserve the legacy fallback for mixed/empty arrays.
+		if arr, ok := allFloat64(val); ok {
+			return storage.FloatArrayValue(arr)
+		}
+		return storage.StringValue(fmt.Sprintf("%v", v))
 	default:
 		return storage.StringValue(fmt.Sprintf("%v", v))
 	}
+}
+
+// allFloat64 returns the slice as []float64 if every element is
+// float64 (the JSON-unmarshal default for numbers). Returns ok=false
+// for empty slices because there's no signal to discriminate them
+// from non-numeric arrays — leave those on the legacy string path.
+func allFloat64(arr []any) ([]float64, bool) {
+	if len(arr) == 0 {
+		return nil, false
+	}
+	out := make([]float64, len(arr))
+	for i, v := range arr {
+		f, ok := v.(float64)
+		if !ok {
+			return nil, false
+		}
+		out[i] = f
+	}
+	return out, true
 }
 
 // valueToInterface decodes a typed storage.Value into a JSON-serializable
