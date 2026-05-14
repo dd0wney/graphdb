@@ -138,6 +138,59 @@ func TestValueToInterface_RoundTripFromConvertToValue(t *testing.T) {
 	}
 }
 
+// TestConvertToValue_FloatArrayRoundTrips pins the 2026-05-14 fix
+// for silent-failure shape #7: JSON arrays of numbers (embedding
+// vectors, weight lists, etc.) used to fall through the convertToValue
+// switch into the fmt.Sprintf default, getting stored as a string of
+// Go's "%v" format ("[0.1 0.2 0.3]" — space-separated, no commas).
+// On read-back, no JSON parser could recognise it as an array. Net
+// effect: every embedding written via the REST surface stored as a
+// string, came back as a string, and any client trying to use it as
+// a vector silently saw "embedding_len=0."
+//
+// Pins both directions: convertToValue maps to TypeFloatArray, and
+// valueToInterface round-trips back to []float64 so JSON marshal
+// produces a real array.
+func TestConvertToValue_FloatArrayRoundTrips(t *testing.T) {
+	s := &Server{}
+	// []any{float64, ...} is what JSON unmarshal of an array like
+	// [-0.844, 0.274, -0.153] produces.
+	in := []any{-0.844, 0.274, -0.153, 0.987}
+	v := s.convertToValue(in)
+	if v.Type != storage.TypeFloatArray {
+		t.Fatalf("convertToValue([]float-like) type = %v, want TypeFloatArray", v.Type)
+	}
+	out := valueToInterface(v)
+	arr, ok := out.([]float64)
+	if !ok {
+		t.Fatalf("valueToInterface returned %T, want []float64", out)
+	}
+	if len(arr) != len(in) {
+		t.Fatalf("round-trip len = %d, want %d", len(arr), len(in))
+	}
+	for i, f := range arr {
+		want := in[i].(float64)
+		if f != want {
+			t.Errorf("round-trip [%d] = %v, want %v", i, f, want)
+		}
+	}
+}
+
+// TestConvertToValue_MixedArrayHitsLegacyPath documents the deliberate
+// non-fix in this PR: arrays with non-float64 elements (string arrays,
+// mixed-type arrays) still hit the fmt.Sprintf fallback. The right fix
+// for those is to extend allFloat64 into allStrings/allBools/etc — a
+// separate scope.
+func TestConvertToValue_MixedArrayHitsLegacyPath(t *testing.T) {
+	s := &Server{}
+	// Mixed array: should NOT be treated as a float array.
+	in := []any{1.0, "two", 3.0}
+	v := s.convertToValue(in)
+	if v.Type != storage.TypeString {
+		t.Errorf("mixed array stored as %v, expected TypeString (legacy path)", v.Type)
+	}
+}
+
 func TestValueToInterface_UnknownTypeFallsBack(t *testing.T) {
 	// Synthesise a Value with a Type the helper doesn't know. Should fall
 	// back to the raw bytes (preserves current base64 behaviour rather
