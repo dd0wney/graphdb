@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -85,51 +84,15 @@ func (s *Server) applyMaskingPolicy(ctx context.Context, props map[string]any) m
 	return policy.Apply(props, s.masker)
 }
 
+// convertToValue is the thin method wrapper around
+// storage.ValueFromJSON, kept here so existing call sites that pass
+// `s.convertToValue` as a method value to `pc.ConvertAndSanitize`
+// don't need to change. The real conversion logic lives in
+// pkg/storage and is shared with the GraphQL resolver path —
+// previously the two diverged and caused silent-failure shape #7
+// (2026-05-14).
 func (s *Server) convertToValue(v any) storage.Value {
-	switch val := v.(type) {
-	case string:
-		return storage.StringValue(val)
-	case float64:
-		// JSON numbers are always float64
-		if val == float64(int64(val)) {
-			return storage.IntValue(int64(val))
-		}
-		return storage.FloatValue(val)
-	case bool:
-		return storage.BoolValue(val)
-	case []any:
-		// JSON arrays. Without this case, every array — embedding
-		// vectors, tag lists, weight arrays — falls through to the
-		// fmt.Sprintf default and gets stored as a Go-stringified
-		// "[0.1 0.2 0.3]" form that no client can JSON-parse back.
-		// Dispatch on element type for the all-same-type cases and
-		// preserve the legacy fallback for mixed/empty arrays.
-		if arr, ok := allFloat64(val); ok {
-			return storage.FloatArrayValue(arr)
-		}
-		return storage.StringValue(fmt.Sprintf("%v", v))
-	default:
-		return storage.StringValue(fmt.Sprintf("%v", v))
-	}
-}
-
-// allFloat64 returns the slice as []float64 if every element is
-// float64 (the JSON-unmarshal default for numbers). Returns ok=false
-// for empty slices because there's no signal to discriminate them
-// from non-numeric arrays — leave those on the legacy string path.
-func allFloat64(arr []any) ([]float64, bool) {
-	if len(arr) == 0 {
-		return nil, false
-	}
-	out := make([]float64, len(arr))
-	for i, v := range arr {
-		f, ok := v.(float64)
-		if !ok {
-			return nil, false
-		}
-		out[i] = f
-	}
-	return out, true
+	return storage.ValueFromJSON(v)
 }
 
 // valueToInterface decodes a typed storage.Value into a JSON-serializable

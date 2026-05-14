@@ -176,62 +176,12 @@ func deleteNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 	}
 }
 
-// convertToStorageValue converts a Go any to storage.Value.
-//
-// Mirror of pkg/api/server_helpers.go's convertToValue — same bugs and
-// same fixes need to live in both until they're consolidated. The two
-// resolvers (REST PATCH /nodes and GraphQL updateNode mutation) hit
-// distinct code paths; coord's UpdateNode uses the GraphQL one, while
-// other clients (and integration tests) sometimes use the REST one.
+// convertToStorageValue is the thin wrapper around
+// storage.ValueFromJSON, kept as-is to minimise call-site churn in
+// the resolver functions that reference it. The real conversion logic
+// lives in pkg/storage and is shared with the REST handler path —
+// previously the two duplicates diverged and caused silent-failure
+// shape #7 (2026-05-14).
 func convertToStorageValue(v any) storage.Value {
-	switch val := v.(type) {
-	case string:
-		return storage.StringValue(val)
-	case int:
-		return storage.IntValue(int64(val))
-	case int64:
-		return storage.IntValue(val)
-	case float64:
-		// JSON numbers are always float64, but if it's a whole number,
-		// store it as an int for better type compatibility
-		if val == float64(int64(val)) {
-			return storage.IntValue(int64(val))
-		}
-		return storage.FloatValue(val)
-	case bool:
-		return storage.BoolValue(val)
-	case []any:
-		// JSON arrays. Without this case, embedding vectors and other
-		// numeric arrays fall through to fmt.Sprintf and get stored as
-		// a Go-stringified "[0.1 0.2 0.3]" form that no client can
-		// JSON-parse back. Dispatch on element type; mixed/empty falls
-		// through to the legacy string path.
-		if arr, ok := allFloat64GQL(val); ok {
-			return storage.FloatArrayValue(arr)
-		}
-		return storage.StringValue(fmt.Sprintf("%v", val))
-	default:
-		return storage.StringValue(fmt.Sprintf("%v", val))
-	}
-}
-
-// allFloat64GQL returns the slice as []float64 if every element is
-// float64 (JSON's number type). Returns ok=false for empty slices —
-// no signal to discriminate from non-numeric arrays. Suffixed "GQL"
-// to avoid colliding with the REST package's identical helper; the
-// two will be consolidated when convertToValue and
-// convertToStorageValue are merged.
-func allFloat64GQL(arr []any) ([]float64, bool) {
-	if len(arr) == 0 {
-		return nil, false
-	}
-	out := make([]float64, len(arr))
-	for i, v := range arr {
-		f, ok := v.(float64)
-		if !ok {
-			return nil, false
-		}
-		out[i] = f
-	}
-	return out, true
+	return storage.ValueFromJSON(v)
 }
