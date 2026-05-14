@@ -38,10 +38,10 @@ PR #181 moved the matrix `test` job to macOS-only, closing the exit-143 SIGTERM 
 **Track R has shipped but never run in a real deployment.** The OSS implementation is correct per the unit + integration tests, but:
 
 - **(1a)** ~~The per-tenant HNSW memory footprint at realistic tenant counts has not been benchmarked. Decision 2's spike picked Option A (per-tenant HNSW) on the assumption of low-hundreds tenants × ~10k vectors × 768 dims (≈3.2 GB). **Reality check needed before the next architectural decision rests on this assumption.**~~ ✅ **Discharged 2026-05-14** via PRs #195, #209, #212 — see § Reconciliation 2026-05-14 below.
-- **(1b)** The auto-embed observer's bounded-pool backpressure has not been exercised under sustained node-create load. The pool drops on full; the metric exists; nobody has yet observed it firing in production-shaped traffic.
+- **(1b)** ~~The auto-embed observer's bounded-pool backpressure has not been exercised under sustained node-create load. The pool drops on full; the metric exists; nobody has yet observed it firing in production-shaped traffic.~~ ✅ **Discharged 2026-05-14** via PRs #196, #202, #215 — see § Reconciliation 2026-05-14 — component (1b) discharged below.
 - **(1c)** The `pkg/api/server_init.go` env-driven wiring (R2.5b once merged) has not been exercised in a deployment. The end-to-end test in R2.5b covers the bootstrap path, but a Docker / k8s deployment that exercises `GRAPHDB_AUTO_EMBED_ENABLED=true` in production-shaped traffic doesn't exist.
 
-**The remaining components (1b) and (1c) are anchored as the next session's first task** in § How to use this document.
+**The remaining component (1c) is anchored as the next session's first task** in § How to use this document.
 
 #### Reconciliation 2026-05-14 — component (1a) discharged
 
@@ -53,6 +53,16 @@ The per-tenant HNSW memory footprint at scale was the load-bearing question for 
 
 Empirical per-tenant bytes: 3,463,428 → 3,463,209 → 3,463,237 across 100 → 500 → 1000 tenants. Reference doc: `docs/internals/design/TRACK_R_COUNT_SCALING_VERIFICATION_2026-05-14.md`. **Decision 2's Option A bet (per-tenant HNSW in OSS) holds empirically.** The enterprise filtered-HNSW plugin remains a premium-tier offering, not a correctness prerequisite.
 
+#### Reconciliation 2026-05-14 — component (1b) discharged
+
+The auto-embed observer's bounded-pool backpressure has now been exercised across all four surface combinations (Go × HTTP × burst × sustained × erroring × non-erroring). **S11 spike §7.5's drop-on-full design holds empirically.** Three PRs closed this:
+
+- **PR #196** (`11bf734`): Go-direct burst load test — 400-node burst against a 2-worker / 10-queue pool with `slowFakeEmbedder`. Pins that the drop path fires + CreateNode latency stays bounded (~3.67ms) + no goroutine leak.
+- **PR #202** (`2e22885`): O-1 structured error logging in the auto-embed worker — M-1 sanitized embedder-error log, source-property type-mismatch log, writeback log, panic-recovery log. Unit-level coverage of all four log sites.
+- **PR #215** (`6dcef1c`): the three remaining angles — `TestAutoEmbedObserver_SustainedLoadDropsContinue` (steady-state drop accumulation), `TestAutoEmbedObserver_EmbedderErrorsLoggedUnderLoad` (O-1 logs fire from pool-dispatched tasks under load + log volume bounded by drain count, not submit count), `TestAutoEmbedObserver_HTTPCreateNodeBackpressure` (HTTP-surface bookend; 400 POST /nodes all return 201 under 83% drop rate; HTTP latency bounded).
+
+Reference doc: `docs/internals/design/TRACK_R_AUTO_EMBED_HTTP_LOAD_VERIFICATION_2026-05-14.md`. **Component (1c) Docker/k8s exercise is the one remaining verification component.**
+
 ---
 
 ## Critical path
@@ -61,7 +71,7 @@ Empirical per-tenant bytes: 3,463,428 → 3,463,209 → 3,463,237 across 100 →
 
 The next session should pick from one of:
 
-1. **Run the remaining verification components.** Component (1a) is discharged (Option A validated 100 → 1000 tenants; see § Reconciliation above). Components (1b) auto-embed observer load test and (1c) Docker/k8s `GRAPHDB_AUTO_EMBED_ENABLED` exercise remain — either is a valid pick. Closing both completes Track R *empirically* across the full surface (not just *structurally*).
+1. **Run the remaining verification component.** Components (1a) and (1b) are discharged (Option A validated 100 → 1000 tenants; backpressure validated Go × HTTP × burst × sustained × erroring; see the two § Reconciliation subsections above). Component (1c) Docker/k8s `GRAPHDB_AUTO_EMBED_ENABLED` exercise remains. Closing it completes Track R *empirically* across the full surface (not just *structurally*).
 
 2. **Resolve the inherited-PR carry-forward debt.** Four sessions of "decide later" needs to end. See § Inherited PRs forcing function below.
 
@@ -141,11 +151,11 @@ R2.5a's `OnNodeUpdated` is a no-op with a TODO: activating it requires a re-entr
 ### Decision 9 (NEW) — Critical-path selection for the next session
 
 Choose one:
-- **(A) Verification gap closure** — bench + deployment exercise of Track R. **Partially discharged 2026-05-14**: component (1a) is closed via PRs #195/#209/#212 (Option A validated 100 → 1000 tenants, ratio 1.000). Components (1b) and (1c) remain — see § Verification gap above.
+- **(A) Verification gap closure** — bench + deployment exercise of Track R. **Partially discharged 2026-05-14**: components (1a) and (1b) are closed (PRs #195/#209/#212 for 1a; PRs #196/#202/#215 for 1b). Component (1c) Docker/k8s exercise of `GRAPHDB_AUTO_EMBED_ENABLED` is the one remaining — see § Verification gap above.
 - **(B) Inherited-PR triage** — execute the disposition (or bulk-close per the forcing function). **✅ DISCHARGED 2026-05-14** via hybrid disposition (7 merged, 4 closed); see § Inherited PRs § Reconciliation. No longer a live option.
 - **(C) New audit** — performance, security, or productization angle (see § Critical path option 3).
 
-**Default if no answer**: (A) verification gap — specifically components (1b) or (1c). Reason: (1a) is now answered ("yes, Option A fits at 1000 tenants — ratio 1.000"), so the remaining components are the observer load test and the Docker/k8s deployment exercise. Either is a valid next-session pick. After both close, (C) new-audit becomes the natural next.
+**Default if no answer**: (A) verification gap — specifically component (1c) Docker/k8s deployment exercise. Reason: (1a) and (1b) are now both answered ("yes, Option A fits at 1000 tenants — ratio 1.000"; "yes, drop-on-full backpressure holds across Go × HTTP × burst × sustained × erroring"). After (1c) closes, (C) new-audit becomes the natural next.
 
 ### Carry-forward decisions still open
 
@@ -155,7 +165,7 @@ Choose one:
 
 ## Risks specific to this window
 
-- **The verification gap is now narrower but not zero.** Component (1a) discharged 2026-05-14 — per-tenant HNSW memory bench at 100/500/1000 tenants showed ratio 1.000 (Option A holds). Components (1b) auto-embed observer load test and (1c) Docker/k8s deployment exercise remain. The risk of NOT running them is that an enterprise customer hits a real auto-embed-backpressure or env-driven-bootstrap constraint that the unit tests can't surface. The risk of running them is one or two sessions of harness + Docker work that may surface "fine, ship as-is" — still the better failure mode.
+- **The verification gap is now down to one component.** Components (1a) and (1b) discharged 2026-05-14 — per-tenant HNSW memory bench at 100/500/1000 tenants showed ratio 1.000 (Option A holds); auto-embed backpressure validated across Go × HTTP × burst × sustained × erroring. Component (1c) Docker/k8s deployment exercise remains. The risk of NOT running it is that an enterprise customer hits a real env-driven-bootstrap constraint that the unit tests can't surface. The risk of running it is one session of Docker work that may surface "fine, ship as-is" — still the better failure mode.
 
 - **The inherited-PR carry-forward debt is now load-bearing.** Four sessions of inaction means there's no consensus on whether these PRs matter. The forcing function above retires the debt one way or another. If neither happens by 2026-05-22, this planning rhythm starts losing credibility — future "merge or close by X" deadlines won't bind either.
 
@@ -184,12 +194,12 @@ Unchanged from 2026-05-14 except where noted:
 This is a planning checkpoint, not a backlog. When picking up the next PR:
 
 1. ~~**Confirm R2.5b (#193) merged.**~~ ✅ Merged 2026-05-13 (`39247af`). No action needed.
-2. **Pick a critical-path option from § Decision 9.** Default is (A) verification gap — specifically (1b) or (1c) (component (1a) discharged 2026-05-14 via PRs #195/#209/#212). Option (B) is no longer live (discharged). If you pick (C), document why in the PR description.
+2. **Pick a critical-path option from § Decision 9.** Default is (A) verification gap — specifically (1c) (components (1a) and (1b) discharged 2026-05-14 via PRs #195/#209/#212 and #196/#202/#215). Option (B) is no longer live (discharged). If you pick (C), document why in the PR description.
 3. ~~**Address the inherited-PR forcing function** if 2026-05-22 has passed.~~ ✅ Discharged 2026-05-14 via hybrid disposition; see § Inherited PRs § Reconciliation. No action needed.
 4. **After 1-3 PRs land**, this checkpoint should be revisited. Trigger: any of the live critical-path options being picked and at least one PR landed against it.
 
 **Revisit triggers** (any one is sufficient to start a new checkpoint immediately):
-- ~~**Verification gap exercise surfaces a real constraint** — e.g., per-tenant HNSW memory blows up at 500 tenants. That changes the OSS vs enterprise architectural assumption and warrants its own track.~~ — Component (1a) discharged 2026-05-14: per-tenant HNSW heap is flat across 100 → 1000 tenants (ratio 1.000). The OSS-vs-enterprise architectural assumption is empirically validated; this revisit trigger now applies only to (1b)/(1c) surfacing an auto-embed-observer or deployment constraint.
+- ~~**Verification gap exercise surfaces a real constraint** — e.g., per-tenant HNSW memory blows up at 500 tenants. That changes the OSS vs enterprise architectural assumption and warrants its own track.~~ — Components (1a) and (1b) discharged 2026-05-14: per-tenant HNSW heap is flat across 100 → 1000 tenants (ratio 1.000); auto-embed backpressure holds across Go × HTTP × burst × sustained × erroring. The OSS-vs-enterprise architectural assumption is empirically validated; this revisit trigger now applies only to (1c) surfacing a deployment constraint.
 - **A customer-driven priority lands on the queue** — re-plan in the customer's terms.
 - ~~**Inherited-PR forcing function deadline passes (2026-05-22)**~~ — ✅ Discharged 2026-05-14 via hybrid disposition (7 merged, 4 closed). No longer a revisit trigger.
 
