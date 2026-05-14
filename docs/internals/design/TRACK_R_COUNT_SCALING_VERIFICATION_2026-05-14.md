@@ -32,9 +32,9 @@ Per-tenant size of 1,000 vectors (vs the documented Option A's 10k) is a 10× co
 
 ## Results
 
-Measured on two macOS dev machines (Apple Silicon, Go 1.24, `GRAPHDB_BENCH_LARGE=1`):
+Measured on macOS dev hardware (Apple Silicon, Go 1.24, `GRAPHDB_BENCH_LARGE=1`) across two sessions:
 
-PR #209 captured 100T + 500T in one machine; this doc's append (post-PR) captures all three on a second machine. Both runs agree to six significant figures.
+PR #209 captured 100T + 500T in one session; this doc's append (post-PR) captures all three in a second session. Both agree to six significant figures on per-tenant bytes. Wall times differ ~50% between sessions (likely background-load variance; same workspace, machine identity not separately verified).
 
 | Scenario | Tenants | Vectors/tenant | Dims | Heap bytes | Per-tenant bytes | Per-vector bytes | Ratio vs 100-baseline | Source |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
@@ -46,7 +46,7 @@ PR #209 captured 100T + 500T in one machine; this doc's append (post-PR) capture
 
 The linearity subtest's emitted ratios (`HNSW_COUNT_SCALING` log lines) are `count_scale_500/100 = 1.000` and `count_scale_1000/100 = 1.000` (raw: 0.99994 each). Both are well below the 1.5× threshold encoded in the test.
 
-**Wall times observed (this run, single machine, Apple Silicon idle)**: 100T = 107.68 s, 500T = 535.02 s (8.9 min), 1000T = 1074.38 s (17.9 min); total 1717.09 s (28.6 min). Note: total wall time finished only 83 s under the prior session's 1800 s `-timeout` budget — this is why the doc now recommends 3600 s (see *How to reproduce*). Wall times also vary by machine and load: PR #209's machine saw 500T ≈ 13 min, ~50% slower than the 8.9 min observed here.
+**Wall times observed (this run, Apple Silicon idle)**: 100T = 107.68 s, 500T = 535.02 s (8.9 min), 1000T = 1074.38 s (17.9 min); total 1717.09 s (28.6 min). Note: total wall time finished only 83 s under the prior session's 1800 s `-timeout` budget — this is why the doc now recommends 3600 s (see *How to reproduce*). Wall times vary across sessions: PR #209's session saw 500T ≈ 13 min, ~50% slower than the 8.9 min observed here (likely background-load variance, since machine identity wasn't separately tracked).
 
 ### Comparison to PR #195's spike_estimate
 
@@ -69,11 +69,11 @@ Implications:
 
 ## Limitations
 
-- **Two single-machine runs (PR #209 + this append), not multi-run characterization.** PR #209 captured 100T + 500T on one machine; this append captured 100T + 500T + 1000T on a second machine. Both agree to six significant figures, which is far stronger than per-run variance would predict, but neither captures variance across multiple runs on the same machine. Multi-run variance characterization (e.g., 3-5 runs of count_scale_1000) is a separate follow-up if the 5-10% expected variance ever needs to be tightened.
+- **Two single-run sessions (PR #209 + this append), not multi-run characterization.** PR #209 captured 100T + 500T in one session; this append captured 100T + 500T + 1000T in a second session. Both agree to six significant figures on per-tenant bytes, which is far stronger than per-run variance would predict, but neither captures within-session variance across multiple back-to-back runs. Multi-run variance characterization (e.g., 3-5 runs of count_scale_1000) is a separate follow-up if the 5-10% expected variance ever needs to be tightened.
 - **Go-heap only, not RSS.** `HeapAlloc` is what the index *allocates*; operator-visible RSS can be higher due to fragmentation and GC pacing. A future extension can capture RSS via `/proc/self/status` or `ps`.
 - **Zero-filled vectors.** Raw byte cost is identical (HNSW stores vectors verbatim); graph edge density may differ for real embeddings. Each `m`-friends list is capped at 2m, so the upper bound is fixed.
 - **One process, no IPC/replication overhead.** This measures the index itself, not full-system memory under a sharded write path. The cluster code (`pkg/cluster/`) and snapshot persistence add their own footprints not captured here.
-- **Wall-time grows superlinearly with tenant count, even though per-tenant memory is flat.** count_scale_100 = ~108 s; count_scale_500 = ~535 s (5× tenants but ~5× wall, roughly linear); count_scale_1000 = ~1074 s (10× tenants but ~10× wall, also roughly linear — but the prior session's `-timeout 1800s` killed the test in trailing GC at ~30 min total wall time). This is a *bench-cost* limitation, not a *production* one — running a continuous-bench scenario at 1000 tenants is more expensive than the linear extrapolation from 100 would suggest. Relevant for any future CI-resident or continuous-bench planning.
+- **Cumulative bench wall time pushes against a 30-minute Go test budget.** Per-scenario wall is linear in tenant count (100T = 108 s; 500T = 535 s, 4.95×; 1000T = 1074 s, 9.94×). The cumulative wall across all three (1717 s, 28.6 min) finished only 83 s under the prior session's 1800 s `-timeout` budget — and the prior session ran ~50% slower (likely background-load variance), so it ran out of budget inside the trailing `runtime.GC()`. This is a *bench-cost* limitation, not a *production* one — relevant for any future CI-resident or continuous-bench planning, but does not reflect a production performance characteristic.
 
 ## Next actions
 
@@ -93,11 +93,11 @@ GRAPHDB_BENCH_LARGE=1 go test -v \
   ./pkg/storage/
 ```
 
-Expected total wall time on Apple Silicon: ~30 min on a fast/idle machine, up to ~60 min under load. Two empirical reference points:
+Expected total wall time on Apple Silicon: ~30 min on a fast/idle session, up to ~60 min under load. Two empirical reference points:
 
-- Fast/idle machine (this run): count_scale_100 = 108 s, count_scale_500 = 535 s (8.9 min), count_scale_1000 = 1074 s (17.9 min), total = 1717 s (28.6 min).
-- Slower machine (PR #209's session): count_scale_500 ≈ 13 min (~50% slower than this run), count_scale_1000 not measured — that session's `-timeout 1800s` killed the bench inside the trailing `runtime.GC()` *after* the 1M inserts completed.
+- Fast/idle session (this run): count_scale_100 = 108 s, count_scale_500 = 535 s (8.9 min), count_scale_1000 = 1074 s (17.9 min), total = 1717 s (28.6 min).
+- Slower session (PR #209's run): count_scale_500 ≈ 13 min (~50% slower than this run), count_scale_1000 not measured — that session's `-timeout 1800s` killed the bench inside the trailing `runtime.GC()` *after* the 1M inserts completed.
 
-The `-timeout 3600s` (60 min) is deliberately conservative. The 1800 s that killed the prior session was 83 s above the *fast* machine's full wall time — i.e. less than 5% margin on a fast machine, and *negative* margin on a slower one. The heap-drain time at ~3.5 GB is also non-deterministic. A 2× margin over the slow machine's expected wall time is the right shape.
+The `-timeout 3600s` (60 min) is deliberately conservative. The 1800 s that killed the prior session was 83 s above the *fast* session's full wall time — i.e. less than 5% margin on a fast session, and *negative* margin on a slower one. The heap-drain time at ~3.5 GB is also non-deterministic. A 2× margin over the slow-session wall time is the right shape.
 
-Per-run variance on a single machine: ~5-10% (per PR #195's documentation). Cross-machine variance is much larger (~50% observed here). If per-tenant bytes drift more than 1.5× from the 100-tenant baseline on a future run, the `count_scale_linearity` subtest will fail with a structured error.
+Per-session variance on the same hardware: ~5-10% (per PR #195's documentation). Cross-session variance under different background-load conditions is much larger (~50% observed here). If per-tenant bytes drift more than 1.5× from the 100-tenant baseline on a future run, the `count_scale_linearity` subtest will fail with a structured error.
