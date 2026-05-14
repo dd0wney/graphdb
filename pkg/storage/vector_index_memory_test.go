@@ -59,7 +59,19 @@ func TestVectorIndex_PerTenantMemoryFootprint(t *testing.T) {
 		{name: "small", tenants: 5, vectorsPerTenant: 100, dims: 128},
 		{name: "medium", tenants: 20, vectorsPerTenant: 1000, dims: 256},
 		{name: "spike_estimate", tenants: 100, vectorsPerTenant: 10000, dims: 768, large: true},
+		// Count-scaling row. Holds vectors_per_tenant=1000 and dims=768
+		// constant so per_tenant_bytes is directly comparable across the
+		// three points. Validates whether Option A's "scales linearly in
+		// tenants" assumption holds beyond the documented 100-tenant
+		// baseline.
+		{name: "count_scale_100", tenants: 100, vectorsPerTenant: 1000, dims: 768, large: true},
+		{name: "count_scale_500", tenants: 500, vectorsPerTenant: 1000, dims: 768, large: true},
+		{name: "count_scale_1000", tenants: 1000, vectorsPerTenant: 1000, dims: 768, large: true},
 	}
+
+	// Per-tenant bytes from each scenario, keyed by scenario name. Filled
+	// inside t.Run subtests; consumed by the count-scaling check below.
+	perTenantBytesByScenario := make(map[string]uint64)
 
 	for _, sc := range scenarios {
 		sc := sc
@@ -71,6 +83,7 @@ func TestVectorIndex_PerTenantMemoryFootprint(t *testing.T) {
 			heapBytes := measureVectorIndexHeapDelta(t, sc.tenants, sc.vectorsPerTenant, sc.dims)
 			perTenantBytes := heapBytes / uint64(sc.tenants)
 			perVectorBytes := heapBytes / uint64(sc.tenants*sc.vectorsPerTenant)
+			perTenantBytesByScenario[sc.name] = perTenantBytes
 
 			// Structured line for grep / parse across runs. Keep field
 			// names stable — downstream tooling may key on them.
@@ -88,6 +101,34 @@ func TestVectorIndex_PerTenantMemoryFootprint(t *testing.T) {
 			}
 		})
 	}
+
+	// Count-scaling assertion. If all three count_scale_* scenarios ran,
+	// per_tenant_bytes should remain roughly constant as tenant count
+	// grows — Option A's working assumption. We allow up to 1.5× drift
+	// from the 100-tenant baseline: small-N runs amortize fixed per-process
+	// overhead worse than large-N runs, so a modest *decrease* with N is
+	// expected; an *increase* would signal that per-tenant container cost
+	// dominates and is the failure mode that surfaces the enterprise
+	// filtered-HNSW plugin work.
+	t.Run("count_scale_linearity", func(t *testing.T) {
+		baseline, ok := perTenantBytesByScenario["count_scale_100"]
+		if !ok {
+			t.Skip("count_scale_100 didn't run; cannot evaluate scaling")
+		}
+		const maxInflation = 1.5
+		for _, name := range []string{"count_scale_500", "count_scale_1000"} {
+			got, ok := perTenantBytesByScenario[name]
+			if !ok {
+				continue
+			}
+			ratio := float64(got) / float64(baseline)
+			t.Logf("HNSW_COUNT_SCALING scenario=%s per_tenant_bytes=%d baseline_bytes=%d ratio=%.3f", name, got, baseline, ratio)
+			if ratio > maxInflation {
+				t.Errorf("%s per_tenant_bytes %d is %.2fx the 100-tenant baseline %d (max allowed %.2fx) — Option A may not scale linearly; surface enterprise filtered-HNSW plugin work",
+					name, got, ratio, baseline, maxInflation)
+			}
+		}
+	})
 }
 
 // measureVectorIndexHeapDelta builds a VectorIndex populated with the
