@@ -82,14 +82,20 @@ func (v *InputValidator) ValidateNoSQLInjection(input string) error {
 	return nil
 }
 
-// ValidateNoPathTraversal checks for path traversal attempts
+// ValidateNoPathTraversal checks for path traversal attempts.
+//
+// Patterns require a separator (slash, backslash, or encoded variant)
+// adjacent to the dot-dot — bare ".." matches natural prose (ellipsis,
+// sentence joins, version strings) and produced a flood of false
+// positives on user-recorded content. Path traversal needs a separator
+// to actually traverse; without one, two dots in input are not a
+// traversal attempt.
 func (v *InputValidator) ValidateNoPathTraversal(input string) error {
 	dangerous := []string{
-		"..",
-		"./",
 		"../",
 		"..\\",
-		".\\",
+		"..%2f",   // URL-encoded "../"
+		"..%252f", // double-URL-encoded "../"
 		"%2e%2e",
 		"%252e%252e",
 		"..;",

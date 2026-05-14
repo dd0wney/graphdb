@@ -162,6 +162,13 @@ func TestInputValidator_ValidateNoPathTraversal(t *testing.T) {
 		{"Semicolon", "..;/etc/passwd", true},
 		{"Null byte", "..%00/etc/passwd", true},
 		{"Safe filename", "my-file_123.txt", false},
+		// Bare ".." in prose is not a traversal attempt — only "../" or
+		// "..\\" is. These cases used to false-positive on user content.
+		{"Ellipsis in prose", "Loading... please wait", false},
+		{"Sentence ellipsis", "etc. ... follow-up later", false},
+		{"Current-dir prefix", "./README.md", false},
+		{"Version with double dot", "v1..0-beta", false},
+		{"Doubled-up traversal still caught", "....//....//etc/passwd", true},
 	}
 
 	for _, tt := range tests {
