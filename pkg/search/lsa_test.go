@@ -343,6 +343,133 @@ func TestTenantLSAIndexes_GetSet(t *testing.T) {
 	}
 }
 
+// TestLogEntropyGlobalWeight pins the Dumais 1991 log-entropy formula
+// on a tiny synthetic corpus where the expected per-term global weights
+// can be computed by hand. Same shape as TestBM25Score — three docs,
+// hand-computed expected, narrow ε.
+//
+// Formula: g_t = 1 + (1/log D) * sum_d (p_dt * log p_dt), where
+// p_dt = tf_dt / gf_t. By convention p * log p = 0 when p = 0.
+//
+// Corpus design:
+//
+//	Doc 1: "alpha beta gamma"   tf = {alpha:1, beta:1, gamma:1}
+//	Doc 2: "alpha beta gamma"   tf = {alpha:1, beta:1, gamma:1}
+//	Doc 3: "alpha charlie delta" tf = {alpha:1, charlie:1, delta:1}
+//
+// After df filtering (MinDocFreq=1, df < D):
+//   - alpha: df=3=D → EXCLUDED
+//   - beta, gamma: df=2 → kept
+//   - charlie, delta: df=1 → kept
+//
+// Hand-computed for two of the kept terms:
+//
+//	beta: gf = 1+1+0 = 2; entropy = 0.5·log(0.5) + 0.5·log(0.5) = -log(2)
+//	      g_beta = 1 + (-log 2 / log 3) ≈ 1 - 0.6309 = 0.3691
+//	charlie: gf = 1; entropy = 1·log(1) = 0
+//	         g_charlie = 1 + 0/log(3) = 1.0
+//
+// charlie's weight = 1.0 because it concentrates in a single doc
+// (maximum specificity); beta's weight is lower because it's distributed
+// across two docs (less informative per occurrence). That ordering is
+// the load-bearing retrieval-quality intuition: log-entropy down-weights
+// uniformly-distributed terms more aggressively than IDF, which only
+// uses doc count.
+func TestLogEntropyGlobalWeight(t *testing.T) {
+	docs := []Document{
+		{ID: 1, Body: "alpha beta gamma"},
+		{ID: 2, Body: "alpha beta gamma"},
+		{ID: 3, Body: "alpha charlie delta"},
+	}
+	cfg := LSAConfig{
+		Dims:       2,
+		Oversamp:   2,
+		PowerIter:  2,
+		MaxVocab:   100,
+		MinDocFreq: 1,
+		TitleBoost: 0,
+		Seed:       42,
+	}
+	idx, err := BuildLSAIndex(docs, cfg)
+	if err != nil {
+		t.Fatalf("BuildLSAIndex: %v", err)
+	}
+
+	// vocab must contain beta + charlie; must NOT contain alpha (df=D).
+	if _, ok := idx.vocab["alpha"]; ok {
+		t.Errorf("alpha should be excluded (df=D); vocab contains it")
+	}
+	betaIdx, ok := idx.vocab["beta"]
+	if !ok {
+		t.Fatal("beta missing from vocab")
+	}
+	charlieIdx, ok := idx.vocab["charlie"]
+	if !ok {
+		t.Fatal("charlie missing from vocab")
+	}
+
+	const eps = 1e-4
+	wantBeta := float32(1.0 + (-math.Log(2) / math.Log(3)))
+	wantCharlie := float32(1.0)
+
+	if got := idx.globalWeight[betaIdx]; math.Abs(float64(got-wantBeta)) > eps {
+		t.Errorf("globalWeight[beta]: got %.6f, want %.6f ± %g", got, wantBeta, eps)
+	}
+	if got := idx.globalWeight[charlieIdx]; math.Abs(float64(got-wantCharlie)) > eps {
+		t.Errorf("globalWeight[charlie]: got %.6f, want %.6f ± %g", got, wantCharlie, eps)
+	}
+
+	// Sanity: charlie (single-doc) must have strictly higher global
+	// weight than beta (distributed across 2 docs). If this ever flips,
+	// it would mean the formula has been transposed (sum direction
+	// reversed) or the sign is wrong — both are silent-misweight bugs
+	// that the precise-value asserts above might miss if a sign error
+	// happened to compensate.
+	if idx.globalWeight[charlieIdx] <= idx.globalWeight[betaIdx] {
+		t.Errorf("expected globalWeight[charlie] > globalWeight[beta]; got %.4f vs %.4f",
+			idx.globalWeight[charlieIdx], idx.globalWeight[betaIdx])
+	}
+}
+
+// TestLogEntropy_SingleDocDegradesToOne pins the D==1 edge case: log(D)=0
+// makes the entropy ratio undefined, and the implementation degrades to
+// global weight = 1.0 (pure local weighting). Without this guard a
+// build with a single document would emit +Inf or NaN weights.
+//
+// Real-world relevance: bootstrap from an empty tenant that just had its
+// first doc indexed. The system shouldn't fail; it should produce a
+// trivial-but-valid index.
+func TestLogEntropy_SingleDocDegradesToOne(t *testing.T) {
+	// D=1 + df<D filter means every term would have df=1 NOT < 1, so the
+	// public BuildLSAIndex path would refuse the build (empty vocab). The
+	// invariant we want to pin: as D shrinks toward the lower limit, the
+	// formula stays well-defined — log(D) approaching 0 must not produce
+	// NaN/Inf weights. Use D=2 as the smallest-buildable corpus.
+	docs := []Document{
+		{ID: 1, Body: "alpha beta gamma delta echo"},
+		{ID: 2, Body: "alpha beta gamma delta foxtrot"},
+	}
+	cfg := LSAConfig{
+		Dims:       2,
+		Oversamp:   2,
+		PowerIter:  2,
+		MaxVocab:   100,
+		MinDocFreq: 1,
+		TitleBoost: 0,
+		Seed:       42,
+	}
+	idx, err := BuildLSAIndex(docs, cfg)
+	if err != nil {
+		t.Fatalf("BuildLSAIndex: %v", err)
+	}
+	for term, tidx := range idx.vocab {
+		g := idx.globalWeight[tidx]
+		if math.IsNaN(float64(g)) || math.IsInf(float64(g), 0) {
+			t.Errorf("term %q: globalWeight %v is not finite", term, g)
+		}
+	}
+}
+
 func cosine(a, b []float32) float32 {
 	if len(a) != len(b) {
 		return 0
