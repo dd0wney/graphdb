@@ -31,10 +31,13 @@ const (
 	// v1 (B1): initial format with augmented-TF × IDF weighting.
 	// v2 (A2): IDF replaced with log-entropy global weight (Dumais 1991);
 	//          local weight switched to log(1 + tf). Snapshot field name
-	//          renamed IDF → GlobalWeight to reflect the new meaning. v1
-	//          snapshots fail to load with the operator-actionable
-	//          "regenerate via admin endpoint" message.
-	lsaSnapshotVersion uint32 = 2
+	//          renamed IDF → GlobalWeight to reflect the new meaning.
+	// v3 (C1): DocVecs (float32, D×k) quantized to int8 via lsaQuantScale
+	//          for ~4× memory + disk reduction. Snapshot field renamed
+	//          DocVecs → DocVecsQ to reflect the type change.
+	// Old-version snapshots fail to load with the operator-actionable
+	// "regenerate via admin endpoint" message.
+	lsaSnapshotVersion uint32 = 3
 	// lsaSnapshotExt is the on-disk extension for a single tenant's
 	// LSA snapshot. Per-tenant file naming gives tenant isolation
 	// for free at the filesystem layer — `<dir>/<tenantID>.lsa`.
@@ -58,7 +61,7 @@ type lsaSnapshot struct {
 	GlobalWeight []float32   // log-entropy per term (v2; was IDF in v1, see lsaSnapshotVersion doc)
 	B            [][]float32 // sketch matrix l×T
 	UB           [][]float32 // top-k eigenvectors l×k
-	DocVecs      [][]float32 // L2-normalized doc embeddings D×k
+	DocVecsQ     [][]int8    // int8-quantized L2-normalized doc embeddings D×k (v3; scale=lsaQuantScale)
 	NodeIDs      []uint64
 	Content      map[uint64]string
 	BM25Post     map[string][]bm25Entry
@@ -84,7 +87,7 @@ func (i *LSAIndex) WriteSnapshot(w io.Writer) error {
 		GlobalWeight: i.globalWeight,
 		B:            i.b,
 		UB:           i.ub,
-		DocVecs:      i.docVecs,
+		DocVecsQ:     i.docVecsQ,
 		NodeIDs:      i.nodeIDs,
 		Content:      i.content,
 		BM25Post:     i.bm25Post,
@@ -133,7 +136,7 @@ func ReadLSASnapshot(r io.Reader) (*LSAIndex, error) {
 		globalWeight: snap.GlobalWeight,
 		b:            snap.B,
 		ub:           snap.UB,
-		docVecs:      snap.DocVecs,
+		docVecsQ:     snap.DocVecsQ,
 		nodeIDs:      snap.NodeIDs,
 		nodeIDMap:    nodeIDMap,
 		content:      snap.Content,
