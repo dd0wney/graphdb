@@ -6,11 +6,13 @@
 
 **Outstanding open PR at write time**: R2.5b (#193) is the last Track R wiring sub-PR and is still in review. The state-reconciliation below treats Track R as 8/9 merged with one PR closing the gap. When #193 merges, the only change to this doc is striking out the "in review" qualifier on R2.5b — every other claim holds independently.
 
+> **Reconciliation 2026-05-14**: #193 merged at 2026-05-13T13:36Z (`39247af`). Track R is now 9/9 merged with no qualifier. See updated row in § Track R below.
+
 ---
 
 ## State reconciliation
 
-### Track R — Redesign work ✅ **CLOSED (modulo R2.5b in review)**
+### Track R — Redesign work ✅ **CLOSED**
 
 The 2026-05-14 doc's three sub-tracks all shipped:
 
@@ -18,7 +20,7 @@ The 2026-05-14 doc's three sub-tracks all shipped:
 |---|---|---|
 | **R1.x — F4 vector tenant redesign** | R1.1 #184 + R1.2 #185 | ✅ merged |
 | **R2.x — S11 auto-embedder + NodeObserver** | R2.1 #186, R2.2 #187, R2.3 #188, R2.4 #189, R2.5a #190 | ✅ merged |
-| **R2.5b — server_init.go env-driven wiring** | #193 | 🟡 open |
+| **R2.5b — server_init.go env-driven wiring** | #193 | ✅ merged (`39247af`, 2026-05-13) |
 | **R3 — S1 interface re-closure** | #191 | ✅ merged |
 
 **Decisions 2 + 3 (resolved 2026-05-14, tier-based)** are realized in code:
@@ -90,6 +92,15 @@ Either way, the carry-forward debt actually retires. The forcing function: **if 
 
 This deadline is the new artifact this doc adds. The next session reads "if 2026-05-22 has passed and the 11 are still open, close them all with `gh pr close --comment 'parked indefinitely per NEXT_STEPS_2026-05-15.md forcing function'`" and acts.
 
+### Reconciliation 2026-05-14 — debt discharged
+
+The 11 inherited PRs were fully resolved by 2026-05-14T00:34Z (8 days ahead of the 2026-05-22 forcing-function deadline). The disposition was **hybrid**, not Path 1 or Path 2:
+
+- **7 merged** (Groups A + B + D, plus the LSA stack): #108 (H4.3 WAL replay), #109 (H4.4 REST claim-uniqueness), #110 (H4.3 snapshot followup), #131 (coord-* skill docs), #135 (LSA B1 persist), #136 (LSA L2 log-entropy), #137 (LSA L3 int8 quantize). The LSA stack used the retag-folded-with-rebase recipe (see `SESSION_HANDOFF_2026-05-14-0034Z.md` § 2).
+- **4 closed without merge** (Group C, A8.1 step-4 cleanup): #134 (delete UPGRADE_GUIDE), #138 (PRODUCTION_QUICKSTART rewrite), #139 (legacy-binary refs), #140 (replication-metric orphans). These were doc-cleanup items that lost relevance during the carry-forward window; closing-without-merge was the correct disposition.
+
+The hybrid pattern (some merged, some closed) is the more honest resolution shape than Path 1 / Path 2 anticipated. Future "forcing function" sections in planning docs should allow hybrid as a third path.
+
 ---
 
 ## Off-path queue
@@ -121,10 +132,10 @@ R2.5a's `OnNodeUpdated` is a no-op with a TODO: activating it requires a re-entr
 
 Choose one:
 - **(A) Verification gap closure** — bench + deployment exercise of Track R.
-- **(B) Inherited-PR triage** — execute the disposition (or bulk-close per the forcing function).
+- **(B) Inherited-PR triage** — execute the disposition (or bulk-close per the forcing function). **✅ DISCHARGED 2026-05-14** via hybrid disposition (7 merged, 4 closed); see § Inherited PRs § Reconciliation. No longer a live option.
 - **(C) New audit** — performance, security, or productization angle (see § Critical path option 3).
 
-**Default if no answer**: (A) verification gap. Reason: it directly tests whether the Track R bet (Option A per-tenant HNSW) holds at realistic scale. If the answer is "no, memory is prohibitive at 1000 tenants," that surfaces enterprise-plugin work as the next track. If the answer is "yes, fits," Track R is empirically closed and (B) or (C) becomes the natural next.
+**Default if no answer**: (A) verification gap. Reason: it directly tests whether the Track R bet (Option A per-tenant HNSW) holds at realistic scale. If the answer is "no, memory is prohibitive at 1000 tenants," that surfaces enterprise-plugin work as the next track. If the answer is "yes, fits," Track R is empirically closed and (C) becomes the natural next.
 
 ### Carry-forward decisions still open
 
@@ -162,15 +173,15 @@ Unchanged from 2026-05-14 except where noted:
 
 This is a planning checkpoint, not a backlog. When picking up the next PR:
 
-1. **Confirm R2.5b (#193) merged.** If not, merge it first — the only outstanding Track R PR.
-2. **Pick a critical-path option from § Decision 9.** Default is (A) verification gap. If you pick (B) or (C), document why in the PR description.
-3. **Address the inherited-PR forcing function** if 2026-05-22 has passed. Either merge per the disposition recipe in `NEXT_STEPS_2026-05-14.md`, or `gh pr close --comment "parked indefinitely per NEXT_STEPS_2026-05-15.md forcing function"` on all 11.
-4. **After 1-3 PRs land**, this checkpoint should be revisited. Trigger: any of the three critical-path options being picked and at least one PR landed against it.
+1. ~~**Confirm R2.5b (#193) merged.**~~ ✅ Merged 2026-05-13 (`39247af`). No action needed.
+2. **Pick a critical-path option from § Decision 9.** Default is (A) verification gap. Option (B) is no longer live (discharged). If you pick (C), document why in the PR description.
+3. ~~**Address the inherited-PR forcing function** if 2026-05-22 has passed.~~ ✅ Discharged 2026-05-14 via hybrid disposition; see § Inherited PRs § Reconciliation. No action needed.
+4. **After 1-3 PRs land**, this checkpoint should be revisited. Trigger: any of the live critical-path options being picked and at least one PR landed against it.
 
 **Revisit triggers** (any one is sufficient to start a new checkpoint immediately):
 - **Verification gap exercise surfaces a real constraint** — e.g., per-tenant HNSW memory blows up at 500 tenants. That changes the OSS vs enterprise architectural assumption and warrants its own track.
 - **A customer-driven priority lands on the queue** — re-plan in the customer's terms.
-- **Inherited-PR forcing function deadline passes (2026-05-22)** — the next checkpoint must record the outcome (bulk-merged, bulk-closed, or one-by-one acted on) and stop carrying them forward.
+- ~~**Inherited-PR forcing function deadline passes (2026-05-22)**~~ — ✅ Discharged 2026-05-14 via hybrid disposition (7 merged, 4 closed). No longer a revisit trigger.
 
 ---
 
