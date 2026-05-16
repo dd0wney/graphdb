@@ -60,6 +60,14 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 	// single-tenant deployment behaviour.
 	tenantID := getTenantFromContext(r)
 
+	// Parse pagination first so a malformed ?cursor= / ?limit= surfaces as
+	// 400 before we materialize the full tenant list.
+	page, status, msg := parsePageRequest(r)
+	if status != 0 {
+		s.respondError(w, status, msg)
+		return
+	}
+
 	// Optional ?label= filter routes through the typed storage primitive
 	// (GetNodesByLabelForTenant) so the indexed lookup is used instead of
 	// scanning + post-filtering. Empty value is treated as absent — same
@@ -72,8 +80,11 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 		allNodes = s.graph.GetAllNodesForTenant(tenantID)
 	}
 
-	nodes := make([]*NodeResponse, 0, len(allNodes))
-	for _, node := range allNodes {
+	pageItems, next := paginateNodes(allNodes, page)
+	writeNextCursor(w, next)
+
+	nodes := make([]*NodeResponse, 0, len(pageItems))
+	for _, node := range pageItems {
 		nodes = append(nodes, s.nodeToResponse(r.Context(), node))
 	}
 

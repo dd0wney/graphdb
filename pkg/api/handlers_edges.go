@@ -121,13 +121,20 @@ func (s *Server) listEdges(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, status, msg)
 		return
 	}
+	page, status, msg := parsePageRequest(r)
+	if status != 0 {
+		s.respondError(w, status, msg)
+		return
+	}
 	allEdges, err := s.filteredEdgesForTenant(getTenantFromContext(r), f)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "list edges"))
 		return
 	}
-	edges := make([]*EdgeResponse, 0, len(allEdges))
-	for _, edge := range allEdges {
+	pageItems, next := paginateEdges(allEdges, page)
+	writeNextCursor(w, next)
+	edges := make([]*EdgeResponse, 0, len(pageItems))
+	for _, edge := range pageItems {
 		edges = append(edges, s.edgeToResponse(r.Context(), edge))
 	}
 	s.respondJSON(w, http.StatusOK, edges)
