@@ -36,9 +36,20 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 	// the default tenant when no context is set, which matches existing
 	// single-tenant deployment behaviour.
 	tenantID := getTenantFromContext(r)
-	allNodes := s.graph.GetAllNodesForTenant(tenantID)
-	nodes := make([]*NodeResponse, 0, len(allNodes))
 
+	// Optional ?label= filter routes through the typed storage primitive
+	// (GetNodesByLabelForTenant) so the indexed lookup is used instead of
+	// scanning + post-filtering. Empty value is treated as absent — same
+	// as omitting the parameter — so a typo like `?label=` doesn't silently
+	// return zero results to the caller.
+	var allNodes []*storage.Node
+	if label := r.URL.Query().Get("label"); label != "" {
+		allNodes = s.graph.GetNodesByLabelForTenant(tenantID, label)
+	} else {
+		allNodes = s.graph.GetAllNodesForTenant(tenantID)
+	}
+
+	nodes := make([]*NodeResponse, 0, len(allNodes))
 	for _, node := range allNodes {
 		nodes = append(nodes, s.nodeToResponse(r.Context(), node))
 	}

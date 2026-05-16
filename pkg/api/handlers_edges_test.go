@@ -365,11 +365,9 @@ func TestHandleEdges_MethodNotAllowed(t *testing.T) {
 		method string
 		path   string
 	}{
-		{
-			name:   "GET on /edges",
-			method: http.MethodGet,
-			path:   "/edges",
-		},
+		// GET on /edges is now a supported method (returns tenant-scoped
+		// edge list per issue #225); coverage moved to
+		// TestListEdges_NewHandler_TypeFilter in handlers_list_filter_test.go.
 		{
 			name:   "PUT on /edges",
 			method: http.MethodPut,
