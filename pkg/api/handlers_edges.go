@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -18,24 +19,97 @@ func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
 
 // listEdges returns tenant-scoped edges. Mirrors handlers_nodes.go::listNodes
 // in shape: tenant resolution via context, optional typed-primitive routing
-// via the ?type= query parameter (empty value treated as absent), no
-// existence-leak across tenants (the tenant primitive enforces isolation).
+// via query parameters (empty values treated as absent), no existence-leak
+// across tenants (the tenant primitive enforces isolation).
 //
-// Same audit Security CRIT #2 (2026-05-06) framing as listNodes — before this
-// handler existed at all, GET /edges returned 405; the implementation here
-// must route through the tenant-strict primitive, never GetAllEdges.
+// Same audit Security CRIT #2 (2026-05-06) framing as listNodes — must
+// route through *ForTenant primitives, never GetAllEdges.
+//
+// Supported query parameters:
+//
+//   - ?from=<node_id>     outgoing edges from the given node
+//   - ?to=<node_id>       incoming edges to the given node
+//   - ?type=<edge_type>   edges with the given type
+//
+// Combinations:
+//
+//   - ?from=A&to=B        edges from A to B specifically (the "between" query)
+//   - ?from=A&type=T      outgoing edges from A filtered by type T
+//   - ?to=B&type=T        incoming edges to B filtered by type T
+//   - ?from=A&to=B&type=T all three combined
+//
+// Dispatch precedence: the most-selective primitive is invoked first
+// (from > to > type > none), then remaining parameters become in-memory
+// filters on top. Invalid integer values for from/to return 400.
 func (s *Server) listEdges(w http.ResponseWriter, r *http.Request) {
 	tenantID := getTenantFromContext(r)
+	q := r.URL.Query()
 
-	var allEdges []*storage.Edge
-	if edgeType := r.URL.Query().Get("type"); edgeType != "" {
+	// Parse optional node-id filters. Empty value = absent (so a typo
+	// like ?from= doesn't silently return zero results); non-empty +
+	// non-numeric = 400 (caller bug worth surfacing immediately rather
+	// than silently degrading to the unfiltered list).
+	fromStr := q.Get("from")
+	toStr := q.Get("to")
+	var (
+		fromID, toID       uint64
+		hasFromID, hasToID bool
+	)
+	if fromStr != "" {
+		id, err := strconv.ParseUint(fromStr, 10, 64)
+		if err != nil {
+			s.respondError(w, http.StatusBadRequest, "from must be a positive integer")
+			return
+		}
+		fromID, hasFromID = id, true
+	}
+	if toStr != "" {
+		id, err := strconv.ParseUint(toStr, 10, 64)
+		if err != nil {
+			s.respondError(w, http.StatusBadRequest, "to must be a positive integer")
+			return
+		}
+		toID, hasToID = id, true
+	}
+	edgeType := q.Get("type")
+
+	// Dispatch to the most-selective storage primitive available. The
+	// in-memory filter loop below handles any remaining param combinations
+	// (from+to intersect; from/to+type filter).
+	var (
+		allEdges []*storage.Edge
+		err      error
+	)
+	switch {
+	case hasFromID:
+		allEdges, err = s.graph.GetOutgoingEdgesForTenant(fromID, tenantID)
+	case hasToID:
+		allEdges, err = s.graph.GetIncomingEdgesForTenant(toID, tenantID)
+	case edgeType != "":
 		allEdges = s.graph.GetEdgesByTypeForTenant(tenantID, edgeType)
-	} else {
+	default:
 		allEdges = s.graph.GetAllEdgesForTenant(tenantID)
+	}
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "list edges"))
+		return
 	}
 
 	edges := make([]*EdgeResponse, 0, len(allEdges))
 	for _, edge := range allEdges {
+		// In-memory filters on top of the dispatched primitive.
+		if hasFromID && hasToID && edge.ToNodeID != toID {
+			continue
+		}
+		if hasToID && !hasFromID && edge.ToNodeID != toID {
+			// Defensive: GetIncomingEdgesForTenant should already
+			// constrain ToNodeID == toID, but the check costs nothing
+			// and guards against a primitive-side regression.
+			continue
+		}
+		if edgeType != "" && edge.Type != edgeType {
+			continue
+		}
 		edges = append(edges, s.edgeToResponse(r.Context(), edge))
 	}
 
