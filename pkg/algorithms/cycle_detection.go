@@ -17,13 +17,13 @@ type Cycle []uint64
 //   - BLACK (2): Finished visiting (all descendants explored)
 //
 // A GRAY node found during DFS is a back edge, indicating a cycle.
-func DetectCycles(graph *storage.GraphStorage) ([]Cycle, error) {
+func DetectCycles(graph storage.Storage) ([]Cycle, error) {
 	return detectCyclesView(newTenantBlindView(graph))
 }
 
 // DetectCyclesForTenant finds cycles within the caller's tenant
 // subgraph. Audit A6c-algorithms (2026-05-08).
-func DetectCyclesForTenant(graph *storage.GraphStorage, tenantID string) ([]Cycle, error) {
+func DetectCyclesForTenant(graph storage.Storage, tenantID string) ([]Cycle, error) {
 	return detectCyclesView(newTenantScopedView(graph, tenantID))
 }
 
@@ -127,13 +127,13 @@ type CycleDetectionOptions struct {
 
 // DetectCyclesWithOptions finds cycles matching the given criteria
 // (tenant-blind).
-func DetectCyclesWithOptions(graph *storage.GraphStorage, opts CycleDetectionOptions) ([]Cycle, error) {
+func DetectCyclesWithOptions(graph storage.Storage, opts CycleDetectionOptions) ([]Cycle, error) {
 	return detectCyclesWithOptionsView(newTenantBlindView(graph), opts)
 }
 
 // DetectCyclesWithOptionsForTenant restricts the cycle search and
 // filtering to the caller's tenant. Audit A6c-algorithms.
-func DetectCyclesWithOptionsForTenant(graph *storage.GraphStorage, opts CycleDetectionOptions, tenantID string) ([]Cycle, error) {
+func DetectCyclesWithOptionsForTenant(graph storage.Storage, opts CycleDetectionOptions, tenantID string) ([]Cycle, error) {
 	return detectCyclesWithOptionsView(newTenantScopedView(graph, tenantID), opts)
 }
 
@@ -218,13 +218,13 @@ func AnalyzeCycles(cycles []Cycle) CycleStats {
 
 // HasCycle checks if the graph contains any cycles (tenant-blind,
 // faster than detecting all cycles).
-func HasCycle(graph *storage.GraphStorage) (bool, error) {
+func HasCycle(graph storage.Storage) (bool, error) {
 	return hasCycleView(newTenantBlindView(graph))
 }
 
 // HasCycleForTenant checks if the caller's tenant subgraph contains
 // any cycles. Audit A6c-algorithms.
-func HasCycleForTenant(graph *storage.GraphStorage, tenantID string) (bool, error) {
+func HasCycleForTenant(graph storage.Storage, tenantID string) (bool, error) {
 	return hasCycleView(newTenantScopedView(graph, tenantID))
 }
 

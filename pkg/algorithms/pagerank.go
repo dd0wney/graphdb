@@ -42,7 +42,7 @@ type RankedNode struct {
 // (tenant-blind — runs across every tenant). Used by CLI, demos, and
 // single-tenant deployments. Multi-tenant API callers must use
 // PageRankForTenant.
-func PageRank(graph *storage.GraphStorage, opts PageRankOptions) (*PageRankResult, error) {
+func PageRank(graph storage.Storage, opts PageRankOptions) (*PageRankResult, error) {
 	return pageRankView(newTenantBlindView(graph), opts)
 }
 
@@ -51,7 +51,7 @@ func PageRank(graph *storage.GraphStorage, opts PageRankOptions) (*PageRankResul
 // body as PageRank, but the underlying graph access is restricted to
 // the tenant — foreign-tenant nodes are excluded from the scoring
 // graph and edges to foreign-tenant nodes are dropped at expansion.
-func PageRankForTenant(graph *storage.GraphStorage, opts PageRankOptions, tenantID string) (*PageRankResult, error) {
+func PageRankForTenant(graph storage.Storage, opts PageRankOptions, tenantID string) (*PageRankResult, error) {
 	return pageRankView(newTenantScopedView(graph, tenantID), opts)
 }
 
@@ -184,7 +184,7 @@ func (h *rankedNodeHeap) Pop() any {
 // haven't yet been migrated to the graphView pattern (centrality,
 // triangles). New callers should construct a graphView and use
 // findTopNodesView directly.
-func findTopNodes(graph *storage.GraphStorage, scores map[uint64]float64, n int) []RankedNode {
+func findTopNodes(graph storage.Storage, scores map[uint64]float64, n int) []RankedNode {
 	return findTopNodesView(newTenantBlindView(graph), scores, n)
 }
 
