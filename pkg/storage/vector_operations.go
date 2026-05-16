@@ -188,22 +188,39 @@ func (gs *GraphStorage) UpdateNodeVectorIndexes(node *Node) error {
 		tenantID = tenantid.Default
 	}
 	for propName, propVal := range node.Properties {
-		if propVal.Type == TypeVector {
-			if gs.vectorIndex.HasIndexForTenant(tenantID, propName) {
-				vec, err := propVal.AsVector()
-				if err != nil {
-					return fmt.Errorf("failed to decode vector for property %s: %w", propName, err)
-				}
+		// Accept both TypeVector (native float32 embeddings) and TypeFloatArray
+		// (float64 arrays produced by ValueFromJSON when the client sends a JSON
+		// float array). Both carry vector data; TypeFloatArray values are
+		// truncated to float32 precision for HNSW storage.
+		var vec []float32
+		switch propVal.Type {
+		case TypeVector:
+			v, err := propVal.AsVector()
+			if err != nil {
+				return fmt.Errorf("failed to decode vector for property %s: %w", propName, err)
+			}
+			vec = v
+		case TypeFloatArray:
+			f64s, err := propVal.AsFloatArray()
+			if err != nil {
+				return fmt.Errorf("failed to decode float array for property %s: %w", propName, err)
+			}
+			vec = make([]float32, len(f64s))
+			for i, v := range f64s {
+				vec[i] = float32(v)
+			}
+		default:
+			continue
+		}
 
-				// Try to remove old vector first (in case of update).
-				// Ignore errors — if the index is empty for this node,
-				// RemoveVector is a no-op and returns a missing-entry error.
-				_ = gs.vectorIndex.RemoveVectorForTenant(tenantID, propName, node.ID)
+		if gs.vectorIndex.HasIndexForTenant(tenantID, propName) {
+			// Try to remove old vector first (in case of update).
+			// Ignore errors — if the index is empty for this node,
+			// RemoveVector is a no-op and returns a missing-entry error.
+			_ = gs.vectorIndex.RemoveVectorForTenant(tenantID, propName, node.ID)
 
-				// Add new vector
-				if err := gs.vectorIndex.AddVectorForTenant(tenantID, propName, node.ID, vec); err != nil {
-					return fmt.Errorf("failed to add vector to index %s: %w", propName, err)
-				}
+			if err := gs.vectorIndex.AddVectorForTenant(tenantID, propName, node.ID, vec); err != nil {
+				return fmt.Errorf("failed to add vector to index %s: %w", propName, err)
 			}
 		}
 	}
