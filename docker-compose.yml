@@ -48,6 +48,11 @@ services:
     container_name: cluso-graphdb
     environment:
       PORT: "8080"
+      # JWT_SECRET is required for the server to boot (fail-closed per
+      # pkg/api/server_init.go — see SECURITY-QUICKSTART.md). Default
+      # below is for local development only. Override with a real value
+      # for production: export JWT_SECRET=... before `docker-compose up`.
+      JWT_SECRET: "${JWT_SECRET:-dev-only-secret-not-for-production}"
     ports:
       - "8080:8080"
     volumes:
