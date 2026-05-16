@@ -45,10 +45,10 @@ type graphView interface {
 // operate across all tenants — CLI, demos, single-tenant
 // deployments.
 type tenantBlindView struct {
-	g *storage.GraphStorage
+	g storage.Storage
 }
 
-func newTenantBlindView(g *storage.GraphStorage) *tenantBlindView {
+func newTenantBlindView(g storage.Storage) *tenantBlindView {
 	return &tenantBlindView{g: g}
 }
 
@@ -81,11 +81,11 @@ func (v *tenantBlindView) Edge(id uint64) (*storage.Edge, error) {
 // pinning every read to a specific tenant. Used by the new
 // XForTenant public algorithm functions.
 type tenantScopedView struct {
-	g        *storage.GraphStorage
+	g        storage.Storage
 	tenantID string
 }
 
-func newTenantScopedView(g *storage.GraphStorage, tenantID string) *tenantScopedView {
+func newTenantScopedView(g storage.Storage, tenantID string) *tenantScopedView {
 	return &tenantScopedView{g: g, tenantID: tenantID}
 }
 
