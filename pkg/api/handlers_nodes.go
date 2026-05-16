@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -23,8 +24,30 @@ const (
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	s.NewMethodRouter(w, r).
 		Get(func() { s.listNodes(w, r) }).
+		Head(func() { s.countNodes(w, r) }).
 		Post(func() { s.createNode(w, r) }).
 		NotAllowed()
+}
+
+// countNodes responds to HEAD /v1/nodes with the X-Total-Count header
+// holding the count of caller-tenant nodes (optionally filtered by
+// ?label=). No response body — RFC 9110 §9.3.2 contract.
+//
+// The unfiltered path uses the O(1) CountNodesForTenant primitive
+// (maintained as a counter via increment/decrement on create/delete);
+// the filtered path falls back to len(GetNodesByLabelForTenant) since
+// no indexed count-by-label primitive exists. Still cheaper than GET +
+// counting in the client because the response body is never serialized.
+func (s *Server) countNodes(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantFromContext(r)
+	var count uint64
+	if label := r.URL.Query().Get("label"); label != "" {
+		count = uint64(len(s.graph.GetNodesByLabelForTenant(tenantID, label)))
+	} else {
+		count = s.graph.CountNodesForTenant(tenantID)
+	}
+	w.Header().Set("X-Total-Count", strconv.FormatUint(count, 10))
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
