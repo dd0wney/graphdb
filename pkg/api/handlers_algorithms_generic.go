@@ -533,7 +533,11 @@ func (s *Server) executeKHop(ctx context.Context, params map[string]any) (map[st
 		return nil, fmt.Errorf("source_node must be a numeric ID")
 	}
 
-	result, err := algorithms.KHopNeighbours(s.graph, uint64(src), opts)
+	// Audit A6c-algorithms: tenant-scoped kHop. The handler is
+	// registered behind requireAuth + withTenant in server.go; calling
+	// the tenant-blind variant here would leak foreign-tenant node IDs
+	// via by_hop / distances during BFS expansion.
+	result, err := algorithms.KHopNeighboursForTenant(s.graph, uint64(src), opts, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "k-hop neighbours")
 	}
