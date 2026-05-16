@@ -470,11 +470,6 @@ func TestHandleNodes_MethodNotAllowed(t *testing.T) {
 			path:   "/nodes",
 		},
 		{
-			name:   "DELETE on /nodes",
-			method: http.MethodDelete,
-			path:   "/nodes",
-		},
-		{
 			name:   "PATCH on /nodes/{id}",
 			method: http.MethodPatch,
 			path:   "/nodes/1",

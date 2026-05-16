@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dd0wney/graphdb/pkg/tenantid"
 	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
@@ -766,13 +767,20 @@ func (gs *GraphStorage) ForEachNode(fn func(*Node) bool) {
 func (gs *GraphStorage) DeleteAllNodes() error {
 	gs.mu.Lock()
 
-	gs.nodes = make(map[uint64]*Node)
-	gs.edges = make(map[uint64]*Edge)
-	gs.nodesByLabel = make(map[string][]uint64)
-	gs.edgesByType = make(map[string][]uint64)
+	for i := range gs.nodeShards {
+		gs.nodeShards[i] = make(map[uint64]*Node)
+	}
+	for i := range gs.edgeShards {
+		gs.edgeShards[i] = make(map[uint64]*Edge)
+	}
+	gs.nodesByLabel = make(labelIndex)
+	gs.edgesByType = make(labelIndex)
 	gs.outgoingEdges = make(map[uint64][]uint64)
 	gs.incomingEdges = make(map[uint64][]uint64)
 	gs.propertyIndexes = make(map[string]*PropertyIndex)
+	gs.tenantNodesByLabel = make(map[tenantid.TenantID]labelIndex)
+	gs.tenantEdgesByType = make(map[tenantid.TenantID]labelIndex)
+	gs.tenantStats = make(map[tenantid.TenantID]*TenantStats)
 	if gs.useEdgeCompression {
 		gs.compressedOutgoing = make(map[uint64]*CompressedEdgeList)
 		gs.compressedIncoming = make(map[uint64]*CompressedEdgeList)
