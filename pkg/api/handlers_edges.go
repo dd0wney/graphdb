@@ -11,8 +11,35 @@ import (
 
 func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
 	s.NewMethodRouter(w, r).
+		Get(func() { s.listEdges(w, r) }).
 		Post(func() { s.createEdge(w, r) }).
 		NotAllowed()
+}
+
+// listEdges returns tenant-scoped edges. Mirrors handlers_nodes.go::listNodes
+// in shape: tenant resolution via context, optional typed-primitive routing
+// via the ?type= query parameter (empty value treated as absent), no
+// existence-leak across tenants (the tenant primitive enforces isolation).
+//
+// Same audit Security CRIT #2 (2026-05-06) framing as listNodes — before this
+// handler existed at all, GET /edges returned 405; the implementation here
+// must route through the tenant-strict primitive, never GetAllEdges.
+func (s *Server) listEdges(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantFromContext(r)
+
+	var allEdges []*storage.Edge
+	if edgeType := r.URL.Query().Get("type"); edgeType != "" {
+		allEdges = s.graph.GetEdgesByTypeForTenant(tenantID, edgeType)
+	} else {
+		allEdges = s.graph.GetAllEdgesForTenant(tenantID)
+	}
+
+	edges := make([]*EdgeResponse, 0, len(allEdges))
+	for _, edge := range allEdges {
+		edges = append(edges, s.edgeToResponse(r.Context(), edge))
+	}
+
+	s.respondJSON(w, http.StatusOK, edges)
 }
 
 func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
