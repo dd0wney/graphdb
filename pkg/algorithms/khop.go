@@ -36,9 +36,27 @@ type bfsEntry struct {
 }
 
 // KHopNeighbours performs a BFS from sourceNodeID up to MaxHops levels,
-// returning all discovered nodes grouped by distance.
-// The source node is never included in results.
-func KHopNeighbours(graph *storage.GraphStorage, sourceNodeID uint64, opts KHopOptions) (*KHopResult, error) {
+// returning all discovered nodes grouped by distance. Tenant-blind —
+// runs across every tenant. Multi-tenant API callers must use
+// KHopNeighboursForTenant. The source node is never included in results.
+func KHopNeighbours(graph storage.Storage, sourceNodeID uint64, opts KHopOptions) (*KHopResult, error) {
+	return kHopNeighboursView(newTenantBlindView(graph), sourceNodeID, opts)
+}
+
+// KHopNeighboursForTenant performs the same BFS as KHopNeighbours but
+// restricted to the caller's tenant subgraph. Audit A6c-algorithms:
+// expansion uses the tenant-scoped *ForTenant edge accessors, so
+// foreign-tenant node IDs never appear in ByHop / Distances. Pairs
+// with the tenant-strict fix to the /algorithms khop handler.
+func KHopNeighboursForTenant(graph storage.Storage, sourceNodeID uint64, opts KHopOptions, tenantID string) (*KHopResult, error) {
+	return kHopNeighboursView(newTenantScopedView(graph, tenantID), sourceNodeID, opts)
+}
+
+// kHopNeighboursView is the shared algorithm body operating against
+// a graphView — see pkg/algorithms/view.go for the abstraction that
+// lets the tenant-blind and tenant-scoped public functions share one
+// implementation.
+func kHopNeighboursView(view graphView, sourceNodeID uint64, opts KHopOptions) (*KHopResult, error) {
 	if opts.MaxHops < 1 {
 		return nil, fmt.Errorf("MaxHops must be >= 1, got %d", opts.MaxHops)
 	}
@@ -69,8 +87,14 @@ func KHopNeighbours(graph *storage.GraphStorage, sourceNodeID uint64, opts KHopO
 		// Collect neighbors based on direction
 		var neighborIDs []uint64
 
+		// Defensive: if a future graphView implementation returns an
+		// error, proceed with whatever edges we did read. The BFS will
+		// under-cover, never over-cover.
 		if opts.Direction == DirectionOut || opts.Direction == DirectionBoth {
-			outEdges, _ := graph.GetOutgoingEdges(current.nodeID)
+			outEdges, err := view.OutgoingEdges(current.nodeID)
+			if err != nil {
+				outEdges = nil
+			}
 			for _, e := range outEdges {
 				if filterByType && !edgeTypeSet[e.Type] {
 					continue
@@ -80,7 +104,10 @@ func KHopNeighbours(graph *storage.GraphStorage, sourceNodeID uint64, opts KHopO
 		}
 
 		if opts.Direction == DirectionIn || opts.Direction == DirectionBoth {
-			inEdges, _ := graph.GetIncomingEdges(current.nodeID)
+			inEdges, err := view.IncomingEdges(current.nodeID)
+			if err != nil {
+				inEdges = nil
+			}
 			for _, e := range inEdges {
 				if filterByType && !edgeTypeSet[e.Type] {
 					continue
