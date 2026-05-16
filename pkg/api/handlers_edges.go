@@ -13,8 +13,82 @@ import (
 func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
 	s.NewMethodRouter(w, r).
 		Get(func() { s.listEdges(w, r) }).
+		Head(func() { s.countEdges(w, r) }).
 		Post(func() { s.createEdge(w, r) }).
 		NotAllowed()
+}
+
+// edgeFilter captures the parsed ?from=/?to=/?type= query parameters
+// for a list/count edge request. Empty hasFromID/hasToID + empty
+// edgeType means "no filter, return all tenant edges."
+type edgeFilter struct {
+	fromID    uint64
+	toID      uint64
+	hasFromID bool
+	hasToID   bool
+	edgeType  string
+}
+
+// parseEdgeFilter extracts ?from=/?to=/?type= from the request URL.
+// Returns an HTTP status + error message pair when a value is present
+// but malformed (non-numeric ID); the caller responds with that
+// status. Empty values are treated as absent — see listEdges' docstring
+// for the "?from= shouldn't silently return zero" rationale.
+func parseEdgeFilter(r *http.Request) (edgeFilter, int, string) {
+	q := r.URL.Query()
+	f := edgeFilter{edgeType: q.Get("type")}
+	if s := q.Get("from"); s != "" {
+		id, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return edgeFilter{}, http.StatusBadRequest, "from must be a positive integer"
+		}
+		f.fromID, f.hasFromID = id, true
+	}
+	if s := q.Get("to"); s != "" {
+		id, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return edgeFilter{}, http.StatusBadRequest, "to must be a positive integer"
+		}
+		f.toID, f.hasToID = id, true
+	}
+	return f, 0, ""
+}
+
+// filteredEdgesForTenant resolves the parsed filter against the
+// tenant-strict storage primitives, applying the in-memory composition
+// filter (from+to intersect; from/to+type filter on top). The dispatch
+// picks the most-selective primitive available (from > to > type >
+// none). Returns a storage error untouched for the caller to map.
+func (s *Server) filteredEdgesForTenant(tenantID string, f edgeFilter) ([]*storage.Edge, error) {
+	var (
+		allEdges []*storage.Edge
+		err      error
+	)
+	switch {
+	case f.hasFromID:
+		allEdges, err = s.graph.GetOutgoingEdgesForTenant(f.fromID, tenantID)
+	case f.hasToID:
+		allEdges, err = s.graph.GetIncomingEdgesForTenant(f.toID, tenantID)
+	case f.edgeType != "":
+		allEdges = s.graph.GetEdgesByTypeForTenant(tenantID, f.edgeType)
+	default:
+		allEdges = s.graph.GetAllEdgesForTenant(tenantID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Composition filters on top of the dispatched primitive.
+	out := allEdges[:0]
+	for _, e := range allEdges {
+		if f.hasFromID && f.hasToID && e.ToNodeID != f.toID {
+			continue
+		}
+		if f.edgeType != "" && e.Type != f.edgeType {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out, nil
 }
 
 // listEdges returns tenant-scoped edges. Mirrors handlers_nodes.go::listNodes
@@ -42,78 +116,52 @@ func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
 // (from > to > type > none), then remaining parameters become in-memory
 // filters on top. Invalid integer values for from/to return 400.
 func (s *Server) listEdges(w http.ResponseWriter, r *http.Request) {
-	tenantID := getTenantFromContext(r)
-	q := r.URL.Query()
-
-	// Parse optional node-id filters. Empty value = absent (so a typo
-	// like ?from= doesn't silently return zero results); non-empty +
-	// non-numeric = 400 (caller bug worth surfacing immediately rather
-	// than silently degrading to the unfiltered list).
-	fromStr := q.Get("from")
-	toStr := q.Get("to")
-	var (
-		fromID, toID       uint64
-		hasFromID, hasToID bool
-	)
-	if fromStr != "" {
-		id, err := strconv.ParseUint(fromStr, 10, 64)
-		if err != nil {
-			s.respondError(w, http.StatusBadRequest, "from must be a positive integer")
-			return
-		}
-		fromID, hasFromID = id, true
+	f, status, msg := parseEdgeFilter(r)
+	if status != 0 {
+		s.respondError(w, status, msg)
+		return
 	}
-	if toStr != "" {
-		id, err := strconv.ParseUint(toStr, 10, 64)
-		if err != nil {
-			s.respondError(w, http.StatusBadRequest, "to must be a positive integer")
-			return
-		}
-		toID, hasToID = id, true
-	}
-	edgeType := q.Get("type")
-
-	// Dispatch to the most-selective storage primitive available. The
-	// in-memory filter loop below handles any remaining param combinations
-	// (from+to intersect; from/to+type filter).
-	var (
-		allEdges []*storage.Edge
-		err      error
-	)
-	switch {
-	case hasFromID:
-		allEdges, err = s.graph.GetOutgoingEdgesForTenant(fromID, tenantID)
-	case hasToID:
-		allEdges, err = s.graph.GetIncomingEdgesForTenant(toID, tenantID)
-	case edgeType != "":
-		allEdges = s.graph.GetEdgesByTypeForTenant(tenantID, edgeType)
-	default:
-		allEdges = s.graph.GetAllEdgesForTenant(tenantID)
-	}
+	allEdges, err := s.filteredEdgesForTenant(getTenantFromContext(r), f)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "list edges"))
 		return
 	}
-
 	edges := make([]*EdgeResponse, 0, len(allEdges))
 	for _, edge := range allEdges {
-		// In-memory filters on top of the dispatched primitive.
-		if hasFromID && hasToID && edge.ToNodeID != toID {
-			continue
-		}
-		if hasToID && !hasFromID && edge.ToNodeID != toID {
-			// Defensive: GetIncomingEdgesForTenant should already
-			// constrain ToNodeID == toID, but the check costs nothing
-			// and guards against a primitive-side regression.
-			continue
-		}
-		if edgeType != "" && edge.Type != edgeType {
-			continue
-		}
 		edges = append(edges, s.edgeToResponse(r.Context(), edge))
 	}
-
 	s.respondJSON(w, http.StatusOK, edges)
+}
+
+// countEdges responds to HEAD /v1/edges with the X-Total-Count header
+// holding the count of edges matching the filter (or total tenant edges
+// when no filter is set). No response body — RFC 9110 §9.3.2 contract.
+//
+// The unfiltered path uses the O(1) CountEdgesForTenant counter
+// primitive (maintained on create/delete); any filter falls back to
+// the filteredEdgesForTenant materialization since no
+// indexed-count-by-(label/type/from/to) primitive exists. Still cheaper
+// than GET + count-in-client because the JSON body is never serialized.
+func (s *Server) countEdges(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantFromContext(r)
+	f, status, msg := parseEdgeFilter(r)
+	if status != 0 {
+		s.respondError(w, status, msg)
+		return
+	}
+	var count uint64
+	if !f.hasFromID && !f.hasToID && f.edgeType == "" {
+		count = s.graph.CountEdgesForTenant(tenantID)
+	} else {
+		edges, err := s.filteredEdgesForTenant(tenantID, f)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "count edges"))
+			return
+		}
+		count = uint64(len(edges))
+	}
+	w.Header().Set("X-Total-Count", strconv.FormatUint(count, 10))
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {

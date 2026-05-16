@@ -257,6 +257,19 @@ func (mr *methodRouter) Get(handler func()) *methodRouter {
 	return mr
 }
 
+// Head handles HEAD requests with the provided handler. Per RFC 9110 §9.3.2
+// HEAD must return the same headers as GET would; the body is suppressed.
+// Handlers registered here typically use the same primitive(s) as the
+// matching Get handler but skip body serialization — useful for cheap
+// counts (X-Total-Count header) and existence checks.
+func (mr *methodRouter) Head(handler func()) *methodRouter {
+	if !mr.handled && mr.r.Method == http.MethodHead {
+		handler()
+		mr.handled = true
+	}
+	return mr
+}
+
 // Post handles POST requests with the provided handler.
 func (mr *methodRouter) Post(handler func()) *methodRouter {
 	if !mr.handled && mr.r.Method == http.MethodPost {
