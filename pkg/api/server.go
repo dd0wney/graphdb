@@ -68,6 +68,15 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/vector-indexes/", s.requireAuth(s.withTenant(s.handleVectorIndex)))
 	mux.HandleFunc("/vector-search", s.requireAuth(s.withTenant(s.handleVectorSearch)))
 
+	// Property-index lifecycle (admin only). Unlike vector indexes,
+	// the underlying PropertyIndex map is process-global (not per-
+	// tenant) — see pkg/api/handlers_property_indexes.go's package
+	// docstring. requireAdmin keeps tenant A from dropping tenant B's
+	// shared index. Re-evaluate when storage gains per-tenant property
+	// indexes.
+	mux.HandleFunc("/property-indexes", s.requireAdmin(s.handlePropertyIndexes))
+	mux.HandleFunc("/property-indexes/", s.requireAdmin(s.handlePropertyIndex))
+
 	// Full-text search (protected, tenant-scoped)
 	mux.HandleFunc("/search", s.requireAuth(s.withTenant(s.handleSearch)))
 
@@ -179,6 +188,9 @@ func (s *Server) Start() error {
 	log.Printf("   Indexes:       GET/POST %s://%s/vector-indexes", protocol, addr)
 	log.Printf("   Index:         GET/DELETE %s://%s/vector-indexes/{name}", protocol, addr)
 	log.Printf("   Search:        POST %s://%s/vector-search", protocol, addr)
+	log.Printf("🔎 Property Indexes (admin only — process-global):")
+	log.Printf("   Indexes:       GET/POST %s://%s/property-indexes", protocol, addr)
+	log.Printf("   Index:         GET/DELETE %s://%s/property-indexes/{key}", protocol, addr)
 	log.Printf("👤 User Management (admin only):")
 	log.Printf("   List Users:    GET  %s://%s/api/users (admin)", protocol, addr)
 	log.Printf("   Create User:   POST %s://%s/api/users (admin)", protocol, addr)

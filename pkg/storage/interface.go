@@ -58,6 +58,13 @@ type StorageReader interface {
 	GetLabelsForTenant(tenantID string) []string
 	GetEdgeTypesForTenant(tenantID string) []string
 	HasPropertyIndex(key string) bool
+	// Property index introspection. The underlying index map is
+	// process-global (not per-tenant); ListPropertyIndexes returns every
+	// property key with an index and GetIndexStatistics returns per-key
+	// stats across all tenants. Lookups still post-filter by tenant via
+	// FindNodesByPropertyIndexedForTenant.
+	ListPropertyIndexes() []string
+	GetIndexStatistics() map[string]IndexStatistics
 	GetVectorIndexMetric(propertyName string) (vector.DistanceMetric, error)
 	FindNodesByLabel(label string) ([]*Node, error)
 	GetNode(nodeID uint64) (*Node, error)
@@ -127,6 +134,14 @@ type StorageWriter interface {
 	// falls back to tenantid.Default for legacy tenant-blind callers.
 	UpdateNodeVectorIndexes(node *Node) error
 	RemoveNodeFromVectorIndexes(nodeID uint64, tenantID string) error
+
+	// Property-index lifecycle. Indexes are process-global (per-tenant
+	// indexing is deferred; see FindNodesByPropertyIndexedForTenant). Both
+	// methods are idempotent at the storage layer in the sense that
+	// duplicate-create / drop-missing return a typed error the HTTP layer
+	// translates to 409 / 404 respectively.
+	CreatePropertyIndex(propertyKey string, valueType ValueType) error
+	DropPropertyIndex(propertyKey string) error
 }
 
 // Storage is the unified interface for GraphDB storage engines.

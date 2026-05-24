@@ -407,6 +407,21 @@ func (gs *BTreeGraphStorage) FindNodesByPropertyIndexedForTenant(key string, val
 
 func (gs *BTreeGraphStorage) HasPropertyIndex(key string) bool { return false }
 
+// Property-index lifecycle is unsupported on the BTree backend (indexes
+// live on the in-memory backend's gs.propertyIndexes map). Surface
+// errBTreeBackendUnsupported so HTTP/GraphQL callers see a real failure
+// instead of silent success.
+func (gs *BTreeGraphStorage) CreatePropertyIndex(propertyKey string, valueType ValueType) error {
+	return errBTreeBackendUnsupported
+}
+func (gs *BTreeGraphStorage) DropPropertyIndex(propertyKey string) error {
+	return errBTreeBackendUnsupported
+}
+func (gs *BTreeGraphStorage) ListPropertyIndexes() []string { return nil }
+func (gs *BTreeGraphStorage) GetIndexStatistics() map[string]IndexStatistics {
+	return map[string]IndexStatistics{}
+}
+
 // --- StorageReader: WithNodeRefForTenant + GetStatistics -----------------
 
 func (gs *BTreeGraphStorage) WithNodeRefForTenant(nodeID uint64, tenantID string, fn func(*Node) error) error {

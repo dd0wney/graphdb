@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
@@ -186,6 +187,21 @@ func (gs *GraphStorage) HasPropertyIndex(key string) bool {
 
 	_, exists := gs.propertyIndexes[key]
 	return exists
+}
+
+// ListPropertyIndexes returns the property keys of all installed property
+// indexes. Indexes are process-global (not per-tenant) — see
+// FindNodesByPropertyIndexedForTenant for the lookup-time tenant filter.
+func (gs *GraphStorage) ListPropertyIndexes() []string {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+
+	keys := make([]string, 0, len(gs.propertyIndexes))
+	for key := range gs.propertyIndexes {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // GetIndexStatistics returns statistics for all property indexes
