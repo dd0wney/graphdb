@@ -184,6 +184,10 @@ docker run -p 8081:8080 \
 | | `/vector-indexes/{name}` | GET | Get vector index info |
 | | `/vector-indexes/{name}` | DELETE | Delete vector index |
 | | `/vector-search` | POST | k-NN similarity search |
+| **Property Indexes** (admin) | `/property-indexes` | GET | List property indexes |
+| | `/property-indexes` | POST | Create property index |
+| | `/property-indexes/{key}` | GET | Get property index stats |
+| | `/property-indexes/{key}` | DELETE | Drop property index |
 
 ## Examples
 
@@ -219,6 +223,48 @@ Response:
   }
 }
 ```
+
+##### Optional: Tenant-Scoped Uniqueness
+
+POST `/nodes` and POST `/nodes/batch` accept an optional
+`unique_property` field. When set, the node is created via the
+atomic `CreateNodeWithUniquePropertyForTenant` primitive: at most one
+node per `(tenant, label, unique_property value)` is allowed.
+
+Requirements when `unique_property` is set:
+- `labels` must contain exactly one element (the uniqueness label).
+- `properties` must contain `unique_property` as a key.
+
+```bash
+curl -X POST http://localhost:8080/nodes \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "labels": ["Document"],
+    "properties": {
+      "doc_id": "doc-42",
+      "title":  "Plans for Q3"
+    },
+    "unique_property": "doc_id"
+  }'
+```
+
+A second create with the same `doc_id` for this tenant returns:
+
+```
+HTTP/1.1 409 Conflict
+{"error":"Conflict","message":"unique constraint violation: label=Document property=doc_id already held by node 12345","code":409}
+```
+
+For backward compatibility, single-label `:Claim` nodes continue to be
+implicitly unique on `for_task` when `unique_property` is omitted —
+this preserves the at-most-one-active-Claim-per-`for_task` invariant
+that graphdb-coord depends on. An explicit `unique_property` always
+wins over the implicit `:Claim` fallback.
+
+`POST /nodes/batch` honours `unique_property` per item. Conflicts within
+or across the batch are skipped (the batch response only reports
+successful creates via `created`); failed items are logged server-side.
 
 #### Get Node
 
@@ -530,6 +576,85 @@ curl -X DELETE http://localhost:8080/vector-indexes/embedding \
 ```
 
 **Response:** `204 No Content`
+
+### Property Indexes
+
+Property indexes accelerate `key = value` / range / prefix lookups on
+node properties. Unlike vector indexes, **property indexes are
+process-global**: a single index per property key serves every tenant.
+Lookups (`FindNodesByPropertyIndexedForTenant`) post-filter by tenant
+so cross-tenant reads are not possible, but index *creation* and
+*drop* affect every tenant — for that reason these routes are
+**admin-only**.
+
+#### Create a Property Index
+
+```bash
+curl -X POST http://localhost:8080/property-indexes \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "property_key": "email",
+    "value_type": "string"
+  }'
+```
+
+**Request Parameters:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `property_key` | string | Yes | - | Node property to index |
+| `value_type` | string | No | `"string"` | One of: `string`, `int`, `float`, `bool`, `timestamp`, `bytes` |
+
+**Response:** `201 Created`
+```json
+{
+  "property_key": "email",
+  "value_type": "string",
+  "unique_values": 0,
+  "total_nodes": 0,
+  "avg_nodes_per_key": 0
+}
+```
+
+Returns `409 Conflict` if an index for `property_key` already exists.
+
+#### List Property Indexes
+
+```bash
+curl -X GET http://localhost:8080/property-indexes \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "indexes": [
+    {"property_key": "email", "unique_values": 1200, "total_nodes": 1200, "avg_nodes_per_key": 1.0},
+    {"property_key": "slug",  "unique_values":   42, "total_nodes":   42, "avg_nodes_per_key": 1.0}
+  ],
+  "count": 2
+}
+```
+
+#### Get Property Index Stats
+
+```bash
+curl -X GET http://localhost:8080/property-indexes/email \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns the same shape as a list entry, or `404 Not Found` if the key
+has no index.
+
+#### Drop a Property Index
+
+```bash
+curl -X DELETE http://localhost:8080/property-indexes/email \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:** `204 No Content` (or `404 Not Found`).
 
 #### Create Nodes with Vector Properties
 
