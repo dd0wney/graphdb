@@ -171,6 +171,8 @@ func (s *Server) Start() error {
 	log.Printf("   Query:         POST %s://%s/query (requires auth)", protocol, addr)
 	log.Printf("   GraphQL:       POST %s://%s/graphql (requires auth)", protocol, addr)
 	log.Printf("   Nodes:         GET/POST %s://%s/nodes (requires auth)", protocol, addr)
+	log.Printf("   Node Labels:   POST %s://%s/nodes/{id}/labels (add labels; idempotent)", protocol, addr)
+	log.Printf("   Node Label:    DELETE %s://%s/nodes/{id}/labels/{label} (remove one label)", protocol, addr)
 	log.Printf("   Edges:         GET/POST %s://%s/edges (requires auth)", protocol, addr)
 	log.Printf("   Traverse:      POST %s://%s/traverse (requires auth)", protocol, addr)
 	log.Printf("   Shortest Path: POST %s://%s/shortest-path (requires auth)", protocol, addr)

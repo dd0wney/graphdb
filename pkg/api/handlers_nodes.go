@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/storage"
@@ -146,6 +147,15 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
+	// /nodes/{id}/labels[/{label}] subpaths route to the label-mutation
+	// handlers added with feat/expose-label-mutation. ExtractUint64
+	// below assumes the path ends with the ID, so we have to peel off
+	// the labels subpath BEFORE delegating. dispatchNodeLabelSubpath
+	// returns true when it has handled (or rejected) the request.
+	if dispatchNodeLabelSubpath(s, w, r) {
+		return
+	}
+
 	// Extract ID from path
 	extractor := s.NewPathExtractor(w, r)
 	nodeID, ok := extractor.ExtractUint64("/nodes/")
@@ -158,6 +168,38 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		Put(func() { s.updateNode(w, r, nodeID) }).
 		Delete(func() { s.deleteNode(w, r, nodeID) }).
 		NotAllowed()
+}
+
+// dispatchNodeLabelSubpath checks whether the request path is
+// /nodes/{id}/labels or /nodes/{id}/labels/{label} and, if so, routes
+// to the appropriate label handler. Returns true if it took the
+// request (the caller must NOT continue handling). Returns false if
+// the path is plain /nodes/{id} so handleNode can fall through to
+// its existing GET/PUT/DELETE dispatch.
+//
+// This keeps the route table in server.go simple: /nodes/ stays a
+// single mux entry, and the in-handler dispatch keeps the label
+// subpath next to the node CRUD it's logically part of.
+func dispatchNodeLabelSubpath(s *Server, w http.ResponseWriter, r *http.Request) bool {
+	path := r.URL.Path
+	// Cheap pre-check before splitting — most requests are plain
+	// /nodes/{id} and shouldn't pay the parts allocation.
+	if !strings.Contains(path, "/labels") {
+		return false
+	}
+	// Use the existing path extractor for consistent error responses.
+	// /nodes/{id}/labels and /nodes/{id}/labels/{label} both have at
+	// least 2 segments after the prefix.
+	parts := strings.Split(strings.TrimSuffix(strings.TrimPrefix(path, "/nodes/"), "/"), "/")
+	switch {
+	case len(parts) == 2 && parts[1] == "labels":
+		s.handleNodeLabels(w, r)
+		return true
+	case len(parts) == 3 && parts[1] == "labels":
+		s.handleNodeLabel(w, r)
+		return true
+	}
+	return false
 }
 
 func (s *Server) getNode(w http.ResponseWriter, r *http.Request, nodeID uint64) {
