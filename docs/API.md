@@ -168,6 +168,8 @@ docker run -p 8081:8080 \
 | | `/nodes/{id}` | PUT | Update node |
 | | `/nodes/{id}` | DELETE | Delete node |
 | | `/nodes/batch` | POST | Batch create nodes |
+| | `/nodes/{id}/labels` | POST | Add labels to an existing node (idempotent) |
+| | `/nodes/{id}/labels/{label}` | DELETE | Remove a single label from a node |
 | **Edges** | `/edges` | GET | List edges |
 | | `/edges` | POST | Create edge |
 | | `/edges/{id}` | GET | Get edge by ID |
@@ -271,6 +273,85 @@ curl -X POST http://localhost:8080/nodes/batch \
     ]
   }'
 ```
+
+#### Add Labels to an Existing Node
+
+Adds one or more labels to a node that already exists. Useful for
+backfilling secondary labels onto records written before a labelling
+scheme existed (e.g. retroactively tagging existing `TextEmbedding`
+nodes with `CharacterEmbedding` so graphdb's HNSW label-filtered
+vector search can scope by entity type).
+
+Labels are a **set**: re-adding a label the node already carries is a
+no-op (200 OK with that label surfaced in `already_had`, not 409).
+Cross-tenant attempts return 404 — the unified existence-leak guard,
+same as `GET /nodes/{id}`.
+
+Validation matches `POST /nodes`: labels must be alphanumeric +
+underscore, at most 50 characters, and the per-request batch is
+capped at the same `MaxLabels=10` limit. (The cap is per-request,
+not per-node — a node's total label count after repeated adds is
+unbounded by the validator, matching the storage layer's lack of a
+per-node label cap. Use this knowingly.)
+
+Adding a previously-unknown label to a tenant invalidates that
+tenant's cached GraphQL schema; the next `/graphql` request for that
+tenant lazy-rebuilds with the new label visible as a generated type.
+No-op idempotent re-adds (`added` is empty in the response) skip the
+invalidation since the tenant's label set is unchanged.
+
+```bash
+curl -X POST http://localhost:8080/nodes/12345/labels \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "labels": ["CharacterEmbedding", "Indexed"]
+  }'
+```
+
+Response:
+```json
+{
+  "node_id": 12345,
+  "added": ["CharacterEmbedding", "Indexed"],
+  "labels": ["TextEmbedding", "CharacterEmbedding", "Indexed"]
+}
+```
+
+If one of the requested labels was already present:
+```json
+{
+  "node_id": 12345,
+  "added": ["Indexed"],
+  "labels": ["TextEmbedding", "CharacterEmbedding", "Indexed"],
+  "already_had": ["CharacterEmbedding"]
+}
+```
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Add succeeded (including the all-no-ops case) |
+| `400` | Validation failure (empty / invalid / over-long label, empty list, too many labels) |
+| `404` | Node not found (or cross-tenant) |
+
+#### Remove a Label From a Node
+
+Removes a single label. The node must have the label; if not, returns
+404 with `Label not present on node` — the consumer asked for a
+specific mutation that doesn't apply. A node must always carry at
+least one label (matches the validator's `min=1` on create), so
+removing the last label returns 400.
+
+```bash
+curl -X DELETE http://localhost:8080/nodes/12345/labels/CharacterEmbedding \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+| Status | Meaning |
+| --- | --- |
+| `204` | Removed successfully (no body) |
+| `400` | Invalid label name, or removing it would leave zero labels |
+| `404` | Node not found (or cross-tenant), or label not present on the node — the body distinguishes the two |
 
 ### Edge Operations
 
