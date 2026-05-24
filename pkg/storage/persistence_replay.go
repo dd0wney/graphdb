@@ -39,6 +39,10 @@ func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
 		return gs.replayCreatePropertyIndex(entry)
 	case wal.OpDropPropertyIndex:
 		return gs.replayDropPropertyIndex(entry)
+	case wal.OpAddNodeLabels:
+		return gs.replayAddNodeLabels(entry)
+	case wal.OpRemoveNodeLabel:
+		return gs.replayRemoveNodeLabel(entry)
 	}
 	return nil
 }
@@ -293,6 +297,109 @@ func (gs *GraphStorage) replayDropPropertyIndex(entry *wal.Entry) error {
 
 	// Remove index
 	delete(gs.propertyIndexes, indexInfo.PropertyKey)
+
+	return nil
+}
+
+// replayAddNodeLabels re-applies an OpAddNodeLabels entry during WAL
+// recovery. The payload only carries newly-added labels (the storage
+// op dedupes against the node's current set before writing the WAL),
+// so during replay we can append unconditionally without a second
+// dedup pass — provided the snapshot the WAL replays on top of
+// matches the WAL's view of the world at the time it was written.
+// If a snapshot already includes one of these labels (e.g., the
+// snapshot was taken after the add), we still need to dedup here
+// because snapshot+WAL replay isn't write-causal. Be defensive.
+func (gs *GraphStorage) replayAddNodeLabels(entry *wal.Entry) error {
+	var info struct {
+		NodeID uint64
+		Labels []string
+	}
+	if err := json.Unmarshal(entry.Data, &info); err != nil {
+		return err
+	}
+
+	// Skip if node doesn't exist (already deleted by a later WAL entry,
+	// or never made it into the snapshot). Mirrors replayUpdateNode.
+	node, exists := gs.lookupNodeShard(info.NodeID)
+	if !exists {
+		return nil
+	}
+
+	// Dedup against the live label set to keep replay idempotent under
+	// snapshot-overlap. Same set semantics as the live path.
+	present := make(map[string]struct{}, len(node.Labels))
+	for _, l := range node.Labels {
+		present[l] = struct{}{}
+	}
+
+	tid := effectiveTenantID(node.TenantID)
+	if gs.tenantNodesByLabel[tid] == nil {
+		gs.tenantNodesByLabel[tid] = make(map[string][]uint64)
+	}
+
+	for _, label := range info.Labels {
+		if _, alreadyOn := present[label]; alreadyOn {
+			continue
+		}
+		node.Labels = append(node.Labels, label)
+		present[label] = struct{}{}
+		gs.nodesByLabel[label] = append(gs.nodesByLabel[label], info.NodeID)
+		gs.tenantNodesByLabel[tid][label] = append(gs.tenantNodesByLabel[tid][label], info.NodeID)
+	}
+
+	return nil
+}
+
+// replayRemoveNodeLabel re-applies an OpRemoveNodeLabel entry during
+// WAL recovery. Safe to no-op if the node is gone (deleted by a later
+// entry) or the label is already absent (the snapshot was taken after
+// the removal).
+func (gs *GraphStorage) replayRemoveNodeLabel(entry *wal.Entry) error {
+	var info struct {
+		NodeID uint64
+		Label  string
+	}
+	if err := json.Unmarshal(entry.Data, &info); err != nil {
+		return err
+	}
+
+	node, exists := gs.lookupNodeShard(info.NodeID)
+	if !exists {
+		return nil
+	}
+
+	idx := -1
+	for i, l := range node.Labels {
+		if l == info.Label {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		// Already absent (snapshot includes the removal, or a prior
+		// replay entry already removed it). No-op.
+		return nil
+	}
+
+	node.Labels = append(node.Labels[:idx], node.Labels[idx+1:]...)
+	gs.removeFromLabelIndex(info.Label, info.NodeID)
+
+	// Tenant-scoped label index — same shape as removeNodeFromTenantIndex
+	// but for a single label.
+	tid := effectiveTenantID(node.TenantID)
+	if labelMap := gs.tenantNodesByLabel[tid]; labelMap != nil {
+		ids := labelMap[info.Label]
+		for i, id := range ids {
+			if id == info.NodeID {
+				labelMap[info.Label] = append(ids[:i], ids[i+1:]...)
+				break
+			}
+		}
+		if len(labelMap[info.Label]) == 0 {
+			delete(labelMap, info.Label)
+		}
+	}
 
 	return nil
 }

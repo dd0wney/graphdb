@@ -12,6 +12,20 @@ const (
 	OpDeleteEdge
 	OpCreatePropertyIndex
 	OpDropPropertyIndex
+	// OpAddNodeLabels records the addition of one or more labels to an
+	// existing node (post-create label mutation). Distinct from
+	// OpUpdateNode because that op's payload only carries Properties —
+	// extending it to optionally carry Labels would conflate two
+	// semantically different mutations (property merge vs. label set
+	// union) and complicate replay. New op + new replay handler keeps
+	// each mutation's intent legible in the WAL.
+	OpAddNodeLabels
+	// OpRemoveNodeLabel records the removal of a single label from a
+	// node. Single-label payload (vs. a slice) matches the consumer
+	// surface — `DELETE /nodes/{id}/labels/{label}` removes one label
+	// per call. Batch removal can be modeled as multiple ops at the
+	// caller layer without losing replay clarity.
+	OpRemoveNodeLabel
 )
 
 // Entry represents a single WAL entry

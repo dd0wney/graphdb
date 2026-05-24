@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync/atomic"
@@ -663,4 +664,256 @@ func (gs *GraphStorage) ForEachNode(fn func(*Node) bool) {
 	gs.forEachNodeUnlocked(func(node *Node) bool {
 		return fn(node.Clone())
 	})
+}
+
+// ErrLabelNotPresent is returned by RemoveNodeLabelForTenant when the
+// caller asks to remove a label the target node does not currently
+// carry. Translated to HTTP 404 at the handler boundary so the
+// consumer can branch on "the thing I asked to remove does not exist".
+var ErrLabelNotPresent = errors.New("label not present on node")
+
+// ErrLabelLastLabel is returned by RemoveNodeLabelForTenant when the
+// caller's remove would leave the node with zero labels. The validator
+// requires `labels` to have min=1 on create — we apply the same gate
+// to post-create removal so the on-disk shape stays consistent with the
+// request-validation contract. Translated to HTTP 400 at the handler.
+var ErrLabelLastLabel = errors.New("cannot remove a node's only label")
+
+// AddNodeLabelsForTenant adds one or more labels to an existing node,
+// scoped to the given tenant. Labels are a set: re-adding an existing
+// label is a no-op (no error). Returns the labels that were newly
+// added (i.e., excluding ones already present) so callers can report
+// idempotency to their users.
+//
+// Returns ErrNodeNotFound on missing-or-cross-tenant (same unified-error
+// rationale as GetNodeForTenant). Returns a wrapped error on validation
+// failure (empty label, invalid characters — caller-side checks happen
+// at the handler layer; this method assumes the labels are valid).
+//
+// Locking mirrors UpdateNode: gs.mu.Lock for the global label indexes
+// (gs.nodesByLabel, gs.tenantNodesByLabel) plus a per-shard write lock
+// for the in-place Node.Labels mutation. WAL write happens inside the
+// gs.mu.Lock window for atomicity with index updates. Observer
+// notification dispatches strictly after lock release.
+func (gs *GraphStorage) AddNodeLabelsForTenant(nodeID uint64, tenantID string, labels []string) ([]string, error) {
+	if len(labels) == 0 {
+		// Idempotent no-op — but return empty (not nil) so callers can
+		// distinguish "I asked for nothing" from "everything I asked for
+		// was already there" (also empty).
+		return []string{}, nil
+	}
+
+	gs.mu.Lock()
+
+	if err := gs.checkClosed(); err != nil {
+		gs.mu.Unlock()
+		return nil, err
+	}
+
+	node, exists := gs.lookupNodeShard(nodeID)
+	if !exists {
+		gs.mu.Unlock()
+		return nil, ErrNodeNotFound
+	}
+
+	// Tenant gate: same unified-error rationale as GetNodeForTenant. A
+	// cross-tenant caller cannot distinguish "node exists in another
+	// tenant" from "node never existed".
+	expectedTenant := effectiveTenantID(tenantID).String()
+	if node.TenantID != expectedTenant {
+		gs.mu.Unlock()
+		return nil, ErrNodeNotFound
+	}
+
+	// R2.1: snapshot pre-mutation state for observer dispatch. Only
+	// allocate when observers are registered.
+	var oldNode *Node
+	if len(gs.observers) > 0 {
+		oldNode = node.Clone()
+	}
+
+	// Deduplicate against the node's current label set so re-adding an
+	// already-present label is a no-op (set semantics).
+	existing := make(map[string]struct{}, len(node.Labels))
+	for _, l := range node.Labels {
+		existing[l] = struct{}{}
+	}
+
+	added := make([]string, 0, len(labels))
+	for _, label := range labels {
+		if _, present := existing[label]; present {
+			continue
+		}
+		added = append(added, label)
+		existing[label] = struct{}{}
+	}
+
+	// Nothing to do — still write to WAL? No: the operation is
+	// observably a no-op (the node's label set is unchanged), and
+	// emitting WAL entries for no-ops would inflate the log without
+	// recovering anything meaningful. Return early.
+	if len(added) == 0 {
+		gs.mu.Unlock()
+		return []string{}, nil
+	}
+
+	// Per-shard write lock (A4) excludes shard.RLock readers during
+	// the in-place Node.Labels slice mutation.
+	gs.lockShard(nodeID)
+	node.Labels = append(node.Labels, added...)
+	node.UpdatedAt = time.Now().Unix()
+	gs.unlockShard(nodeID)
+
+	// Update global label index (tenant-blind backward-compat index)
+	// and the tenant-scoped label map. Both must reflect each newly
+	// added label so subsequent GetNodesByLabel(ForTenant) sees the
+	// node. Mirror the append pattern used in createNodeLocked.
+	tid := effectiveTenantID(node.TenantID)
+	if gs.tenantNodesByLabel[tid] == nil {
+		gs.tenantNodesByLabel[tid] = make(map[string][]uint64)
+	}
+	for _, label := range added {
+		gs.nodesByLabel[label] = append(gs.nodesByLabel[label], nodeID)
+		gs.tenantNodesByLabel[tid][label] = append(gs.tenantNodesByLabel[tid][label], nodeID)
+	}
+
+	// Write to WAL for durability. Payload mirrors the UpdateNode
+	// pattern (anon struct with explicit fields) so the JSON shape is
+	// stable across releases without a separate type declaration.
+	gs.writeToWAL(wal.OpAddNodeLabels, struct {
+		NodeID uint64
+		Labels []string
+	}{
+		NodeID: nodeID,
+		Labels: added,
+	})
+
+	// R2.1: snapshot post-mutation state before releasing the lock.
+	var newNode *Node
+	if oldNode != nil {
+		newNode = node.Clone()
+	}
+	gs.mu.Unlock()
+
+	if newNode != nil {
+		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
+	}
+	return added, nil
+}
+
+// RemoveNodeLabelForTenant removes a single label from an existing
+// node, scoped to the given tenant. Returns ErrLabelNotPresent if the
+// node exists (and belongs to the tenant) but does not currently carry
+// the label — that's a meaningful 404 at the HTTP layer: "the thing you
+// asked to remove is not there". Returns ErrLabelLastLabel if the
+// removal would leave the node labelless, mirroring the validator's
+// min=1 constraint on create.
+//
+// Locking matches AddNodeLabelsForTenant: gs.mu.Lock for the global
+// indexes, per-shard write lock for the in-place Node.Labels slice
+// mutation, observer notification after lock release.
+func (gs *GraphStorage) RemoveNodeLabelForTenant(nodeID uint64, tenantID string, label string) error {
+	if label == "" {
+		// Defensive: handler layer should have caught this, but a stray
+		// internal caller passing "" would otherwise corrupt indexes.
+		return fmt.Errorf("label must not be empty")
+	}
+
+	gs.mu.Lock()
+
+	if err := gs.checkClosed(); err != nil {
+		gs.mu.Unlock()
+		return err
+	}
+
+	node, exists := gs.lookupNodeShard(nodeID)
+	if !exists {
+		gs.mu.Unlock()
+		return ErrNodeNotFound
+	}
+
+	// Tenant gate: unified ErrNodeNotFound. See GetNodeForTenant.
+	expectedTenant := effectiveTenantID(tenantID).String()
+	if node.TenantID != expectedTenant {
+		gs.mu.Unlock()
+		return ErrNodeNotFound
+	}
+
+	// Locate the label in the node's current set. If absent, surface
+	// ErrLabelNotPresent so the handler can return a 404 distinct from
+	// "node not found" — the consumer can branch on it.
+	idx := -1
+	for i, l := range node.Labels {
+		if l == label {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		gs.mu.Unlock()
+		return ErrLabelNotPresent
+	}
+
+	// Reject the removal that would leave the node with zero labels —
+	// keep the on-disk shape consistent with the validator's min=1
+	// invariant on create.
+	if len(node.Labels) == 1 {
+		gs.mu.Unlock()
+		return ErrLabelLastLabel
+	}
+
+	// R2.1: snapshot pre-mutation state for observer dispatch. Only
+	// allocate when observers are registered.
+	var oldNode *Node
+	if len(gs.observers) > 0 {
+		oldNode = node.Clone()
+	}
+
+	// Per-shard write lock (A4) excludes shard.RLock readers during
+	// the in-place Node.Labels slice mutation.
+	gs.lockShard(nodeID)
+	node.Labels = append(node.Labels[:idx], node.Labels[idx+1:]...)
+	node.UpdatedAt = time.Now().Unix()
+	gs.unlockShard(nodeID)
+
+	// Update global tenant-blind label index. Reuse the existing
+	// removeFromLabelIndex helper (node_indexing.go) which does the
+	// swap-with-last-element trim.
+	gs.removeFromLabelIndex(label, nodeID)
+
+	// Update tenant-scoped label map.
+	tid := effectiveTenantID(node.TenantID)
+	if labelMap := gs.tenantNodesByLabel[tid]; labelMap != nil {
+		ids := labelMap[label]
+		for i, id := range ids {
+			if id == nodeID {
+				labelMap[label] = append(ids[:i], ids[i+1:]...)
+				break
+			}
+		}
+		if len(labelMap[label]) == 0 {
+			delete(labelMap, label)
+		}
+	}
+
+	// Write to WAL for durability.
+	gs.writeToWAL(wal.OpRemoveNodeLabel, struct {
+		NodeID uint64
+		Label  string
+	}{
+		NodeID: nodeID,
+		Label:  label,
+	})
+
+	// R2.1: snapshot post-mutation state before releasing the lock.
+	var newNode *Node
+	if oldNode != nil {
+		newNode = node.Clone()
+	}
+	gs.mu.Unlock()
+
+	if newNode != nil {
+		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
+	}
+	return nil
 }
