@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -109,18 +110,37 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	// at the storage layer.
 	tenantID := getTenantFromContext(r)
 
-	// H4.4: B-lite mirror. Route single-label :Claim creation through the
-	// unique-property helper so REST callers can't bypass the at-most-one-
-	// active-Claim-per-(tenant, for_task) rule that the GraphQL resolver
-	// enforces. Single-label labels==[claimLabel] is the same gate the
-	// resolver uses (pkg/graphql/mutations_resolvers.go:78) — multi-label
-	// nodes retain freedom to add secondary labels without inheriting
-	// uniqueness semantics.
+	// Three-way create dispatch:
+	//
+	//  1. Explicit `unique_property` set on the request — generalised B-lite
+	//     uniqueness, label gate = the (single) request label. Wins over
+	//     the hardcoded :Claim fallback so callers can request uniqueness
+	//     for arbitrary labels.
+	//  2. No `unique_property`, but labels == [:Claim] — historical
+	//     H4.4 hardcoded path: enforces the at-most-one-active-Claim-
+	//     per-(tenant, for_task) rule that the GraphQL resolver and
+	//     graphdb-coord rely on. Preserved for backwards compatibility.
+	//  3. Otherwise — vanilla CreateNodeWithTenant.
 	var (
 		node *storage.Node
 		err  error
 	)
-	if len(req.Labels) == 1 && req.Labels[0] == claimLabel {
+	switch {
+	case req.UniqueProperty != "":
+		if len(req.Labels) != 1 {
+			s.respondError(w, http.StatusBadRequest,
+				"unique_property requires exactly one label (the uniqueness label)")
+			return
+		}
+		if _, ok := props[req.UniqueProperty]; !ok {
+			s.respondError(w, http.StatusBadRequest,
+				"unique_property "+req.UniqueProperty+" must be present in properties")
+			return
+		}
+		node, err = s.graph.CreateNodeWithUniquePropertyForTenant(
+			tenantID, req.Labels, props, req.Labels[0], req.UniqueProperty,
+		)
+	case len(req.Labels) == 1 && req.Labels[0] == claimLabel:
 		if _, ok := props[claimUniquePropertyKey]; !ok {
 			s.respondError(w, http.StatusBadRequest,
 				":Claim creation requires a "+claimUniquePropertyKey+" property")
@@ -129,7 +149,7 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 		node, err = s.graph.CreateNodeWithUniquePropertyForTenant(
 			tenantID, req.Labels, props, claimLabel, claimUniquePropertyKey,
 		)
-	} else {
+	default:
 		node, err = s.graph.CreateNodeWithTenant(tenantID, req.Labels, props)
 	}
 	if err != nil {
@@ -275,9 +295,50 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 		// Convert and sanitize properties
 		props := converter.ConvertAndSanitize(nodeReq.Properties, s.convertToValue)
 
-		// Audit A6a: scoped create.
-		node, err := s.graph.CreateNodeWithTenant(tenantID, nodeReq.Labels, props)
+		// Per-item dispatch matches createNode's three-way switch.
+		// Failures (including uniqueness 409s) currently get swallowed
+		// here — the response shape only reports successes via
+		// `created`. Owner note: a future revision could surface per-
+		// item errors via an `errors` array on BatchNodeResponse, but
+		// changing that shape is a wire-compat concern that's out of
+		// scope for this gap-closure PR.
+		var (
+			node *storage.Node
+			err  error
+		)
+		switch {
+		case nodeReq.UniqueProperty != "":
+			if len(nodeReq.Labels) != 1 {
+				log.Printf("batch_create skip: unique_property requires exactly one label, got %d", len(nodeReq.Labels))
+				continue
+			}
+			if _, ok := props[nodeReq.UniqueProperty]; !ok {
+				log.Printf("batch_create skip: unique_property %q missing from properties", nodeReq.UniqueProperty)
+				continue
+			}
+			node, err = s.graph.CreateNodeWithUniquePropertyForTenant(
+				tenantID, nodeReq.Labels, props, nodeReq.Labels[0], nodeReq.UniqueProperty,
+			)
+		case len(nodeReq.Labels) == 1 && nodeReq.Labels[0] == claimLabel:
+			if _, ok := props[claimUniquePropertyKey]; !ok {
+				log.Printf("batch_create skip: :Claim missing %s property", claimUniquePropertyKey)
+				continue
+			}
+			node, err = s.graph.CreateNodeWithUniquePropertyForTenant(
+				tenantID, nodeReq.Labels, props, claimLabel, claimUniquePropertyKey,
+			)
+		default:
+			node, err = s.graph.CreateNodeWithTenant(tenantID, nodeReq.Labels, props)
+		}
 		if err != nil {
+			// Uniqueness conflicts and other create errors fall through
+			// to the batch's partial-success contract; log so the failure
+			// isn't completely silent during debugging.
+			if errors.Is(err, storage.ErrUniqueConstraintViolation) {
+				log.Printf("batch_create skip: unique constraint violation: %v", err)
+			} else {
+				log.Printf("batch_create skip: %v", err)
+			}
 			continue
 		}
 

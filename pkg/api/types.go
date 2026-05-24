@@ -19,10 +19,28 @@ type QueryResponse struct {
 	Time    string           `json:"time"`
 }
 
-// NodeRequest represents a node creation/update request
+// NodeRequest represents a node creation/update request.
+//
+// UniqueProperty (optional, create-only) opts the request into the
+// tenant-scoped uniqueness check backed by
+// (*GraphStorage).CreateNodeWithUniquePropertyForTenant: at most one
+// node per (tenant, label, UniqueProperty value) where label is the
+// single label in Labels. The constraint is enforced atomically under
+// the storage's gs.mu so concurrent creates with the same value cannot
+// both win. Requirements when set:
+//   - Labels must contain exactly one element (the uniqueness label).
+//   - Properties must contain UniqueProperty as a key.
+//
+// Violations return 409 with the canonical
+// "unique constraint violation: ..." message. When UniqueProperty is
+// omitted, behaviour is unchanged from before — the hardcoded :Claim
+// fallback still applies to single-label :Claim creates so the
+// graphdb-coord integration keeps its at-most-one-active-Claim-per-
+// for_task invariant.
 type NodeRequest struct {
-	Labels     []string       `json:"labels"`
-	Properties map[string]any `json:"properties"`
+	Labels         []string       `json:"labels"`
+	Properties     map[string]any `json:"properties"`
+	UniqueProperty string         `json:"unique_property,omitempty"`
 }
 
 // NodeResponse represents a node in API responses
