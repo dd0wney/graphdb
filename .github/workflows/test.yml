@@ -160,8 +160,8 @@ jobs:
     - name: Vet with -tags nng
       run: go vet -tags nng ./...
 
-  simd-smoke:
-    name: SIMD smoke (amd64, GOEXPERIMENT=simd)
+  simd-int8:
+    name: int8 SIMD kernel (amd64, GOEXPERIMENT=simd)
     runs-on: ubuntu-latest
 
     steps:
@@ -174,10 +174,10 @@ jobs:
         go-version: '1.26'
         cache: true
 
-    # Gate 0 de-risk: confirm the experimental amd64-only simd/archsimd path
-    # compiles and runs. GOEXPERIMENT=simd activates the goexperiment.simd build
-    # tag; without it the smoke test skips (the kernel is build-tag isolated).
-    - name: Run archsimd smoke test
-      env:
-        GOEXPERIMENT: simd
-      run: go test ./pkg/vector/ -run TestSIMDSmokeAddMatchesScalar -v
+    - name: int8 SIMD kernel (amd64, GOEXPERIMENT=simd)
+      run: |
+        GOEXPERIMENT=simd go build ./pkg/vector/
+        GOEXPERIMENT=simd go test ./pkg/vector/ -run 'TestDotInt8' -count=1 -v
+
+    - name: int8 SIMD benchmark (amd64)
+      run: GOEXPERIMENT=simd go test ./pkg/vector/ -run '^$' -bench 'BenchmarkDotInt8' -benchmem -count=6
