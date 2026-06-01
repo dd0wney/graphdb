@@ -1,7 +1,6 @@
 package vector
 
 import (
-	"container/heap"
 	"fmt"
 	"math"
 	"math/rand"
@@ -145,11 +144,7 @@ func (h *HNSWIndex) Search(query []float32, k int, ef int) ([]SearchResult, erro
 	// Select k nearest from candidates
 	results := make([]SearchResult, 0, k)
 	for len(results) < k && len(candidates) > 0 {
-		// Defensive: safe type assertion with ok check
-		item, ok := heap.Pop(&candidates).(*queueItem)
-		if !ok {
-			continue
-		}
+		item := pqPop(&candidates)
 		results = append(results, SearchResult{
 			ID:       item.id,
 			Distance: item.distance,
