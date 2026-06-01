@@ -162,3 +162,52 @@ func TestMetricDistanceInt8ZeroVector(t *testing.T) {
 		t.Errorf("dot zero-vector=%v, want 0", got)
 	}
 }
+
+// TestDotInt8DifferentialRandom checks dotInt8 (dispatch) against the scalar
+// reference over random inputs and edge cases. On a non-SIMD build dispatch IS
+// scalar (trivially equal); on an amd64 SIMD build this is the real guard that
+// the vectorized kernel matches the reference. Lengths span lane boundaries
+// and tails (16-wide chunks + remainder).
+func TestDotInt8DifferentialRandom(t *testing.T) {
+	rng := newDiffRNG()
+	for _, n := range []int{0, 1, 15, 16, 17, 31, 32, 33, 127, 768, 1536} {
+		a := make([]int8, n)
+		b := make([]int8, n)
+		for i := 0; i < n; i++ {
+			a[i] = int8(rng() % 255)
+			b[i] = int8(rng() % 255)
+		}
+		if got, want := dotInt8(a, b), dotInt8Scalar(a, b); got != want {
+			t.Errorf("n=%d: dotInt8=%d, scalar=%d", n, got, want)
+		}
+	}
+
+	edges := []struct{ a, b []int8 }{
+		{fillInt8(64, 127), fillInt8(64, 127)},
+		{fillInt8(64, -127), fillInt8(64, 127)},
+		{fillInt8(64, -127), fillInt8(64, -127)},
+	}
+	for i, e := range edges {
+		if got, want := dotInt8(e.a, e.b), dotInt8Scalar(e.a, e.b); got != want {
+			t.Errorf("edge %d: dotInt8=%d, scalar=%d", i, got, want)
+		}
+	}
+}
+
+func fillInt8(n int, v int8) []int8 {
+	s := make([]int8, n)
+	for i := range s {
+		s[i] = v
+	}
+	return s
+}
+
+// newDiffRNG is a tiny deterministic LCG — keeps the differential test
+// reproducible without depending on math/rand seeding semantics.
+func newDiffRNG() func() int {
+	state := uint64(0x2545F4914F6CDD1D)
+	return func() int {
+		state = state*6364136223846793005 + 1442695040888963407
+		return int(state >> 33)
+	}
+}
