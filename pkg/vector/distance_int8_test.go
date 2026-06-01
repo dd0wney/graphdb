@@ -95,10 +95,72 @@ func TestDotInt8Scalar(t *testing.T) {
 
 // dotInt8 is the build-tag dispatch; on a non-SIMD build it equals the scalar
 // kernel, on a SIMD build the differential test (Task 6) checks equivalence.
+// dotInt8 is the build-tag dispatch; on a non-SIMD build it equals the scalar
+// kernel, on a SIMD build the differential test (Task 6) checks equivalence.
 func TestDotInt8DispatchMatchesScalar(t *testing.T) {
 	a := []int8{1, -2, 3, -4, 5, -6, 7, -8, 9, -10, 11, -12, 13, -14, 15, -16, 17}
 	b := []int8{-1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11, 12, -13, 14, -15, 16, -17}
 	if got, want := dotInt8(a, b), dotInt8Scalar(a, b); got != want {
 		t.Errorf("dotInt8=%d, dotInt8Scalar=%d", got, want)
+	}
+}
+
+func TestMetricDistanceInt8(t *testing.T) {
+	// Two simple vectors; quantize, then compare int8-derived distance to the
+	// float32 reference within a tolerance that accounts for quantization.
+	a := []float32{1, 2, 3, 4}
+	b := []float32{4, 3, 2, 1}
+	qa, sa, na := quantizeInt8(a)
+	qb, sb, nb := quantizeInt8(b)
+	dot := dotInt8(qa, qb)
+
+	const tol = 0.02
+
+	t.Run("cosine", func(t *testing.T) {
+		want, _ := CosineDistance(a, b)
+		got := metricDistanceInt8(MetricCosine, dot, sa, sb, na, nb)
+		if math.Abs(float64(got-want)) > tol {
+			t.Errorf("cosine int8=%v, float32=%v", got, want)
+		}
+	})
+	t.Run("euclidean", func(t *testing.T) {
+		want, _ := EuclideanDistance(a, b)
+		got := metricDistanceInt8(MetricEuclidean, dot, sa, sb, na, nb)
+		if math.Abs(float64(got-want)) > tol*float64(na+nb) {
+			t.Errorf("euclidean int8=%v, float32=%v", got, want)
+		}
+	})
+	t.Run("dot_product", func(t *testing.T) {
+		raw, _ := DotProduct(a, b)
+		want := -raw
+		got := metricDistanceInt8(MetricDotProduct, dot, sa, sb, na, nb)
+		if math.Abs(float64(got-want)) > tol*float64(na*nb) {
+			t.Errorf("dot int8=%v, float32=%v", got, want)
+		}
+	})
+}
+
+func TestMetricDistanceInt8EuclideanClampSelf(t *testing.T) {
+	// Distance from a vector to itself must be ~0 and never NaN (the clamp
+	// guards a tiny-negative radicand from exact norms vs approximate dot).
+	v := []float32{0.3, -0.7, 0.1, 0.9, -0.2}
+	q, s, n := quantizeInt8(v)
+	dot := dotInt8(q, q)
+	got := metricDistanceInt8(MetricEuclidean, dot, s, s, n, n)
+	if math.IsNaN(float64(got)) {
+		t.Fatal("euclidean self-distance is NaN — clamp missing")
+	}
+	if got < 0 || got > 0.05 {
+		t.Errorf("euclidean self-distance=%v, want ~0", got)
+	}
+}
+
+func TestMetricDistanceInt8ZeroVector(t *testing.T) {
+	// Zero vector: cosine distance 1.0, dot_product 0, matching float32 path.
+	if got := metricDistanceInt8(MetricCosine, 0, 0, 0, 0, 0); got != 1.0 {
+		t.Errorf("cosine zero-vector=%v, want 1.0", got)
+	}
+	if got := metricDistanceInt8(MetricDotProduct, 0, 0, 0, 0, 0); got != 0 {
+		t.Errorf("dot zero-vector=%v, want 0", got)
 	}
 }

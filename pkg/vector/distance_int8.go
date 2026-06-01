@@ -60,3 +60,33 @@ func dotInt8Scalar(a, b []int8) int32 {
 	}
 	return dot
 }
+
+// metricDistanceInt8 converts an int8 dot product and the stored scales/norms
+// into the configured distance metric, mirroring the float32 Distance
+// semantics. dotF is the approximate float32 dot product of the originals.
+func metricDistanceInt8(metric DistanceMetric, dot int32, aScale, bScale, aNorm, bNorm float32) float32 {
+	dotF := float32(dot) * aScale * bScale
+
+	switch metric {
+	case MetricEuclidean:
+		// ||a-b||^2 = ||a||^2 + ||b||^2 - 2(a·b). The max(0,…) clamp guards a
+		// slightly-negative radicand when a≈b (exact norms vs approximate dot),
+		// which would otherwise NaN the sqrt and corrupt the search.
+		sq := aNorm*aNorm + bNorm*bNorm - 2*dotF
+		if sq < 0 {
+			sq = 0
+		}
+		return float32(math.Sqrt(float64(sq)))
+	case MetricDotProduct:
+		// Negated so "closer" is smaller, matching the float32 Distance path.
+		return -dotF
+	case MetricCosine:
+		fallthrough
+	default:
+		// Matches CosineSimilarity's zero-vector handling: similarity 0 → distance 1.
+		if aNorm == 0 || bNorm == 0 {
+			return 1.0
+		}
+		return 1.0 - dotF/(aNorm*bNorm)
+	}
+}
