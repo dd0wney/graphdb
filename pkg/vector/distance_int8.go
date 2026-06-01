@@ -36,8 +36,9 @@ func quantizeInt8(v []float32) (q []int8, scale, norm float32) {
 	invScale := 127.0 / maxAbs
 	for i, x := range v {
 		r := math.Round(float64(x) * invScale)
-		// Symmetric clamp: rounding can land on ±127 but never exceed it;
-		// the clamp is defensive against float edge cases.
+		// Symmetric clamp to ±127 (not -128): keeps the int8 range symmetric so
+		// -128 is unused. Rounding can land on ±127 but never exceed it; the
+		// clamp is defensive against float edge cases.
 		if r > 127 {
 			r = 127
 		} else if r < -127 {

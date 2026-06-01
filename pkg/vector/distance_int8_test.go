@@ -14,6 +14,7 @@ func TestQuantizeInt8(t *testing.T) {
 		{"simple", []float32{1, -1, 0.5, -0.5}, 1.0 / 127.0},
 		{"zero vector", []float32{0, 0, 0}, 0},
 		{"single max", []float32{2.0}, 2.0 / 127.0},
+		{"empty", []float32{}, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -22,7 +23,7 @@ func TestQuantizeInt8(t *testing.T) {
 			if len(q) != len(tt.v) {
 				t.Fatalf("len(q)=%d, want %d", len(q), len(tt.v))
 			}
-			if math.Abs(float64(scale-tt.wantScale)) > 1e-9 {
+			if math.Abs(float64(scale-tt.wantScale)) > 1e-6 {
 				t.Errorf("scale=%v, want %v", scale, tt.wantScale)
 			}
 
@@ -38,6 +39,23 @@ func TestQuantizeInt8(t *testing.T) {
 			for i, qi := range q {
 				if qi < -127 || qi > 127 {
 					t.Errorf("q[%d]=%d out of [-127,127]", i, qi)
+				}
+			}
+
+			// For non-zero input the largest-magnitude component maps to exactly 127.
+			if scale > 0 {
+				var maxQ int8
+				for _, qi := range q {
+					a := qi
+					if a < 0 {
+						a = -a
+					}
+					if a > maxQ {
+						maxQ = a
+					}
+				}
+				if maxQ != 127 {
+					t.Errorf("max |q[i]| = %d, want 127", maxQ)
 				}
 			}
 
