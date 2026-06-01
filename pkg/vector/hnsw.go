@@ -141,19 +141,11 @@ func (h *HNSWIndex) Search(query []float32, k int, ef int) ([]SearchResult, erro
 	// Search at layer 0 with ef
 	candidates := h.searchLayerKNN(query, ep, ef, 0)
 
-	// Select k nearest from candidates
-	results := make([]SearchResult, 0, k)
-	for len(results) < k && len(candidates) > 0 {
-		item := pqPop(&candidates)
-		results = append(results, SearchResult{
-			ID:       item.id,
-			Distance: item.distance,
-		})
-	}
-
-	// Reverse results (they're in max-heap order, we want nearest first)
-	for i := 0; i < len(results)/2; i++ {
-		results[i], results[len(results)-1-i] = results[len(results)-1-i], results[i]
+	// Take the k nearest from the result set, ascending by distance.
+	nearest := extractNearest(&candidates, k)
+	results := make([]SearchResult, len(nearest))
+	for i, item := range nearest {
+		results[i] = SearchResult{ID: item.id, Distance: item.distance}
 	}
 
 	return results, nil
