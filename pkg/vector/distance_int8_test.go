@@ -95,8 +95,6 @@ func TestDotInt8Scalar(t *testing.T) {
 
 // dotInt8 is the build-tag dispatch; on a non-SIMD build it equals the scalar
 // kernel, on a SIMD build the differential test (Task 6) checks equivalence.
-// dotInt8 is the build-tag dispatch; on a non-SIMD build it equals the scalar
-// kernel, on a SIMD build the differential test (Task 6) checks equivalence.
 func TestDotInt8DispatchMatchesScalar(t *testing.T) {
 	a := []int8{1, -2, 3, -4, 5, -6, 7, -8, 9, -10, 11, -12, 13, -14, 15, -16, 17}
 	b := []int8{-1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11, 12, -13, 14, -15, 16, -17}
