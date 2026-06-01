@@ -7,9 +7,12 @@ func (h *HNSWIndex) insertNode(node *hnswNode) {
 	// Start from entry point
 	ep := h.entryPoint
 
+	// Quantize once — same idiom as Search; quantized() is a shared-header copy.
+	nqv := node.quantized()
+
 	// Search from top layer to node's level + 1
 	for layer := h.maxLayer; layer > node.level; layer-- {
-		ep, _ = h.searchLayer(node.vector, ep, 1, layer)
+		ep, _ = h.searchLayer(nqv, ep, 1, layer)
 	}
 
 	// Insert into layers from node.level down to 0
@@ -20,7 +23,7 @@ func (h *HNSWIndex) insertNode(node *hnswNode) {
 			m = h.mMax0
 		}
 
-		candidates := h.searchLayerKNN(node.vector, ep, h.efConstruction, layer)
+		candidates := h.searchLayerKNN(nqv, ep, h.efConstruction, layer)
 
 		// Select M neighbors
 		neighbors := h.selectNeighbors(candidates, m)
@@ -92,7 +95,7 @@ func (h *HNSWIndex) pruneConnections(node *hnswNode, layer int, maxConn int) {
 		if !ok {
 			continue
 		}
-		ordered = append(ordered, queueItem{id: friendID, distance: h.distance(node.vector, friend.vector)})
+		ordered = append(ordered, queueItem{id: friendID, distance: h.distanceQ(node.quantized(), friend.quantized())})
 	}
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].distance < ordered[j].distance })
 

@@ -1,11 +1,21 @@
 package vector
 
-// hnswNode represents a node in the HNSW graph
+// hnswNode represents a node in the HNSW graph. Vectors are stored quantized
+// to int8 (+ scale + original-float32 norm) to cut the memory bandwidth of the
+// distance hot loop; see distance_int8.go.
 type hnswNode struct {
 	id      uint64
-	vector  []float32
+	qvec    []int8
+	scale   float32
+	norm    float32
 	level   int
 	friends [][]uint64 // Connections at each layer [layer][neighbors]
+}
+
+// quantized returns the node's stored vector as a quantizedVec for distance
+// computation. The slice header is shared (no copy); callers must not mutate.
+func (n *hnswNode) quantized() quantizedVec {
+	return quantizedVec{q: n.qvec, scale: n.scale, norm: n.norm}
 }
 
 // SearchResult represents a search result with ID and distance

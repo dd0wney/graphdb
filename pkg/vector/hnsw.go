@@ -82,14 +82,16 @@ func (h *HNSWIndex) Insert(id uint64, vector []float32) error {
 	// Select layer for new node
 	level := h.selectLevel()
 
-	// Create new node
+	// Quantize once at insert; the int8 form is what the index stores.
+	q, scale, norm := quantizeInt8(vector)
 	node := &hnswNode{
 		id:      id,
-		vector:  make([]float32, len(vector)),
+		qvec:    q,
+		scale:   scale,
+		norm:    norm,
 		level:   level,
 		friends: make([][]uint64, level+1),
 	}
-	copy(node.vector, vector)
 
 	// Initialize friend lists
 	for i := 0; i <= level; i++ {
@@ -130,16 +132,20 @@ func (h *HNSWIndex) Search(query []float32, k int, ef int) ([]SearchResult, erro
 		return []SearchResult{}, nil
 	}
 
+	// Quantize the query once — not per comparison.
+	qq, qScale, qNorm := quantizeInt8(query)
+	qv := quantizedVec{q: qq, scale: qScale, norm: qNorm}
+
 	// Search from entry point
 	ep := h.entryPoint
 
 	// Search from top layer to layer 1
 	for layer := h.maxLayer; layer > 0; layer-- {
-		ep, _ = h.searchLayer(query, ep, 1, layer)
+		ep, _ = h.searchLayer(qv, ep, 1, layer)
 	}
 
 	// Search at layer 0 with ef
-	candidates := h.searchLayerKNN(query, ep, ef, 0)
+	candidates := h.searchLayerKNN(qv, ep, ef, 0)
 
 	// Take the k nearest from the result set, ascending by distance.
 	nearest := extractNearest(&candidates, k)

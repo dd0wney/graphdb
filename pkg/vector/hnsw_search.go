@@ -1,16 +1,12 @@
 package vector
 
-import (
-	"math"
-)
-
-// searchLayer performs greedy search at a specific layer
-func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int) (*hnswNode, float32) {
+// searchLayer performs greedy search at a specific layer.
+func (h *HNSWIndex) searchLayer(query quantizedVec, ep *hnswNode, ef int, layer int) (*hnswNode, float32) {
 	visited := make(map[uint64]bool)
 	candidates := make(candidateQueue, 0, ef) // min-heap: expand nearest first
 	w := make(priorityQueue, 0, ef)           // max-heap: furthest result at root
 
-	dist := h.distance(query, ep.vector)
+	dist := h.distanceQ(query, ep.quantized())
 	cqPush(&candidates, queueItem{id: ep.id, distance: dist})
 	pqPush(&w, queueItem{id: ep.id, distance: dist})
 	visited[ep.id] = true
@@ -37,7 +33,7 @@ func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int
 					if !friendExists {
 						continue
 					}
-					friendDist := h.distance(query, friend.vector)
+					friendDist := h.distanceQ(query, friend.quantized())
 
 					// Admit if there's room or this beats the current furthest
 					// result (re-read w[0] each time — w mutates as we add).
@@ -62,13 +58,13 @@ func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int
 	return h.nodes[nearest[0].id], nearest[0].distance
 }
 
-// searchLayerKNN performs k-NN search at a specific layer
-func (h *HNSWIndex) searchLayerKNN(query []float32, ep *hnswNode, ef int, layer int) priorityQueue {
+// searchLayerKNN performs k-NN search at a specific layer.
+func (h *HNSWIndex) searchLayerKNN(query quantizedVec, ep *hnswNode, ef int, layer int) priorityQueue {
 	visited := make(map[uint64]bool)
 	candidates := make(candidateQueue, 0, ef) // min-heap: expand nearest first
 	w := make(priorityQueue, 0, ef)           // max-heap: furthest result at root
 
-	dist := h.distance(query, ep.vector)
+	dist := h.distanceQ(query, ep.quantized())
 	cqPush(&candidates, queueItem{id: ep.id, distance: dist})
 	pqPush(&w, queueItem{id: ep.id, distance: dist})
 	visited[ep.id] = true
@@ -94,7 +90,7 @@ func (h *HNSWIndex) searchLayerKNN(query []float32, ep *hnswNode, ef int, layer 
 					if !friendExists {
 						continue
 					}
-					friendDist := h.distance(query, friend.vector)
+					friendDist := h.distanceQ(query, friend.quantized())
 
 					// Admit if there's room or this beats the current furthest
 					// result (re-read w[0] each time — w mutates as we add).
@@ -136,7 +132,7 @@ func (h *HNSWIndex) selectNeighbors(candidates priorityQueue, m int) []SearchRes
 // (true neighbours become unreachable from the entry point → recall collapse).
 //
 // Each item's distance field is its distance to the base, so no base vector is
-// needed; cross-distances between candidates are computed from stored vectors.
+// needed; cross-distances between candidates use the stored quantized vectors.
 func (h *HNSWIndex) selectNeighborsHeuristic(ordered []queueItem, m int) []queueItem {
 	selected := make([]queueItem, 0, m)
 	for _, cand := range ordered {
@@ -155,7 +151,7 @@ func (h *HNSWIndex) selectNeighborsHeuristic(ordered []queueItem, m int) []queue
 			}
 			// Discard cand if it sits closer to an already-selected neighbour
 			// than to the base — that neighbour already covers this direction.
-			if h.distance(candNode.vector, selNode.vector) < cand.distance {
+			if h.distanceQ(candNode.quantized(), selNode.quantized()) < cand.distance {
 				keep = false
 				break
 			}
@@ -167,15 +163,10 @@ func (h *HNSWIndex) selectNeighborsHeuristic(ordered []queueItem, m int) []queue
 	return selected
 }
 
-// distance calculates distance between two vectors
-// Note: This assumes vectors have already been validated at insert time.
-// If dimensions mismatch (should never happen), returns MaxFloat32 as a sentinel.
-func (h *HNSWIndex) distance(a, b []float32) float32 {
-	dist, err := Distance(a, b, h.metric)
-	if err != nil {
-		// This should never happen since we validate dimensions at insert time
-		// Return max distance to ensure mismatched vectors are never selected
-		return math.MaxFloat32
-	}
-	return dist
+// distanceQ computes the configured metric between two quantized vectors via
+// one int8 dot product. Replaces the old float32 distance method; dimensions
+// are validated at insert/search time so no error path is needed here.
+func (h *HNSWIndex) distanceQ(a, b quantizedVec) float32 {
+	dot := dotInt8(a.q, b.q)
+	return metricDistanceInt8(h.metric, dot, a.scale, b.scale, a.norm, b.norm)
 }
