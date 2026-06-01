@@ -1,5 +1,40 @@
 # Perf Roadmap: SIMD distance kernels + Go 1.26 adoption — 2026-06-01
 
+> ## ⚠️ OUTCOME (reconciled 2026-06-01) — SIMD-float32 SHELVED; pivot to int8 quantization
+>
+> Gate 0 shipped (Go 1.26 on `main`, archsimd smoke validated on amd64 CI). Then
+> the profile-gate fired **RED** and reshaped the track. **Read this banner before
+> the body below — the body is the pre-evidence plan, kept for the decision trail.**
+>
+> **Finding 1 — float32 cosine is memory-bandwidth-bound, both arches.** CPU
+> profiling showed distance is ~77% of HNSW CPU, yet a kernel A/B (3-stream
+> `CosineDistance` vs 1-stream `cosineDistanceNorms`, removing ⅔ of arithmetic)
+> moved throughput **~3–5%** at dim 768/1536 on *both* arm64 (M1) and amd64
+> (ubuntu CI). Throughput plateaus ~6–8 GB/s regardless of arithmetic. **SIMD
+> accelerates arithmetic, so SIMD-float32 ≈ the same ~3–5% — not worth it.**
+> Phase 1a (query-norm hoist, branch `perf/phase1a-query-norm-hoist`) confirmed
+> this end-to-end: within noise on search AND insert. **Phase 1a not merged;
+> Phase 1b (archsimd float32 kernel) shelved.**
+>
+> **Finding 2 — int8 quantization IS the lever (it cuts bytes, not math).** Spike
+> (`spike/int8-quantization`): int8 cosine (4× fewer bytes loaded) vs float32 —
+> **arm64 ~3.6× @768, ~3.7× @1536; amd64 ~1.5×** — at **negligible recall cost**
+> (mean distance error 0.00016, max 0.00075 over 2000 trials @768).
+>
+> **Finding 3 — SIMD's real home is int8-on-amd64 (VNNI), not float32.** The
+> amd64 int8 win is only ~1.5× because scalar Go int8 dot is *compute*-bound there
+> (~2.8 GB/s vs float32's ~7.5). arm64 stays memory-bound (~3.6×). `archsimd`
+> exposes `X86.AVX512VNNI()` — the int8 dot-product instruction — which could push
+> amd64 int8 toward the memory-bound ~4×. So SIMD returns, correctly aimed at the
+> int8 path on amd64.
+>
+> **Next track (not started): int8-quantized HNSW.** Store int8 vectors + a
+> float32 scale + a float32 norm per `hnswNode` (4× less memory AND bandwidth in
+> search/insert), with the scalar int8 dot as the portable kernel and optional
+> archsimd-VNNI on amd64. The throwaway spike kernel + recall harness are in the
+> session handoff. Evidence numbers + repro: `GATE0_GO126_RESULTS_2026-06-01.md`
+> and the two probe workflows (now deleted with their branches).
+
 **Track**: Performance (proposed letter **P** — reconcile against the live
 `NEXT_STEPS_<DATE>.md` before treating the letter as load-bearing; the repo has
 hit A/C-style semantic collisions before).
