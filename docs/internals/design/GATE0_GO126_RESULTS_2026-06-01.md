@@ -43,6 +43,35 @@ FAIL	github.com/dd0wney/cluso-graphdb/pkg/storage	1224.246s
 Note for the post-bump run: use `-bench=BenchmarkGet` or skip `BenchmarkGraphStorage_GetOutgoingEdges_DiskBacked_CacheMiss`
 to avoid the hang; or run storage benches with a shorter `-timeout` and accept partial.
 
-## After (go1.26.3, Green Tea ON) — filled by a later task
+## After (go1.26.3, Green Tea ON)
+
+Post-bump `pkg/vector BenchmarkHNSWSearch`, `-count=6`, go1.26.3 (Green Tea GC
+default on). Storage re-bench deliberately skipped — the baseline storage sweep
+hung ~20 min on the `DiskBacked_CacheMiss` disk benchmark; vector is the
+SIMD-targeted primary signal and the only metric worth a clean A/B here.
+
+### benchstat: baseline (go1.25.3, Green Tea OFF) vs after (go1.26.3, Green Tea ON)
+```
+             │ baseline_vector.txt │      after_vector.txt        │
+             │       sec/op        │    sec/op     vs base        │
+HNSWSearch-8          125.6µ ± 9%   119.7µ ± 15%  ~ (p=0.589 n=6)
+
+             │       B/op          │     B/op       vs base       │
+HNSWSearch-8         11.73Ki ± 8%   11.06Ki ± 10%  ~ (p=0.589 n=6)
+
+             │     allocs/op       │ allocs/op   vs base          │
+HNSWSearch-8           203.0 ± 8%   205.0 ± 8%  ~ (p=1.000 n=6)
+```
+
+### Verdict (honest)
+**No measurable Green Tea GC win on this benchmark/arch.** All three metrics are
+statistically insignificant (`~`, p=0.589 sec/op, p=1.000 allocs/op): the
+1.25→1.26 delta is within run-to-run noise on darwin/arm64. This is consistent
+with the Go team's "~10% for most apps, up to 50% for complex memory layouts"
+framing — HNSWSearch on arm64 simply isn't in the win zone, and after the
+boxed-heap allocations were removed (separate `perf/hnsw-search-pooling` work),
+there's little GC pressure left for Green Tea to reclaim here. The bump is still
+worth keeping: it's the prerequisite for the SIMD path (amd64), and the GC
+delta may differ on amd64 (not measured — this dev box is arm64).
 
 ## SIMD smoke result — DONE in commit 536de38 (PASS on amd64 via Docker)
