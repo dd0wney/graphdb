@@ -75,3 +75,31 @@ worth keeping: it's the prerequisite for the SIMD path (amd64), and the GC
 delta may differ on amd64 (not measured — this dev box is arm64).
 
 ## SIMD smoke result — DONE in commit 536de38 (PASS on amd64 via Docker)
+
+The throwaway `archsimd` smoke kernel (`pkg/vector/distance_simd_smoke_*.go`)
+compiles on amd64 under `GOEXPERIMENT=simd`, skips cleanly on arm64 and on
+amd64-without-experiment (default builds stay green on all three), and **passed
+on real linux/amd64** via `docker run --platform linux/amd64 golang:1.26` with
+`GOEXPERIMENT=simd`. The experimental, amd64-only `simd/archsimd` path is
+de-risked: `LoadFloat32x8Slice` → `.Add` → `.StoreSlice` works.
+
+## Gate-0 exit checklist
+
+- [x] `go.mod` on `1.26.0`; `go build ./...` + `go vet ./pkg/vector/` +
+  `pkg/vector` tests + `pkg/storage -short` all green on go1.26.3.
+- [x] Pre/post benchstat A/B recorded — honest verdict: **Green Tea GC within
+  noise** on `BenchmarkHNSWSearch` / darwin-arm64 (not a regression; not a win).
+- [x] SIMD smoke PASS on amd64 (local Docker; CI `simd-smoke` job added).
+- [x] Default build green on arm64 AND amd64-without-experiment (`archsimd` not
+  imported in default builds — build-tag isolated).
+
+### Discovered consequence — CI go-version blast radius (NOT push-validated)
+
+The `go 1.26.0` floor forced bumping **9 `go-version` pins across 4 workflows**
+(`lint.yml`×2, `test.yml`×5, `benchmark.yml`, `release.yml`) from `1.25` →
+`1.26`, and **dropping the `1.23/1.24/1.25` test matrix** (those toolchains can
+no longer build the module). All 4 workflow files re-validated as parseable
+YAML, but **none of this is verified against live GitHub Actions** — that needs
+a push/PR. The new `simd-smoke` job (amd64 + `GOEXPERIMENT=simd`) is likewise
+unverified in CI until pushed. **First action on opening the Gate-0 PR: confirm
+the matrix + smoke job actually go green on GitHub.**

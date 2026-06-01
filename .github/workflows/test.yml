@@ -13,7 +13,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ['1.23', '1.24', '1.25']
+        # go.mod declares `go 1.26.0`, so 1.26 is the build floor — older
+        # toolchains can no longer build the module (2026-06-01 perf-track bump).
+        go-version: ['1.26']
         # Ubuntu runners hit external-SIGTERM exit-143 on test-verbose/test-race
         # consistently (CLAUDE.md § "Known infra patterns"; NEXT_STEPS_2026-05-13.md
         # § Track H). macOS-only matrix until the contention root cause is addressed.
@@ -67,7 +69,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: true
 
     - name: Run tests with coverage
@@ -100,7 +102,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: true
 
     - name: Run benchmarks
@@ -125,7 +127,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: true
 
     - name: Build all binaries
@@ -149,7 +151,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: true
 
     - name: Build with -tags nng
@@ -157,3 +159,25 @@ jobs:
 
     - name: Vet with -tags nng
       run: go vet -tags nng ./...
+
+  simd-smoke:
+    name: SIMD smoke (amd64, GOEXPERIMENT=simd)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26'
+        cache: true
+
+    # Gate 0 de-risk: confirm the experimental amd64-only simd/archsimd path
+    # compiles and runs. GOEXPERIMENT=simd activates the goexperiment.simd build
+    # tag; without it the smoke test skips (the kernel is build-tag isolated).
+    - name: Run archsimd smoke test
+      env:
+        GOEXPERIMENT: simd
+      run: go test ./pkg/vector/ -run TestSIMDSmokeAddMatchesScalar -v
