@@ -37,8 +37,9 @@ func TestQuantizeInt8(t *testing.T) {
 			}
 
 			for i, qi := range q {
-				if qi < -127 || qi > 127 {
-					t.Errorf("q[%d]=%d out of [-127,127]", i, qi)
+				// int8 max is 127, so only -128 can violate the symmetric range.
+				if qi < -127 {
+					t.Errorf("q[%d]=%d below -127 (asymmetric -128 not allowed)", i, qi)
 				}
 			}
 
@@ -81,6 +82,7 @@ func TestDotInt8Scalar(t *testing.T) {
 		{"negatives", []int8{-1, 2, -3}, []int8{4, -5, 6}, -4 - 10 - 18},
 		{"empty", []int8{}, []int8{}, 0},
 		{"max magnitude", []int8{127, -127}, []int8{127, -127}, 127*127 + 127*127},
+		{"max magnitude negative", []int8{127, -127}, []int8{-127, 127}, -127*127 - 127*127},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
