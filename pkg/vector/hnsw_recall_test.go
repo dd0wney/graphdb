@@ -85,38 +85,45 @@ func TestHNSWRecallAtScale(t *testing.T) {
 		nQueries   = 50
 		minRecall  = 0.95
 	)
-	rng := rand.New(rand.NewSource(42))
-	vectors := makeClusteredEmbeddings(rng, nClusters, perCluster, dim)
+	// All three metrics are gated: metricDistanceInt8 has a distinct formula per
+	// metric (the euclidean path's max(0,…) clamp especially needs a recall-level
+	// guard), and the public API accepts all three.
+	for _, metric := range []DistanceMetric{MetricCosine, MetricEuclidean, MetricDotProduct} {
+		t.Run(string(metric), func(t *testing.T) {
+			rng := rand.New(rand.NewSource(42))
+			vectors := makeClusteredEmbeddings(rng, nClusters, perCluster, dim)
 
-	idx, err := NewHNSWIndex(dim, 16, 200, MetricCosine)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i, v := range vectors {
-		if err := idx.Insert(uint64(i), v); err != nil {
-			t.Fatalf("insert %d: %v", i, err)
-		}
-	}
+			idx, err := NewHNSWIndex(dim, 16, 200, metric)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, v := range vectors {
+				if err := idx.Insert(uint64(i), v); err != nil {
+					t.Fatalf("insert %d: %v", i, err)
+				}
+			}
 
-	var sumRecall float64
-	for qi := 0; qi < nQueries; qi++ {
-		query := vectors[rng.Intn(len(vectors))]
-		results, err := idx.Search(query, k, ef)
-		if err != nil {
-			t.Fatalf("search: %v", err)
-		}
-		got := make([]uint64, len(results))
-		for i, r := range results {
-			got[i] = r.ID
-		}
-		want := exactTopK(vectors, query, k, MetricCosine)
-		sumRecall += recallAtK(got, want)
-	}
+			var sumRecall float64
+			for qi := 0; qi < nQueries; qi++ {
+				query := vectors[rng.Intn(len(vectors))]
+				results, err := idx.Search(query, k, ef)
+				if err != nil {
+					t.Fatalf("search: %v", err)
+				}
+				got := make([]uint64, len(results))
+				for i, r := range results {
+					got[i] = r.ID
+				}
+				want := exactTopK(vectors, query, k, metric)
+				sumRecall += recallAtK(got, want)
+			}
 
-	meanRecall := sumRecall / float64(nQueries)
-	t.Logf("HNSW mean recall@%d on %d clustered vectors: %.4f", k, len(vectors), meanRecall)
-	if meanRecall < minRecall {
-		t.Errorf("mean recall@%d = %.4f, below %.2f — search/construction broken at scale", k, meanRecall, minRecall)
+			meanRecall := sumRecall / float64(nQueries)
+			t.Logf("%s: mean recall@%d on %d clustered vectors: %.4f", metric, k, len(vectors), meanRecall)
+			if meanRecall < minRecall {
+				t.Errorf("%s mean recall@%d = %.4f, below %.2f — search/construction or int8 quantization regressed", metric, k, meanRecall, minRecall)
+			}
+		})
 	}
 }
 

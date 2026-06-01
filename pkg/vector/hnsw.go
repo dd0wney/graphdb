@@ -7,7 +7,16 @@ import (
 	"sync"
 )
 
-// HNSWIndex implements Hierarchical Navigable Small World graph for approximate nearest neighbor search
+// HNSWIndex implements a Hierarchical Navigable Small World graph for
+// approximate nearest-neighbour search.
+//
+// Vectors are stored int8-quantized (per-vector scale + original float32 norm;
+// see distance_int8.go) for ~4x less memory and bandwidth. Recall on typical
+// embeddings is high (~0.98-0.99 measured on GloVe-50d), but quantization can
+// lose recall on pathologically tight clusters where the discriminative signal
+// falls below the int8 step (~0.74 in the worst synthetic case). Callers needing
+// exact recall on such data should over-query and re-rank against the source
+// float32 vectors.
 type HNSWIndex struct {
 	mu             sync.RWMutex
 	dimensions     int
