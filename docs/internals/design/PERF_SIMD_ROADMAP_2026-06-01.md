@@ -41,11 +41,25 @@ estimates:
   **arm64** (macOS test matrix, per Track H). Any kernel needs both arch paths
   plus a scalar fallback.
 
-**Mechanism decision (committed)**: Go 1.26 first-class `simd` package
+**Mechanism decision (committed, with eyes open)**: Go 1.26's `simd/archsimd`
 intrinsics, not hand assembly or a third-party lib. Rationale: dogfoods the
-latest Go (and the user's `goolang` SIMD goal), keeps the kernel in-tree. The
-risk that the `simd` API is immature is mitigated by a Gate-0 smoke kernel, not
-by hedging the mechanism.
+latest Go (and the user's `goolang` SIMD goal), keeps the kernel in-tree.
+
+**Empirically established 2026-06-01** (verified against installed `go1.26.3`,
+not assumed): `simd/archsimd` is **experimental**, exists *only* under
+`GOEXPERIMENT=simd`, is **amd64-only** (its own doc: "It currently supports
+AMD64"), and is **not** covered by the Go 1 compatibility promise. This is a
+deliberate, accepted trade-off, not "first-class stable SIMD." Consequences,
+baked into the gates below:
+- **arm64 (incl. Apple Silicon / Graviton) gets the scalar path only** — SIMD
+  benefits the amd64 Docker/prod target. Scalar is arm64's only path, not a
+  "fallback."
+- **`GOEXPERIMENT=simd` must be threaded through any build/CI/release** that
+  compiles the SIMD files. SIMD files are isolated behind a
+  `//go:build amd64 && goexperiment.simd` tag (+ a complementary fallback) so
+  the **default** build stays green on every target — verified.
+- **Measurement happens on amd64**, not the arm64 dev box (which always runs
+  scalar). CI's `ubuntu-latest` (amd64) is the measurement + smoke surface.
 
 ---
 
@@ -60,13 +74,19 @@ de-risks the SIMD bet cheaply.
    benchmarks pre/post-bump and record the Green Tea GC + stack-allocation
    deltas **before any SIMD code exists**. This isolates "what the bump bought"
    from "what the kernel bought" (same evidence-discipline as the heap work).
-3. **De-risk the mechanism.** Land a throwaway minimal `simd`-package kernel
-   (e.g. an 8-wide float32 add) that compiles and runs on **both** amd64 and
-   arm64. If the API is behind a `GOEXPERIMENT`, or arm64 is unsupported, it
-   surfaces here — cheaply — before Phase 1 commits to it.
+3. **De-risk the mechanism.** Land a throwaway minimal `archsimd` kernel (an
+   8-wide float32 add) gated by `//go:build amd64 && goexperiment.simd`, with a
+   differential test (SIMD == scalar). It compiles on amd64 under the experiment
+   and **runs on amd64** (Docker `--platform linux/amd64` locally, or CI). The
+   default build stays green on arm64 and on amd64-without-experiment. *(This
+   step already done as a spike: the kernel + the three-way build isolation are
+   verified — see the Gate-0 plan,
+   `docs/superpowers/plans/2026-06-01-gate0-go126-simd-adoption.md`.)*
 
-**Exit gate**: 1.26 green in CI + free-win numbers recorded + smoke kernel
-passes on both arches.
+**Exit gate**: 1.26 green in CI + free-win numbers recorded + smoke test passes
+on amd64 (CI `ubuntu-latest`) + default build green on arm64 and
+amd64-without-experiment. *(Not "both arches run SIMD" — archsimd is amd64-only;
+arm64 is verified to compile+run the scalar path.)*
 
 ---
 
@@ -79,11 +99,15 @@ prior win.
   float32)` hoisting `‖query‖` out of the per-neighbor loop; store `‖v‖` per
   `hnswNode` at insert time. Ship and measure independently — a real win and a
   clean fallback if SIMD stalls. (See Open Q on snapshot format.)
-- **1b — SIMD kernels.** Vectorize dot / L2 / norm in `distance.go` via the
-  1.26 `simd` package, behind arch-dispatched files:
-  `distance_amd64.go` (AVX2/AVX-512), `distance_arm64.go` (NEON),
-  `distance_generic.go` (scalar fallback, build-tagged `!amd64 && !arm64`).
-  This establishes the repo's first arch build-tag convention — document it.
+- **1b — SIMD kernels.** Vectorize dot / L2 / norm in `distance.go` via
+  `archsimd` (`Float32x8` AVX2; consider `Float32x16` AVX-512 guarded by
+  `archsimd.X86.AVX512()`), behind build-tagged files:
+  `distance_simd_amd64.go` (`//go:build amd64 && goexperiment.simd`) and
+  `distance_scalar.go` (`//go:build !amd64 || !goexperiment.simd`, the existing
+  scalar code — which is what arm64 and every non-experiment build use). This
+  establishes the repo's first arch/experiment build-tag convention — document
+  it. Note: the dot product needs a horizontal lane-sum (store the 8 lanes,
+  scalar-reduce, or shuffle-add) — `archsimd` exposes no single reduce-add.
 - **1c — Wire & verify.** Route `HNSWIndex.distance` and
   `pkg/queryutil/wire.go` through the new path. Differential test: the SIMD and
   scalar kernels must agree within float epsilon on randomized inputs.
@@ -147,12 +171,18 @@ normally):
 
 ## Risks & open questions
 
-- **R1 — `simd` API maturity.** Go 1.26's package may sit behind a
-  `GOEXPERIMENT` or have an unstable surface. *Mitigation*: Gate-0 smoke kernel
-  before Phase 1.
-- **R2 — arch coverage asymmetry.** NEON (arm64) and AVX2/AVX-512 (amd64)
-  intrinsic coverage may differ. *Mitigation*: scalar fallback is mandatory, not
-  optional; differential tests run on both arches in CI.
+- **R1 — `archsimd` is experimental + unstable (CONFIRMED, not a risk-of).**
+  It is `GOEXPERIMENT=simd`-gated and explicitly outside the Go 1 compatibility
+  promise, so the API can change or break in 1.27+. *Mitigation*: SIMD code is
+  isolated behind build tags with a scalar path always present; a Go upgrade
+  that breaks `archsimd` degrades to scalar, never to broken. Re-validate on
+  every Go minor bump. **Accept that a production DB ships behind a GOEXPERIMENT
+  build flag** — this was a deliberate, eyes-open choice (see § Mechanism).
+- **R2 — amd64-only (CONFIRMED).** No arm64/NEON in `archsimd`. arm64 deploys
+  (Apple Silicon, Graviton) get zero SIMD benefit and run scalar. *Mitigation*:
+  none needed for correctness (scalar is correct); but the **value claim is
+  amd64-only** — say so wherever the win is reported. If arm64 perf becomes a
+  priority, that reopens the mechanism choice (portable lib or NEON asm).
 - **R3 — Amdahl risk.** Distance may be a smaller cycle slice than assumed once
   the heap allocations are gone. *Mitigation*: the profile-gate is exactly this
   guard; the minimum-bar's end-to-end clause prevents shipping a kernel win that
