@@ -48,3 +48,15 @@ func quantizeInt8(v []float32) (q []int8, scale, norm float32) {
 	}
 	return q, scale, norm
 }
+
+// dotInt8Scalar computes the integer dot product of two equal-length int8
+// vectors, accumulating in int32. It is the portable reference kernel and the
+// fallback for non-SIMD builds. int32 is safe: at dim 1536 the max magnitude
+// is 1536·127·127 ≈ 24.8M, far below int32's 2.1B ceiling.
+func dotInt8Scalar(a, b []int8) int32 {
+	var dot int32
+	for i := range a {
+		dot += int32(a[i]) * int32(b[i])
+	}
+	return dot
+}
