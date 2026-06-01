@@ -14,8 +14,17 @@ type SearchResult struct {
 	Distance float32
 }
 
-// priorityQueue implements a max-heap for nearest neighbor search
-type priorityQueue []*queueItem
+// priorityQueue is a max-heap of queueItems ordered by distance: the element
+// with the largest distance sits at index 0.
+//
+// It uses value semantics ([]queueItem, not []*queueItem) and the package-level
+// sift helpers pqPush/pqPop instead of container/heap. container/heap's Push/Pop
+// take `any`, so every element was heap-boxed and every push allocated a
+// *queueItem. On the HNSW search hot path that was ~96% of per-search
+// allocations (lines 113-114 of the old hnsw_search.go; see BenchmarkHNSWSearch).
+// Storing values inline in the backing array removes the per-item allocation
+// entirely while preserving the exact max-heap ordering the search relies on.
+type priorityQueue []queueItem
 
 type queueItem struct {
 	id       uint64
@@ -24,29 +33,58 @@ type queueItem struct {
 
 func (pq priorityQueue) Len() int { return len(pq) }
 
-func (pq priorityQueue) Less(i, j int) bool {
-	// Max-heap: larger distances have higher priority
-	return pq[i].distance > pq[j].distance
-}
+// less reports whether element i outranks j in the max-heap: a larger distance
+// has higher priority. Mirrors the previous priorityQueue.Less exactly so the
+// heap ordering — and therefore search recall — is unchanged.
+func (pq priorityQueue) less(i, j int) bool { return pq[i].distance > pq[j].distance }
 
-func (pq priorityQueue) Swap(i, j int) {
-	pq[i], pq[j] = pq[j], pq[i]
-}
-
-func (pq *priorityQueue) Push(x any) {
-	// heap.Interface.Push contract: callers always pass *queueItem.
-	// Mirrors rankedEdgeHeap.Push / rankedNodeHeap.Push in pkg/algorithms.
-	item, ok := x.(*queueItem)
-	if !ok {
-		panic("priorityQueue.Push: expected *queueItem")
-	}
+// pqPush appends item and restores the max-heap invariant by sifting it up.
+// Behaviourally equivalent to heap.Push(&pq, &item), without the allocation.
+func pqPush(pq *priorityQueue, item queueItem) {
 	*pq = append(*pq, item)
+	pqUp(*pq, len(*pq)-1)
 }
 
-func (pq *priorityQueue) Pop() any {
+// pqPop removes and returns the max element (index 0), restoring the invariant
+// by sifting the moved tail element down. Behaviourally equivalent to
+// heap.Pop(&pq). Caller must ensure Len() > 0.
+func pqPop(pq *priorityQueue) queueItem {
 	old := *pq
-	n := len(old)
-	item := old[n-1]
-	*pq = old[0 : n-1]
+	n := len(old) - 1
+	old[0], old[n] = old[n], old[0]
+	pqDown(old, 0, n)
+	item := old[n]
+	*pq = old[:n]
 	return item
+}
+
+// pqUp and pqDown reproduce container/heap's up/down sift loops (0-based:
+// parent = (i-1)/2, children = 2i+1, 2i+2) against priorityQueue.less.
+func pqUp(pq priorityQueue, j int) {
+	for {
+		i := (j - 1) / 2 // parent
+		if i == j || !pq.less(j, i) {
+			break
+		}
+		pq[i], pq[j] = pq[j], pq[i]
+		j = i
+	}
+}
+
+func pqDown(pq priorityQueue, i, n int) {
+	for {
+		j1 := 2*i + 1
+		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
+			break
+		}
+		j := j1 // left child
+		if j2 := j1 + 1; j2 < n && pq.less(j2, j1) {
+			j = j2 // right child sorts first
+		}
+		if !pq.less(j, i) {
+			break
+		}
+		pq[i], pq[j] = pq[j], pq[i]
+		i = j
+	}
 }
