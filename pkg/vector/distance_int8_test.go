@@ -174,6 +174,7 @@ func TestDotInt8DifferentialRandom(t *testing.T) {
 		a := make([]int8, n)
 		b := make([]int8, n)
 		for i := 0; i < n; i++ {
+			// % 255 then int8() wraps into the signed range incl. negatives/edges.
 			a[i] = int8(rng() % 255)
 			b[i] = int8(rng() % 255)
 		}
