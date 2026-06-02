@@ -25,8 +25,13 @@ func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value)
 // the lock release.
 func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, properties map[string]Value) (*Node, error) {
 	gs.mu.Lock()
-	node, walPending, err := gs.createNodeLocked(tenantID, labels, properties)
+	node, walPending, vectorPlans, err := gs.createNodeLocked(tenantID, labels, properties)
 	gs.mu.Unlock()
+	// Run the HNSW insert(s) OUTSIDE gs.mu (Track P item 3 / H2) — the O(log N)
+	// traversal + O(M^2) pruning no longer serialize behind the global write
+	// lock. Ordered before the WAL wait and the observer dispatch so a node's
+	// declared vector is searchable before any observer (e.g. auto-embed) acts.
+	gs.applyNodeVectorInserts(vectorPlans)
 	// Wait for WAL durability OUTSIDE gs.mu so concurrent writers can fill the
 	// same batch (group commit, Track P item 1). nil handle = synchronous path
 	// (already durable). Fail-soft: a flush error is logged, not propagated,
@@ -102,8 +107,10 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 		}
 	}
 
-	node, walPending, err := gs.createNodeLocked(tenantID, labels, properties)
+	node, walPending, vectorPlans, err := gs.createNodeLocked(tenantID, labels, properties)
 	gs.mu.Unlock()
+	// HNSW insert(s) off-lock (Track P item 3 / H2); see CreateNodeWithTenant.
+	gs.applyNodeVectorInserts(vectorPlans)
 	// Wait for WAL durability after lock release (group commit, Track P item 1).
 	gs.waitWALPending(wal.OpCreateNode, walPending)
 	// R2.1: dispatch after lock release. See CreateNodeWithTenant.
@@ -123,19 +130,19 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 // the create as durable (Track P item 1). For the synchronous WAL path the
 // handle is nil and the write is already durable on return. The handle is nil
 // on any error path.
-func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, properties map[string]Value) (*Node, *wal.Pending, error) {
+func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, properties map[string]Value) (*Node, *wal.Pending, []vectorInsertPlan, error) {
 	start := time.Now()
 
 	// Check if storage is closed
 	if err := gs.checkClosed(); err != nil {
 		gs.recordOperation("create_node", "error", start)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Check for ID space exhaustion
 	if gs.nextNodeID == ^uint64(0) { // MaxUint64
 		gs.recordOperation("create_node", "error", start)
-		return nil, nil, fmt.Errorf("node ID space exhausted")
+		return nil, nil, nil, fmt.Errorf("node ID space exhausted")
 	}
 
 	nodeID := gs.nextNodeID
@@ -151,6 +158,19 @@ func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, prope
 		Properties: properties,
 		CreatedAt:  now,
 		UpdatedAt:  now,
+	}
+
+	// Plan vector-index inserts: decode + dimension-validate the node's vector
+	// properties, deferring the expensive HNSW graph insert to the caller after
+	// gs.mu is released (Track P item 3 / H2). Done BEFORE the node is published
+	// to any shard/index below, so a bad vector aborts the create as a true
+	// no-op (no orphan in the shard map) — cleaner than the pre-H2 path, which
+	// stored the node first and only then rejected the vector. node.Properties
+	// is not yet shared here, so the decode is race-free.
+	vectorPlans, err := gs.planNodeVectorInserts(node)
+	if err != nil {
+		gs.recordOperation("create_node", "error", start)
+		return nil, nil, nil, err
 	}
 
 	// Per-shard write lock (A4) excludes shard.RLock readers during the
@@ -178,13 +198,7 @@ func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, prope
 	// Update property indexes
 	if err := gs.insertNodeIntoPropertyIndexes(nodeID, properties); err != nil {
 		gs.recordOperation("create_node", "error", start)
-		return nil, nil, err
-	}
-
-	// Update vector indexes for any vector properties
-	if err := gs.UpdateNodeVectorIndexes(node); err != nil {
-		gs.recordOperation("create_node", "error", start)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Enqueue to WAL for durability. For the batched WAL this does NOT block on
@@ -194,7 +208,7 @@ func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, prope
 	walPending := gs.enqueueWAL(wal.OpCreateNode, node)
 
 	gs.recordOperation("create_node", "success", start)
-	return node.Clone(), walPending, nil
+	return node.Clone(), walPending, vectorPlans, nil
 }
 
 func valuesEqual(a, b Value) bool {
@@ -385,8 +399,15 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	node.UpdatedAt = time.Now().Unix()
 	gs.unlockShard(nodeID)
 
-	// Update vector indexes for any vector properties
-	if err := gs.UpdateNodeVectorIndexes(node); err != nil {
+	// Plan vector-index inserts under gs.mu (the decode reads node.Properties,
+	// the live shard pointer's map), but defer the expensive HNSW remove+add to
+	// after the lock is released (Track P item 3 / H2). Snapshotting the vectors
+	// here is also what makes the off-lock insert race-free: a concurrent
+	// UpdateNode/RemoveNodeProperties on this node mutates node.Properties under
+	// the locks, so the off-lock path must never read it. A bad vector aborts
+	// the update before the WAL enqueue below.
+	vectorPlans, err := gs.planNodeVectorInserts(node)
+	if err != nil {
 		gs.mu.Unlock()
 		return err
 	}
@@ -410,6 +431,9 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	}
 	gs.mu.Unlock()
 
+	// HNSW remove+add off-lock (Track P item 3 / H2), before the WAL wait and
+	// observer dispatch so the updated vector is searchable before observers act.
+	gs.applyNodeVectorInserts(vectorPlans)
 	gs.waitWALPending(wal.OpUpdateNode, walPending)
 	if newNode != nil {
 		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)

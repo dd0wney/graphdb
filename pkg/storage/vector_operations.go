@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
 	"github.com/dd0wney/cluso-graphdb/pkg/vector"
@@ -213,6 +214,83 @@ func (gs *GraphStorage) UpdateNodeVectorIndexes(node *Node) error {
 		}
 	}
 	return nil
+}
+
+// vectorInsertPlan is a snapshot of one vector to (re)insert into a tenant's
+// HNSW index, captured under gs.mu so the expensive Insert can run after the
+// lock is released without touching the live node pointer (Track P item 3 / H2).
+type vectorInsertPlan struct {
+	tenantID tenantid.TenantID
+	propName string
+	nodeID   uint64
+	vec      []float32
+}
+
+// planNodeVectorInserts decodes and dimension-validates every indexed vector
+// property of node into local []float32 snapshots, returning the work to run
+// after gs.mu is released.
+//
+// Caller MUST hold gs.mu: it reads node.Properties (the live shard pointer's
+// map), so the decode — which copies the vector into a fresh slice — must
+// happen under the lock. The returned plans own their own slices and touch no
+// shared state, so applyNodeVectorInserts can run them off-lock without racing
+// a concurrent writer mutating node.Properties.
+//
+// Decode failures and dimension mismatches are caller input errors; returning
+// them here lets the write path abort BEFORE the WAL enqueue (strictly better
+// than the pre-H2 path, which had already stored the node in the shard map by
+// the time the under-lock UpdateNodeVectorIndexes rejected the vector). Returns
+// nil, nil when the node has no indexed vector property (the common case —
+// near-zero cost, no allocation).
+func (gs *GraphStorage) planNodeVectorInserts(node *Node) ([]vectorInsertPlan, error) {
+	tenantID := tenantid.TenantID(node.TenantID)
+	if tenantID.IsEmpty() {
+		tenantID = tenantid.Default
+	}
+	var plans []vectorInsertPlan
+	for propName, propVal := range node.Properties {
+		if !gs.vectorIndex.HasIndexForTenant(tenantID, propName) {
+			continue
+		}
+		vec, ok, err := vectorFromProperty(propVal)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode vector for property %s: %w", propName, err)
+		}
+		if !ok {
+			continue
+		}
+		// Cheap length check against the index's configured dimension — the
+		// same check index.Insert does first, hoisted under the lock so a
+		// malformed-dimension write fails before durability rather than after.
+		if dim, ok := gs.vectorIndex.DimensionsForTenant(tenantID, propName); ok && len(vec) != dim {
+			return nil, fmt.Errorf("vector dimensions mismatch for property %s: got %d, want %d", propName, len(vec), dim)
+		}
+		plans = append(plans, vectorInsertPlan{tenantID: tenantID, propName: propName, nodeID: node.ID, vec: vec})
+	}
+	return plans, nil
+}
+
+// applyNodeVectorInserts runs the HNSW remove+add for each planned vector.
+// Called AFTER gs.mu.Unlock so the O(log N) graph traversal + O(M^2) neighbor
+// pruning runs off the global write lock (Track P item 3 / H2 — the next
+// serialized-write ceiling once the WAL fsync floor was amortized by item 1).
+//
+// The plans are pre-validated local snapshots, so the only errors here are
+// internal HNSW invariant violations, not caller input. They are logged
+// fail-soft (not propagated): the node is already durable, the vector index is
+// rebuilt by the application on restart (it is not snapshot-persisted), and a
+// propagated error would imply a rollback that does not happen — mirroring the
+// post-lock WAL-wait fail-soft contract (Track P item 1).
+func (gs *GraphStorage) applyNodeVectorInserts(plans []vectorInsertPlan) {
+	for _, p := range plans {
+		// Remove any prior vector for this node (update / re-index); a missing
+		// entry is a no-op.
+		_ = gs.vectorIndex.RemoveVectorForTenant(p.tenantID, p.propName, p.nodeID)
+		if err := gs.vectorIndex.AddVectorForTenant(p.tenantID, p.propName, p.nodeID, p.vec); err != nil {
+			fmt.Fprintf(os.Stderr, "vector index insert error (tenant=%s prop=%s node=%d): %v\n",
+				p.tenantID, p.propName, p.nodeID, err)
+		}
+	}
 }
 
 // vectorFromProperty extracts a float32 vector from a property value that is
