@@ -131,6 +131,13 @@ func (gs *GraphStorage) replayCreateEdge(entry *wal.Entry) error {
 	gs.storeEdgeInShard(&edge)
 	gs.edgesByType[edge.Type] = append(gs.edgesByType[edge.Type], edge.ID)
 
+	// Rebuild the per-tenant type index too — not just the global one.
+	// Sibling of replayCreateNode's addNodeToTenantIndex (H4.3): without
+	// this, a crash-restart with WAL-only edges leaves
+	// GetEdgesByTypeForTenant returning nil. addEdgeToTenantIndex also
+	// restores per-tenant EdgeCount stats.
+	gs.addEdgeToTenantIndex(&edge)
+
 	// Rebuild adjacency lists (disk-backed or in-memory)
 	if err := gs.storeOutgoingEdge(edge.FromNodeID, edge.ID); err != nil {
 		return fmt.Errorf("failed to store outgoing edge during replay: %w", err)

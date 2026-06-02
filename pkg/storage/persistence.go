@@ -183,6 +183,16 @@ func (gs *GraphStorage) loadFromDisk() error {
 		gs.addNodeToTenantIndex(node)
 	}
 
+	// Edge sibling of the node rebuild above: the snapshot persists only
+	// the global edgesByType, so without this loop tenantEdgesByType stays
+	// empty after a clean restart and GetEdgesByTypeForTenant returns nil
+	// for every loaded edge until the tenant's next write reseeds it. Same
+	// defect H4.3 fixed on the node side; addEdgeToTenantIndex also rebuilds
+	// per-tenant EdgeCount stats.
+	for _, edge := range snapshot.Edges {
+		gs.addEdgeToTenantIndex(edge)
+	}
+
 	return nil
 }
 
