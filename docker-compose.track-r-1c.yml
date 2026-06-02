@@ -1,0 +1,48 @@
+# Track R component (1c) — auto-embed deployment exercise.
+#
+# Brings up graphdb as a container with the in-server LSA auto-embed
+# observer wired via GRAPHDB_AUTO_EMBED_* env vars. Paired with
+# scripts/verify-track-r-1c-autoembed.sh, which drives the
+# seed -> LSA build -> traffic -> vector-search flow against the
+# running container and asserts nearest-neighbour ranking correctness.
+#
+# One-command run:
+#   scripts/verify-track-r-1c-autoembed.sh --docker
+#
+# Manual run:
+#   docker compose -f docker-compose.track-r-1c.yml up -d --build
+#   BASE_URL=http://localhost:8088 scripts/verify-track-r-1c-autoembed.sh
+#   docker compose -f docker-compose.track-r-1c.yml down -v
+#
+# Distinct project name so this is an isolated Compose project — it does not
+# share the default (directory-named) project with docker-compose.yml, so a
+# stray `docker compose down` in this dir can't reach across files.
+name: track-r-1c
+services:
+  graphdb-autoembed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cluso-graphdb-1c
+    command: ["/app/cluso-server", "--data", "/data", "--port", "8080"]
+    environment:
+      PORT: "8080"
+      # >=32 chars; the server fails closed without it (server_init.go).
+      JWT_SECRET: "track-r-1c-jwt-secret-at-least-32-characters-long"
+      # Auto-creates the initial admin user on first boot.
+      ADMIN_PASSWORD: "track-r-1c-admin-password"
+      # In-server LSA auto-embed observer (R2.5b env wiring).
+      GRAPHDB_AUTO_EMBED_ENABLED: "true"
+      GRAPHDB_AUTO_EMBED_LABEL: "Doc"
+      GRAPHDB_AUTO_EMBED_SOURCE_PROPERTY: "body"
+      GRAPHDB_AUTO_EMBED_TARGET_PROPERTY: "embedding"
+      GRAPHDB_AUTO_EMBED_WORKERS: "4"
+      GRAPHDB_AUTO_EMBED_QUEUE_DEPTH: "256"
+    ports:
+      - "8088:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s

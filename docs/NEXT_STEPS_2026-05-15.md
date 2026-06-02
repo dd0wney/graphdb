@@ -39,9 +39,9 @@ PR #181 moved the matrix `test` job to macOS-only, closing the exit-143 SIGTERM 
 
 - **(1a)** ~~The per-tenant HNSW memory footprint at realistic tenant counts has not been benchmarked. Decision 2's spike picked Option A (per-tenant HNSW) on the assumption of low-hundreds tenants × ~10k vectors × 768 dims (≈3.2 GB). **Reality check needed before the next architectural decision rests on this assumption.**~~ ✅ **Discharged 2026-05-14** via PRs #195, #209, #212 — see § Reconciliation 2026-05-14 below.
 - **(1b)** ~~The auto-embed observer's bounded-pool backpressure has not been exercised under sustained node-create load. The pool drops on full; the metric exists; nobody has yet observed it firing in production-shaped traffic.~~ ✅ **Discharged 2026-05-14** via PRs #196, #202, #215 — see § Reconciliation 2026-05-14 — component (1b) discharged below.
-- **(1c)** The `pkg/api/server_init.go` env-driven wiring (R2.5b once merged) has not been exercised in a deployment. The end-to-end test in R2.5b covers the bootstrap path, but a Docker / k8s deployment that exercises `GRAPHDB_AUTO_EMBED_ENABLED=true` in production-shaped traffic doesn't exist. **(Update 2026-06-02: now end-to-end-meaningful — the REST vector ingest + search bugs that would have made this a hollow exercise are fixed; see § Reconciliation 2026-06-02 below.)**
+- **(1c)** ~~The `pkg/api/server_init.go` env-driven wiring (R2.5b once merged) has not been exercised in a deployment. The end-to-end test in R2.5b covers the bootstrap path, but a Docker / k8s deployment that exercises `GRAPHDB_AUTO_EMBED_ENABLED=true` in production-shaped traffic doesn't exist.~~ ✅ **Discharged 2026-06-02** via a containerized exercise of the in-server LSA auto-embed path — see § Reconciliation 2026-06-02 — component (1c) discharged below.
 
-**The remaining component (1c) is anchored as the next session's first task** in § How to use this document.
+**The Track R verification gap (1a + 1b + 1c) is now fully closed.** The next session picks a *new* critical-path option (default (C) — commission a new audit) per § How to use this document.
 
 #### Reconciliation 2026-05-14 — component (1a) discharged
 
@@ -61,7 +61,7 @@ The auto-embed observer's bounded-pool backpressure has now been exercised acros
 - **PR #202** (`2e22885`): O-1 structured error logging in the auto-embed worker — M-1 sanitized embedder-error log, source-property type-mismatch log, writeback log, panic-recovery log. Unit-level coverage of all four log sites.
 - **PR #215** (`6dcef1c`): the three remaining angles — `TestAutoEmbedObserver_SustainedLoadDropsContinue` (steady-state drop accumulation), `TestAutoEmbedObserver_EmbedderErrorsLoggedUnderLoad` (O-1 logs fire from pool-dispatched tasks under load + log volume bounded by drain count, not submit count), `TestAutoEmbedObserver_HTTPCreateNodeBackpressure` (HTTP-surface bookend; 400 POST /nodes all return 201 under 83% drop rate; HTTP latency bounded).
 
-Reference doc: `docs/internals/design/TRACK_R_AUTO_EMBED_HTTP_LOAD_VERIFICATION_2026-05-14.md`. **Component (1c) Docker/k8s exercise is the one remaining verification component.**
+Reference doc: `docs/internals/design/TRACK_R_AUTO_EMBED_HTTP_LOAD_VERIFICATION_2026-05-14.md`. ~~**Component (1c) Docker/k8s exercise is the one remaining verification component.**~~ Component (1c) discharged 2026-06-02 — see below.
 
 #### Reconciliation 2026-06-02 — the vector path was end-to-end broken over REST; now fixed (and (1c) is newly meaningful)
 
@@ -73,6 +73,14 @@ Track R shipped a *structurally* correct per-tenant vector path, but exercising 
 
 **Consequence for the verification gap:** component (1c) is now *more* valuable than when filed. Before #246/#243, a Docker/k8s `GRAPHDB_AUTO_EMBED_ENABLED=true` run produced vectors that couldn't be ingested or ranked correctly — so (1c) would have validated only "the observer fired." Now the full auto-embed → ingest → search path works end-to-end, so (1c) validates a real searchable result. Validated locally with fully-local Ollama (gemma3:4b summaries → nomic-embed-text embeddings); semantic ranking is correct and well-discriminated.
 
+#### Reconciliation 2026-06-02 — component (1c) discharged
+
+The in-server LSA auto-embed path was exercised in a **container deployment** (`GRAPHDB_AUTO_EMBED_ENABLED=true`, built from the repo `Dockerfile`) under node-create traffic sufficient to exercise the path, and proven **searchable end-to-end with correctly-ordered nearest neighbours** — not just "the observer fired." `POST /nodes` → `AutoEmbedObserver` → LSA embed → `TypeVector` writeback (`UpdateNodeForTenant`) → per-tenant HNSW → `/vector-search` returns the right cluster on top. Two lexically-distinct clusters (ocean / finance); each in-cluster query ranked its own cluster across all of the top 3, with a large in-cluster vs off-cluster margin. Stable across native-arm64 (local binary) and amd64 (container) runs; absolute cosine scores differ by architecture (Halko SVD float rounding) but the **ranking is invariant** — which is why the assertion targets ordering, not score thresholds.
+
+**Scope precision (do not overclaim):** (1c) validates the deployment *wiring* returns correctly-**ordered** neighbours end-to-end. It does **not** re-exercise **#243's recall-at-scale** property — the corpus is 6 searchable vectors, a trivially-navigable HNSW below the scale where #243's collapse bit; recall@10 stays owned by #243's own test. (The ranking assertion *would* catch #243's ordering bugs — heap-inversion, k-farthest — at any scale; it just doesn't prove the at-scale recall fix.) It also does **not** exercise **#246** (`TypeFloatArray` REST ingest) — the observer writes `VectorValue` (`TypeVector`) directly; #246's path is the *external* neural one, validated separately in `understand-graphdb`.
+
+Artifacts: `scripts/verify-track-r-1c-autoembed.sh` (driver; `--docker` mode builds + ups + asserts + tears down) + `docker-compose.track-r-1c.yml`. Reference doc: `docs/internals/design/TRACK_R_AUTO_EMBED_DEPLOYMENT_VERIFICATION_2026-06-02.md`. **The Track R verification gap (1a + 1b + 1c) is now fully closed.** One operational follow-up surfaced: a customer-facing deployment-ordering note (create the vector + LSA indexes *before* the traffic you expect to be searchable) — a productization-doc item, not a code change.
+
 **New optional follow-up (not on critical path):** issue **#248** — HNSW construction worst-case guard. Investigated and reframed: construction cost is governed by data *intrinsic dimensionality*, not a fixed asymptote. Real/clustered embeddings build O(N log N); only high-dim near-uniform or zero synthetic vectors hit O(N²) (concentration of measure). The footprint bench's zero-vectors are that worst case, which is why #247 gates it. Lever (only if a real high-intrinsic-dim workload appears): an `efConstruction` knob + optional visited-node budget cap in `searchLayer`, both trading recall. **Do not benchmark HNSW construction with synthetic uniform/zero vectors.**
 
 ---
@@ -83,7 +91,7 @@ Track R shipped a *structurally* correct per-tenant vector path, but exercising 
 
 The next session should pick from one of:
 
-1. **Run the remaining verification component.** Components (1a) and (1b) are discharged (Option A validated 100 → 1000 tenants; backpressure validated Go × HTTP × burst × sustained × erroring; see the two § Reconciliation subsections above). Component (1c) Docker/k8s `GRAPHDB_AUTO_EMBED_ENABLED` exercise remains. Closing it completes Track R *empirically* across the full surface (not just *structurally*).
+1. ~~**Run the remaining verification component.**~~ ✅ **Done 2026-06-02.** Components (1a), (1b), and (1c) are all discharged (Option A validated 100 → 1000 tenants; backpressure validated Go × HTTP × burst × sustained × erroring; auto-embed deployment validated searchable end-to-end in a container — see the three § Reconciliation subsections above). **Track R is verified empirically across its full surface.** This option is no longer live; pick (2) or (3).
 
 2. **Resolve the inherited-PR carry-forward debt.** Four sessions of "decide later" needs to end. See § Inherited PRs forcing function below.
 
@@ -163,11 +171,11 @@ R2.5a's `OnNodeUpdated` is a no-op with a TODO: activating it requires a re-entr
 ### Decision 9 (NEW) — Critical-path selection for the next session
 
 Choose one:
-- **(A) Verification gap closure** — bench + deployment exercise of Track R. **Partially discharged 2026-05-14**: components (1a) and (1b) are closed (PRs #195/#209/#212 for 1a; PRs #196/#202/#215 for 1b). Component (1c) Docker/k8s exercise of `GRAPHDB_AUTO_EMBED_ENABLED` is the one remaining — see § Verification gap above.
+- **(A) Verification gap closure** — bench + deployment exercise of Track R. ✅ **Fully discharged**: (1a) PRs #195/#209/#212; (1b) PRs #196/#202/#215 (both 2026-05-14); (1c) the containerized auto-embed deployment exercise (2026-06-02 — see § Reconciliation 2026-06-02 — component (1c) discharged). **This option is no longer live.**
 - **(B) Inherited-PR triage** — execute the disposition (or bulk-close per the forcing function). **✅ DISCHARGED 2026-05-14** via hybrid disposition (7 merged, 4 closed); see § Inherited PRs § Reconciliation. No longer a live option.
 - **(C) New audit** — performance, security, or productization angle (see § Critical path option 3).
 
-**Default if no answer**: (A) verification gap — specifically component (1c) Docker/k8s deployment exercise. Reason: (1a) and (1b) are now both answered ("yes, Option A fits at 1000 tenants — ratio 1.000"; "yes, drop-on-full backpressure holds across Go × HTTP × burst × sustained × erroring"). After (1c) closes, (C) new-audit becomes the natural next.
+**Default if no answer**: (C) commission a new audit. Reason: (A) verification gap is now fully closed — (1a) "Option A fits at 1000 tenants, ratio 1.000", (1b) "drop-on-full backpressure holds across Go × HTTP × burst × sustained × erroring", and (1c) "auto-embed is searchable end-to-end in a container deployment" are all answered. With Track R verified across its full surface and no new spike-grounded track, a fresh audit pass is the natural way to earn the next critical path (perf under SaaS load, vector/embedding side-channels, or multi-node scope).
 
 ### Carry-forward decisions still open
 
@@ -177,7 +185,7 @@ Choose one:
 
 ## Risks specific to this window
 
-- **The verification gap is now down to one component.** Components (1a) and (1b) discharged 2026-05-14 — per-tenant HNSW memory bench at 100/500/1000 tenants showed ratio 1.000 (Option A holds); auto-embed backpressure validated across Go × HTTP × burst × sustained × erroring. Component (1c) Docker/k8s deployment exercise remains. The risk of NOT running it is that an enterprise customer hits a real env-driven-bootstrap constraint that the unit tests can't surface. The risk of running it is one session of Docker work that may surface "fine, ship as-is" — still the better failure mode.
+- **The verification gap is now fully closed.** (1a) and (1b) discharged 2026-05-14 (per-tenant HNSW heap ratio 1.000 across 100→1000 tenants; backpressure across Go × HTTP × burst × sustained × erroring); (1c) discharged 2026-06-02 (containerized auto-embed exercise, searchable end-to-end with correct ranking). The "enterprise customer hits an env-driven-bootstrap constraint" risk is retired — the deployment-ordering constraint it surfaced (create indexes before traffic) is a productization-doc note, not a code gap.
 
 - **The inherited-PR carry-forward debt is now load-bearing.** Four sessions of inaction means there's no consensus on whether these PRs matter. The forcing function above retires the debt one way or another. If neither happens by 2026-05-22, this planning rhythm starts losing credibility — future "merge or close by X" deadlines won't bind either.
 
@@ -206,12 +214,12 @@ Unchanged from 2026-05-14 except where noted:
 This is a planning checkpoint, not a backlog. When picking up the next PR:
 
 1. ~~**Confirm R2.5b (#193) merged.**~~ ✅ Merged 2026-05-13 (`39247af`). No action needed.
-2. **Pick a critical-path option from § Decision 9.** Default is (A) verification gap — specifically (1c) (components (1a) and (1b) discharged 2026-05-14 via PRs #195/#209/#212 and #196/#202/#215). Option (B) is no longer live (discharged). If you pick (C), document why in the PR description.
+2. **Pick a critical-path option from § Decision 9.** Default is now (C) commission a new audit — the (A) verification gap is fully closed (1a/1b discharged 2026-05-14; 1c discharged 2026-06-02), and option (B) is no longer live (discharged). Document the chosen audit angle in the PR description.
 3. ~~**Address the inherited-PR forcing function** if 2026-05-22 has passed.~~ ✅ Discharged 2026-05-14 via hybrid disposition; see § Inherited PRs § Reconciliation. No action needed.
 4. **After 1-3 PRs land**, this checkpoint should be revisited. Trigger: any of the live critical-path options being picked and at least one PR landed against it.
 
 **Revisit triggers** (any one is sufficient to start a new checkpoint immediately):
-- ~~**Verification gap exercise surfaces a real constraint** — e.g., per-tenant HNSW memory blows up at 500 tenants. That changes the OSS vs enterprise architectural assumption and warrants its own track.~~ — Components (1a) and (1b) discharged 2026-05-14: per-tenant HNSW heap is flat across 100 → 1000 tenants (ratio 1.000); auto-embed backpressure holds across Go × HTTP × burst × sustained × erroring. The OSS-vs-enterprise architectural assumption is empirically validated; this revisit trigger now applies only to (1c) surfacing a deployment constraint.
+- ~~**Verification gap exercise surfaces a real constraint** — e.g., per-tenant HNSW memory blows up at 500 tenants. That changes the OSS vs enterprise architectural assumption and warrants its own track.~~ — Fully discharged: (1a)/(1b) 2026-05-14, (1c) 2026-06-02. Per-tenant HNSW heap flat across 100 → 1000 tenants (ratio 1.000); backpressure holds across Go × HTTP × burst × sustained × erroring; auto-embed searchable end-to-end in a container with correct ranking. The OSS-vs-enterprise architectural assumption is empirically validated; no constraint surfaced (only a deployment-ordering doc note). This revisit trigger is retired.
 - **A customer-driven priority lands on the queue** — re-plan in the customer's terms.
 - ~~**Inherited-PR forcing function deadline passes (2026-05-22)**~~ — ✅ Discharged 2026-05-14 via hybrid disposition (7 merged, 4 closed). No longer a revisit trigger.
 
@@ -222,7 +230,7 @@ This is a planning checkpoint, not a backlog. When picking up the next PR:
 The previous planning docs accumulated content over time. This doc tries to add only things that change the next session's behavior:
 
 - **§ Inherited PRs forcing function**: the deadline of 2026-05-22 is the new artifact. Without it, the next session reads "carry forward" and inherits the same indecision.
-- **§ Verification gap as the default critical path**: the doc nominates an action rather than re-asking. Default-(A) lets the next session start without re-deciding.
+- **§ Verification gap as the default critical path**: the doc nominates an action rather than re-asking. (As of 2026-06-02 the gap is fully closed — (1a)/(1b)/(1c) all discharged — so the default has shifted to (C) commission a new audit.)
 - **§ Track C tail split into individual items**: trackable separately; each has a clear acceptance criterion so the next session can pick one off without designing scope.
 - **§ Risks "No new critical path is a feature, not a bug"**: explicit caution against the manufacture-a-track failure mode.
 
