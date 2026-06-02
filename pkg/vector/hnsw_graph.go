@@ -1,5 +1,7 @@
 package vector
 
+import "sort"
+
 // insertNode inserts a node into the graph
 func (h *HNSWIndex) insertNode(node *hnswNode) {
 	// Start from entry point
@@ -42,9 +44,11 @@ func (h *HNSWIndex) insertNode(node *hnswNode) {
 			}
 		}
 
-		// Update ep for next layer (defensive: check node exists)
-		if len(candidates) > 0 {
-			if node, exists := h.nodes[candidates[0].id]; exists {
+		// Update ep for next layer: descend from the nearest selected neighbor.
+		// neighbors is ascending by distance (selectNeighbors returns nearest
+		// first); candidates must not be read here — selectNeighbors drained it.
+		if len(neighbors) > 0 {
+			if node, exists := h.nodes[neighbors[0].ID]; exists {
 				ep = node
 			}
 		}
@@ -71,42 +75,31 @@ func (h *HNSWIndex) removeConnection(from *hnswNode, toID uint64, layer int) {
 	}
 }
 
-// pruneConnections prunes connections to maintain max connections
+// pruneConnections trims node's layer connections back to maxConn using the
+// connectivity-preserving heuristic (selectNeighborsHeuristic), not simple
+// keep-nearest. Simple pruning drops the bridge links that keep distant cluster
+// members reachable, collapsing recall once an index exceeds a cluster's worth
+// of nodes; the heuristic keeps diverse neighbours that preserve reachability.
 func (h *HNSWIndex) pruneConnections(node *hnswNode, layer int, maxConn int) {
 	if layer >= len(node.friends) || len(node.friends[layer]) <= maxConn {
 		return
 	}
 
-	// Keep maxConn nearest neighbors
-	distances := make([]struct {
-		id   uint64
-		dist float32
-	}, len(node.friends[layer]))
-
-	for i, friendID := range node.friends[layer] {
-		friend := h.nodes[friendID]
-		distances[i] = struct {
-			id   uint64
-			dist float32
-		}{
-			id:   friendID,
-			dist: h.distance(node.vector, friend.vector),
+	// Build the candidate list ordered ascending by distance to node.
+	ordered := make([]queueItem, 0, len(node.friends[layer]))
+	for _, friendID := range node.friends[layer] {
+		friend, ok := h.nodes[friendID]
+		if !ok {
+			continue
 		}
+		ordered = append(ordered, queueItem{id: friendID, distance: h.distance(node.vector, friend.vector)})
 	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].distance < ordered[j].distance })
 
-	// Sort by distance
-	for i := 0; i < len(distances)-1; i++ {
-		for j := i + 1; j < len(distances); j++ {
-			if distances[j].dist < distances[i].dist {
-				distances[i], distances[j] = distances[j], distances[i]
-			}
-		}
-	}
-
-	// Keep only maxConn nearest
-	node.friends[layer] = make([]uint64, maxConn)
-	for i := 0; i < maxConn; i++ {
-		node.friends[layer][i] = distances[i].id
+	kept := h.selectNeighborsHeuristic(ordered, maxConn)
+	node.friends[layer] = make([]uint64, len(kept))
+	for i, item := range kept {
+		node.friends[layer][i] = item.id
 	}
 }
 

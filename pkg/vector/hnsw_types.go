@@ -88,3 +88,81 @@ func pqDown(pq priorityQueue, i, n int) {
 		i = j
 	}
 }
+
+// candidateQueue is a MIN-heap of queueItems ordered by distance: the element
+// with the SMALLEST distance sits at index 0. HNSW's layer search must always
+// expand the nearest unexplored candidate, so the candidate set is a min-heap
+// (whereas the result set `w` is a priorityQueue max-heap, so its furthest
+// element is the eviction target). It mirrors priorityQueue's value-semantics,
+// no-alloc design with the comparison reversed; a distinct type prevents
+// accidentally driving it with the max-heap pq* helpers.
+type candidateQueue []queueItem
+
+func (cq candidateQueue) Len() int { return len(cq) }
+
+// less reports whether element i outranks j in the min-heap: a smaller distance
+// has higher priority (sits closer to the root).
+func (cq candidateQueue) less(i, j int) bool { return cq[i].distance < cq[j].distance }
+
+// cqPush/cqPop/cqUp/cqDown are the min-heap analogues of pqPush/pqPop/pqUp/pqDown.
+func cqPush(cq *candidateQueue, item queueItem) {
+	*cq = append(*cq, item)
+	cqUp(*cq, len(*cq)-1)
+}
+
+func cqPop(cq *candidateQueue) queueItem {
+	old := *cq
+	n := len(old) - 1
+	old[0], old[n] = old[n], old[0]
+	cqDown(old, 0, n)
+	item := old[n]
+	*cq = old[:n]
+	return item
+}
+
+func cqUp(cq candidateQueue, j int) {
+	for {
+		i := (j - 1) / 2 // parent
+		if i == j || !cq.less(j, i) {
+			break
+		}
+		cq[i], cq[j] = cq[j], cq[i]
+		j = i
+	}
+}
+
+func cqDown(cq candidateQueue, i, n int) {
+	for {
+		j1 := 2*i + 1
+		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
+			break
+		}
+		j := j1 // left child
+		if j2 := j1 + 1; j2 < n && cq.less(j2, j1) {
+			j = j2 // right child sorts first
+		}
+		if !cq.less(j, i) {
+			break
+		}
+		cq[i], cq[j] = cq[j], cq[i]
+		i = j
+	}
+}
+
+// extractNearest drains the max-heap result set w and returns up to n nearest
+// items in ascending-distance order. w is a max-heap (furthest at root), so
+// popping yields furthest-first; filling the backing slice from the tail
+// produces ascending order, and the leading n are the nearest. Used by Search
+// (n = k) and selectNeighbors (n = m), both of which need the NEAREST subset —
+// the previous pqPop-first logic returned the farthest subset.
+func extractNearest(w *priorityQueue, n int) []queueItem {
+	count := w.Len()
+	ordered := make([]queueItem, count)
+	for i := count - 1; i >= 0; i-- {
+		ordered[i] = pqPop(w) // furthest-first into the tail → ascending
+	}
+	if n > count {
+		n = count
+	}
+	return ordered[:n]
+}
