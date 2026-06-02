@@ -49,8 +49,32 @@ func NewBatchedWAL(dataDir string, batchSize int, flushInterval time.Duration) (
 	return bw, nil
 }
 
-// Append appends an entry to the batch buffer
-func (bw *BatchedWAL) Append(opType OpType, data []byte) (uint64, error) {
+// Pending represents an entry that has been enqueued into the batch buffer but
+// is not yet durable. Wait blocks until the entry's batch has been flushed and
+// fsynced.
+//
+// Splitting enqueue from wait lets a caller release a higher-level lock (e.g.
+// storage's gs.mu) AFTER the entry is enqueued but BEFORE blocking on the
+// fsync. Concurrent writers can then enqueue into the same batch — the
+// group-commit path. Holding the higher-level lock across the wait (as a plain
+// Append does) makes the batch unable to fill beyond one entry, defeating
+// batching entirely. See Track P item (1).
+type Pending struct {
+	doneCh chan error
+}
+
+// Wait blocks until the enqueued entry's batch has been flushed and fsynced,
+// returning the flush error (if any).
+func (p *Pending) Wait() error {
+	return <-p.doneCh
+}
+
+// Enqueue appends an entry to the batch buffer and returns a Pending handle
+// WITHOUT waiting for durability. The caller MUST call Wait() on the returned
+// handle before treating the write as durable. Entries become durable in
+// enqueue order (batches flush FIFO), so a caller that enqueues under a lock
+// preserves WAL order even after releasing that lock before Wait().
+func (bw *BatchedWAL) Enqueue(opType OpType, data []byte) *Pending {
 	doneCh := make(chan error, 1)
 
 	entry := &pendingEntry{
@@ -72,9 +96,14 @@ func (bw *BatchedWAL) Append(opType OpType, data []byte) (uint64, error) {
 		}
 	}
 
-	// Wait for flush to complete
-	err := <-doneCh
-	if err != nil {
+	return &Pending{doneCh: doneCh}
+}
+
+// Append enqueues an entry and blocks until it is durable. Equivalent to
+// Enqueue followed by Wait; retained for callers that don't need to release a
+// lock between the two.
+func (bw *BatchedWAL) Append(opType OpType, data []byte) (uint64, error) {
+	if err := bw.Enqueue(opType, data).Wait(); err != nil {
 		return 0, err
 	}
 

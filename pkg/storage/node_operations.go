@@ -25,8 +25,13 @@ func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value)
 // the lock release.
 func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, properties map[string]Value) (*Node, error) {
 	gs.mu.Lock()
-	node, err := gs.createNodeLocked(tenantID, labels, properties)
+	node, walPending, err := gs.createNodeLocked(tenantID, labels, properties)
 	gs.mu.Unlock()
+	// Wait for WAL durability OUTSIDE gs.mu so concurrent writers can fill the
+	// same batch (group commit, Track P item 1). nil handle = synchronous path
+	// (already durable). Fail-soft: a flush error is logged, not propagated,
+	// matching the pre-split writeToWAL contract.
+	gs.waitWALPending(wal.OpCreateNode, walPending)
 	if err == nil && node != nil {
 		gs.notifyNodeCreated(context.Background(), node)
 	}
@@ -97,8 +102,10 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 		}
 	}
 
-	node, err := gs.createNodeLocked(tenantID, labels, properties)
+	node, walPending, err := gs.createNodeLocked(tenantID, labels, properties)
 	gs.mu.Unlock()
+	// Wait for WAL durability after lock release (group commit, Track P item 1).
+	gs.waitWALPending(wal.OpCreateNode, walPending)
 	// R2.1: dispatch after lock release. See CreateNodeWithTenant.
 	if err == nil && node != nil {
 		gs.notifyNodeCreated(context.Background(), node)
@@ -108,19 +115,27 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 
 // createNodeLocked is the body of CreateNodeWithTenant minus the lock.
 // Caller must hold gs.mu.Lock().
-func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, properties map[string]Value) (*Node, error) {
+//
+// Returns a *wal.Pending durability handle alongside the created node. For the
+// batched WAL the node's WAL entry is enqueued (in-memory mutation order is
+// preserved because the enqueue happens under gs.mu) but NOT yet durable; the
+// caller must release gs.mu and then call the handle's Wait() before treating
+// the create as durable (Track P item 1). For the synchronous WAL path the
+// handle is nil and the write is already durable on return. The handle is nil
+// on any error path.
+func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, properties map[string]Value) (*Node, *wal.Pending, error) {
 	start := time.Now()
 
 	// Check if storage is closed
 	if err := gs.checkClosed(); err != nil {
 		gs.recordOperation("create_node", "error", start)
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Check for ID space exhaustion
 	if gs.nextNodeID == ^uint64(0) { // MaxUint64
 		gs.recordOperation("create_node", "error", start)
-		return nil, fmt.Errorf("node ID space exhausted")
+		return nil, nil, fmt.Errorf("node ID space exhausted")
 	}
 
 	nodeID := gs.nextNodeID
@@ -163,20 +178,23 @@ func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, prope
 	// Update property indexes
 	if err := gs.insertNodeIntoPropertyIndexes(nodeID, properties); err != nil {
 		gs.recordOperation("create_node", "error", start)
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Update vector indexes for any vector properties
 	if err := gs.UpdateNodeVectorIndexes(node); err != nil {
 		gs.recordOperation("create_node", "error", start)
-		return nil, err
+		return nil, nil, err
 	}
 
-	// Write to WAL for durability
-	gs.writeToWAL(wal.OpCreateNode, node)
+	// Enqueue to WAL for durability. For the batched WAL this does NOT block on
+	// the fsync — the caller waits on the returned handle AFTER releasing gs.mu
+	// so concurrent writers can fill the same batch (Track P item 1). Enqueue
+	// happens here, under gs.mu, so WAL order matches in-memory mutation order.
+	walPending := gs.enqueueWAL(wal.OpCreateNode, node)
 
 	gs.recordOperation("create_node", "success", start)
-	return node.Clone(), nil
+	return node.Clone(), walPending, nil
 }
 
 func valuesEqual(a, b Value) bool {
