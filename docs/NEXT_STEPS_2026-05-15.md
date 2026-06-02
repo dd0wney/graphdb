@@ -173,9 +173,22 @@ R2.5a's `OnNodeUpdated` is a no-op with a TODO: activating it requires a re-entr
 Choose one:
 - **(A) Verification gap closure** — bench + deployment exercise of Track R. ✅ **Fully discharged**: (1a) PRs #195/#209/#212; (1b) PRs #196/#202/#215 (both 2026-05-14); (1c) the containerized auto-embed deployment exercise (2026-06-02 — see § Reconciliation 2026-06-02 — component (1c) discharged). **This option is no longer live.**
 - **(B) Inherited-PR triage** — execute the disposition (or bulk-close per the forcing function). **✅ DISCHARGED 2026-05-14** via hybrid disposition (7 merged, 4 closed); see § Inherited PRs § Reconciliation. No longer a live option.
-- **(C) New audit** — performance, security, or productization angle (see § Critical path option 3).
+- **(C) New audit** — performance, security, or productization angle (see § Critical path option 3). **✅ SELECTED + EXECUTED 2026-06-02** — performance-under-SaaS-load angle. See § Reconciliation 2026-06-02 — audit (C) commissioned (perf under SaaS load) below.
 
 **Default if no answer**: (C) commission a new audit. Reason: (A) verification gap is now fully closed — (1a) "Option A fits at 1000 tenants, ratio 1.000", (1b) "drop-on-full backpressure holds across Go × HTTP × burst × sustained × erroring", and (1c) "auto-embed is searchable end-to-end in a container deployment" are all answered. With Track R verified across its full surface and no new spike-grounded track, a fresh audit pass is the natural way to earn the next critical path (perf under SaaS load, vector/embedding side-channels, or multi-node scope).
+
+#### Reconciliation 2026-06-02 — audit (C) commissioned (perf under SaaS load)
+
+Decision 9 resolved to **(C)**, angle **performance under realistic multi-tenant SaaS load** (the angle the single-node 2026-05-06 audit structurally could not see, and the one the planning doc flagged as correlating with the just-closed verification gap). Output: **`docs/internals/design/AUDIT_performance_saas_load_2026-06-02.md`** + a new concurrent-multi-tenant write benchmark (`pkg/storage/bench_concurrent_write_test.go`).
+
+**The earned critical path — shrink what `gs.mu` guards (call it Track P).** The audit's synthesis: the global `gs.mu` write/scan serialization is *known and accepted* (CLAUDE.md), but the SaaS-era workload (Track-R auto-embed writes + GraphQL/unlabeled reads) has quietly loaded more work into the sections it guards. Recommendations are **ordered by measured leverage** (the bench dictates the order — leading with the novel HNSW finding would headline a 2.5%-today win):
+
+1. **Fix the WAL group-commit path** (audit H5 → H1). `BatchedWAL.Append` parks on its flush channel *while holding `gs.mu`*, so batching can never amortize fsync — measured **1.7–2.6× worse** than the fsync default, correcting the 2026-05-06 "enable batching" recommendation. Releasing `gs.mu` before the flush wait (folding in marshal-before-lock, M2) is the first-order write-scaling lever.
+2. **Stop full-cross-tenant scans on label-absent reads** (H4 → M1). Unlabeled `MATCH` and *every* GraphQL edge resolver fetch all tenants' data then paginate in memory; cost scales with total data, not the tenant's share, and the `gs.mu.RLock` stalls writers.
+3. **Pre-position: lift the HNSW insert out of `gs.mu`** (H2) and budget the auto-embed 2× (H3) — the *next* ceiling once (1) removes the fsync floor (~140 µs serialized insert, paid twice per node under auto-embed).
+4. Index-structure hygiene (M3/M4/M7) + vector-search read hygiene (M5/M6).
+
+Empirically grounded: writes do not scale with tenant count (~170 writes/s aggregate flat across 1→16 concurrent tenants — fsync-dominated; see the audit's honest caveat that the bench does not isolate `gs.mu` from shared-WAL fsync). **The next session can pick Track P item (1) as a spike-grounded critical path** — it now has the evidence the 2026-05-15 doc said was missing.
 
 ### Carry-forward decisions still open
 
@@ -189,7 +202,7 @@ Choose one:
 
 - **The inherited-PR carry-forward debt is now load-bearing.** Four sessions of inaction means there's no consensus on whether these PRs matter. The forcing function above retires the debt one way or another. If neither happens by 2026-05-22, this planning rhythm starts losing credibility — future "merge or close by X" deadlines won't bind either.
 
-- **No new critical path is a feature, not a bug.** The 2026-05-14 doc had Track R because two spikes demanded it. Track R is now done. "TBD critical path" is the honest state. **The risk is the next session manufactures a track to fill the gap rather than picking from the three honest options above.** Re-read § Critical path before declaring a new track exists.
+- **~~No new critical path is a feature, not a bug.~~ Resolved 2026-06-02: there is now an earned critical path (Track P).** The 2026-05-14 doc had Track R because two spikes demanded it; after Track R closed, "TBD critical path" was the honest state and the risk was manufacturing a track to fill the gap. That risk is retired the right way: audit (C) was commissioned and produced a measured, evidence-grounded backlog — **Track P (shrink what `gs.mu` guards)**, ordered by bench leverage (WAL group-commit → cross-tenant scans → HNSW-out). See § Decision 9 Reconciliation 2026-06-02. The next session picks Track P item (1) rather than re-asking "what's the critical path."
 
 ---
 
