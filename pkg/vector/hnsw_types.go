@@ -6,6 +6,10 @@ type hnswNode struct {
 	vector  []float32
 	level   int
 	friends [][]uint64 // Connections at each layer [layer][neighbors]
+	// norm is the cached L2 norm of vector (== Magnitude(vector)), computed
+	// once at insert. Lets the cosine distance skip recomputing ‖stored‖ on
+	// every neighbor evaluation (audit M6). Unused for non-cosine metrics.
+	norm float32
 }
 
 // SearchResult represents a search result with ID and distance

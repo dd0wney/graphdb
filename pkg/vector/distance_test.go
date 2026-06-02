@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"testing"
 )
 
@@ -318,5 +319,42 @@ func BenchmarkEuclideanDistance(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = EuclideanDistance(v1, v2)
+	}
+}
+
+// TestCosineDistanceWithNorms_BitIdenticalToCosineDistance pins the M6
+// invariant: the norm-caching cosine path must produce exactly the same
+// float32 result as CosineDistance(a, b), for arbitrary and zero vectors —
+// otherwise the HNSW graph (built with one) and search (using the other)
+// would disagree and recall would drift.
+func TestCosineDistanceWithNorms_BitIdenticalToCosineDistance(t *testing.T) {
+	rng := rand.New(rand.NewSource(7))
+	dims := []int{1, 4, 128, 768}
+	for _, dim := range dims {
+		for trial := 0; trial < 50; trial++ {
+			a := make([]float32, dim)
+			b := make([]float32, dim)
+			for i := 0; i < dim; i++ {
+				a[i] = rng.Float32()*2 - 1
+				b[i] = rng.Float32()*2 - 1
+			}
+			want, err := CosineDistance(a, b)
+			if err != nil {
+				t.Fatalf("CosineDistance: %v", err)
+			}
+			got := cosineDistanceWithNorms(a, b, Magnitude(a), Magnitude(b))
+			if got != want {
+				t.Fatalf("dim=%d trial=%d: cosineDistanceWithNorms=%v, CosineDistance=%v (must be bit-identical)", dim, trial, got, want)
+			}
+		}
+	}
+
+	// Zero-vector case: CosineSimilarity returns 0 → CosineDistance 1.0.
+	zero := make([]float32, 8)
+	nonzero := []float32{1, 2, 3, 4, 5, 6, 7, 8}
+	want, _ := CosineDistance(zero, nonzero)
+	got := cosineDistanceWithNorms(zero, nonzero, Magnitude(zero), Magnitude(nonzero))
+	if got != want {
+		t.Fatalf("zero vector: got %v, want %v", got, want)
 	}
 }
