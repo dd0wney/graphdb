@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"sort"
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
@@ -39,6 +40,14 @@ func (gs *GraphStorage) addNodeToTenantIndex(node *Node) {
 		)
 	}
 
+	// Add node to the per-tenant enumeration set. This is the only index
+	// that captures unlabeled nodes, so it is what GetAllNodesForTenant
+	// reads. O(1) set insert; idempotent.
+	if gs.tenantNodeIDs[tenantID] == nil {
+		gs.tenantNodeIDs[tenantID] = make(map[uint64]struct{})
+	}
+	gs.tenantNodeIDs[tenantID][node.ID] = struct{}{}
+
 	// Update tenant stats
 	gs.incrementTenantNodeCount(tenantID)
 }
@@ -48,29 +57,41 @@ func (gs *GraphStorage) addNodeToTenantIndex(node *Node) {
 func (gs *GraphStorage) removeNodeFromTenantIndex(node *Node) {
 	tenantID := effectiveTenantID(node.TenantID)
 
-	labelMap := gs.tenantNodesByLabel[tenantID]
-	if labelMap == nil {
-		return
-	}
-
-	// Remove node from each label's index
-	for _, label := range node.Labels {
-		ids := labelMap[label]
-		for i, id := range ids {
-			if id == node.ID {
-				labelMap[label] = append(ids[:i], ids[i+1:]...)
-				break
+	// Label-index removal is guarded locally rather than via an early
+	// return: an unlabeled node never has a label-map entry to remove, but
+	// it IS in the enumeration set and the stats — both of which must still
+	// be maintained. (The previous early-return on a nil label map also
+	// skipped the stats decrement, drifting NodeCount for tenants whose
+	// label map had already been GC'd — e.g. a tenant of only unlabeled
+	// nodes after its first delete.)
+	if labelMap := gs.tenantNodesByLabel[tenantID]; labelMap != nil {
+		for _, label := range node.Labels {
+			ids := labelMap[label]
+			for i, id := range ids {
+				if id == node.ID {
+					labelMap[label] = append(ids[:i], ids[i+1:]...)
+					break
+				}
+			}
+			// Clean up empty slices
+			if len(labelMap[label]) == 0 {
+				delete(labelMap, label)
 			}
 		}
-		// Clean up empty slices
-		if len(labelMap[label]) == 0 {
-			delete(labelMap, label)
+
+		// Clean up empty tenant map
+		if len(labelMap) == 0 {
+			delete(gs.tenantNodesByLabel, tenantID)
 		}
 	}
 
-	// Clean up empty tenant map
-	if len(labelMap) == 0 {
-		delete(gs.tenantNodesByLabel, tenantID)
+	// Remove from the per-tenant enumeration set; drop the tenant's set
+	// entirely once it empties so an offboarded tenant leaves no residue.
+	if idSet := gs.tenantNodeIDs[tenantID]; idSet != nil {
+		delete(idSet, node.ID)
+		if len(idSet) == 0 {
+			delete(gs.tenantNodeIDs, tenantID)
+		}
 	}
 
 	// Update tenant stats
@@ -185,20 +206,43 @@ func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Ed
 }
 
 // GetAllNodesForTenant returns all nodes belonging to a specific tenant.
+//
+// It enumerates the tenant's own node IDs from tenantNodeIDs (O(tenant
+// size)) rather than scanning every shard across all tenants and filtering
+// (the former O(total-DB) cross-tenant amplification — Track P / H4). IDs
+// are collected under gs.mu.RLock then cloned under per-shard RLocks after
+// release, so the global lock is not held across the clone loop and writers
+// are not stalled (the A4 read pattern, see GetNodeForTenant).
+//
+// Consequence of the lock split: the result is no longer an atomic snapshot
+// of the tenant at a single instant — a node deleted between the ID
+// collection and its clone is simply skipped (same tradeoff A4 accepted for
+// GetNode). IDs are returned in ascending order for deterministic pagination.
 func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
-	gs.mu.RLock()
-	defer gs.mu.RUnlock()
-
 	tid := effectiveTenantID(tenantID)
 
-	var nodes []*Node
-	gs.forEachNodeUnlocked(func(node *Node) bool {
-		nodeTenant := effectiveTenantID(node.TenantID)
-		if nodeTenant == tid {
-			nodes = append(nodes, node.Clone())
+	gs.mu.RLock()
+	idSet := gs.tenantNodeIDs[tid]
+	ids := make([]uint64, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	gs.mu.RUnlock()
+
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	nodes := make([]*Node, 0, len(ids))
+	for _, id := range ids {
+		gs.rlockShard(id)
+		node, exists := gs.lookupNodeShard(id)
+		if exists {
+			node = node.Clone()
 		}
-		return true
-	})
+		gs.runlockShard(id)
+		if exists {
+			nodes = append(nodes, node)
+		}
+	}
 
 	return nodes
 }

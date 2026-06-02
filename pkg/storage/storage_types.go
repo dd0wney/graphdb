@@ -53,6 +53,19 @@ type GraphStorage struct {
 	tenantEdgesByType  map[tenantid.TenantID]map[string][]uint64 // tenant -> edge type -> edge IDs
 	tenantStats        map[tenantid.TenantID]*TenantStats        // tenant -> usage statistics
 
+	// tenantNodeIDs is the per-tenant node-ID enumeration index: the set
+	// of every node ID owned by a tenant, label or not. It exists so
+	// GetAllNodesForTenant enumerates only the caller's nodes (O(tenant))
+	// instead of scanning all 256 shards across every tenant and filtering
+	// (O(total-DB) — the H4 cross-tenant read amplification). A set, not a
+	// slice, so create/delete maintenance stays O(1) on the write hot path.
+	// Unlike tenantNodesByLabel it includes unlabeled nodes — which is the
+	// gap that forced the full-scan fallback. Maintained by add/remove-
+	// NodeToTenantIndex, so it is rebuilt on snapshot-load and WAL-replay
+	// through the same hook (no on-disk format change). Track P item (2)
+	// (AUDIT_performance_saas_load_2026-06-02 § H4).
+	tenantNodeIDs map[tenantid.TenantID]map[uint64]struct{} // tenant -> set of node IDs
+
 	// Compressed edge storage (optional)
 	compressedOutgoing map[uint64]*CompressedEdgeList // node ID -> compressed outgoing edges
 	compressedIncoming map[uint64]*CompressedEdgeList // node ID -> compressed incoming edges
