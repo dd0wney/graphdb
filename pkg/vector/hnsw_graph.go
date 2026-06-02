@@ -92,7 +92,7 @@ func (h *HNSWIndex) pruneConnections(node *hnswNode, layer int, maxConn int) {
 		if !ok {
 			continue
 		}
-		ordered = append(ordered, queueItem{id: friendID, distance: h.distance(node.vector, friend.vector)})
+		ordered = append(ordered, queueItem{id: friendID, distance: h.distanceBetweenNodes(node, friend)})
 	}
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].distance < ordered[j].distance })
 

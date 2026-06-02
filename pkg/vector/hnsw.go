@@ -114,6 +114,7 @@ func (h *HNSWIndex) Insert(id uint64, vector []float32) error {
 		vector:  make([]float32, len(vector)),
 		level:   level,
 		friends: make([][]uint64, level+1),
+		norm:    Magnitude(vector), // M6: cache ‖vector‖ once
 	}
 	copy(node.vector, vector)
 

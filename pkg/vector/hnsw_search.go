@@ -11,7 +11,8 @@ func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int
 	candidates := make(candidateQueue, 0, ef) // min-heap: expand nearest first
 	w := make(priorityQueue, 0, ef)           // max-heap: furthest result at root
 
-	dist := h.distance(query, ep.vector)
+	queryNorm := h.queryNorm(query) // M6: ‖query‖ once, reused for every neighbor
+	dist := h.distanceToNode(query, queryNorm, ep)
 	cqPush(&candidates, queueItem{id: ep.id, distance: dist})
 	pqPush(&w, queueItem{id: ep.id, distance: dist})
 	visited[ep.id] = true
@@ -38,7 +39,7 @@ func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int
 					if !friendExists {
 						continue
 					}
-					friendDist := h.distance(query, friend.vector)
+					friendDist := h.distanceToNode(query, queryNorm, friend)
 
 					// Admit if there's room or this beats the current furthest
 					// result (re-read w[0] each time — w mutates as we add).
@@ -70,7 +71,8 @@ func (h *HNSWIndex) searchLayerKNN(query []float32, ep *hnswNode, ef int, layer 
 	candidates := make(candidateQueue, 0, ef) // min-heap: expand nearest first
 	w := make(priorityQueue, 0, ef)           // max-heap: furthest result at root
 
-	dist := h.distance(query, ep.vector)
+	queryNorm := h.queryNorm(query) // M6: ‖query‖ once, reused for every neighbor
+	dist := h.distanceToNode(query, queryNorm, ep)
 	cqPush(&candidates, queueItem{id: ep.id, distance: dist})
 	pqPush(&w, queueItem{id: ep.id, distance: dist})
 	visited[ep.id] = true
@@ -96,7 +98,7 @@ func (h *HNSWIndex) searchLayerKNN(query []float32, ep *hnswNode, ef int, layer 
 					if !friendExists {
 						continue
 					}
-					friendDist := h.distance(query, friend.vector)
+					friendDist := h.distanceToNode(query, queryNorm, friend)
 
 					// Admit if there's room or this beats the current furthest
 					// result (re-read w[0] each time — w mutates as we add).
@@ -157,7 +159,7 @@ func (h *HNSWIndex) selectNeighborsHeuristic(ordered []queueItem, m int) []queue
 			}
 			// Discard cand if it sits closer to an already-selected neighbour
 			// than to the base — that neighbour already covers this direction.
-			if h.distance(candNode.vector, selNode.vector) < cand.distance {
+			if h.distanceBetweenNodes(candNode, selNode) < cand.distance {
 				keep = false
 				break
 			}
@@ -180,4 +182,39 @@ func (h *HNSWIndex) distance(a, b []float32) float32 {
 		return math.MaxFloat32
 	}
 	return dist
+}
+
+// usesCosine reports whether this index's metric routes to cosine distance.
+// Mirrors Distance's switch exactly: cosine for MetricCosine AND the default
+// (any unrecognised metric), so the norm-caching fast paths below stay
+// bit-identical to the generic h.distance for every metric value.
+func (h *HNSWIndex) usesCosine() bool {
+	return h.metric != MetricEuclidean && h.metric != MetricDotProduct
+}
+
+// queryNorm precomputes ‖query‖ once per Search for the cosine path (M6);
+// returns 0 (unused) for metrics that don't need it.
+func (h *HNSWIndex) queryNorm(query []float32) float32 {
+	if h.usesCosine() {
+		return Magnitude(query)
+	}
+	return 0
+}
+
+// distanceToNode computes the query→stored distance, reusing the query's
+// precomputed norm and the node's cached norm on the cosine path (M6).
+func (h *HNSWIndex) distanceToNode(query []float32, queryNorm float32, target *hnswNode) float32 {
+	if h.usesCosine() {
+		return cosineDistanceWithNorms(query, target.vector, queryNorm, target.norm)
+	}
+	return h.distance(query, target.vector)
+}
+
+// distanceBetweenNodes computes a stored→stored distance, reusing both cached
+// norms on the cosine path (M6).
+func (h *HNSWIndex) distanceBetweenNodes(a, b *hnswNode) float32 {
+	if h.usesCosine() {
+		return cosineDistanceWithNorms(a.vector, b.vector, a.norm, b.norm)
+	}
+	return h.distance(a.vector, b.vector)
 }

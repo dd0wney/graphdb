@@ -56,6 +56,26 @@ func CosineDistance(a, b []float32) (float32, error) {
 	return 1.0 - sim, nil
 }
 
+// cosineDistanceWithNorms returns the cosine distance using precomputed L2
+// norms (each == float32(math.Sqrt(sum of squares)), i.e. Magnitude). It
+// computes only the dot product, skipping the two ‖·‖ passes CosineSimilarity
+// makes on every call (audit M6). It is bit-identical to CosineDistance for
+// equal-length inputs: same float32 dot accumulation, same float32 norm
+// product in the denominator, same zero-norm guard (CosineSimilarity returns 0
+// for a zero vector → CosineDistance 1.0). Callers must pass equal-length
+// vectors — the HNSW paths validate dimensions at insert and query time, so a
+// mismatch cannot reach here.
+func cosineDistanceWithNorms(a, b []float32, normA, normB float32) float32 {
+	if normA == 0 || normB == 0 {
+		return 1.0 // 1 - 0; matches CosineDistance of a zero vector
+	}
+	dotProd := float32(0.0)
+	for i := 0; i < len(a); i++ {
+		dotProd += a[i] * b[i]
+	}
+	return 1.0 - dotProd/(normA*normB)
+}
+
 // EuclideanDistance calculates the Euclidean (L2) distance between two vectors
 // Formula: sqrt(sum((a[i] - b[i])^2))
 // Returns error if vector dimensions don't match
