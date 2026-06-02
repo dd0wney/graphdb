@@ -391,8 +391,10 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 		return err
 	}
 
-	// Write to WAL for durability
-	gs.writeToWAL(wal.OpUpdateNode, struct {
+	// Enqueue to WAL under gs.mu (preserves WAL order); wait on durability
+	// after releasing gs.mu so concurrent writers can fill the batch (group
+	// commit, Track P item 1).
+	walPending := gs.enqueueWAL(wal.OpUpdateNode, struct {
 		NodeID     uint64
 		Properties map[string]Value
 	}{
@@ -408,6 +410,7 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	}
 	gs.mu.Unlock()
 
+	gs.waitWALPending(wal.OpUpdateNode, walPending)
 	if newNode != nil {
 		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
 	}
@@ -620,11 +623,13 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	// Atomic decrement with underflow protection
 	atomicDecrementWithUnderflowProtection(&gs.stats.NodeCount)
 
-	// Write to WAL for durability
-	gs.writeToWAL(wal.OpDeleteNode, node)
+	// Enqueue to WAL under gs.mu (preserves WAL order); wait on durability after
+	// releasing gs.mu so concurrent writers can fill the batch (Track P item 1).
+	walPending := gs.enqueueWAL(wal.OpDeleteNode, node)
 
 	gs.mu.Unlock()
 
+	gs.waitWALPending(wal.OpDeleteNode, walPending)
 	// R2.1: dispatch after lock release. See lock-discipline comment in
 	// pkg/storage/observation.go.
 	gs.notifyNodeDeleted(context.Background(), nodeID, tenantID)

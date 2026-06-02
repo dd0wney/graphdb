@@ -9,51 +9,116 @@ import (
 // Track P item (1) — the batched WAL must release gs.mu during the durability
 // wait so concurrent writers can fill one batch (group commit).
 //
-// Before the fix, CreateNodeWithTenant holds gs.mu for the whole of
-// createNodeLocked, including BatchedWAL.Append parking on its done-channel. A
-// second writer therefore cannot acquire gs.mu to enqueue, the batch never
-// reaches batchSize, and both writes serialize behind the flush ticker.
+// Before the fix, a write method holds gs.mu for its whole critical section,
+// including BatchedWAL.Append parking on its done-channel. A second writer
+// therefore cannot acquire gs.mu to enqueue, the batch never reaches batchSize,
+// and both writes serialize behind the flush ticker.
 //
-// This is a deterministic STRUCTURAL test (the functional WAL behaviour is
-// already correct on current code). batchSize=2 with a long flushInterval: two
-// concurrent creates can only complete quickly if the batch fills — which can
-// only happen if the first writer releases gs.mu before waiting on durability.
-// On the pre-fix code the batch cannot fill and the writes block until the
-// 10s ticker fires, so the 3s deadline trips.
-func TestBatchedWAL_ConcurrentWritesFillBatchWithoutHoldingGlobalLock(t *testing.T) {
+// These are deterministic STRUCTURAL tests (the functional WAL behaviour is
+// already correct). batchSize=2 with a long flushInterval: two concurrent
+// writes can only complete quickly if the batch fills — which can only happen
+// if each writer releases gs.mu before waiting on durability. On the pre-fix
+// code the batch cannot fill and the writes block until the 10s ticker fires,
+// so the 3s deadline trips.
+
+// newBatchedGS builds a batched-WAL storage with the given batch size and flush
+// interval. A long flushInterval makes the ticker, not group commit, the slow
+// path — so a fast completion proves the batch filled.
+func newBatchedGS(t *testing.T, batchSize int, flush time.Duration) *GraphStorage {
+	t.Helper()
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:        t.TempDir(),
 		EnableBatching: true,
-		BatchSize:      2,
-		FlushInterval:  10 * time.Second, // long: the ticker must NOT be what unblocks us
+		BatchSize:      batchSize,
+		FlushInterval:  flush,
 	})
 	if err != nil {
 		t.Fatalf("NewGraphStorageWithConfig: %v", err)
 	}
-	defer gs.Close()
+	return gs
+}
 
-	const writers = 2 // == batchSize: the batch fills iff both enqueue before either blocks
-	done := make(chan error, writers)
-	for i := 0; i < writers; i++ {
-		go func(n int) {
-			_, cerr := gs.CreateNodeWithTenant("t0", []string{"Doc"},
-				map[string]Value{"name": StringValue(fmt.Sprintf("n%d", n))})
-			done <- cerr
+// createNodesConcurrently creates n nodes using n concurrent writers so the
+// batch fills and flushes immediately (CreateNode is group-commit converted).
+// Used to seed prerequisites for the update/delete/edge tests without waiting
+// on the ticker. n >= batchSize so the batch fills.
+func createNodesConcurrently(t *testing.T, gs *GraphStorage, n int) []uint64 {
+	t.Helper()
+	type res struct {
+		id  uint64
+		err error
+	}
+	ch := make(chan res, n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			node, err := gs.CreateNodeWithTenant("t0", []string{"Doc"},
+				map[string]Value{"name": StringValue(fmt.Sprintf("n%d", i))})
+			if err != nil {
+				ch <- res{0, err}
+				return
+			}
+			ch <- res{node.ID, nil}
 		}(i)
 	}
+	ids := make([]uint64, 0, n)
+	for i := 0; i < n; i++ {
+		r := <-ch
+		if r.err != nil {
+			t.Fatalf("createNodesConcurrently: %v", r.err)
+		}
+		ids = append(ids, r.id)
+	}
+	return ids
+}
 
-	// After the fix the batch fills and flushes immediately (~ms). Before the
-	// fix the writes serialize behind the 10s ticker. 3s discriminates cleanly.
-	deadline := time.After(3 * time.Second)
-	for got := 0; got < writers; got++ {
+// awaitN waits for n results on done, failing if fewer than n arrive within the
+// deadline (the signature of writers serialized under gs.mu).
+func awaitN(t *testing.T, done <-chan error, n int, within time.Duration, failMsg string) {
+	t.Helper()
+	deadline := time.After(within)
+	for got := 0; got < n; got++ {
 		select {
-		case cerr := <-done:
-			if cerr != nil {
-				t.Fatalf("CreateNodeWithTenant: %v", cerr)
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("op error: %v", err)
 			}
 		case <-deadline:
-			t.Fatalf("only %d/%d concurrent batched writes completed in 3s — "+
-				"writers are serialized under gs.mu (the batch cannot fill)", got, writers)
+			t.Fatalf("only %d/%d concurrent ops completed in %s — %s", got, n, within, failMsg)
 		}
 	}
+}
+
+// TestBatchedWAL_ConcurrentCreatesFillBatchWithoutHoldingGlobalLock covers the
+// create path (the first path converted).
+func TestBatchedWAL_ConcurrentCreatesFillBatchWithoutHoldingGlobalLock(t *testing.T) {
+	gs := newBatchedGS(t, 2, 10*time.Second)
+	defer gs.Close()
+
+	done := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func(n int) {
+			_, err := gs.CreateNodeWithTenant("t0", []string{"Doc"},
+				map[string]Value{"name": StringValue(fmt.Sprintf("n%d", n))})
+			done <- err
+		}(i)
+	}
+	awaitN(t, done, 2, 3*time.Second,
+		"concurrent CreateNode writers are serialized under gs.mu (the batch cannot fill)")
+}
+
+// TestBatchedWAL_GroupCommit_NodeUpdateAndDelete covers UpdateNode + DeleteNode.
+// Concurrent update(id0) + delete(id1) fill batchSize=2 only if BOTH release
+// gs.mu during the durability wait.
+func TestBatchedWAL_GroupCommit_NodeUpdateAndDelete(t *testing.T) {
+	gs := newBatchedGS(t, 2, 10*time.Second)
+	defer gs.Close()
+
+	ids := createNodesConcurrently(t, gs, 2)
+
+	done := make(chan error, 2)
+	go func() { done <- gs.UpdateNode(ids[0], map[string]Value{"k": StringValue("v")}) }()
+	go func() { done <- gs.DeleteNode(ids[1]) }()
+
+	awaitN(t, done, 2, 3*time.Second,
+		"concurrent UpdateNode/DeleteNode are serialized under gs.mu (the batch cannot fill)")
 }
