@@ -34,15 +34,15 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 // ?label=). No response body — RFC 9110 §9.3.2 contract.
 //
 // The unfiltered path uses the O(1) CountNodesForTenant primitive
-// (maintained as a counter via increment/decrement on create/delete);
-// the filtered path falls back to len(GetNodesByLabelForTenant) since
-// no indexed count-by-label primitive exists. Still cheaper than GET +
-// counting in the client because the response body is never serialized.
+// (maintained as a counter via increment/decrement on create/delete); the
+// filtered path uses CountNodesByLabelForTenant, which reads len(index)
+// directly rather than cloning the whole label bucket to take its length
+// (audit M1). Neither serializes a response body.
 func (s *Server) countNodes(w http.ResponseWriter, r *http.Request) {
 	tenantID := getTenantFromContext(r)
 	var count uint64
 	if label := r.URL.Query().Get("label"); label != "" {
-		count = uint64(len(s.graph.GetNodesByLabelForTenant(tenantID, label)))
+		count = uint64(s.graph.CountNodesByLabelForTenant(tenantID, label))
 	} else {
 		count = s.graph.CountNodesForTenant(tenantID)
 	}
