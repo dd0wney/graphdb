@@ -71,6 +71,38 @@ func createNodesConcurrently(t *testing.T, gs *GraphStorage, n int) []uint64 {
 	return ids
 }
 
+// createEdgesConcurrently creates n edges between the given endpoints using n
+// concurrent writers so the batch fills immediately (CreateEdge is group-commit
+// converted). Returns the new edge IDs.
+func createEdgesConcurrently(t *testing.T, gs *GraphStorage, from, to uint64, n int) []uint64 {
+	t.Helper()
+	type res struct {
+		id  uint64
+		err error
+	}
+	ch := make(chan res, n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			edge, err := gs.CreateEdgeWithTenant("t0", from, to, "LINKS",
+				map[string]Value{"i": StringValue(fmt.Sprintf("e%d", i))}, 1.0)
+			if err != nil {
+				ch <- res{0, err}
+				return
+			}
+			ch <- res{edge.ID, nil}
+		}(i)
+	}
+	ids := make([]uint64, 0, n)
+	for i := 0; i < n; i++ {
+		r := <-ch
+		if r.err != nil {
+			t.Fatalf("createEdgesConcurrently: %v", r.err)
+		}
+		ids = append(ids, r.id)
+	}
+	return ids
+}
+
 // awaitN waits for n results on done, failing if fewer than n arrive within the
 // deadline (the signature of writers serialized under gs.mu).
 func awaitN(t *testing.T, done <-chan error, n int, within time.Duration, failMsg string) {
@@ -121,4 +153,40 @@ func TestBatchedWAL_GroupCommit_NodeUpdateAndDelete(t *testing.T) {
 
 	awaitN(t, done, 2, 3*time.Second,
 		"concurrent UpdateNode/DeleteNode are serialized under gs.mu (the batch cannot fill)")
+}
+
+// TestBatchedWAL_GroupCommit_EdgeCreate covers CreateEdge.
+func TestBatchedWAL_GroupCommit_EdgeCreate(t *testing.T) {
+	gs := newBatchedGS(t, 2, 10*time.Second)
+	defer gs.Close()
+
+	nodes := createNodesConcurrently(t, gs, 2)
+
+	done := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func(n int) {
+			_, err := gs.CreateEdgeWithTenant("t0", nodes[0], nodes[1], "LINKS",
+				map[string]Value{"i": StringValue(fmt.Sprintf("e%d", n))}, 1.0)
+			done <- err
+		}(i)
+	}
+	awaitN(t, done, 2, 3*time.Second,
+		"concurrent CreateEdge writers are serialized under gs.mu (the batch cannot fill)")
+}
+
+// TestBatchedWAL_GroupCommit_EdgeUpdateAndDelete covers UpdateEdge + DeleteEdge.
+func TestBatchedWAL_GroupCommit_EdgeUpdateAndDelete(t *testing.T) {
+	gs := newBatchedGS(t, 2, 10*time.Second)
+	defer gs.Close()
+
+	nodes := createNodesConcurrently(t, gs, 2)
+	edges := createEdgesConcurrently(t, gs, nodes[0], nodes[1], 2)
+
+	w := 2.0
+	done := make(chan error, 2)
+	go func() { done <- gs.UpdateEdge(edges[0], map[string]Value{"k": StringValue("v")}, &w) }()
+	go func() { done <- gs.DeleteEdge(edges[1]) }()
+
+	awaitN(t, done, 2, 3*time.Second,
+		"concurrent UpdateEdge/DeleteEdge are serialized under gs.mu (the batch cannot fill)")
 }
