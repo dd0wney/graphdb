@@ -41,6 +41,7 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		tenantEdgesByType:  make(map[tenantid.TenantID]map[string][]uint64),
 		tenantStats:        make(map[tenantid.TenantID]*TenantStats),
 		tenantNodeIDs:      make(map[tenantid.TenantID]map[uint64]struct{}),
+		tenantEdgeIDs:      make(map[tenantid.TenantID]map[uint64]struct{}),
 		compressedOutgoing: make(map[uint64]*CompressedEdgeList),
 		compressedIncoming: make(map[uint64]*CompressedEdgeList),
 		useEdgeCompression: config.EnableEdgeCompression,
