@@ -9,7 +9,7 @@
 Read this file first: `docs/internals/design/SESSION_HANDOFF_2026-06-02-0759Z.md`.
 Then `docs/internals/design/AUDIT_performance_saas_load_2026-06-02.md` § H2/H3 + Recommendations #3, then `docs/NEXT_STEPS_2026-05-15.md` § Decision 9, then `CLAUDE.md` § "Orient first".
 
-State: **Track P items (1) WAL group-commit and (2) cross-tenant read scans are both done.** Item (2) closed this session (#259 edge-index restart prerequisite, #260 node enumeration index, #261 edge enumeration index, #262 M1 count). `GetAllNodes/EdgesForTenant` are now O(tenant), not O(total-DB).
+State: **Track P items (1) WAL group-commit and (2) cross-tenant read scans (H4) are both done.** Item (2) closed this session (#259 edge-index restart prerequisite, #260 node enumeration index, #261 edge enumeration index, #262 M1 count). `GetAllNodes/EdgesForTenant` are now O(tenant), not O(total-DB). **Scope note:** Recommendation #2's *index-level pagination* half is deliberately NOT done — the GraphQL/REST resolvers still fetch the full per-tenant slice and page in memory (`pagination_resolvers.go:123`, `handlers_nodes.go:80`). That within-tenant over-materialization is a separate, lower-leverage follow-up that sits **below** item (3) on the queue (see handoff § "New finding").
 
 Default next task (unless the user redirects): **Track P item (3) — lift the HNSW insert out of `gs.mu` (H2) + budget the auto-embed 2× (H3).** With the fsync floor amortized by item (1), the ~140µs serialized HNSW insert is now the dominant write term, paid twice per node under auto-embed. `HNSWIndex` already has its own `h.mu`, so the lift is low-risk. Read the audit's H2/H3 + Recommendations #3 first. Use TDD; race-test storage/vector changes (`-race -count=3`).
 
