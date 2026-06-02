@@ -346,3 +346,31 @@ func BenchmarkHNSWSearch(b *testing.B) {
 		index.Search(query, 10, 50)
 	}
 }
+
+// BenchmarkHNSWSearchParallel exercises the concurrent-search path that the
+// visited-set pool (M5) targets: each search previously make()'d a fresh
+// visited map per layer, so allocs/op and GC pressure rose with concurrency.
+// ReportAllocs makes the per-search allocation profile a regression guard.
+func BenchmarkHNSWSearchParallel(b *testing.B) {
+	index, _ := NewHNSWIndex(768, 16, 200, MetricCosine)
+	rng := rand.New(rand.NewSource(42))
+	for i := 0; i < 10000; i++ {
+		vec := make([]float32, 768)
+		for j := 0; j < 768; j++ {
+			vec[j] = rng.Float32()
+		}
+		index.Insert(uint64(i), vec)
+	}
+	query := make([]float32, 768)
+	for j := 0; j < 768; j++ {
+		query[j] = rng.Float32()
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			index.Search(query, 10, 50)
+		}
+	})
+}

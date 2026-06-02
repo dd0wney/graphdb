@@ -21,6 +21,32 @@ type HNSWIndex struct {
 	nodes      map[uint64]*hnswNode // All nodes by ID
 	entryPoint *hnswNode            // Entry point for search (highest layer node)
 	maxLayer   int                  // Current maximum layer
+
+	// visitedPool recycles the per-layer visited-set maps that searchLayer /
+	// searchLayerKNN would otherwise make() fresh on every call. Under N
+	// concurrent searches the old pattern's GC pressure scaled with
+	// concurrency × index depth (audit M5). Reuse is safe: a search holds
+	// h.mu.RLock for its whole duration and its per-layer searches run
+	// sequentially (never nested), so a borrowed map is never touched by two
+	// goroutines at once. Stores map[uint64]bool.
+	visitedPool sync.Pool
+}
+
+// getVisited borrows a cleared visited-set map from the pool, allocating one
+// only when the pool is empty (M5).
+func (h *HNSWIndex) getVisited() map[uint64]bool {
+	if v, ok := h.visitedPool.Get().(map[uint64]bool); ok {
+		return v
+	}
+	return make(map[uint64]bool)
+}
+
+// putVisited returns a visited-set map to the pool after clearing it. clear()
+// keeps the grown bucket array, so the next borrow skips the rehash growth a
+// fresh make() would pay.
+func (h *HNSWIndex) putVisited(v map[uint64]bool) {
+	clear(v)
+	h.visitedPool.Put(v) //nolint:staticcheck // map header is pointer-sized; SA6002 targets slice/array values, not maps
 }
 
 // NewHNSWIndex creates a new HNSW index

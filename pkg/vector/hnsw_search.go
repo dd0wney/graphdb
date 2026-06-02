@@ -6,7 +6,8 @@ import (
 
 // searchLayer performs greedy search at a specific layer
 func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int) (*hnswNode, float32) {
-	visited := make(map[uint64]bool)
+	visited := h.getVisited()
+	defer h.putVisited(visited)
 	candidates := make(candidateQueue, 0, ef) // min-heap: expand nearest first
 	w := make(priorityQueue, 0, ef)           // max-heap: furthest result at root
 
@@ -64,7 +65,8 @@ func (h *HNSWIndex) searchLayer(query []float32, ep *hnswNode, ef int, layer int
 
 // searchLayerKNN performs k-NN search at a specific layer
 func (h *HNSWIndex) searchLayerKNN(query []float32, ep *hnswNode, ef int, layer int) priorityQueue {
-	visited := make(map[uint64]bool)
+	visited := h.getVisited()
+	defer h.putVisited(visited)
 	candidates := make(candidateQueue, 0, ef) // min-heap: expand nearest first
 	w := make(priorityQueue, 0, ef)           // max-heap: furthest result at root
 
