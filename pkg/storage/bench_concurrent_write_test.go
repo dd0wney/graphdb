@@ -177,13 +177,22 @@ func BenchmarkConcurrentWrite_NoIndex(b *testing.B) {
 }
 
 // BenchmarkConcurrentWrite_NoIndex_Batched measures the SAME path with WAL
-// batching enabled. The 2026-05-06 audit recommended enabling batching to
-// "amortize fsyncs across concurrent writes." That premise does not hold under
-// the global write lock: BatchedWAL.Append parks on its done-channel while
-// gs.mu.Lock is held, so the batch buffer never exceeds one entry and every
-// write waits the full FlushInterval (10ms default) plus one fsync. Expect
-// per-op latency NEAR the FlushInterval and WORSE than the fsync-default
-// _NoIndex above — the empirical refutation of the prior recommendation.
+// batching enabled.
+//
+// History: the 2026-05-06 audit recommended batching to "amortize fsyncs across
+// concurrent writes," but pre-Track-P that premise was defeated by the global
+// lock — the create path held gs.mu while BatchedWAL.Append parked on its
+// done-channel, so the batch never exceeded one entry and every write paid the
+// full FlushInterval (~10ms). Measured pre-fix: ~10–13ms/op, flat across
+// goroutines, WORSE than the fsync default.
+//
+// Track P item (1) fixed this: createNodeLocked now ENQUEUES under gs.mu and the
+// public method WAITS on durability AFTER releasing gs.mu, so concurrent writers
+// fill one batch (group commit). Expect per-op latency to now DROP sharply with
+// goroutine count (single fsync amortized across the batch), e.g. ~10ms at g=1
+// (one writer can't fill a batch) down to sub-millisecond at g=16. This is the
+// only write path converted so far; the other write methods still take the
+// pre-fix synchronous path.
 func BenchmarkConcurrentWrite_NoIndex_Batched(b *testing.B) {
 	for _, g := range benchWriteGoroutines {
 		b.Run(fmt.Sprintf("g=%d", g), func(b *testing.B) {
