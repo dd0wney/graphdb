@@ -39,7 +39,7 @@ PR #181 moved the matrix `test` job to macOS-only, closing the exit-143 SIGTERM 
 
 - **(1a)** ~~The per-tenant HNSW memory footprint at realistic tenant counts has not been benchmarked. Decision 2's spike picked Option A (per-tenant HNSW) on the assumption of low-hundreds tenants × ~10k vectors × 768 dims (≈3.2 GB). **Reality check needed before the next architectural decision rests on this assumption.**~~ ✅ **Discharged 2026-05-14** via PRs #195, #209, #212 — see § Reconciliation 2026-05-14 below.
 - **(1b)** ~~The auto-embed observer's bounded-pool backpressure has not been exercised under sustained node-create load. The pool drops on full; the metric exists; nobody has yet observed it firing in production-shaped traffic.~~ ✅ **Discharged 2026-05-14** via PRs #196, #202, #215 — see § Reconciliation 2026-05-14 — component (1b) discharged below.
-- **(1c)** The `pkg/api/server_init.go` env-driven wiring (R2.5b once merged) has not been exercised in a deployment. The end-to-end test in R2.5b covers the bootstrap path, but a Docker / k8s deployment that exercises `GRAPHDB_AUTO_EMBED_ENABLED=true` in production-shaped traffic doesn't exist.
+- **(1c)** The `pkg/api/server_init.go` env-driven wiring (R2.5b once merged) has not been exercised in a deployment. The end-to-end test in R2.5b covers the bootstrap path, but a Docker / k8s deployment that exercises `GRAPHDB_AUTO_EMBED_ENABLED=true` in production-shaped traffic doesn't exist. **(Update 2026-06-02: now end-to-end-meaningful — the REST vector ingest + search bugs that would have made this a hollow exercise are fixed; see § Reconciliation 2026-06-02 below.)**
 
 **The remaining component (1c) is anchored as the next session's first task** in § How to use this document.
 
@@ -62,6 +62,18 @@ The auto-embed observer's bounded-pool backpressure has now been exercised acros
 - **PR #215** (`6dcef1c`): the three remaining angles — `TestAutoEmbedObserver_SustainedLoadDropsContinue` (steady-state drop accumulation), `TestAutoEmbedObserver_EmbedderErrorsLoggedUnderLoad` (O-1 logs fire from pool-dispatched tasks under load + log volume bounded by drain count, not submit count), `TestAutoEmbedObserver_HTTPCreateNodeBackpressure` (HTTP-surface bookend; 400 POST /nodes all return 201 under 83% drop rate; HTTP latency bounded).
 
 Reference doc: `docs/internals/design/TRACK_R_AUTO_EMBED_HTTP_LOAD_VERIFICATION_2026-05-14.md`. **Component (1c) Docker/k8s exercise is the one remaining verification component.**
+
+#### Reconciliation 2026-06-02 — the vector path was end-to-end broken over REST; now fixed (and (1c) is newly meaningful)
+
+Track R shipped a *structurally* correct per-tenant vector path, but exercising it over REST against released `main` (while validating the sibling `understand-graphdb` consumer) surfaced **two independent, pre-existing bugs neither this doc nor the R-track tests caught** — because the existing vector tests assert only "N results with valid IDs," never nearest-neighbour correctness. Both are now fixed on `main`:
+
+- **REST vector ingestion was a silent dead-end** — fixed by **PR #246** (`761dc9a`). JSON number arrays decode to `TypeFloatArray`, but `UpdateNodeVectorIndexes` only indexed `TypeVector`, so a REST/GraphQL client could create + query a vector index but never fill it. #246 indexes a `TypeFloatArray` property as a vector when a vector index already exists for that property name (declared index = intent; zero new API surface).
+- **HNSW search recall was 0.0 at scale** — fixed by **PR #243** (`07e75a7`, parallel-authored, reviewed + validated end-to-end here). Three bugs: min-heap/max-heap inversion in candidate selection, k-farthest result extraction, and `pruneConnections` dropping bridge links (replaced with Malkov–Yashunin Algorithm 4). recall@10 0.0 → 1.0.
+- **Footprint bench gated** — **PR #247** (`39b6344`). `TestVectorIndex_PerTenantMemoryFootprint/medium` was fast only while search was broken (early termination skipped insert work); with #243's correct search it timed out the suite. Gated behind `GRAPHDB_BENCH_LARGE` like the other large scenarios.
+
+**Consequence for the verification gap:** component (1c) is now *more* valuable than when filed. Before #246/#243, a Docker/k8s `GRAPHDB_AUTO_EMBED_ENABLED=true` run produced vectors that couldn't be ingested or ranked correctly — so (1c) would have validated only "the observer fired." Now the full auto-embed → ingest → search path works end-to-end, so (1c) validates a real searchable result. Validated locally with fully-local Ollama (gemma3:4b summaries → nomic-embed-text embeddings); semantic ranking is correct and well-discriminated.
+
+**New optional follow-up (not on critical path):** issue **#248** — HNSW construction worst-case guard. Investigated and reframed: construction cost is governed by data *intrinsic dimensionality*, not a fixed asymptote. Real/clustered embeddings build O(N log N); only high-dim near-uniform or zero synthetic vectors hit O(N²) (concentration of measure). The footprint bench's zero-vectors are that worst case, which is why #247 gates it. Lever (only if a real high-intrinsic-dim workload appears): an `efConstruction` knob + optional visited-node budget cap in `searchLayer`, both trading recall. **Do not benchmark HNSW construction with synthetic uniform/zero vectors.**
 
 ---
 
