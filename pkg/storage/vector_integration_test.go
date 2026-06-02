@@ -554,3 +554,79 @@ func TestStorageVectorRemoveRoutesByTenant(t *testing.T) {
 		t.Error("VectorSearchForTenant(tenantB) failed to find tenantB's node — remove leaked across tenants")
 	}
 }
+
+// TestStorageVectorSearchFromFloatArrayProperty verifies that a numeric-array
+// (TypeFloatArray) property — the shape a REST/GraphQL client produces from a
+// JSON number array, which cannot express TypeVector — is indexed as a vector
+// when a vector index exists for that property. This is what lets pure-REST
+// consumers populate HNSW vector indexes (previously these were silently ignored).
+func TestStorageVectorSearchFromFloatArrayProperty(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := StorageConfig{
+		DataDir:            tmpDir,
+		EnableBatching:     false,
+		EnableCompression:  false,
+		UseDiskBackedEdges: false,
+		BulkImportMode:     true,
+	}
+	gs, err := NewGraphStorageWithConfig(config)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	if err := gs.CreateVectorIndex("embedding", 3, 16, 200, vector.MetricCosine); err != nil {
+		t.Fatalf("Failed to create vector index: %v", err)
+	}
+
+	// Store nodes whose "embedding" is a FLOAT ARRAY (not VectorValue) — exactly
+	// what the REST node-create path produces from a JSON array.
+	docs := []struct {
+		id  uint64
+		vec []float64
+	}{
+		{1, []float64{1.0, 0.0, 0.0}},
+		{2, []float64{0.0, 1.0, 0.0}},
+		{3, []float64{0.9, 0.1, 0.0}},
+	}
+	for _, d := range docs {
+		node := &Node{
+			ID:         d.id,
+			Labels:     []string{"Document"},
+			Properties: map[string]Value{"embedding": FloatArrayValue(d.vec)},
+			CreatedAt:  12345,
+			UpdatedAt:  12345,
+		}
+		gs.storeNodeInShard(node)
+		if err := gs.UpdateNodeVectorIndexes(node); err != nil {
+			t.Fatalf("UpdateNodeVectorIndexes(%d) error = %v", d.id, err)
+		}
+	}
+
+	// A query closest to doc 1 should return results — proving the float-array
+	// vectors were actually indexed, not silently skipped.
+	results, err := gs.VectorSearch("embedding", []float32{1.0, 0.0, 0.0}, 2, 50)
+	if err != nil {
+		t.Fatalf("VectorSearch() error = %v", err)
+	}
+	// The key assertion: results are non-empty (previously 0 — the float-array
+	// vectors were silently never indexed). HNSW is approximate at tiny scale, so
+	// we don't assert exact recall — only that the vectors were indexed (results
+	// returned), IDs are valid, and at least one is a genuine near-neighbor
+	// (small distance), which proves the float→vector conversion is sound.
+	if len(results) == 0 {
+		t.Fatalf("VectorSearch returned 0 results — float-array property was not indexed")
+	}
+	minDist := float32(math.MaxFloat32)
+	for _, r := range results {
+		if r.ID < 1 || r.ID > 3 {
+			t.Errorf("VectorSearch returned invalid ID %d", r.ID)
+		}
+		if r.Distance < minDist {
+			minDist = r.Distance
+		}
+	}
+	if minDist > 0.5 {
+		t.Errorf("nearest distance %v too large — float-array vectors not meaningfully indexed", minDist)
+	}
+}

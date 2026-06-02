@@ -188,26 +188,57 @@ func (gs *GraphStorage) UpdateNodeVectorIndexes(node *Node) error {
 		tenantID = tenantid.Default
 	}
 	for propName, propVal := range node.Properties {
-		if propVal.Type == TypeVector {
-			if gs.vectorIndex.HasIndexForTenant(tenantID, propName) {
-				vec, err := propVal.AsVector()
-				if err != nil {
-					return fmt.Errorf("failed to decode vector for property %s: %w", propName, err)
-				}
+		if !gs.vectorIndex.HasIndexForTenant(tenantID, propName) {
+			continue
+		}
+		// A property is indexed as a vector when it is an explicit TypeVector OR a
+		// numeric array (TypeFloatArray) on a property that has a vector index. The
+		// latter lets REST/GraphQL clients — which decode JSON number arrays to
+		// TypeFloatArray and cannot express TypeVector — populate vector indexes; the
+		// declared index is the explicit intent signal.
+		vec, ok, err := vectorFromProperty(propVal)
+		if err != nil {
+			return fmt.Errorf("failed to decode vector for property %s: %w", propName, err)
+		}
+		if !ok {
+			continue
+		}
 
-				// Try to remove old vector first (in case of update).
-				// Ignore errors — if the index is empty for this node,
-				// RemoveVector is a no-op and returns a missing-entry error.
-				_ = gs.vectorIndex.RemoveVectorForTenant(tenantID, propName, node.ID)
+		// Try to remove old vector first (in case of update). Ignore errors — if
+		// the index is empty for this node, RemoveVector is a no-op.
+		_ = gs.vectorIndex.RemoveVectorForTenant(tenantID, propName, node.ID)
 
-				// Add new vector
-				if err := gs.vectorIndex.AddVectorForTenant(tenantID, propName, node.ID, vec); err != nil {
-					return fmt.Errorf("failed to add vector to index %s: %w", propName, err)
-				}
-			}
+		if err := gs.vectorIndex.AddVectorForTenant(tenantID, propName, node.ID, vec); err != nil {
+			return fmt.Errorf("failed to add vector to index %s: %w", propName, err)
 		}
 	}
 	return nil
+}
+
+// vectorFromProperty extracts a float32 vector from a property value that is
+// either an explicit TypeVector or a numeric array (TypeFloatArray). ok is
+// false for any other type (the property is not indexable as a vector).
+func vectorFromProperty(propVal Value) ([]float32, bool, error) {
+	switch propVal.Type {
+	case TypeVector:
+		vec, err := propVal.AsVector()
+		if err != nil {
+			return nil, false, err
+		}
+		return vec, true, nil
+	case TypeFloatArray:
+		f64, err := propVal.AsFloatArray()
+		if err != nil {
+			return nil, false, err
+		}
+		vec := make([]float32, len(f64))
+		for i, f := range f64 {
+			vec[i] = float32(f)
+		}
+		return vec, true, nil
+	default:
+		return nil, false, nil
+	}
 }
 
 // RemoveNodeFromVectorIndexes removes a node's vectors from all of the
