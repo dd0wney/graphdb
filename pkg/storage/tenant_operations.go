@@ -195,6 +195,24 @@ func (gs *GraphStorage) GetNodesByLabelForTenant(tenantID, label string) []*Node
 	return nodes
 }
 
+// CountNodesByLabelForTenant returns how many nodes a tenant has with the
+// given label, reading len(index) directly instead of cloning the whole
+// bucket the way len(GetNodesByLabelForTenant(...)) does. The label index
+// is O(1) to size; the previous count path materialized and deep-cloned
+// every node in the bucket — for a 50k-node label that is 50k Clone() calls
+// under gs.mu.RLock just to discard them and take a length (audit M1).
+func (gs *GraphStorage) CountNodesByLabelForTenant(tenantID, label string) int {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+
+	tid := effectiveTenantID(tenantID)
+	labelMap := gs.tenantNodesByLabel[tid]
+	if labelMap == nil {
+		return 0
+	}
+	return len(labelMap[label])
+}
+
 // GetEdgesByTypeForTenant returns all edges with the given type for a specific tenant.
 func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Edge {
 	gs.mu.RLock()
