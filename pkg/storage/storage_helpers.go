@@ -337,20 +337,6 @@ func (gs *GraphStorage) edgeCount() int {
 	return total
 }
 
-// forEachEdgeUnlocked invokes fn for every edge across all shards.
-// Iteration stops early if fn returns false. Caller must hold
-// gs.mu.RLock (or all shard read locks) for the duration; concurrent
-// map writes during iteration will trip the Go runtime's map-race check.
-func (gs *GraphStorage) forEachEdgeUnlocked(fn func(*Edge) bool) {
-	for i := range gs.edgeShards {
-		for _, edge := range gs.edgeShards[i] {
-			if !fn(edge) {
-				return
-			}
-		}
-	}
-}
-
 // flattenEdgesForSnapshot collects every edge from every shard into a
 // single map for serialization. Used by the snapshot writer to preserve
 // the on-disk format (a flat map[uint64]*Edge) across the partition

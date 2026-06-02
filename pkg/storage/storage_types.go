@@ -66,6 +66,15 @@ type GraphStorage struct {
 	// (AUDIT_performance_saas_load_2026-06-02 § H4).
 	tenantNodeIDs map[tenantid.TenantID]map[uint64]struct{} // tenant -> set of node IDs
 
+	// tenantEdgeIDs is the edge analogue of tenantNodeIDs: the set of every
+	// edge ID owned by a tenant. It backs GetAllEdgesForTenant (and so the
+	// GraphQL edge connection resolvers) so a tenant's edge enumeration is
+	// O(tenant) instead of a full cross-tenant shard scan (H4). Same set-vs-
+	// slice rationale and same rebuild-via-addEdgeToTenantIndex property as
+	// tenantNodeIDs — and that rebuild only became correct once the edge
+	// tenant index was wired into snapshot-load + WAL-replay (#259).
+	tenantEdgeIDs map[tenantid.TenantID]map[uint64]struct{} // tenant -> set of edge IDs
+
 	// Compressed edge storage (optional)
 	compressedOutgoing map[uint64]*CompressedEdgeList // node ID -> compressed outgoing edges
 	compressedIncoming map[uint64]*CompressedEdgeList // node ID -> compressed incoming edges

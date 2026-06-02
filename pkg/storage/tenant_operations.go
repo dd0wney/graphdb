@@ -114,6 +114,13 @@ func (gs *GraphStorage) addEdgeToTenantIndex(edge *Edge) {
 		edge.ID,
 	)
 
+	// Add edge to the per-tenant enumeration set (the index
+	// GetAllEdgesForTenant reads). O(1) set insert; idempotent.
+	if gs.tenantEdgeIDs[tenantID] == nil {
+		gs.tenantEdgeIDs[tenantID] = make(map[uint64]struct{})
+	}
+	gs.tenantEdgeIDs[tenantID][edge.ID] = struct{}{}
+
 	// Update tenant stats
 	gs.incrementTenantEdgeCount(tenantID)
 }
@@ -123,28 +130,38 @@ func (gs *GraphStorage) addEdgeToTenantIndex(edge *Edge) {
 func (gs *GraphStorage) removeEdgeFromTenantIndex(edge *Edge) {
 	tenantID := effectiveTenantID(edge.TenantID)
 
-	typeMap := gs.tenantEdgesByType[tenantID]
-	if typeMap == nil {
-		return
-	}
+	// Local guard rather than an early return, for the same reason as
+	// removeNodeFromTenantIndex: the enumeration set and stats must be
+	// maintained even when the type map is absent (e.g. an empty-type edge,
+	// or a tenant whose type map was already GC'd), which the previous
+	// early-return-on-nil skipped — drifting EdgeCount.
+	if typeMap := gs.tenantEdgesByType[tenantID]; typeMap != nil {
+		ids := typeMap[edge.Type]
+		for i, id := range ids {
+			if id == edge.ID {
+				typeMap[edge.Type] = append(ids[:i], ids[i+1:]...)
+				break
+			}
+		}
 
-	// Remove edge from type index
-	ids := typeMap[edge.Type]
-	for i, id := range ids {
-		if id == edge.ID {
-			typeMap[edge.Type] = append(ids[:i], ids[i+1:]...)
-			break
+		// Clean up empty slices
+		if len(typeMap[edge.Type]) == 0 {
+			delete(typeMap, edge.Type)
+		}
+
+		// Clean up empty tenant map
+		if len(typeMap) == 0 {
+			delete(gs.tenantEdgesByType, tenantID)
 		}
 	}
 
-	// Clean up empty slices
-	if len(typeMap[edge.Type]) == 0 {
-		delete(typeMap, edge.Type)
-	}
-
-	// Clean up empty tenant map
-	if len(typeMap) == 0 {
-		delete(gs.tenantEdgesByType, tenantID)
+	// Remove from the per-tenant enumeration set; drop the tenant's set
+	// once empty so an offboarded tenant leaves no residue.
+	if idSet := gs.tenantEdgeIDs[tenantID]; idSet != nil {
+		delete(idSet, edge.ID)
+		if len(idSet) == 0 {
+			delete(gs.tenantEdgeIDs, tenantID)
+		}
 	}
 
 	// Update tenant stats
@@ -248,20 +265,40 @@ func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
 }
 
 // GetAllEdgesForTenant returns all edges belonging to a specific tenant.
+//
+// Edge analogue of GetAllNodesForTenant: it enumerates the tenant's own edge
+// IDs from tenantEdgeIDs (O(tenant size)) instead of scanning every shard
+// across all tenants and filtering (the former O(total-DB) cross-tenant
+// amplification that also stalled writers — Track P / H4). IDs are collected
+// under gs.mu.RLock, sorted ascending for deterministic pagination, then
+// cloned under per-shard RLocks after release. Same non-atomic-snapshot
+// tradeoff as GetAllNodesForTenant: an edge deleted between collection and
+// clone is skipped.
 func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) []*Edge {
-	gs.mu.RLock()
-	defer gs.mu.RUnlock()
-
 	tid := effectiveTenantID(tenantID)
 
-	var edges []*Edge
-	gs.forEachEdgeUnlocked(func(edge *Edge) bool {
-		edgeTenant := effectiveTenantID(edge.TenantID)
-		if edgeTenant == tid {
-			edges = append(edges, edge.Clone())
+	gs.mu.RLock()
+	idSet := gs.tenantEdgeIDs[tid]
+	ids := make([]uint64, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	gs.mu.RUnlock()
+
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	edges := make([]*Edge, 0, len(ids))
+	for _, id := range ids {
+		gs.rlockShard(id)
+		edge, exists := gs.lookupEdgeShard(id)
+		if exists {
+			edge = edge.Clone()
 		}
-		return true
-	})
+		gs.runlockShard(id)
+		if exists {
+			edges = append(edges, edge)
+		}
+	}
 
 	return edges
 }
