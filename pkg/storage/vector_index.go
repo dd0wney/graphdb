@@ -280,6 +280,25 @@ func (vi *VectorIndex) GetIndexMetricForTenant(
 	return index.Metric(), nil
 }
 
+// DimensionsForTenant returns the configured vector dimension of
+// (tenantID, propertyName)'s index and a presence flag. Used to validate an
+// incoming vector's length cheaply (no graph traversal) before the expensive
+// off-lock HNSW insert (Track P item 3 / H2): the storage write path decodes
+// + dimension-checks under gs.mu, then runs Insert after releasing it.
+func (vi *VectorIndex) DimensionsForTenant(tenantID tenantid.TenantID, propertyName string) (int, bool) {
+	if tenantID.IsEmpty() {
+		return 0, false
+	}
+	vi.mu.RLock()
+	defer vi.mu.RUnlock()
+
+	index, exists := vi.lookupIndexLocked(tenantID, propertyName)
+	if !exists {
+		return 0, false
+	}
+	return index.Dimensions(), true
+}
+
 // lookupIndexLocked returns (tenantID, propertyName)'s HNSWIndex and a
 // presence flag. Caller must hold vi.mu (read or write).
 func (vi *VectorIndex) lookupIndexLocked(tenantID tenantid.TenantID, propertyName string) (*vector.HNSWIndex, bool) {
