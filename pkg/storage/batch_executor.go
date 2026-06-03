@@ -38,8 +38,15 @@ func (b *Batch) Commit() error {
 
 func (b *Batch) executeCreateNode(op batchOp) error {
 	node := &Node{
-		ID:         op.nodeID,
-		Labels:     op.labels,
+		ID:     op.nodeID,
+		Labels: op.labels,
+		// Batch creation is tenant-blind, so nodes land in the default
+		// tenant — matching CreateNode -> CreateNodeWithTenant(DefaultTenantID).
+		// Without this stamp the node is owned by "" and every *ForTenant
+		// reader (GetNodeForTenant, the edge TenantID filter) rejects it as
+		// cross-tenant. (Track Q / Q3: bulk-imported data was invisible to
+		// the tenant-strict API every current consumer uses.)
+		TenantID:   DefaultTenantID,
 		Properties: op.properties,
 	}
 
@@ -50,6 +57,12 @@ func (b *Batch) executeCreateNode(op batchOp) error {
 	for _, label := range node.Labels {
 		b.graph.nodesByLabel[label] = append(b.graph.nodesByLabel[label], node.ID)
 	}
+
+	// Maintain the per-tenant indexes (tenantNodesByLabel + tenantNodeIDs +
+	// tenant stats) exactly as the normal create path does
+	// (persistNodeLocked -> addNodeToTenantIndex). The legacy global
+	// nodesByLabel above is not what GetNodesByLabelForTenant reads.
+	b.graph.addNodeToTenantIndex(node)
 
 	// Update property indexes
 	for key, value := range node.Properties {
@@ -80,6 +93,10 @@ func (b *Batch) executeCreateEdge(op batchOp) error {
 		FromNodeID: op.fromNodeID,
 		ToNodeID:   op.toNodeID,
 		Type:       op.edgeType,
+		// Same default-tenant stamp as executeCreateNode: the *ForTenant edge
+		// readers filter the global adjacency by edge.TenantID, so an unstamped
+		// ("") edge is silently dropped for the default tenant.
+		TenantID:   DefaultTenantID,
 		Properties: op.properties,
 		Weight:     op.weight,
 	}
@@ -93,6 +110,10 @@ func (b *Batch) executeCreateEdge(op batchOp) error {
 	// Update adjacency lists
 	b.graph.outgoingEdges[edge.FromNodeID] = append(b.graph.outgoingEdges[edge.FromNodeID], edge.ID)
 	b.graph.incomingEdges[edge.ToNodeID] = append(b.graph.incomingEdges[edge.ToNodeID], edge.ID)
+
+	// Maintain the per-tenant edge indexes (tenantEdgesByType + tenantEdgeIDs
+	// + tenant stats), mirroring persistEdgeLocked -> addEdgeToTenantIndex.
+	b.graph.addEdgeToTenantIndex(edge)
 
 	// Write to WAL for durability
 	if b.graph.hasWAL() {
