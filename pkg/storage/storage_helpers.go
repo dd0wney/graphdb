@@ -364,6 +364,28 @@ func (gs *GraphStorage) rebucketSnapshotEdges(flat map[uint64]*Edge) {
 	}
 }
 
+// rebuildEdgeAdjacencyFromSnapshot reconstructs the outgoing/incoming adjacency
+// indexes from the authoritative flat edge set on load. See the call site in
+// persistence.go for why adjacency is rebuilt rather than restored from the
+// serialized maps (the compressed representation is not snapshotted, so the
+// plain maps are empty under the default EnableEdgeCompression).
+//
+// For non-disk modes the read path (getEdgeIDsForNode) falls back to the plain
+// gs.outgoingEdges/incomingEdges maps, so repopulating them restores correctness
+// whether or not compression is enabled. Disk-backed adjacency persists in
+// edgeStore independently and is left untouched to avoid double-counting.
+func (gs *GraphStorage) rebuildEdgeAdjacencyFromSnapshot(flat map[uint64]*Edge) {
+	if gs.useDiskBackedEdges {
+		return
+	}
+	gs.outgoingEdges = make(map[uint64][]uint64)
+	gs.incomingEdges = make(map[uint64][]uint64)
+	for id, edge := range flat {
+		gs.outgoingEdges[edge.FromNodeID] = append(gs.outgoingEdges[edge.FromNodeID], id)
+		gs.incomingEdges[edge.ToNodeID] = append(gs.incomingEdges[edge.ToNodeID], id)
+	}
+}
+
 // allocateNodeID allocates a new node ID in a thread-safe manner using atomic operations.
 // This is a lock-free operation that provides much better throughput than mutex-based allocation.
 // Returns error if ID space is exhausted.

@@ -153,8 +153,20 @@ func (gs *GraphStorage) loadFromDisk() error {
 	gs.rebucketSnapshotEdges(snapshot.Edges)
 	gs.nodesByLabel = snapshot.NodesByLabel
 	gs.edgesByType = snapshot.EdgesByType
-	gs.outgoingEdges = snapshot.OutgoingEdges
-	gs.incomingEdges = snapshot.IncomingEdges
+	// Edge adjacency is a DERIVED index, rebuilt from the authoritative flat
+	// edge set — not restored from the serialized maps. The snapshot persists
+	// only the plain gs.outgoingEdges/incomingEdges; with edge compression
+	// enabled (the NewGraphStorage default), live adjacency migrates into the
+	// compressed representation (compressedOutgoing/Incoming) which is NOT
+	// serialized, leaving the plain maps empty at save time. A naive
+	// `= snapshot.OutgoingEdges` restore therefore loses ALL adjacency on
+	// reopen: edges load fine (GetEdge works) but GetOutgoingEdges/Incoming
+	// return nothing, silently breaking every traversal after a restart.
+	// Surfaced independently by two consumers (coi-screen path-finding +
+	// Stór reference-survival). Rebuilding here is config-independent and
+	// format-free (no snapshot schema bump). Disk-backed adjacency persists in
+	// edgeStore on its own, so skip the rebuild there to avoid double-counting.
+	gs.rebuildEdgeAdjacencyFromSnapshot(snapshot.Edges)
 	gs.nextNodeID = snapshot.NextNodeID
 	gs.nextEdgeID = snapshot.NextEdgeID
 	gs.stats = snapshot.Stats
