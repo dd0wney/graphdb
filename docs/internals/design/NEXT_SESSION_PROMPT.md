@@ -9,14 +9,12 @@
 Read this file first: `docs/internals/design/SESSION_HANDOFF_2026-06-03-2329Z.md`.
 Then `CLAUDE.md` § "Orient first", then `docs/NEXT_STEPS_2026-06-03.md`.
 
-State: **Track P tail (M3 + M7) is done in code but lives in 3 OPEN PRs, not on `main`.** `main` HEAD `66a116b` (unchanged this session). M3 = set-based label index (O(1) removal, no format bump); M7 = `Find*`→`*AcrossTenants` rename (mirror kept). The M7 rename surfaced a latent GraphQL cross-tenant leak, fixed in a stacked draft.
+State: **Track P tail (M3 + M7) is fully merged and closed on `main`** (HEAD `7d51148`). M3 = set-based label index (O(1) removal, no snapshot format bump); M7 = `Find*`→`*AcrossTenants` rename (mirror kept); plus a merged fix for a latent GraphQL cross-tenant schema leak the rename surfaced (#294/#296/#295 all landed). **Tracks P, Q, R, H are all closed → no earned critical path.**
 
-**First action — land the stack, in this order (do NOT start new work first):**
-1. Merge **#294** (Track P tail; base `main`).
-2. **#295** is a DRAFT stacked on `perf/label-index-set-m3`. BEFORE merging #294: `gh pr edit 295 --base main` OR merge #294 **without** `--delete-branch` (else GitHub auto-closes #295 — memory `feedback_stacked_pr_delete_branch_gotcha`). Then un-draft + merge #295.
-3. Merge **#296** (planning-doc closure; base `main`; order-agnostic).
-
-**Then:** no earned critical path. Open `NEXT_STEPS_2026-06-03.md`, run a planning checkpoint, or resolve an open question (#240/#241 disposition; real ICIJ corpus run). Readiest small item: the **batch delete/update tenant-index gap** (#288's sibling).
+**First action — there is NO queued work.** Run a planning checkpoint: open `NEXT_STEPS_2026-06-03.md` and pick the next track, or commission a fresh audit (the pattern that earned Track P). Off-path candidates, none promoted:
+- **Batch delete/update tenant-index gap** — `executeDeleteNode`/`executeUpdateNode` share the per-tenant-index omission #288 fixed for create; small, in-repo, the readiest item.
+- **#240/#241** disposition (adopt/close) — carried since 2026-05-24, cheap to resolve.
+- Live-consumer CI promotion of `scripts/consumer-drive.sh` (blocked on consumer-repo reachability); real ~814K ICIJ corpus run; productization; security audit.
 
 **Standing discipline:** storage tests asserting edge/traversal or tenant-visibility must `Close()`→reopen under the default compression config (memory `project_q3_storage_persistence_bugs`). New consumer divergence → tagged contract test + `CONSUMER_CONTRACTS.md` row. Invoke the relevant DSA skill before structure/algorithm decisions.
 
