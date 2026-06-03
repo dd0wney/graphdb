@@ -25,7 +25,7 @@ The 2026-06-02 perf-under-SaaS-load audit (`docs/internals/design/AUDIT_performa
 
 **What this gives the next session**: writes scale with tenant count (group commit), label-absent reads are O(tenant) not O(total-DB), and the HNSW hot paths no longer serialize behind `gs.mu` or recompute norms. The audit's MEASURED backlog is exhausted.
 
-**Deferred tail (decision-laden — NOT abandoned, see § Off-path queue):** M3 (label-index O(N²) bulk delete) needs a snapshot-format version bump; M7 (drop the global `nodesByLabel`/`edgesByType` mirror) is a public-API deprecation, not the dead-code delete the audit framed. M7 is the precondition for a clean M3. Both carry decisions in `SESSION_HANDOFF_2026-06-03-0220Z.md` and memory `project_track_p_m3_m7_deferred`.
+**Deferred tail — ✅ NOW CLOSED (2026-06-03, PR #294, see § Off-path queue):** M3 (label-index O(N²) bulk delete) and M7 (the global `nodesByLabel`/`edgesByType` mirror) shipped — both reframed by the code: M3 needed **no** snapshot-format bump (rebuild-on-load dissolved the premise), and M7 was a **rename** for explicit cross-tenant scope (`*AcrossTenants`), not a mirror-drop. Memory `project_track_p_m3_m7_deferred` updated.
 
 ### Track R / Track H — ✅ CLOSED (carried, unchanged)
 
@@ -76,7 +76,7 @@ Track P is the second audit-driven track to complete (Track R via the 2026-05-06
 - **(A) Consumer-driven correctness hardening** — **✅ SELECTED 2026-06-03.** Evidence-rich (dogfooding already found 2 bugs unit tests missed), needs no new audit ceremony, two live consumers ready to drive. Becomes **Track Q** above.
 - **(B) Commission a security audit** — the least-recently-audited dimension (last 2026-05-06); vector/embedding side-channels + the auth/tenant surface. Deferred: still a strong *future* move, but (A) has standing evidence now and (B) would re-incur audit ceremony before any fix ships.
 - **(C) Productization / operability** — onboarding/quickstart docs, single-node limitation framing, the deployment-ordering note (create indexes before traffic). Deferred to § Off-path; ships adoption value but isn't correctness-urgent.
-- **(D) Finish the Track P tail (M3/M7)** — deferred to § Off-path; gated on the snapshot-format + API-deprecation decisions, not "proceed" work.
+- **(D) Finish the Track P tail (M3/M7)** — ✅ DONE 2026-06-03 (PR #294); see § Off-path queue. The gating "decisions" dissolved on closer reading: M3 needed no format bump, and M7 was a rename, not a mirror-drop.
 
 **Don't re-open (A)'s evidence as license to manufacture sub-tracks** — Q1–Q4 are bounded by what the consumers actually surface; let the divergences drive scope, not speculation.
 
@@ -89,10 +89,15 @@ Track P is the second audit-driven track to complete (Track R via the 2026-05-06
 
 ## Off-path queue (deferred, with decisions teed up)
 
-### Track P tail — M3 + M7 (decision-laden)
+### Track P tail — M3 + M7 — ✅ DONE 2026-06-03 (PR #294, in review)
 
-- **M7 first**: drop the global `nodesByLabel`/`edgesByType` mirror. NOT a dead-code delete — live tenant-blind readers (`FindNodesByLabel`/`FindEdgesByType` at `query_operations.go:145,215`; `node_adjacency.go:57`) + snapshot-persisted. **Decision needed:** is the tenant-blind `Find*` API still wanted? If not, migrate its callers to per-tenant indexes, then drop the mirror.
-- **M3 after M7**: label-index O(K) removal → O(N²) bulk delete. The set fix needs the global mirror's persisted type changed → snapshot **format version bump**; doing M7 first removes the persisted global index entirely, making M3 a free per-tenant change. **Decision needed:** format bump vs sorted-slice (the latter doesn't fix the asymptote). See memory `project_track_p_m3_m7_deferred`.
+Both shipped on branch `perf/label-index-set-m3` (PR #294). The "decision-laden" framing below was resolved by trusting the code over the audit — both fixes turned out smaller *and* safer than the audit implied:
+
+- **M3 — label-index O(K)→O(1) removal. ✅** Global + per-tenant label/type indexes are now a set (`map[string]map[uint64]struct{}`); bulk delete's label-index cost goes O(N²)→O(N). **No snapshot format bump** — the audit's blocking premise was false: the global mirror is the union of the per-tenant indexes, already rebuilt-on-load from the flat node set (the edge-adjacency idiom), so its in-memory type is free to change while the on-disk JSON shape stays identical. Behavior preserved (sticky labels, deterministic sorted reads); benchmark-backed (`BenchmarkLabelIndexRemoval`: flat ~35 ns vs O(K) slice).
+- **M7 — `Find*` → `*AcrossTenants` rename, NOT mirror-drop. ✅** The audit's "drop the dead mirror" was wrong: the mirror serves genuinely cross-tenant callers (constraint validation, schema sampling, full-text index, query cardinality). The real defect was only the misleading tenant-blind *name*; the fix renames to the audit-A3b `*AcrossTenants` convention (cf. `GetAllNodesAcrossTenants`) and keeps the mirror. Enterprise repo confirmed 0 references.
+- **Surfaced follow-up — PR #295 (stacked draft):** the M7 rename made visible a pre-existing **latent** cross-tenant leak in GraphQL aggregate-schema generation (property-key *names* sampled cross-tenant). Not live-exploitable — the production `limits.go` schema path uses static node types and never sampled; the aggregation generator is test-only — but fixed as hardening (per-tenant sampler + regression test). See memory `project_track_p_m3_m7_deferred`.
+
+**Track P tail is complete; Track P is fully closed end-to-end.**
 
 ### Carried follow-ups
 
@@ -109,8 +114,8 @@ Track P is the second audit-driven track to complete (Track R via the 2026-05-06
 
 ## Out of scope (carry-forward + new)
 
-- **M3/M7 without their decisions** — do not implement either on a generic "proceed"; both need the format / API call (above).
-- **Snapshot on-disk format changes without a version bump** — the snapshot file is customer-data-equivalent (CLAUDE.md § Snapshot format stability). M3's set fix is the live example.
+- ~~**M3/M7 without their decisions**~~ — RESOLVED 2026-06-03 (PR #294): the decisions were taken deliberately — M3 shipped with no format bump, M7 as a rename. This guard no longer applies.
+- **Snapshot on-disk format changes without a version bump** — the snapshot file is customer-data-equivalent (CLAUDE.md § Snapshot format stability). (M3 was expected to be the live example but shipped *without* a format change — it kept the on-disk shape and rebuilds the label index from the flat node set on load.)
 - **New perf tracks** — the perf dimension has now had two audits (2026-05-06, 2026-06-02) and a fully-shipped backlog. Don't open a third perf track without a *new* measured bottleneck.
 - **`coi-screen` redesign** — it's a BUILT MVP in a private repo; Track Q drives it as a consumer, it does not get re-architected here.
 
