@@ -14,7 +14,7 @@ import (
 // values to the response. Threaded through so the deps reach
 // createNodeAggregateResolver and any future response-emitting
 // resolvers added here.
-func buildNodeAggregateTypes(gs *storage.GraphStorage, label string, _ *MaskingDeps) (*graphql.Object, *graphql.Object) {
+func buildNodeAggregateTypes(label string, _ *MaskingDeps, sample nodeSampler) (*graphql.Object, *graphql.Object) {
 	// Create regular node type
 	nodeType := graphql.NewObject(graphql.ObjectConfig{
 		Name: label,
@@ -25,8 +25,10 @@ func buildNodeAggregateTypes(gs *storage.GraphStorage, label string, _ *MaskingD
 		},
 	})
 
-	// Get sample nodes to discover properties
-	sampleNodes, _ := gs.FindNodesByLabelAcrossTenants(label)
+	// Get sample nodes to discover properties. The sampler is tenant-scoped
+	// for the per-tenant schema (GenerateSchemaWithAggregationForTenant), so a
+	// foreign tenant's property keys never become fields in this schema.
+	sampleNodes := sample(label)
 	propertyFields := graphql.Fields{}
 
 	// Build a map of property keys to their types
