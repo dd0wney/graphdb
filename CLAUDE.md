@@ -66,7 +66,7 @@ Every public storage method has a `Foo` (tenant-blind, legacy) and `FooForTenant
 
 ### Partitioned shard maps + per-shard locks (A4 / A4-edges idiom)
 
-`gs.nodeShards [256]map[uint64]*Node` and `gs.edgeShards [256]map[uint64]*Edge` are partitioned by `id & shardMask`. Helpers in `pkg/storage/storage_helpers.go`: `lookupNodeShard` / `storeNodeInShard` / `deleteNodeShardEntry` / `nodeCount` / `forEachNodeUnlocked` (and edge variants). Rules:
+`gs.nodeShards [256]map[uint64]*Node` and `gs.edgeShards [256]map[uint64]*Edge` are partitioned by `id & shardMask`. Helpers in `pkg/storage/storage_helpers.go`: `lookupNodeShard` / `storeNodeInShard` / `deleteNodeShardEntry` / `nodeCount` (and edge variants), plus `forEachNodeUnlocked` (node-only — the `forEachEdgeUnlocked` variant was removed in #261). Rules:
 
 - **Readers** (`GetNode`, `GetEdge`): take `rlockShard(id)` only.
 - **Writers** (`Create*`, `Update*`, `Delete*`, cascade helpers): take `gs.mu.Lock` for global indexes (`nodesByLabel`, `edgesByType`, `outgoingEdges`, `incomingEdges`, tenant indexes) PLUS `lockShard(id)` for the shardmap mutation.
