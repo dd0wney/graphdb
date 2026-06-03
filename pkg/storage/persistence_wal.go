@@ -87,6 +87,42 @@ func (gs *GraphStorage) waitWALPending(operation wal.OpType, pending *wal.Pendin
 	}
 }
 
+// appendWALBatch durably writes a batch of WAL entries with a single fsync —
+// all-or-none at the fsync boundary — and returns once durable. This is the
+// atomic-commit primitive for Transaction.Commit: a crash before the fsync
+// leaves none of the batch in the WAL, after leaves all of it (replay then
+// restores the whole transaction via the existing per-op opcodes).
+//
+// Unlike the fire-and-forget single-op writeToWAL/enqueueWAL paths, this
+// PROPAGATES the error: a transaction whose commit did not become durable must
+// fail loudly so the caller knows.
+//
+// Atomicity holds on the batched and plain WAL (both back onto WAL.Append-
+// BatchAtomic's single fsync). The compressed WAL has no batch primitive, so it
+// falls back to sequential Append — durable but NOT atomic across the batch;
+// compression is opt-in and uncommon, and this is documented rather than
+// silently atomic.
+func (gs *GraphStorage) appendWALBatch(entries []wal.BatchEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	switch {
+	case gs.useBatching && gs.batchedWAL != nil:
+		return gs.batchedWAL.AppendBatchAtomic(entries)
+	case gs.useCompression && gs.compressedWAL != nil:
+		// Non-atomic fallback (see doc comment): each entry appended in order.
+		for _, e := range entries {
+			if _, err := gs.compressedWAL.Append(e.OpType, e.Data); err != nil {
+				return err
+			}
+		}
+		return nil
+	case gs.wal != nil:
+		return gs.wal.AppendBatchAtomic(entries)
+	}
+	return nil // No WAL configured (in-memory only).
+}
+
 // GetCurrentLSN returns the current LSN (Log Sequence Number) from the WAL
 // This is used by replication to track the latest position in the write-ahead log
 func (gs *GraphStorage) GetCurrentLSN() uint64 {

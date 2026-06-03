@@ -157,8 +157,35 @@ func (bw *BatchedWAL) flush() {
 	}
 }
 
-// AppendBatch is a helper method on WAL to write multiple entries with single fsync
+// BatchEntry is one (opType, data) pair for an atomic batch write. It is the
+// exported input to AppendBatchAtomic — the storage layer's transaction-commit
+// path builds these directly (the internal pendingEntry carries a done-channel
+// the synchronous atomic path does not need).
+type BatchEntry struct {
+	OpType OpType
+	Data   []byte
+}
+
+// AppendBatch writes multiple buffered entries with a single fsync. Used by
+// BatchedWAL.flush; delegates to AppendBatchAtomic so the write/flush/fsync
+// logic lives in one place.
 func (w *WAL) AppendBatch(entries []*pendingEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	batch := make([]BatchEntry, len(entries))
+	for i, e := range entries {
+		batch[i] = BatchEntry{OpType: e.opType, Data: e.data}
+	}
+	return w.AppendBatchAtomic(batch)
+}
+
+// AppendBatchAtomic writes all entries then a SINGLE flush + fsync, so the
+// whole batch is durable all-or-none at the fsync boundary — the primitive a
+// transaction commit needs for atomic durability. Synchronous: returns once
+// durable (no done-channel). On a mid-batch write error it rolls back the LSN
+// counter and returns the error.
+func (w *WAL) AppendBatchAtomic(entries []BatchEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -172,8 +199,8 @@ func (w *WAL) AppendBatch(entries []*pendingEntry) error {
 
 		walEntry := Entry{
 			LSN:       w.currentLSN,
-			OpType:    entry.opType,
-			Data:      entry.data,
+			OpType:    entry.OpType,
+			Data:      entry.Data,
 			Checksum:  0, // Will be calculated in writeEntry
 			Timestamp: time.Now().Unix(),
 		}
@@ -199,6 +226,15 @@ func (w *WAL) AppendBatch(entries []*pendingEntry) error {
 	}
 
 	return nil
+}
+
+// AppendBatchAtomic writes a batch of entries to the underlying WAL with a
+// single fsync (all-or-none at the fsync boundary), bypassing the background-
+// flush queue. The underlying WAL serializes this against the background
+// flusher via its own mutex, so it is safe to call concurrently with ticker
+// flushes. Used by Transaction.Commit for atomic commit durability.
+func (bw *BatchedWAL) AppendBatchAtomic(entries []BatchEntry) error {
+	return bw.wal.AppendBatchAtomic(entries)
 }
 
 // calculateChecksum calculates CRC32 checksum for entry data
