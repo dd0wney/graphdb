@@ -19,6 +19,7 @@ import "testing"
 // tenant — matching CreateNode, which delegates to CreateNodeWithTenant(
 // DefaultTenantID, ...). These assertions read with tenantID "" (-> default via
 // effectiveTenantID), exactly as coi-screen does (cmd/coi/main.go passes "").
+// CONSUMER CONTRACT: CC4-bulkimport-tenant-visible — coi-screen / import-icij (#288)
 func TestBatchCommit_VisibleToForTenantReaders(t *testing.T) {
 	gs, err := NewGraphStorage(t.TempDir())
 	if err != nil {
@@ -83,6 +84,7 @@ func TestBatchCommit_VisibleToForTenantReaders(t *testing.T) {
 // load rebuild re-buckets it correctly — the path the in-memory test above
 // can't reach. Without the TenantID stamp, GetNodeForTenant and the edge filter
 // fail post-reload even if the label index happens to rebuild.
+// CONSUMER CONTRACT: CC4-bulkimport-tenant-visible — coi-screen / import-icij (#288)
 func TestBatchCommit_VisibleAfterReopen(t *testing.T) {
 	dir := t.TempDir()
 

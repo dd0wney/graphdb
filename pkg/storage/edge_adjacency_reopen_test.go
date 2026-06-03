@@ -12,6 +12,7 @@ import "testing"
 // traversal after a restart. Uses the DEFAULT config (compression on) and the
 // NORMAL create path, so it guards the bug for every consumer, not just bulk
 // import.
+// CONSUMER CONTRACT: CC3-adjacency-reopen — coi-screen, Stór (#287)
 func TestEdgeAdjacencySurvivesReopen(t *testing.T) {
 	dir := t.TempDir()
 

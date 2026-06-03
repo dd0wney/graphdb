@@ -16,6 +16,7 @@ import (
 // Well-separated planted clusters → unambiguous known answer (not the
 // synthetic-uniform concentration regime; see memory
 // reference_hnsw_construction_cost_data_dependent).
+// CONSUMER CONTRACT: CC2-vector-nn-identity — understand-graphdb (#283)
 func TestVectorSearchForTenant_KnownAnswerOrdering(t *testing.T) {
 	gs, err := NewGraphStorage(t.TempDir())
 	if err != nil {

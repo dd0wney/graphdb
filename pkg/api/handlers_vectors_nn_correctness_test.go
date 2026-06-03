@@ -22,6 +22,7 @@ import (
 // cluster, so the correct top result is unambiguous (deterministic known
 // answer — not the synthetic-uniform concentration-of-measure regime where
 // recall is legitimately fuzzy; see memory reference_hnsw_construction_cost).
+// CONSUMER CONTRACT: CC2-vector-nn-identity — understand-graphdb (#283)
 func TestVectorSearch_NearestNeighbourCorrectness(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()

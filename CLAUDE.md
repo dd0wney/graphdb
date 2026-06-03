@@ -54,6 +54,13 @@ Per the user's global `CLAUDE.md`, run `/review` then `/preflight` before openin
 
 Always pass `--delete-branch` to `gh pr merge` so squash-merged branches don't accumulate as stale local references — that debt was the H3 task this repo just closed (#69).
 
+### Consumer contracts
+
+graphdb owns regression tests for behaviours its downstream consumers depend on. See
+`docs/CONSUMER_CONTRACTS.md` (catalogue + growth rule) and `grep -rn "CONSUMER CONTRACT:" pkg/`.
+When driving a consumer surfaces a divergence, fix it in graphdb with a tagged contract test +
+a catalogue row. `scripts/consumer-drive.sh` runs the real consumers on demand.
+
 ### Atomic-commit convention
 
 PRs are squash-merged with `(#NN)` suffix on main (see `git log --oneline | head`). Multi-commit PRs are fine while in flight — squash collapses them. Within a PR, prefer the structural / lock-grain / bench split that A4 (#67) and A4-edges (#70) used: each commit self-consistent, last commit captures the verification numbers.

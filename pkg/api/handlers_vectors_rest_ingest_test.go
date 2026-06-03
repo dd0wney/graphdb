@@ -35,6 +35,7 @@ import (
 // Well-separated planted clusters give an unambiguous known answer (not the
 // synthetic-uniform concentration regime; see memory
 // reference_hnsw_construction_cost_data_dependent).
+// CONSUMER CONTRACT: CC1-rest-vector-ingest — understand-graphdb neural (#286)
 func TestVectorSearch_RESTFloatArrayIngestionRoundTrip(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
