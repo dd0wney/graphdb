@@ -52,6 +52,17 @@ Per `NEXT_STEPS_2026-05-15.md` §§ Track R, Track H. The Track R verification g
 
 **Start with Q1** (it's the root-cause gap and needs no consumer setup), then Q2/Q3 in parallel as the consumers are available, then Q4.
 
+### Reconciliation 2026-06-03 — Transaction durability shipped (code-vs-doc discrepancy)
+
+Before Track Q started, a code read surfaced that this doc's "all write paths are group-commit-converted" framing didn't extend to the `Transaction` API: `Transaction.Commit` applied buffered changes straight to the shard maps and **bypassed WAL durability, tenant indexes, vector/property indexes, stats, and observers** — committed transactions were neither crash-durable nor visible to any `*ForTenant` read. (Per CLAUDE.md "trust the code, surface the discrepancy"; `Transaction` had zero non-test callers — the durable production bulk path is `Batch` — so it was dormant, not a live regression.)
+
+Completed as a real, durable, tenant-aware Go primitive (brainstorm-approved spec `docs/superpowers/specs/2026-06-03-transaction-durability-design.md`):
+
+- **#277** spec; **#278** extract shared `persistNodeLocked`/`persistEdgeLocked` (single source of truth for "persist a node/edge"); **#279** `wal.AppendBatchAtomic` + `gs.appendWALBatch` (single-fsync all-or-none batch durability on both WAL modes); **#280** rewrite `Transaction.Commit` to route every buffered op through the persist helpers + one atomic batch fsync, add `BeginTransactionForTenant`, validate references all-or-none, apply vectors + dispatch observers off-lock.
+- Scope: creates + updates, last-writer-wins, internal Go API (no client surface). **Deferred:** transaction deletes (`tx.DeleteNode`/cascade), conflict detection, and a client-facing transaction API — all documented in the spec § Out of scope.
+
+This was a side-quest off the Track Q critical path; **Track Q remains selected but not yet started.**
+
 ---
 
 ## Decision points
