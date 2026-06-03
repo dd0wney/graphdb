@@ -90,7 +90,7 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 
 	tid := effectiveTenantID(tenantID)
 	if labelMap := gs.tenantNodesByLabel[tid]; labelMap != nil {
-		for _, existingID := range labelMap[uniqueLabel] {
+		for existingID := range labelMap[uniqueLabel] {
 			existing, exists := gs.lookupNodeShard(existingID)
 			if !exists {
 				continue
@@ -207,7 +207,7 @@ func (gs *GraphStorage) persistNodeLocked(node *Node) ([]vectorInsertPlan, error
 
 	// Global label index (tenant-blind, backward compatibility).
 	for _, label := range node.Labels {
-		gs.nodesByLabel[label] = append(gs.nodesByLabel[label], node.ID)
+		addToLabelIndex(gs.nodesByLabel, label, node.ID)
 	}
 
 	// Per-tenant indexes (label + enumeration set + stats).

@@ -57,7 +57,7 @@ func (gs *GraphStorage) replayCreateNode(entry *wal.Entry) error {
 	// Replay node creation
 	gs.storeNodeInShard(&node)
 	for _, label := range node.Labels {
-		gs.nodesByLabel[label] = append(gs.nodesByLabel[label], node.ID)
+		addToLabelIndex(gs.nodesByLabel, label, node.ID)
 	}
 	// H4.3: mirror the tenant-scoped label index. Without this, the
 	// per-tenant GraphQL schema generator (which lists labels from
@@ -129,7 +129,7 @@ func (gs *GraphStorage) replayCreateEdge(entry *wal.Entry) error {
 
 	// Replay edge creation
 	gs.storeEdgeInShard(&edge)
-	gs.edgesByType[edge.Type] = append(gs.edgesByType[edge.Type], edge.ID)
+	addToLabelIndex(gs.edgesByType, edge.Type, edge.ID)
 
 	// Rebuild the per-tenant type index too — not just the global one.
 	// Sibling of replayCreateNode's addNodeToTenantIndex (H4.3): without

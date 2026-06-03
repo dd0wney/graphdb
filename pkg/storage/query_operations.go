@@ -142,12 +142,12 @@ func (gs *GraphStorage) FindNodesByLabel(label string) ([]*Node, error) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	nodeIDs, exists := gs.nodesByLabel[label]
+	bucket, exists := gs.nodesByLabel[label]
 	if !exists {
 		return []*Node{}, nil
 	}
 
-	return gs.buildNodeListFromIDs(nodeIDs), nil
+	return gs.buildNodeListFromIDs(sortedBucketIDs(bucket)), nil
 }
 
 // FindNodesByProperty finds nodes with a specific property value.
@@ -212,10 +212,10 @@ func (gs *GraphStorage) FindEdgesByType(edgeType string) ([]*Edge, error) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	edgeIDs, exists := gs.edgesByType[edgeType]
+	bucket, exists := gs.edgesByType[edgeType]
 	if !exists {
 		return []*Edge{}, nil
 	}
 
-	return gs.buildEdgeListFromIDs(edgeIDs), nil
+	return gs.buildEdgeListFromIDs(sortedBucketIDs(bucket)), nil
 }
