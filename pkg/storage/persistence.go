@@ -62,8 +62,8 @@ func (gs *GraphStorage) Snapshot() error {
 	}{
 		Nodes:           gs.flattenNodesForSnapshot(),
 		Edges:           gs.flattenEdgesForSnapshot(),
-		NodesByLabel:    gs.nodesByLabel,
-		EdgesByType:     gs.edgesByType,
+		NodesByLabel:    flattenLabelIndex(gs.nodesByLabel),
+		EdgesByType:     flattenLabelIndex(gs.edgesByType),
 		OutgoingEdges:   gs.outgoingEdges,
 		IncomingEdges:   gs.incomingEdges,
 		PropertyIndexes: propertyIndexSnapshots,
@@ -151,8 +151,31 @@ func (gs *GraphStorage) loadFromDisk() error {
 
 	gs.rebucketSnapshotNodes(snapshot.Nodes)
 	gs.rebucketSnapshotEdges(snapshot.Edges)
-	gs.nodesByLabel = snapshot.NodesByLabel
-	gs.edgesByType = snapshot.EdgesByType
+	// The global label/type indexes are DERIVED indexes: their MEMBERSHIP is
+	// rebuilt below from the authoritative flat node/edge set (mirroring how the
+	// per-tenant indexes and edge adjacency are rebuilt — see below + the
+	// rebuildEdgeAdjacencyFromSnapshot comment). This is what lets the in-memory
+	// index be a set without a snapshot format bump: the serialized form stays
+	// map[string][]uint64 for on-disk compatibility.
+	//
+	// We still seed the KEYS from the serialized index so a "sticky" label/type
+	// — one whose last node/edge was deleted, leaving an empty bucket — stays
+	// registered across restart (GetAllLabels and the GraphQL schema built from
+	// it keep exposing it). Pre-Path-C this happened implicitly because the
+	// empty []uint64 was serialized and restored; here membership comes from the
+	// flat set and the empty buckets are reconstructed from the keys.
+	gs.nodesByLabel = make(labelIndex)
+	gs.edgesByType = make(labelIndex)
+	for label := range snapshot.NodesByLabel {
+		if gs.nodesByLabel[label] == nil {
+			gs.nodesByLabel[label] = make(map[uint64]struct{})
+		}
+	}
+	for edgeType := range snapshot.EdgesByType {
+		if gs.edgesByType[edgeType] == nil {
+			gs.edgesByType[edgeType] = make(map[uint64]struct{})
+		}
+	}
 	// Edge adjacency is a DERIVED index, rebuilt from the authoritative flat
 	// edge set — not restored from the serialized maps. The snapshot persists
 	// only the plain gs.outgoingEdges/incomingEdges; with edge compression
@@ -192,6 +215,9 @@ func (gs *GraphStorage) loadFromDisk() error {
 	// Sibling fix to the WAL-replay fix in persistence_replay.go's
 	// replayCreateNode (H4.3).
 	for _, node := range snapshot.Nodes {
+		for _, label := range node.Labels {
+			addToLabelIndex(gs.nodesByLabel, label, node.ID)
+		}
 		gs.addNodeToTenantIndex(node)
 	}
 
@@ -202,6 +228,7 @@ func (gs *GraphStorage) loadFromDisk() error {
 	// defect H4.3 fixed on the node side; addEdgeToTenantIndex also rebuilds
 	// per-tenant EdgeCount stats.
 	for _, edge := range snapshot.Edges {
+		addToLabelIndex(gs.edgesByType, edge.Type, edge.ID)
 		gs.addEdgeToTenantIndex(edge)
 	}
 

@@ -47,7 +47,7 @@ import (
 //   - Zipfian (hot-set): 80% of reads target 20% of nodes. Surfaces
 //     intra-shard contention that the partition can't fix; if A4 still
 //     clears ≥2× here, that's a much stronger claim than uniform alone.
-//   - Mixed: 90% GetNode (now shard-RLock) + 10% FindNodesByLabel
+//   - Mixed: 90% GetNode (now shard-RLock) + 10% FindNodesByLabelAcrossTenants
 //     (still gs.mu.RLock). Surfaces whether the global-state-reader
 //     path becomes the new bottleneck once GetNode is fast.
 //
@@ -146,11 +146,11 @@ var benchSink atomic.Pointer[Node]
 
 // doRead performs one read under the given access pattern. For
 // accessMixed, 1-in-10 iterations swaps the GetNode for a
-// FindNodesByLabel scan (the global-state path that still takes
+// FindNodesByLabelAcrossTenants scan (the global-state path that still takes
 // gs.mu.RLock).
 func doRead(pattern accessPattern, gs *GraphStorage, ids []uint64, rng *rand.Rand) {
 	if pattern == accessMixed && rng.IntN(10) == 0 {
-		nodes, _ := gs.FindNodesByLabel("BenchNode")
+		nodes, _ := gs.FindNodesByLabelAcrossTenants("BenchNode")
 		if len(nodes) > 0 {
 			benchSink.Store(nodes[0])
 		}
@@ -282,7 +282,7 @@ func (gs *GraphStorage) getNodeViaGlobalRLock(nodeID uint64) (*Node, error) {
 
 func doReadLegacy(pattern accessPattern, gs *GraphStorage, ids []uint64, rng *rand.Rand) {
 	if pattern == accessMixed && rng.IntN(10) == 0 {
-		nodes, _ := gs.FindNodesByLabel("BenchNode")
+		nodes, _ := gs.FindNodesByLabelAcrossTenants("BenchNode")
 		if len(nodes) > 0 {
 			benchSink.Store(nodes[0])
 		}

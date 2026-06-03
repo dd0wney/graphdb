@@ -318,7 +318,7 @@ func (gs *GraphStorage) persistEdgeLocked(edge *Edge) error {
 	gs.unlockShard(edge.ID)
 
 	// Global type index (tenant-blind, backward compatibility).
-	gs.edgesByType[edge.Type] = append(gs.edgesByType[edge.Type], edge.ID)
+	addToLabelIndex(gs.edgesByType, edge.Type, edge.ID)
 
 	// Per-tenant indexes (type + enumeration set + stats).
 	gs.addEdgeToTenantIndex(edge)

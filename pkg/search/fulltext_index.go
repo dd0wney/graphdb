@@ -29,10 +29,10 @@ func (fti *FullTextIndex) IndexPrepared(nodes []*storage.Node, labels, propertie
 // IndexNodes indexes all nodes with specified labels and properties
 func (fti *FullTextIndex) IndexNodes(labels []string, properties []string) error {
 	// Collect all nodes WITHOUT holding the index lock to prevent deadlock
-	// (FindNodesByLabel acquires storage locks internally)
+	// (FindNodesByLabelAcrossTenants acquires storage locks internally)
 	var nodesToIndex []*storage.Node
 	for _, label := range labels {
-		nodes, err := fti.gs.FindNodesByLabel(label)
+		nodes, err := fti.gs.FindNodesByLabelAcrossTenants(label)
 		if err != nil {
 			return fmt.Errorf("failed to get nodes for label %s: %w", label, err)
 		}

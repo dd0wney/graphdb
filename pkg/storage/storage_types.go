@@ -38,8 +38,8 @@ type GraphStorage struct {
 	edgeShards [256]map[uint64]*Edge
 
 	// Indexes for fast lookups
-	nodesByLabel    map[string][]uint64       // label -> node IDs
-	edgesByType     map[string][]uint64       // edge type -> edge IDs
+	nodesByLabel    labelIndex                // label -> set of node IDs (O(1) remove; see node_indexing.go)
+	edgesByType     labelIndex                // edge type -> set of edge IDs
 	outgoingEdges   map[uint64][]uint64       // node ID -> outgoing edge IDs (uncompressed)
 	incomingEdges   map[uint64][]uint64       // node ID -> incoming edge IDs (uncompressed)
 	propertyIndexes map[string]*PropertyIndex // property key -> index
@@ -49,9 +49,9 @@ type GraphStorage struct {
 	// Keyed by tenantid.TenantID since audit task A1 (2026-05-06); public
 	// methods that take "tenantID string" still convert at the boundary
 	// until A3 migrates the public surface.
-	tenantNodesByLabel map[tenantid.TenantID]map[string][]uint64 // tenant -> label -> node IDs
-	tenantEdgesByType  map[tenantid.TenantID]map[string][]uint64 // tenant -> edge type -> edge IDs
-	tenantStats        map[tenantid.TenantID]*TenantStats        // tenant -> usage statistics
+	tenantNodesByLabel map[tenantid.TenantID]labelIndex   // tenant -> label -> set of node IDs
+	tenantEdgesByType  map[tenantid.TenantID]labelIndex   // tenant -> edge type -> set of edge IDs
+	tenantStats        map[tenantid.TenantID]*TenantStats // tenant -> usage statistics
 
 	// tenantNodeIDs is the per-tenant node-ID enumeration index: the set
 	// of every node ID owned by a tenant, label or not. It exists so

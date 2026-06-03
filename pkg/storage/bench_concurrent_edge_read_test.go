@@ -44,7 +44,7 @@ import (
 //
 // One difference from A4's harness: the "Mixed" axis here uses
 // GetOutgoingEdges (still gs.mu.RLock — the global adjacency map
-// path) rather than FindNodesByLabel. Same role: surfaces the next
+// path) rather than FindNodesByLabelAcrossTenants. Same role: surfaces the next
 // global-state-reader bottleneck after edge point lookups become fast.
 
 // edgeBenchCorpusEdgeFanout is the number of outgoing edges per node

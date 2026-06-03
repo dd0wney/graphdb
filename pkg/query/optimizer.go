@@ -391,7 +391,7 @@ func (o *Optimizer) estimateCardinality(pattern *MatchClause) int {
 	if len(firstPattern.Nodes) > 0 && len(firstPattern.Nodes[0].Labels) > 0 {
 		label := firstPattern.Nodes[0].Labels[0]
 		// Get actual count from graph statistics
-		labelNodes, err := o.graph.FindNodesByLabel(label)
+		labelNodes, err := o.graph.FindNodesByLabelAcrossTenants(label)
 		if err == nil {
 			return len(labelNodes)
 		}

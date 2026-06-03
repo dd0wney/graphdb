@@ -426,7 +426,7 @@ func TestEdgeCase_LabelCombinations(t *testing.T) {
 
 			// Try to find by label if labels exist
 			if len(tc.labels) > 0 {
-				nodes, _ := gs.FindNodesByLabel(tc.labels[0])
+				nodes, _ := gs.FindNodesByLabelAcrossTenants(tc.labels[0])
 				t.Logf("    Found %d nodes with label '%s'", len(nodes), tc.labels[0])
 			}
 		}

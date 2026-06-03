@@ -77,7 +77,7 @@ func TestCrashRecovery(t *testing.T) {
 		}
 
 		// Verify specific nodes exist
-		users, _ := gs.FindNodesByLabel("User")
+		users, _ := gs.FindNodesByLabelAcrossTenants("User")
 		if len(users) != 3 {
 			t.Errorf("Expected 3 User nodes, got %d", len(users))
 		}
@@ -98,7 +98,7 @@ func TestCrashRecovery(t *testing.T) {
 		}
 
 		// Verify edges
-		edges, _ := gs.FindEdgesByType("VERIFIED_BY")
+		edges, _ := gs.FindEdgesByTypeAcrossTenants("VERIFIED_BY")
 		if len(edges) != 1 {
 			t.Errorf("Expected 1 VERIFIED_BY edge, got %d", len(edges))
 		}
@@ -144,7 +144,7 @@ func TestWALReplayOrder(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify order is maintained
-		users, _ := gs.FindNodesByLabel("User")
+		users, _ := gs.FindNodesByLabelAcrossTenants("User")
 		if len(users) != 5 {
 			t.Fatalf("Expected 5 users, got %d", len(users))
 		}
@@ -193,7 +193,7 @@ func TestPartialSnapshot(t *testing.T) {
 		gs, _ := NewGraphStorage(dataDir)
 		defer func() { _ = gs.Close() }()
 
-		users, _ := gs.FindNodesByLabel("User")
+		users, _ := gs.FindNodesByLabelAcrossTenants("User")
 		if len(users) != 4 {
 			t.Errorf("Expected 4 users (2 from snapshot + 2 from WAL), got %d", len(users))
 		}

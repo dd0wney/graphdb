@@ -29,16 +29,16 @@ func NewGraphStorage(dataDir string) (*GraphStorage, error) {
 // NewGraphStorageWithConfig creates a new graph storage engine with custom config
 func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 	gs := &GraphStorage{
-		nodesByLabel:    make(map[string][]uint64),
-		edgesByType:     make(map[string][]uint64),
+		nodesByLabel:    make(labelIndex),
+		edgesByType:     make(labelIndex),
 		outgoingEdges:   make(map[uint64][]uint64),
 		incomingEdges:   make(map[uint64][]uint64),
 		propertyIndexes: make(map[string]*PropertyIndex),
 		vectorIndex:     NewVectorIndex(),
 		// Tenant-scoped indexes for multi-tenancy.
 		// Keyed by tenantid.TenantID since audit task A1 (2026-05-06).
-		tenantNodesByLabel: make(map[tenantid.TenantID]map[string][]uint64),
-		tenantEdgesByType:  make(map[tenantid.TenantID]map[string][]uint64),
+		tenantNodesByLabel: make(map[tenantid.TenantID]labelIndex),
+		tenantEdgesByType:  make(map[tenantid.TenantID]labelIndex),
 		tenantStats:        make(map[tenantid.TenantID]*TenantStats),
 		tenantNodeIDs:      make(map[tenantid.TenantID]map[uint64]struct{}),
 		tenantEdgeIDs:      make(map[tenantid.TenantID]map[uint64]struct{}),

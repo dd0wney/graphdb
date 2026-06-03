@@ -35,7 +35,7 @@ func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 		}
 
 		// Add 3 edges. Edge IDs aren't retained — the test's assertions
-		// are on counts / FindEdgesByType, not on specific edges.
+		// are on counts / FindEdgesByTypeAcrossTenants, not on specific edges.
 		for i := 0; i < 3; i++ {
 			if _, err := batch.AddEdge(nodeIDs[i], nodeIDs[i+1], "KNOWS", map[string]Value{
 				"since": IntValue(2020 + int64(i)),
@@ -87,12 +87,12 @@ func TestBatchDurability_CrashAfterCommit(t *testing.T) {
 		}
 
 		// Verify specific data
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		if len(persons) != 5 {
 			t.Errorf("After crash: Expected 5 Person nodes, got %d", len(persons))
 		}
 
-		knows, _ := gs.FindEdgesByType("KNOWS")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		if len(knows) != 3 {
 			t.Errorf("After crash: Expected 3 KNOWS edges, got %d", len(knows))
 		}
@@ -205,7 +205,7 @@ func TestBatchDurability_MixedOperations(t *testing.T) {
 		}
 
 		// Check if new nodes survived
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		expectedNodes := 3 // Alice, Bob, Dave (Charlie deleted)
 		if len(persons) != expectedNodes {
 			t.Errorf("After crash: Expected %d Person nodes, got %d",
@@ -213,7 +213,7 @@ func TestBatchDurability_MixedOperations(t *testing.T) {
 		}
 
 		// Check if edges survived
-		knows, _ := gs.FindEdgesByType("KNOWS")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		expectedEdges := 2
 		if len(knows) != expectedEdges {
 			t.Errorf("After crash: Expected %d KNOWS edges, got %d",
@@ -368,7 +368,7 @@ func TestBatchDurability_SnapshotAfterBatch(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify batch nodes in snapshot
-		batchNodes, _ := gs.FindNodesByLabel("BatchNode")
+		batchNodes, _ := gs.FindNodesByLabelAcrossTenants("BatchNode")
 		if len(batchNodes) != 10 {
 			t.Errorf("After snapshot recovery: Expected 10 BatchNode nodes, got %d",
 				len(batchNodes))

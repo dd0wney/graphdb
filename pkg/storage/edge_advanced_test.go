@@ -112,7 +112,7 @@ func TestGetEdgeDirections(t *testing.T) {
 }
 
 // Test finding edges by type
-func TestFindEdgesByType(t *testing.T) {
+func TestFindEdgesByTypeAcrossTenants(t *testing.T) {
 	gs := setupTestStorage(t)
 	defer func() { _ = gs.Close() }()
 
@@ -126,16 +126,16 @@ func TestFindEdgesByType(t *testing.T) {
 	likesEdge, _ := gs.CreateEdge(node1.ID, node3.ID, "LIKES", nil, 1.0)
 
 	// Find KNOWS edges
-	knowsEdges, err := gs.FindEdgesByType("KNOWS")
+	knowsEdges, err := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 	if err != nil {
-		t.Fatalf("FindEdgesByType failed: %v", err)
+		t.Fatalf("FindEdgesByTypeAcrossTenants failed: %v", err)
 	}
 	if len(knowsEdges) != 2 {
 		t.Errorf("Expected 2 KNOWS edges, got %d", len(knowsEdges))
 	}
 
 	// Find LIKES edges
-	likesEdges, _ := gs.FindEdgesByType("LIKES")
+	likesEdges, _ := gs.FindEdgesByTypeAcrossTenants("LIKES")
 	if len(likesEdges) != 1 {
 		t.Errorf("Expected 1 LIKES edge, got %d", len(likesEdges))
 	}
@@ -144,7 +144,7 @@ func TestFindEdgesByType(t *testing.T) {
 	}
 
 	// Find non-existent type
-	noEdges, _ := gs.FindEdgesByType("NONEXISTENT")
+	noEdges, _ := gs.FindEdgesByTypeAcrossTenants("NONEXISTENT")
 	if len(noEdges) != 0 {
 		t.Errorf("Expected 0 NONEXISTENT edges, got %d", len(noEdges))
 	}

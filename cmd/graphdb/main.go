@@ -92,7 +92,7 @@ func main() {
 
 	// Query: Find all verified users
 	fmt.Println("\n🔍 Query: Find all verified users...")
-	verifiedUsers, _ := graph.FindNodesByLabel("Verified")
+	verifiedUsers, _ := graph.FindNodesByLabelAcrossTenants("Verified")
 	for _, user := range verifiedUsers {
 		id, _ := user.GetProperty("id")
 		idStr, _ := id.AsString()
@@ -103,7 +103,7 @@ func main() {
 
 	// Query: Find users with high trust scores
 	fmt.Println("\n🔍 Query: Find users with trust score > 800...")
-	allUsers, _ := graph.FindNodesByLabel("User")
+	allUsers, _ := graph.FindNodesByLabelAcrossTenants("User")
 	for _, user := range allUsers {
 		trustScore, _ := user.GetProperty("trustScore")
 		score, _ := trustScore.AsInt()

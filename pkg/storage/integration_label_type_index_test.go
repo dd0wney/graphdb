@@ -43,12 +43,12 @@ func TestGraphStorage_LabelIndexDurableAfterCrash(t *testing.T) {
 		}
 
 		// Verify indexes work before crash
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		if len(persons) != 5 {
 			t.Fatalf("Before crash: Expected 5 Person nodes, got %d", len(persons))
 		}
 
-		companies, _ := gs.FindNodesByLabel("Company")
+		companies, _ := gs.FindNodesByLabelAcrossTenants("Company")
 		if len(companies) != 3 {
 			t.Fatalf("Before crash: Expected 3 Company nodes, got %d", len(companies))
 		}
@@ -70,18 +70,18 @@ func TestGraphStorage_LabelIndexDurableAfterCrash(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Query by label - Person
-		persons, err := gs.FindNodesByLabel("Person")
+		persons, err := gs.FindNodesByLabelAcrossTenants("Person")
 		if err != nil {
-			t.Fatalf("FindNodesByLabel(Person) failed after recovery: %v", err)
+			t.Fatalf("FindNodesByLabelAcrossTenants(Person) failed after recovery: %v", err)
 		}
 		if len(persons) != 5 {
 			t.Errorf("After recovery: Expected 5 Person nodes, got %d", len(persons))
 		}
 
 		// Query by label - Company
-		companies, err := gs.FindNodesByLabel("Company")
+		companies, err := gs.FindNodesByLabelAcrossTenants("Company")
 		if err != nil {
-			t.Fatalf("FindNodesByLabel(Company) failed after recovery: %v", err)
+			t.Fatalf("FindNodesByLabelAcrossTenants(Company) failed after recovery: %v", err)
 		}
 		if len(companies) != 3 {
 			t.Errorf("After recovery: Expected 3 Company nodes, got %d", len(companies))
@@ -151,12 +151,12 @@ func TestGraphStorage_TypeIndexDurableAfterCrash(t *testing.T) {
 		}
 
 		// Verify indexes work before crash
-		knows, _ := gs.FindEdgesByType("KNOWS")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		if len(knows) != 3 {
 			t.Fatalf("Before crash: Expected 3 KNOWS edges, got %d", len(knows))
 		}
 
-		worksAt, _ := gs.FindEdgesByType("WORKS_AT")
+		worksAt, _ := gs.FindEdgesByTypeAcrossTenants("WORKS_AT")
 		if len(worksAt) != 2 {
 			t.Fatalf("Before crash: Expected 2 WORKS_AT edges, got %d", len(worksAt))
 		}
@@ -178,18 +178,18 @@ func TestGraphStorage_TypeIndexDurableAfterCrash(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Query by type - KNOWS
-		knows, err := gs.FindEdgesByType("KNOWS")
+		knows, err := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		if err != nil {
-			t.Fatalf("FindEdgesByType(KNOWS) failed after recovery: %v", err)
+			t.Fatalf("FindEdgesByTypeAcrossTenants(KNOWS) failed after recovery: %v", err)
 		}
 		if len(knows) != 3 {
 			t.Errorf("After recovery: Expected 3 KNOWS edges, got %d", len(knows))
 		}
 
 		// Query by type - WORKS_AT
-		worksAt, err := gs.FindEdgesByType("WORKS_AT")
+		worksAt, err := gs.FindEdgesByTypeAcrossTenants("WORKS_AT")
 		if err != nil {
-			t.Fatalf("FindEdgesByType(WORKS_AT) failed after recovery: %v", err)
+			t.Fatalf("FindEdgesByTypeAcrossTenants(WORKS_AT) failed after recovery: %v", err)
 		}
 		if len(worksAt) != 2 {
 			t.Errorf("After recovery: Expected 2 WORKS_AT edges, got %d", len(worksAt))
@@ -238,17 +238,17 @@ func TestGraphStorage_MultiLabelNodeDurability(t *testing.T) {
 		nodeID = node.ID
 
 		// Verify all label indexes work before crash
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		if len(persons) != 1 {
 			t.Fatalf("Before crash: Expected 1 Person node, got %d", len(persons))
 		}
 
-		employees, _ := gs.FindNodesByLabel("Employee")
+		employees, _ := gs.FindNodesByLabelAcrossTenants("Employee")
 		if len(employees) != 1 {
 			t.Fatalf("Before crash: Expected 1 Employee node, got %d", len(employees))
 		}
 
-		managers, _ := gs.FindNodesByLabel("Manager")
+		managers, _ := gs.FindNodesByLabelAcrossTenants("Manager")
 		if len(managers) != 1 {
 			t.Fatalf("Before crash: Expected 1 Manager node, got %d", len(managers))
 		}
@@ -270,25 +270,25 @@ func TestGraphStorage_MultiLabelNodeDurability(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify all 3 label indexes work after crash
-		persons, err := gs.FindNodesByLabel("Person")
+		persons, err := gs.FindNodesByLabelAcrossTenants("Person")
 		if err != nil {
-			t.Fatalf("FindNodesByLabel(Person) failed: %v", err)
+			t.Fatalf("FindNodesByLabelAcrossTenants(Person) failed: %v", err)
 		}
 		if len(persons) != 1 || persons[0].ID != nodeID {
 			t.Errorf("After recovery: Expected Person node %d, got %d nodes", nodeID, len(persons))
 		}
 
-		employees, err := gs.FindNodesByLabel("Employee")
+		employees, err := gs.FindNodesByLabelAcrossTenants("Employee")
 		if err != nil {
-			t.Fatalf("FindNodesByLabel(Employee) failed: %v", err)
+			t.Fatalf("FindNodesByLabelAcrossTenants(Employee) failed: %v", err)
 		}
 		if len(employees) != 1 || employees[0].ID != nodeID {
 			t.Errorf("After recovery: Expected Employee node %d, got %d nodes", nodeID, len(employees))
 		}
 
-		managers, err := gs.FindNodesByLabel("Manager")
+		managers, err := gs.FindNodesByLabelAcrossTenants("Manager")
 		if err != nil {
-			t.Fatalf("FindNodesByLabel(Manager) failed: %v", err)
+			t.Fatalf("FindNodesByLabelAcrossTenants(Manager) failed: %v", err)
 		}
 		if len(managers) != 1 || managers[0].ID != nodeID {
 			t.Errorf("After recovery: Expected Manager node %d, got %d nodes", nodeID, len(managers))
@@ -323,7 +323,7 @@ func TestGraphStorage_LabelIndexAfterNodeDeletion(t *testing.T) {
 		_ = gs.DeleteNode(nodeIDs[3])
 
 		// Verify label index before crash
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		if len(persons) != 3 {
 			t.Fatalf("Before crash: Expected 3 Person nodes after deletion, got %d", len(persons))
 		}
@@ -345,9 +345,9 @@ func TestGraphStorage_LabelIndexAfterNodeDeletion(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify label index after crash - should have 3 nodes, not 5
-		persons, err := gs.FindNodesByLabel("Person")
+		persons, err := gs.FindNodesByLabelAcrossTenants("Person")
 		if err != nil {
-			t.Fatalf("FindNodesByLabel failed: %v", err)
+			t.Fatalf("FindNodesByLabelAcrossTenants failed: %v", err)
 		}
 		if len(persons) != 3 {
 			t.Errorf("After recovery: Expected 3 Person nodes, got %d", len(persons))
@@ -386,7 +386,7 @@ func TestGraphStorage_TypeIndexAfterEdgeDeletion(t *testing.T) {
 		_ = gs.DeleteEdge(edgeIDs[3])
 
 		// Verify type index before crash
-		knows, _ := gs.FindEdgesByType("KNOWS")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		if len(knows) != 3 {
 			t.Fatalf("Before crash: Expected 3 KNOWS edges after deletion, got %d", len(knows))
 		}
@@ -408,9 +408,9 @@ func TestGraphStorage_TypeIndexAfterEdgeDeletion(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify type index after crash - should have 3 edges, not 5
-		knows, err := gs.FindEdgesByType("KNOWS")
+		knows, err := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		if err != nil {
-			t.Fatalf("FindEdgesByType failed: %v", err)
+			t.Fatalf("FindEdgesByTypeAcrossTenants failed: %v", err)
 		}
 		if len(knows) != 3 {
 			t.Errorf("After recovery: Expected 3 KNOWS edges, got %d", len(knows))
@@ -463,17 +463,17 @@ func TestGraphStorage_LabelIndexSnapshot(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify label indexes from snapshot
-		persons, err := gs.FindNodesByLabel("Person")
+		persons, err := gs.FindNodesByLabelAcrossTenants("Person")
 		if err != nil {
-			t.Fatalf("FindNodesByLabel(Person) failed: %v", err)
+			t.Fatalf("FindNodesByLabelAcrossTenants(Person) failed: %v", err)
 		}
 		if len(persons) != 2 {
 			t.Errorf("Expected 2 Person nodes from snapshot, got %d", len(persons))
 		}
 
-		companies, err := gs.FindNodesByLabel("Company")
+		companies, err := gs.FindNodesByLabelAcrossTenants("Company")
 		if err != nil {
-			t.Fatalf("FindNodesByLabel(Company) failed: %v", err)
+			t.Fatalf("FindNodesByLabelAcrossTenants(Company) failed: %v", err)
 		}
 		if len(companies) != 1 {
 			t.Errorf("Expected 1 Company node from snapshot, got %d", len(companies))
@@ -530,17 +530,17 @@ func TestGraphStorage_TypeIndexSnapshot(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify type indexes from snapshot
-		knows, err := gs.FindEdgesByType("KNOWS")
+		knows, err := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		if err != nil {
-			t.Fatalf("FindEdgesByType(KNOWS) failed: %v", err)
+			t.Fatalf("FindEdgesByTypeAcrossTenants(KNOWS) failed: %v", err)
 		}
 		if len(knows) != 2 {
 			t.Errorf("Expected 2 KNOWS edges from snapshot, got %d", len(knows))
 		}
 
-		likes, err := gs.FindEdgesByType("LIKES")
+		likes, err := gs.FindEdgesByTypeAcrossTenants("LIKES")
 		if err != nil {
-			t.Fatalf("FindEdgesByType(LIKES) failed: %v", err)
+			t.Fatalf("FindEdgesByTypeAcrossTenants(LIKES) failed: %v", err)
 		}
 		if len(likes) != 1 {
 			t.Errorf("Expected 1 LIKES edge from snapshot, got %d", len(likes))

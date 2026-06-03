@@ -73,9 +73,9 @@ func TestReplayCreateNode_PopulatesTenantIndex(t *testing.T) {
 
 	// Sanity: global nodesByLabel was already populated correctly before
 	// the H4.3 fix; this just confirms the fix didn't regress it.
-	all, err := gs2.FindNodesByLabel("Doc")
+	all, err := gs2.FindNodesByLabelAcrossTenants("Doc")
 	if err != nil {
-		t.Fatalf("FindNodesByLabel: %v", err)
+		t.Fatalf("FindNodesByLabelAcrossTenants: %v", err)
 	}
 	if len(all) != 3 {
 		t.Errorf("expected 3 global Doc nodes after replay, got %d", len(all))

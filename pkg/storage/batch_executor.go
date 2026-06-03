@@ -55,7 +55,7 @@ func (b *Batch) executeCreateNode(op batchOp) error {
 
 	// Update label indexes
 	for _, label := range node.Labels {
-		b.graph.nodesByLabel[label] = append(b.graph.nodesByLabel[label], node.ID)
+		addToLabelIndex(b.graph.nodesByLabel, label, node.ID)
 	}
 
 	// Maintain the per-tenant indexes (tenantNodesByLabel + tenantNodeIDs +
@@ -105,7 +105,7 @@ func (b *Batch) executeCreateEdge(op batchOp) error {
 	atomic.AddUint64(&b.graph.stats.EdgeCount, 1)
 
 	// Update edge type index
-	b.graph.edgesByType[edge.Type] = append(b.graph.edgesByType[edge.Type], edge.ID)
+	addToLabelIndex(b.graph.edgesByType, edge.Type, edge.ID)
 
 	// Update adjacency lists
 	b.graph.outgoingEdges[edge.FromNodeID] = append(b.graph.outgoingEdges[edge.FromNodeID], edge.ID)
@@ -184,9 +184,10 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 		return nil // Skip non-existent nodes
 	}
 
-	// Remove from label indexes (defensive: use helper to avoid slice modification during range)
+	// Remove from the global label index (O(1) per label), keeping empty
+	// buckets so labels stay registered (see removeFromLabelIndex).
 	for _, label := range node.Labels {
-		b.graph.nodesByLabel[label] = removeEdgeFromList(b.graph.nodesByLabel[label], op.nodeID)
+		removeFromLabelIndexKeepEmpty(b.graph.nodesByLabel, label, op.nodeID)
 	}
 
 	// Remove from property indexes
@@ -238,14 +239,9 @@ func (b *Batch) executeDeleteEdge(op batchOp) error {
 		return nil // Skip non-existent edges
 	}
 
-	// Remove from type index
-	edgeIDs := b.graph.edgesByType[edge.Type]
-	for i, id := range edgeIDs {
-		if id == op.edgeID {
-			b.graph.edgesByType[edge.Type] = append(edgeIDs[:i], edgeIDs[i+1:]...)
-			break
-		}
-	}
+	// Remove from the global type index (O(1)), keeping empty buckets so the
+	// type stays registered (see removeEdgeFromTypeIndex).
+	removeFromLabelIndexKeepEmpty(b.graph.edgesByType, edge.Type, op.edgeID)
 
 	// Remove from adjacency lists
 	outgoing := b.graph.outgoingEdges[edge.FromNodeID]

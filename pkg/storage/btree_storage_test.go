@@ -205,10 +205,10 @@ func TestBTreeGraphStorage_TenantBlindReadsReturnNotFound(t *testing.T) {
 	_, err = gs.GetEdge(1)
 	assert.ErrorIs(t, err, ErrEdgeNotFound)
 
-	// FindNodesByLabel / GetOutgoingEdges / GetIncomingEdges are declared
+	// FindNodesByLabelAcrossTenants / GetOutgoingEdges / GetIncomingEdges are declared
 	// returning ([]*X, error) — they yield (nil, nil) ("nothing matched")
 	// which is contractually distinct from "not implemented." Pin that.
-	out, err := gs.FindNodesByLabel("AnyLabel")
+	out, err := gs.FindNodesByLabelAcrossTenants("AnyLabel")
 	assert.NoError(t, err)
 	assert.Nil(t, out)
 }

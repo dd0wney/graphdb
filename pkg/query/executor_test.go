@@ -965,7 +965,7 @@ func TestExecutor_CreateRelationship(t *testing.T) {
 	}
 
 	// Get the created nodes
-	nodes, _ := gs.FindNodesByLabel("Person")
+	nodes, _ := gs.FindNodesByLabelAcrossTenants("Person")
 	if len(nodes) != 2 {
 		t.Fatalf("Expected 2 nodes, got %d", len(nodes))
 	}

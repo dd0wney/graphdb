@@ -26,7 +26,7 @@ func buildNodeAggregateTypes(gs *storage.GraphStorage, label string, _ *MaskingD
 	})
 
 	// Get sample nodes to discover properties
-	sampleNodes, _ := gs.FindNodesByLabel(label)
+	sampleNodes, _ := gs.FindNodesByLabelAcrossTenants(label)
 	propertyFields := graphql.Fields{}
 
 	// Build a map of property keys to their types

@@ -29,15 +29,12 @@ func (gs *GraphStorage) addNodeToTenantIndex(node *Node) {
 
 	// Initialize tenant label map if needed
 	if gs.tenantNodesByLabel[tenantID] == nil {
-		gs.tenantNodesByLabel[tenantID] = make(map[string][]uint64)
+		gs.tenantNodesByLabel[tenantID] = make(labelIndex)
 	}
 
 	// Add node to each label's index
 	for _, label := range node.Labels {
-		gs.tenantNodesByLabel[tenantID][label] = append(
-			gs.tenantNodesByLabel[tenantID][label],
-			node.ID,
-		)
+		addToLabelIndex(gs.tenantNodesByLabel[tenantID], label, node.ID)
 	}
 
 	// Add node to the per-tenant enumeration set. This is the only index
@@ -66,17 +63,7 @@ func (gs *GraphStorage) removeNodeFromTenantIndex(node *Node) {
 	// nodes after its first delete.)
 	if labelMap := gs.tenantNodesByLabel[tenantID]; labelMap != nil {
 		for _, label := range node.Labels {
-			ids := labelMap[label]
-			for i, id := range ids {
-				if id == node.ID {
-					labelMap[label] = append(ids[:i], ids[i+1:]...)
-					break
-				}
-			}
-			// Clean up empty slices
-			if len(labelMap[label]) == 0 {
-				delete(labelMap, label)
-			}
+			removeFromLabelIndexSet(labelMap, label, node.ID)
 		}
 
 		// Clean up empty tenant map
@@ -105,14 +92,11 @@ func (gs *GraphStorage) addEdgeToTenantIndex(edge *Edge) {
 
 	// Initialize tenant type map if needed
 	if gs.tenantEdgesByType[tenantID] == nil {
-		gs.tenantEdgesByType[tenantID] = make(map[string][]uint64)
+		gs.tenantEdgesByType[tenantID] = make(labelIndex)
 	}
 
 	// Add edge to type index
-	gs.tenantEdgesByType[tenantID][edge.Type] = append(
-		gs.tenantEdgesByType[tenantID][edge.Type],
-		edge.ID,
-	)
+	addToLabelIndex(gs.tenantEdgesByType[tenantID], edge.Type, edge.ID)
 
 	// Add edge to the per-tenant enumeration set (the index
 	// GetAllEdgesForTenant reads). O(1) set insert; idempotent.
@@ -136,18 +120,7 @@ func (gs *GraphStorage) removeEdgeFromTenantIndex(edge *Edge) {
 	// or a tenant whose type map was already GC'd), which the previous
 	// early-return-on-nil skipped — drifting EdgeCount.
 	if typeMap := gs.tenantEdgesByType[tenantID]; typeMap != nil {
-		ids := typeMap[edge.Type]
-		for i, id := range ids {
-			if id == edge.ID {
-				typeMap[edge.Type] = append(ids[:i], ids[i+1:]...)
-				break
-			}
-		}
-
-		// Clean up empty slices
-		if len(typeMap[edge.Type]) == 0 {
-			delete(typeMap, edge.Type)
-		}
+		removeFromLabelIndexSet(typeMap, edge.Type, edge.ID)
 
 		// Clean up empty tenant map
 		if len(typeMap) == 0 {
@@ -180,11 +153,14 @@ func (gs *GraphStorage) GetNodesByLabelForTenant(tenantID, label string) []*Node
 		return nil
 	}
 
-	nodeIDs := labelMap[label]
-	if len(nodeIDs) == 0 {
+	bucket := labelMap[label]
+	if len(bucket) == 0 {
 		return nil
 	}
 
+	// Sort on read: the set's iteration order is randomized, so sort the IDs
+	// to keep results deterministic for pagination and stable contracts.
+	nodeIDs := sortedBucketIDs(bucket)
 	nodes := make([]*Node, 0, len(nodeIDs))
 	for _, id := range nodeIDs {
 		if node, exists := gs.lookupNodeShard(id); exists {
@@ -225,11 +201,13 @@ func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Ed
 		return nil
 	}
 
-	edgeIDs := typeMap[edgeType]
-	if len(edgeIDs) == 0 {
+	bucket := typeMap[edgeType]
+	if len(bucket) == 0 {
 		return nil
 	}
 
+	// Sort on read (see GetNodesByLabelForTenant) for deterministic order.
+	edgeIDs := sortedBucketIDs(bucket)
 	edges := make([]*Edge, 0, len(edgeIDs))
 	for _, id := range edgeIDs {
 		if edge, exists := gs.lookupEdgeShard(id); exists {

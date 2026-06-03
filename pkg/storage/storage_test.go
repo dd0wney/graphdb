@@ -156,7 +156,7 @@ func TestGraphStorage_GetOutgoingEdges(t *testing.T) {
 	}
 }
 
-func TestGraphStorage_FindNodesByLabel(t *testing.T) {
+func TestGraphStorage_FindNodesByLabelAcrossTenants(t *testing.T) {
 	dataDir := t.TempDir()
 	gs, err := NewGraphStorage(dataDir)
 	if err != nil {
@@ -170,7 +170,7 @@ func TestGraphStorage_FindNodesByLabel(t *testing.T) {
 	_, _ = gs.CreateNode([]string{"Book"}, map[string]Value{})
 
 	// Find User nodes
-	userNodes, err := gs.FindNodesByLabel("User")
+	userNodes, err := gs.FindNodesByLabelAcrossTenants("User")
 	if err != nil {
 		t.Fatalf("Failed to find nodes: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestGraphStorage_FindNodesByLabel(t *testing.T) {
 	}
 
 	// Find Book nodes
-	bookNodes, err := gs.FindNodesByLabel("Book")
+	bookNodes, err := gs.FindNodesByLabelAcrossTenants("Book")
 	if err != nil {
 		t.Fatalf("Failed to find nodes: %v", err)
 	}
@@ -400,8 +400,8 @@ func BenchmarkGraphStorage_Snapshot(b *testing.B) {
 	}
 }
 
-// BenchmarkGraphStorage_FindNodesByLabel benchmarks label-based lookups
-func BenchmarkGraphStorage_FindNodesByLabel(b *testing.B) {
+// BenchmarkGraphStorage_FindNodesByLabelAcrossTenants benchmarks label-based lookups
+func BenchmarkGraphStorage_FindNodesByLabelAcrossTenants(b *testing.B) {
 	dataDir := b.TempDir()
 	gs, _ := NewGraphStorage(dataDir)
 	defer func() { _ = gs.Close() }()
@@ -417,7 +417,7 @@ func BenchmarkGraphStorage_FindNodesByLabel(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = gs.FindNodesByLabel("Verified")
+		_, _ = gs.FindNodesByLabelAcrossTenants("Verified")
 	}
 }
 

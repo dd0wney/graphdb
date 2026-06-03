@@ -42,17 +42,17 @@ func TestLabelIndexDurability_CrashRecovery(t *testing.T) {
 		}
 
 		// Verify before crash
-		persons, err := gs.FindNodesByLabel("Person")
+		persons, err := gs.FindNodesByLabelAcrossTenants("Person")
 		if err != nil {
-			t.Fatalf("FindNodesByLabel failed: %v", err)
+			t.Fatalf("FindNodesByLabelAcrossTenants failed: %v", err)
 		}
 		if len(persons) != 10 {
 			t.Fatalf("Before crash: Expected 10 Person nodes, got %d", len(persons))
 		}
 
-		companies, err := gs.FindNodesByLabel("Company")
+		companies, err := gs.FindNodesByLabelAcrossTenants("Company")
 		if err != nil {
-			t.Fatalf("FindNodesByLabel failed: %v", err)
+			t.Fatalf("FindNodesByLabelAcrossTenants failed: %v", err)
 		}
 		if len(companies) != 5 {
 			t.Fatalf("Before crash: Expected 5 Company nodes, got %d", len(companies))
@@ -76,18 +76,18 @@ func TestLabelIndexDurability_CrashRecovery(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify Person nodes
-		persons, err := gs.FindNodesByLabel("Person")
+		persons, err := gs.FindNodesByLabelAcrossTenants("Person")
 		if err != nil {
-			t.Errorf("After crash: FindNodesByLabel(Person) failed: %v", err)
+			t.Errorf("After crash: FindNodesByLabelAcrossTenants(Person) failed: %v", err)
 		}
 		if len(persons) != 10 {
 			t.Errorf("After crash: Expected 10 Person nodes, got %d (label index LOST!)", len(persons))
 		}
 
 		// Verify Company nodes
-		companies, err := gs.FindNodesByLabel("Company")
+		companies, err := gs.FindNodesByLabelAcrossTenants("Company")
 		if err != nil {
-			t.Errorf("After crash: FindNodesByLabel(Company) failed: %v", err)
+			t.Errorf("After crash: FindNodesByLabelAcrossTenants(Company) failed: %v", err)
 		}
 		if len(companies) != 5 {
 			t.Errorf("After crash: Expected 5 Company nodes, got %d (label index LOST!)", len(companies))
@@ -125,8 +125,8 @@ func TestLabelIndexDurability_MultipleLabels(t *testing.T) {
 		}
 
 		// Verify both labels work before crash
-		persons, _ := gs.FindNodesByLabel("Person")
-		employees, _ := gs.FindNodesByLabel("Employee")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
+		employees, _ := gs.FindNodesByLabelAcrossTenants("Employee")
 		if len(persons) != 5 || len(employees) != 5 {
 			t.Fatalf("Before crash: Expected 5 for each label, got Person=%d, Employee=%d",
 				len(persons), len(employees))
@@ -150,18 +150,18 @@ func TestLabelIndexDurability_MultipleLabels(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify Person label
-		persons, err := gs.FindNodesByLabel("Person")
+		persons, err := gs.FindNodesByLabelAcrossTenants("Person")
 		if err != nil {
-			t.Errorf("After crash: FindNodesByLabel(Person) failed: %v", err)
+			t.Errorf("After crash: FindNodesByLabelAcrossTenants(Person) failed: %v", err)
 		}
 		if len(persons) != 5 {
 			t.Errorf("After crash: Expected 5 Person nodes, got %d", len(persons))
 		}
 
 		// Verify Employee label
-		employees, err := gs.FindNodesByLabel("Employee")
+		employees, err := gs.FindNodesByLabelAcrossTenants("Employee")
 		if err != nil {
-			t.Errorf("After crash: FindNodesByLabel(Employee) failed: %v", err)
+			t.Errorf("After crash: FindNodesByLabelAcrossTenants(Employee) failed: %v", err)
 		}
 		if len(employees) != 5 {
 			t.Errorf("After crash: Expected 5 Employee nodes, got %d", len(employees))
@@ -203,7 +203,7 @@ func TestLabelIndexDurability_DeleteNode(t *testing.T) {
 		}
 
 		// Verify 2 Person nodes remain before crash
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		if len(persons) != 2 {
 			t.Fatalf("Before crash: Expected 2 Person nodes after delete, got %d", len(persons))
 		}
@@ -226,9 +226,9 @@ func TestLabelIndexDurability_DeleteNode(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify only 2 Person nodes
-		persons, err := gs.FindNodesByLabel("Person")
+		persons, err := gs.FindNodesByLabelAcrossTenants("Person")
 		if err != nil {
-			t.Errorf("After crash: FindNodesByLabel failed: %v", err)
+			t.Errorf("After crash: FindNodesByLabelAcrossTenants failed: %v", err)
 		}
 		if len(persons) != 2 {
 			t.Errorf("After crash: Expected 2 Person nodes, got %d (delete not reflected!)", len(persons))
@@ -286,8 +286,8 @@ func TestEdgeTypeIndexDurability_CrashRecovery(t *testing.T) {
 		}
 
 		// Verify before crash
-		knows, _ := gs.FindEdgesByType("KNOWS")
-		worksWith, _ := gs.FindEdgesByType("WORKS_WITH")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
+		worksWith, _ := gs.FindEdgesByTypeAcrossTenants("WORKS_WITH")
 		if len(knows) != 3 || len(worksWith) != 2 {
 			t.Fatalf("Before crash: Expected KNOWS=3, WORKS_WITH=2, got KNOWS=%d, WORKS_WITH=%d",
 				len(knows), len(worksWith))
@@ -311,18 +311,18 @@ func TestEdgeTypeIndexDurability_CrashRecovery(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify KNOWS edges
-		knows, err := gs.FindEdgesByType("KNOWS")
+		knows, err := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		if err != nil {
-			t.Errorf("After crash: FindEdgesByType(KNOWS) failed: %v", err)
+			t.Errorf("After crash: FindEdgesByTypeAcrossTenants(KNOWS) failed: %v", err)
 		}
 		if len(knows) != 3 {
 			t.Errorf("After crash: Expected 3 KNOWS edges, got %d (edge type index LOST!)", len(knows))
 		}
 
 		// Verify WORKS_WITH edges
-		worksWith, err := gs.FindEdgesByType("WORKS_WITH")
+		worksWith, err := gs.FindEdgesByTypeAcrossTenants("WORKS_WITH")
 		if err != nil {
-			t.Errorf("After crash: FindEdgesByType(WORKS_WITH) failed: %v", err)
+			t.Errorf("After crash: FindEdgesByTypeAcrossTenants(WORKS_WITH) failed: %v", err)
 		}
 		if len(worksWith) != 2 {
 			t.Errorf("After crash: Expected 2 WORKS_WITH edges, got %d (edge type index LOST!)", len(worksWith))
@@ -368,7 +368,7 @@ func TestEdgeTypeIndexDurability_DeleteEdge(t *testing.T) {
 		}
 
 		// Verify 2 KNOWS edges remain before crash
-		knows, _ := gs.FindEdgesByType("KNOWS")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		if len(knows) != 2 {
 			t.Fatalf("Before crash: Expected 2 KNOWS edges after delete, got %d", len(knows))
 		}
@@ -391,9 +391,9 @@ func TestEdgeTypeIndexDurability_DeleteEdge(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify only 2 KNOWS edges
-		knows, err := gs.FindEdgesByType("KNOWS")
+		knows, err := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		if err != nil {
-			t.Errorf("After crash: FindEdgesByType failed: %v", err)
+			t.Errorf("After crash: FindEdgesByTypeAcrossTenants failed: %v", err)
 		}
 		if len(knows) != 2 {
 			t.Errorf("After crash: Expected 2 KNOWS edges, got %d (delete not reflected!)", len(knows))
@@ -455,8 +455,8 @@ func TestLabelIndexDurability_SnapshotRecovery(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify label indexes
-		persons, _ := gs.FindNodesByLabel("Person")
-		companies, _ := gs.FindNodesByLabel("Company")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
+		companies, _ := gs.FindNodesByLabelAcrossTenants("Company")
 
 		if len(persons) != 10 {
 			t.Errorf("After snapshot recovery: Expected 10 Person nodes, got %d", len(persons))
@@ -520,8 +520,8 @@ func TestEdgeTypeIndexDurability_SnapshotRecovery(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify edge type indexes
-		knows, _ := gs.FindEdgesByType("KNOWS")
-		worksWith, _ := gs.FindEdgesByType("WORKS_WITH")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
+		worksWith, _ := gs.FindEdgesByTypeAcrossTenants("WORKS_WITH")
 
 		if len(knows) != 5 {
 			t.Errorf("After snapshot recovery: Expected 5 KNOWS edges, got %d", len(knows))
@@ -597,8 +597,8 @@ func TestMixedIndexDurability(t *testing.T) {
 		defer func() { _ = gs.Close() }()
 
 		// Verify label indexes
-		persons, _ := gs.FindNodesByLabel("Person")
-		companies, _ := gs.FindNodesByLabel("Company")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
+		companies, _ := gs.FindNodesByLabelAcrossTenants("Company")
 
 		if len(persons) != 5 {
 			t.Errorf("After crash: Expected 5 Person nodes, got %d", len(persons))
@@ -608,8 +608,8 @@ func TestMixedIndexDurability(t *testing.T) {
 		}
 
 		// Verify edge type indexes
-		knows, _ := gs.FindEdgesByType("KNOWS")
-		worksFor, _ := gs.FindEdgesByType("WORKS_FOR")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
+		worksFor, _ := gs.FindEdgesByTypeAcrossTenants("WORKS_FOR")
 
 		if len(knows) != 4 {
 			t.Errorf("After crash: Expected 4 KNOWS edges, got %d", len(knows))

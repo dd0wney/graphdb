@@ -52,11 +52,10 @@ func (gs *GraphStorage) removeIncomingEdge(nodeID, edgeID uint64) error {
 	return nil
 }
 
-// removeEdgeFromTypeIndex removes an edge from the type index
+// removeEdgeFromTypeIndex removes an edge from the global type index in O(1),
+// keeping the (now possibly empty) type bucket so the type stays registered.
 func (gs *GraphStorage) removeEdgeFromTypeIndex(edgeType string, edgeID uint64) {
-	if edgeList, exists := gs.edgesByType[edgeType]; exists {
-		gs.edgesByType[edgeType] = removeEdgeFromList(edgeList, edgeID)
-	}
+	removeFromLabelIndexKeepEmpty(gs.edgesByType, edgeType, edgeID)
 }
 
 // cascadeDeleteOutgoingEdge deletes an outgoing edge and removes it from the target node's incoming list.

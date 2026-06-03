@@ -79,7 +79,7 @@ func (c *UniquePropertyConstraint) validateGlobal(graph GraphReader) []Violation
 
 	if c.NodeLabel != "" {
 		// Only check nodes with specific label
-		nodes, err = graph.FindNodesByLabel(c.NodeLabel)
+		nodes, err = graph.FindNodesByLabelAcrossTenants(c.NodeLabel)
 		if err != nil {
 			return []Violation{{
 				Type:       InvalidStructure,
@@ -157,7 +157,7 @@ func (c *UniquePropertyConstraint) validatePerLabel(graph GraphReader) []Violati
 func (c *UniquePropertyConstraint) validateLabelGroup(graph GraphReader, label string) []Violation {
 	var violations []Violation
 
-	nodes, err := graph.FindNodesByLabel(label)
+	nodes, err := graph.FindNodesByLabelAcrossTenants(label)
 	if err != nil {
 		return []Violation{{
 			Type:       InvalidStructure,
@@ -232,7 +232,7 @@ func (c *UniqueEdgeConstraint) Name() string {
 func (c *UniqueEdgeConstraint) Validate(graph GraphReader) ([]Violation, error) {
 	var violations []Violation
 
-	edges, err := graph.FindEdgesByType(c.EdgeType)
+	edges, err := graph.FindEdgesByTypeAcrossTenants(c.EdgeType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query edges: %w", err)
 	}
