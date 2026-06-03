@@ -103,21 +103,27 @@ func (h *HNSWIndex) pruneConnections(node *hnswNode, layer int, maxConn int) {
 	}
 }
 
-// findNewEntryPoint finds a new entry point after deletion
+// findNewEntryPoint finds a new entry point after deletion: any node at the
+// highest occupied level. It reads nodesByLevel (M4) — scanning the distinct
+// levels (O(log N)) and returning a representative from the top bucket —
+// instead of scanning every node (O(N)) as it did before. Any node at the max
+// level is a valid entry point, matching the previous "first node with max
+// level" selection (both arbitrary among equals). Caller must hold h.mu.Lock.
 func (h *HNSWIndex) findNewEntryPoint() *hnswNode {
-	var newEntry *hnswNode
 	maxLevel := -1
-
-	for _, node := range h.nodes {
-		if node.level > maxLevel {
-			maxLevel = node.level
-			newEntry = node
+	for level := range h.nodesByLevel {
+		if level > maxLevel {
+			maxLevel = level
 		}
 	}
 
-	if newEntry != nil {
-		h.maxLayer = maxLevel
+	if maxLevel < 0 {
+		return nil // index is now empty
 	}
 
-	return newEntry
+	h.maxLayer = maxLevel
+	for _, node := range h.nodesByLevel[maxLevel] {
+		return node // any node at the top level is a valid entry point
+	}
+	return nil
 }
