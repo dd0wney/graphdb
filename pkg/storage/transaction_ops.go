@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"time"
 )
 
 // CreateNode creates a node within the transaction
@@ -19,11 +20,17 @@ func (tx *Transaction) CreateNode(labels []string, properties map[string]Value) 
 		return nil, err
 	}
 
-	// Create node object
+	// Create node object, stamped with the transaction's tenant and creation
+	// timestamps so the committed node matches a directly-created one (commit
+	// routes it through the same persistNodeLocked helper).
+	now := time.Now().Unix()
 	node := &Node{
 		ID:         nodeID,
+		TenantID:   effectiveTenantID(tx.tenantID).String(),
 		Labels:     labels,
 		Properties: make(map[string]Value),
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 
 	// Copy properties
@@ -81,14 +88,16 @@ func (tx *Transaction) CreateEdge(fromID, toID uint64, edgeType string, properti
 		return nil, err
 	}
 
-	// Create edge object
+	// Create edge object, stamped with the transaction's tenant + timestamp.
 	edge := &Edge{
 		ID:         edgeID,
+		TenantID:   effectiveTenantID(tx.tenantID).String(),
 		FromNodeID: fromID,
 		ToNodeID:   toID,
 		Type:       edgeType,
 		Properties: make(map[string]Value),
 		Weight:     weight,
+		CreatedAt:  time.Now().Unix(),
 	}
 
 	// Copy properties

@@ -1,10 +1,37 @@
 package storage
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"time"
+
+	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
-// Commit commits the transaction
+// Commit applies all buffered changes atomically and durably.
+//
+//  1. Validate the whole buffer (edge endpoints + update targets resolve to
+//     this tenant) BEFORE mutating anything — a bad reference aborts with
+//     nothing applied (all-or-none for reference errors).
+//  2. Under gs.mu, persist created nodes → created edges → property updates via
+//     the SHARED persist*Locked helpers (the same shard/global/tenant/vector/
+//     property indexes + stats the direct write paths maintain), collecting the
+//     WAL entries and vector plans.
+//  3. Release gs.mu, then make the whole batch durable with a SINGLE fsync
+//     (all-or-none) via appendWALBatch. Durability is always atomic: appendWAL-
+//     Batch is the last step, so any earlier error writes no WAL and nothing
+//     becomes durable.
+//  4. Off-lock: apply the HNSW vector inserts, then dispatch observer
+//     notifications (so auto-embed observers see committed nodes).
+//
+// Commit serializes on gs.mu (last-writer-wins; no conflict detection between
+// concurrent transactions). Limitation: a malformed-vector error (wrong
+// dimension) during step 2 aborts the commit and writes no WAL — so nothing is
+// durable — but may leave a transient, non-durable in-memory partial (the same
+// behaviour the direct create/update paths have on a mid-apply error). It is
+// cleaned up by the absence of a WAL record on the next restart.
 func (tx *Transaction) Commit() error {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
@@ -12,112 +39,156 @@ func (tx *Transaction) Commit() error {
 	if !tx.active {
 		return ErrTransactionNotActive
 	}
-
 	if tx.committed || tx.rolledBack {
 		return ErrTransactionAlreadyEnded
 	}
 
-	// Apply buffered changes to storage atomically
 	tx.gs.mu.Lock()
-	defer tx.gs.mu.Unlock()
 
-	// Apply all buffered changes
-	tx.applyCreatedNodes()
-	tx.applyCreatedEdges()
-	tx.applyNodeUpdates()
+	// (1) Validate references before any mutation (all-or-none).
+	if err := tx.validateLocked(); err != nil {
+		tx.gs.mu.Unlock()
+		return err
+	}
+
+	walEntries := make([]wal.BatchEntry, 0, len(tx.createdNodes)+len(tx.createdEdges)+len(tx.updatedNodes))
+	var vectorPlans []vectorInsertPlan
+	haveObservers := len(tx.gs.observers) > 0
+	var createdForNotify []*Node
+	type updateNotify struct{ oldNode, newNode *Node }
+	var updatesForNotify []updateNotify
+
+	// (2a) Created nodes — through the shared persist helper (indexes, stats,
+	// vector plan), then a WAL entry.
+	for _, node := range tx.createdNodes {
+		plans, err := tx.gs.persistNodeLocked(node)
+		if err != nil {
+			tx.gs.mu.Unlock()
+			return fmt.Errorf("commit: persist node %d: %w", node.ID, err)
+		}
+		vectorPlans = append(vectorPlans, plans...)
+		data, err := json.Marshal(node)
+		if err != nil {
+			tx.gs.mu.Unlock()
+			return fmt.Errorf("commit: marshal node %d: %w", node.ID, err)
+		}
+		walEntries = append(walEntries, wal.BatchEntry{OpType: wal.OpCreateNode, Data: data})
+		if haveObservers {
+			createdForNotify = append(createdForNotify, node.Clone())
+		}
+	}
+
+	// (2b) Created edges — endpoints are now persisted (or pre-existing).
+	for _, edge := range tx.createdEdges {
+		if err := tx.gs.persistEdgeLocked(edge); err != nil {
+			tx.gs.mu.Unlock()
+			return fmt.Errorf("commit: persist edge %d: %w", edge.ID, err)
+		}
+		data, err := json.Marshal(edge)
+		if err != nil {
+			tx.gs.mu.Unlock()
+			return fmt.Errorf("commit: marshal edge %d: %w", edge.ID, err)
+		}
+		walEntries = append(walEntries, wal.BatchEntry{OpType: wal.OpCreateEdge, Data: data})
+	}
+
+	// (2c) Property updates to existing nodes. (Updates to nodes created in this
+	// same transaction were merged into the buffered node by tx.UpdateNode, so
+	// they ride the OpCreateNode entry above — updatedNodes holds only existing-
+	// node updates.)
+	for nodeID, props := range tx.updatedNodes {
+		node, exists := tx.gs.lookupNodeShard(nodeID)
+		if !exists {
+			// validateLocked guaranteed existence + ownership; defensive only.
+			tx.gs.mu.Unlock()
+			return fmt.Errorf("commit: update target %d vanished", nodeID)
+		}
+		var oldNode *Node
+		if haveObservers {
+			oldNode = node.Clone()
+		}
+		tx.gs.lockShard(nodeID)
+		for k, v := range props {
+			node.Properties[k] = v
+		}
+		node.UpdatedAt = time.Now().Unix()
+		tx.gs.unlockShard(nodeID)
+
+		// Re-index vectors for the updated node (parity with the direct
+		// UpdateNode path).
+		plans, err := tx.gs.planNodeVectorInserts(node)
+		if err != nil {
+			tx.gs.mu.Unlock()
+			return fmt.Errorf("commit: plan vectors for updated node %d: %w", nodeID, err)
+		}
+		vectorPlans = append(vectorPlans, plans...)
+
+		data, err := json.Marshal(struct {
+			NodeID     uint64
+			Properties map[string]Value
+		}{NodeID: nodeID, Properties: props})
+		if err != nil {
+			tx.gs.mu.Unlock()
+			return fmt.Errorf("commit: marshal update %d: %w", nodeID, err)
+		}
+		walEntries = append(walEntries, wal.BatchEntry{OpType: wal.OpUpdateNode, Data: data})
+		if haveObservers {
+			updatesForNotify = append(updatesForNotify, updateNotify{oldNode: oldNode, newNode: node.Clone()})
+		}
+	}
 
 	tx.committed = true
 	tx.active = false
+	tx.gs.mu.Unlock()
+
+	// (3) Atomic durability — one fsync for the whole batch. Propagate the
+	// error: a commit that did not become durable must fail loudly.
+	if err := tx.gs.appendWALBatch(walEntries); err != nil {
+		return fmt.Errorf("commit: WAL durability: %w", err)
+	}
+
+	// (4) Off-lock: HNSW vector inserts, then observer dispatch.
+	tx.gs.applyNodeVectorInserts(vectorPlans)
+	if haveObservers {
+		ctx := context.Background()
+		for _, n := range createdForNotify {
+			tx.gs.notifyNodeCreated(ctx, n)
+		}
+		for _, u := range updatesForNotify {
+			tx.gs.notifyNodeUpdated(ctx, u.newNode, u.oldNode)
+		}
+	}
 
 	return nil
 }
 
-// applyCreatedNodes adds buffered node creations to storage
-// Groups nodes by shard to reduce lock contention
-func (tx *Transaction) applyCreatedNodes() {
-	if len(tx.createdNodes) == 0 {
-		return
-	}
-
-	// Group nodes by shard to batch lock acquisitions
-	nodesByShard := make(map[int][]*Node)
-	for _, node := range tx.createdNodes {
-		shardIdx := tx.gs.getShardIndex(node.ID)
-		nodesByShard[shardIdx] = append(nodesByShard[shardIdx], node)
-	}
-
-	// Process each shard with a single lock acquisition
-	for shardIdx, nodes := range nodesByShard {
-		tx.gs.shardLocks[shardIdx].Lock()
-		for _, node := range nodes {
-			tx.gs.storeNodeInShard(node)
-			// Update indexes
-			for _, label := range node.Labels {
-				tx.gs.nodesByLabel[label] = append(tx.gs.nodesByLabel[label], node.ID)
-			}
+// validateLocked checks that every created edge's endpoints and every update
+// target resolve to this transaction's tenant — either a node created in this
+// same transaction or an existing node owned by the tenant. Caller holds gs.mu.
+// Returning an error here aborts the commit before any mutation, giving
+// all-or-none semantics for reference errors.
+func (tx *Transaction) validateLocked() error {
+	resolvable := func(id uint64) bool {
+		if _, ok := tx.createdNodes[id]; ok {
+			return true
 		}
-		tx.gs.shardLocks[shardIdx].Unlock()
+		_, err := tx.gs.getNodeRefForTenant(id, tx.tenantID)
+		return err == nil
 	}
-}
-
-// applyCreatedEdges adds buffered edge creations to storage
-// Groups edges by shard to reduce lock contention
-func (tx *Transaction) applyCreatedEdges() {
-	if len(tx.createdEdges) == 0 {
-		return
-	}
-
-	// Group edges by shard to batch lock acquisitions
-	edgesByShard := make(map[int][]*Edge)
 	for _, edge := range tx.createdEdges {
-		shardIdx := tx.gs.getShardIndex(edge.ID)
-		edgesByShard[shardIdx] = append(edgesByShard[shardIdx], edge)
-	}
-
-	// Process each shard with a single lock acquisition
-	for shardIdx, edges := range edgesByShard {
-		tx.gs.shardLocks[shardIdx].Lock()
-		for _, edge := range edges {
-			tx.gs.storeEdgeInShard(edge)
-			// Update edge indexes
-			tx.gs.edgesByType[edge.Type] = append(tx.gs.edgesByType[edge.Type], edge.ID)
-			tx.gs.outgoingEdges[edge.FromNodeID] = append(tx.gs.outgoingEdges[edge.FromNodeID], edge.ID)
-			tx.gs.incomingEdges[edge.ToNodeID] = append(tx.gs.incomingEdges[edge.ToNodeID], edge.ID)
+		if !resolvable(edge.FromNodeID) {
+			return fmt.Errorf("commit: edge %d from-node %d not found in tenant", edge.ID, edge.FromNodeID)
 		}
-		tx.gs.shardLocks[shardIdx].Unlock()
-	}
-}
-
-// applyNodeUpdates applies buffered property updates to existing nodes
-// Groups updates by shard to reduce lock contention
-func (tx *Transaction) applyNodeUpdates() {
-	if len(tx.updatedNodes) == 0 {
-		return
-	}
-
-	// Group updates by shard to batch lock acquisitions
-	type nodeUpdate struct {
-		nodeID     uint64
-		properties map[string]Value
-	}
-	updatesByShard := make(map[int][]nodeUpdate)
-	for nodeID, properties := range tx.updatedNodes {
-		shardIdx := tx.gs.getShardIndex(nodeID)
-		updatesByShard[shardIdx] = append(updatesByShard[shardIdx], nodeUpdate{nodeID, properties})
-	}
-
-	// Process each shard with a single lock acquisition
-	for shardIdx, updates := range updatesByShard {
-		tx.gs.shardLocks[shardIdx].Lock()
-		for _, update := range updates {
-			if node, exists := tx.gs.lookupNodeShard(update.nodeID); exists {
-				for k, v := range update.properties {
-					node.Properties[k] = v
-				}
-			}
+		if !resolvable(edge.ToNodeID) {
+			return fmt.Errorf("commit: edge %d to-node %d not found in tenant", edge.ID, edge.ToNodeID)
 		}
-		tx.gs.shardLocks[shardIdx].Unlock()
 	}
+	for nodeID := range tx.updatedNodes {
+		if !resolvable(nodeID) {
+			return fmt.Errorf("commit: update target %d not found in tenant", nodeID)
+		}
+	}
+	return nil
 }
 
 // Rollback rolls back the transaction
