@@ -5,10 +5,17 @@ import (
 	"sync"
 )
 
-// Transaction represents a database transaction
+// Transaction represents a database transaction. It is tenant-bound: every
+// node/edge it creates is stamped with tenantID, and Commit validates that any
+// edge endpoint / update target belongs to that tenant (the *ForTenant
+// convention). Commit is atomic (single-fsync, all-or-none) and serializes on
+// gs.mu (last-writer-wins; no conflict detection). Creates + updates only —
+// deletes are deferred (the deletedNodes/deletedEdges fields below are dead
+// scaffolding for that follow-up; nothing populates them today).
 type Transaction struct {
 	gs         *GraphStorage
 	id         uint64
+	tenantID   string // empty == default tenant (effectiveTenantID resolves it)
 	active     bool
 	committed  bool
 	rolledBack bool
@@ -18,8 +25,8 @@ type Transaction struct {
 	createdNodes map[uint64]*Node
 	updatedNodes map[uint64]map[string]Value
 	createdEdges map[uint64]*Edge
-	deletedNodes map[uint64]bool
-	deletedEdges map[uint64]bool
+	deletedNodes map[uint64]bool // reserved for deferred delete support
+	deletedEdges map[uint64]bool // reserved for deferred delete support
 }
 
 var (
@@ -28,8 +35,16 @@ var (
 	ErrNestedTransaction       = errors.New("nested transactions are not supported")
 )
 
-// BeginTransaction starts a new transaction
+// BeginTransaction starts a new transaction in the default tenant. Equivalent
+// to BeginTransactionForTenant("") — kept for backward compatibility.
 func (gs *GraphStorage) BeginTransaction() (*Transaction, error) {
+	return gs.BeginTransactionForTenant("")
+}
+
+// BeginTransactionForTenant starts a new transaction bound to tenantID. All
+// nodes/edges created in the transaction are stamped with this tenant, and
+// Commit enforces tenant ownership of edge endpoints / update targets.
+func (gs *GraphStorage) BeginTransactionForTenant(tenantID string) (*Transaction, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
@@ -37,6 +52,7 @@ func (gs *GraphStorage) BeginTransaction() (*Transaction, error) {
 	tx := &Transaction{
 		gs:           gs,
 		id:           gs.allocateTransactionID(),
+		tenantID:     tenantID,
 		active:       true,
 		createdNodes: make(map[uint64]*Node),
 		updatedNodes: make(map[uint64]map[string]Value),
