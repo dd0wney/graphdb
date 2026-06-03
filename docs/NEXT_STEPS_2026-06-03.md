@@ -44,13 +44,15 @@ Per `NEXT_STEPS_2026-05-15.md` §§ Track R, Track H. The Track R verification g
 ### Initial item breakdown (refine via a short spike if scope is unclear)
 
 - **Q1 — Close the correctness-assertion gap in the vector test surface. ✅ DONE (#283).** The unit tests assert result *count*, not *ranking*. Add nearest-neighbour / recall assertions (known-answer datasets) to `pkg/vector` and the storage/REST vector paths, so the class of bug the REST exercise found becomes a unit-level regression guard. *Highest leverage — it's the root cause the audit reconciliation named.* **Shipped:** `pkg/api` `TestVectorSearch_NearestNeighbourCorrectness` (REST identity assertions) + `pkg/storage` `TestVectorSearchForTenant_KnownAnswerOrdering` (k>1 identity + ordering), using well-separated planted clusters for a deterministic known answer.
-- **Q2 — Drive `understand-graphdb` against current `main` end-to-end.** Re-run ingest + the planned Phase 2–3 queries against `b08bb70`; capture every divergence; fix in graphdb (not in the consumer). Each fix lands with a graphdb regression test.
-- **Q3 — Run `coi-screen` Milestone-1-proper against `main`.** Real ICIJ corpus import + screen; capture breakage in graphdb's surface (entity-resolution-adjacent reads, traversal correctness); fix + pin.
-- **Q4 — Generalize: a consumer-contract regression harness.** Turn the recurring "consumer surfaced a bug" loop into standing contract tests in graphdb so future consumer breakage is caught in CI, not in the field. *Sequenced last — it generalizes what Q1–Q3 learn.*
+- **Q2 — Drive `understand-graphdb` against current `main` end-to-end. ✅ DONE (#286 + consumer validation).** Drove the consumer (REST) against `main` via its own harness + a local deterministic embeddings server. **Shipped:** `pkg/api` `TestVectorSearch_RESTFloatArrayIngestionRoundTrip` — #246's float-array→vector coercion was pinned only at the storage layer, not the REST surface it was written for (the consumer's actual path); neuter-and-fail verified. Neural path validated end-to-end (ingest 121n/315e → correct NN top hit over REST); default FTS/LSA path assertion-grade green (consumer's `GRAPHDB_INTEGRATION=1` suite, 103 tests). Consumer-side: stale "neural blocked" docs corrected. *Remaining boundary: LSA semantic-dimensions need a real-LLM-summary run.*
+- **Q3 — Run `coi-screen` Milestone-1-proper against `main`. ✅ DONE (#287 + #288; synthetic-corpus proof).** coi-screen consumes graphdb as an embedded library; driving it surfaced **two pre-existing storage *persistence* bugs**, both fixed + pinned: **(#287)** `Snapshot()` clears the plain adjacency maps after compaction and never serializes the compressed adjacency → ALL edge adjacency lost on reopen under the default `EnableEdgeCompression` (independently confirmed by the Stór consumer); **(#288)** the batch/bulk-import path (`import-icij`) never stamped `TenantID`/maintained the per-tenant indexes → bulk data invisible to every `*ForTenant` reader. End-to-end proof on a synthetic 50K-node ICIJ-shaped corpus: import → screen → flagged the planted 2-hop conflict in <1s (pre-fix: zero). *Real ~814K corpus run still pending (corpus absent locally) — synthetic was sufficient for the bugs.*
+- **Q4 — Generalize: a consumer-contract regression harness. ⬜ REMAINING (only open Track-Q item).** Turn the recurring "consumer surfaced a bug" loop into standing contract tests in graphdb so future consumer breakage is caught in CI, not in the field. *Seed set = the four pins this session: #283 (NN identity), #286 (REST float-array ingestion), #287 (adjacency-survives-reopen), #288 (bulk-import tenant visibility).* Sequenced last — it generalizes what Q1–Q3 learned.
 
-**Acceptance**: each consumer-surfaced divergence is (a) fixed in graphdb and (b) pinned by a graphdb-side test that fails against the pre-fix code. Q1's correctness assertions exist and are green. The track closes when the two live consumers run clean against `main` and their failure modes are regression-guarded.
+**New gap surfaced (Q3, not yet a task):** the batch executor's **delete/update** paths (`executeDeleteNode`/`executeUpdateNode`) have the same per-tenant-index omission #288 fixed for create, but are unexercised by any consumer — documented follow-up, fix when a consumer needs batch delete/update.
 
-**Start with Q1** (it's the root-cause gap and needs no consumer setup), then Q2/Q3 in parallel as the consumers are available, then Q4.
+**Acceptance**: each consumer-surfaced divergence is (a) fixed in graphdb and (b) pinned by a graphdb-side test that fails against the pre-fix code. Q1–Q3 met this (#283/#286/#287/#288). The track closes when Q4's harness generalizes these into standing CI contracts.
+
+**Q1 ✅ → Q2 ✅ → Q3 ✅ → Q4 (remaining).** Q1 was the root-cause assertion gap; Q2/Q3 drove the two live consumers and fixed every divergence in graphdb; Q4 generalizes. Track Q may also be closed at Q3 if the standing harness isn't wanted yet.
 
 ### Reconciliation 2026-06-03 — Transaction durability shipped (code-vs-doc discrepancy)
 
@@ -116,9 +118,9 @@ Track P is the second audit-driven track to complete (Track R via the 2026-05-06
 
 ## How to use this document
 
-1. **Resolve the inherited-PR disposition (#240/#241) first** — cheap, clears the board (Decision: adopt or close).
-2. **Open Track Q with Q1** (vector correctness assertions) — it's the root-cause gap, needs no consumer setup, and is the highest-leverage single item.
-3. **Then Q2/Q3** — drive `understand-graphdb` + `coi-screen` against `main`; every divergence is a graphdb bug + a regression test. **Then Q4** (generalize into a contract harness).
+1. **Track Q is done through Q3** — Q1 (#283), Q2 (#286), Q3 (#287 + #288). Only **Q4** (consumer-contract regression harness) remains, and it may be deferred if the standing harness isn't wanted yet. See the Track Q section above for the per-item outcomes.
+2. **Resolve the inherited-PR disposition (#240/#241)** — cheap, clears the board (Decision: adopt or close); still open.
+3. **If continuing Track Q**: Q4 generalizes the four pins (#283/#286/#287/#288) into standing CI contracts.
 4. **Don't** re-open the perf dimension or manufacture sub-tracks beyond what the consumers surface.
 5. If a consumer divergence turns out to be deep enough to need design, spike it (`/spike`) before implementing — but most will be bounded bugfixes.
 
