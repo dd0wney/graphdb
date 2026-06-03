@@ -160,43 +160,11 @@ func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, prope
 		UpdatedAt:  now,
 	}
 
-	// Plan vector-index inserts: decode + dimension-validate the node's vector
-	// properties, deferring the expensive HNSW graph insert to the caller after
-	// gs.mu is released (Track P item 3 / H2). Done BEFORE the node is published
-	// to any shard/index below, so a bad vector aborts the create as a true
-	// no-op (no orphan in the shard map) — cleaner than the pre-H2 path, which
-	// stored the node first and only then rejected the vector. node.Properties
-	// is not yet shared here, so the decode is race-free.
-	vectorPlans, err := gs.planNodeVectorInserts(node)
+	// Publish the node into all in-memory structures + indexes (the shared
+	// persist helper — same logic Transaction.Commit uses). Returns the vector
+	// plans for the caller to apply off-lock.
+	vectorPlans, err := gs.persistNodeLocked(node)
 	if err != nil {
-		gs.recordOperation("create_node", "error", start)
-		return nil, nil, nil, err
-	}
-
-	// Per-shard write lock (A4) excludes shard.RLock readers during the
-	// nodeShards mutation. Brief hold — released as soon as the new node
-	// is in the shard map. The remaining global-index updates below run
-	// under gs.mu.Lock only.
-	gs.lockShard(nodeID)
-	gs.storeNodeInShard(node)
-	gs.unlockShard(nodeID)
-
-	// Update global label indexes (for backward compatibility)
-	for _, label := range labels {
-		gs.nodesByLabel[label] = append(gs.nodesByLabel[label], nodeID)
-	}
-
-	// Update tenant-scoped indexes
-	gs.addNodeToTenantIndex(node)
-
-	// Initialize edge lists
-	gs.outgoingEdges[nodeID] = make([]uint64, 0)
-	gs.incomingEdges[nodeID] = make([]uint64, 0)
-
-	atomic.AddUint64(&gs.stats.NodeCount, 1)
-
-	// Update property indexes
-	if err := gs.insertNodeIntoPropertyIndexes(nodeID, properties); err != nil {
 		gs.recordOperation("create_node", "error", start)
 		return nil, nil, nil, err
 	}
@@ -209,6 +177,53 @@ func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, prope
 
 	gs.recordOperation("create_node", "success", start)
 	return node.Clone(), walPending, vectorPlans, nil
+}
+
+// persistNodeLocked publishes a fully-built node (ID, TenantID, Labels,
+// Properties, timestamps already set) into every in-memory structure — shard
+// map, global label index, per-tenant index, adjacency maps, stats, property
+// indexes — and returns the vector-insert plans for the caller to apply
+// off-lock. It does NOT write the WAL: the caller chooses durability (a
+// single-op enqueueWAL on the direct create path; one atomic batch for
+// Transaction.Commit). Caller must hold gs.mu.Lock.
+//
+// Vector planning runs FIRST (decode + dimension-validate) so a bad vector
+// aborts before any structure is mutated — the node is never published in a
+// half-indexed state (Track P item 3). This is the single source of truth for
+// "persist a node," shared by createNodeLocked and Transaction.Commit, so the
+// two cannot drift (the drift is what left the pre-2026-06-03 Commit bypassing
+// the tenant/vector/property indexes entirely).
+func (gs *GraphStorage) persistNodeLocked(node *Node) ([]vectorInsertPlan, error) {
+	vectorPlans, err := gs.planNodeVectorInserts(node)
+	if err != nil {
+		return nil, err
+	}
+
+	// Per-shard write lock (A4) excludes shard.RLock readers during the
+	// nodeShards mutation; released as soon as the node is in the shard map.
+	gs.lockShard(node.ID)
+	gs.storeNodeInShard(node)
+	gs.unlockShard(node.ID)
+
+	// Global label index (tenant-blind, backward compatibility).
+	for _, label := range node.Labels {
+		gs.nodesByLabel[label] = append(gs.nodesByLabel[label], node.ID)
+	}
+
+	// Per-tenant indexes (label + enumeration set + stats).
+	gs.addNodeToTenantIndex(node)
+
+	// Initialize edge lists.
+	gs.outgoingEdges[node.ID] = make([]uint64, 0)
+	gs.incomingEdges[node.ID] = make([]uint64, 0)
+
+	atomic.AddUint64(&gs.stats.NodeCount, 1)
+
+	if err := gs.insertNodeIntoPropertyIndexes(node.ID, node.Properties); err != nil {
+		return nil, err
+	}
+
+	return vectorPlans, nil
 }
 
 func valuesEqual(a, b Value) bool {
