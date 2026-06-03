@@ -22,6 +22,14 @@ type HNSWIndex struct {
 	entryPoint *hnswNode            // Entry point for search (highest layer node)
 	maxLayer   int                  // Current maximum layer
 
+	// nodesByLevel indexes nodes by their top level (level → set of nodes at
+	// that level). It lets findNewEntryPoint pick a replacement entry point —
+	// always a node at the highest occupied level — without the O(N) scan of
+	// every node the deletion path used to pay (audit M4). Maintained on
+	// insert and delete; the cost is O(#distinct levels) ≈ O(log N), versus
+	// O(N) before. Guarded by h.mu like nodes/entryPoint/maxLayer.
+	nodesByLevel map[int]map[uint64]*hnswNode
+
 	// visitedPool recycles the per-layer visited-set maps that searchLayer /
 	// searchLayerKNN would otherwise make() fresh on every call. Under N
 	// concurrent searches the old pattern's GC pressure scaled with
@@ -70,8 +78,34 @@ func NewHNSWIndex(dimensions, m, efConstruction int, metric DistanceMetric) (*HN
 		ml:             1.0 / math.Log(float64(m)),
 		metric:         metric,
 		nodes:          make(map[uint64]*hnswNode),
+		nodesByLevel:   make(map[int]map[uint64]*hnswNode),
 		maxLayer:       -1,
 	}, nil
+}
+
+// addToLevelIndex records node in nodesByLevel under its top level (M4).
+// Caller must hold h.mu.Lock.
+func (h *HNSWIndex) addToLevelIndex(node *hnswNode) {
+	bucket := h.nodesByLevel[node.level]
+	if bucket == nil {
+		bucket = make(map[uint64]*hnswNode)
+		h.nodesByLevel[node.level] = bucket
+	}
+	bucket[node.id] = node
+}
+
+// removeFromLevelIndex drops node from nodesByLevel, deleting the level
+// bucket once it empties so findNewEntryPoint never considers a stale level
+// (M4). Caller must hold h.mu.Lock.
+func (h *HNSWIndex) removeFromLevelIndex(node *hnswNode) {
+	bucket := h.nodesByLevel[node.level]
+	if bucket == nil {
+		return
+	}
+	delete(bucket, node.id)
+	if len(bucket) == 0 {
+		delete(h.nodesByLevel, node.level)
+	}
 }
 
 // Dimensions returns the vector dimensions
@@ -122,6 +156,10 @@ func (h *HNSWIndex) Insert(id uint64, vector []float32) error {
 	for i := 0; i <= level; i++ {
 		node.friends[i] = make([]uint64, 0)
 	}
+
+	// Record in the level index (M4). Both the first-node and normal paths
+	// below keep the node, so index it once here.
+	h.addToLevelIndex(node)
 
 	// If this is the first node
 	if h.entryPoint == nil {
@@ -197,8 +235,11 @@ func (h *HNSWIndex) Delete(id uint64) error {
 		}
 	}
 
-	// Delete the node
+	// Delete the node — from both the id map and the level index. The level
+	// removal must precede findNewEntryPoint so the deleted node can't be
+	// re-selected as the new entry point (M4).
 	delete(h.nodes, id)
+	h.removeFromLevelIndex(node)
 
 	// Update entry point if necessary
 	if h.entryPoint != nil && h.entryPoint.id == id {
