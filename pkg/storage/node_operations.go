@@ -488,7 +488,12 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 		walProps[k] = v
 	}
 	gs.unlockShard(nodeID)
-	gs.writeToWAL(wal.OpUpdateNode, struct {
+	// Enqueue under gs.mu (preserves WAL order); wait on durability after
+	// releasing gs.mu so concurrent writers can fill the same batch (group
+	// commit, Track P item 1 — the create/update/delete paths already do this;
+	// this finishes RemoveNodeProperties, the last node write path on the
+	// synchronous writeToWAL).
+	walPending := gs.enqueueWAL(wal.OpUpdateNode, struct {
 		NodeID     uint64
 		Properties map[string]Value
 	}{
@@ -503,6 +508,7 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	}
 	gs.mu.Unlock()
 
+	gs.waitWALPending(wal.OpUpdateNode, walPending)
 	if newNode != nil {
 		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
 	}

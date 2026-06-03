@@ -190,3 +190,30 @@ func TestBatchedWAL_GroupCommit_EdgeUpdateAndDelete(t *testing.T) {
 	awaitN(t, done, 2, 3*time.Second,
 		"concurrent UpdateEdge/DeleteEdge are serialized under gs.mu (the batch cannot fill)")
 }
+
+// TestBatchedWAL_GroupCommit_RemoveNodeProperties covers RemoveNodeProperties —
+// the last node write path converted from synchronous writeToWAL to the
+// enqueue-then-wait group-commit split (Track P item 1 remainder). Two
+// concurrent removes fill batchSize=2 only if both release gs.mu during the
+// durability wait.
+func TestBatchedWAL_GroupCommit_RemoveNodeProperties(t *testing.T) {
+	gs := newBatchedGS(t, 2, 10*time.Second)
+	defer gs.Close()
+
+	ids := createNodesConcurrently(t, gs, 2)
+	// Give each node a property to remove (concurrent updates fill the batch).
+	upDone := make(chan error, 2)
+	for _, id := range ids {
+		go func(id uint64) {
+			upDone <- gs.UpdateNode(id, map[string]Value{"tmp": StringValue("x")})
+		}(id)
+	}
+	awaitN(t, upDone, 2, 3*time.Second, "seeding updates serialized under gs.mu")
+
+	done := make(chan error, 2)
+	for _, id := range ids {
+		go func(id uint64) { done <- gs.RemoveNodeProperties(id, []string{"tmp"}) }(id)
+	}
+	awaitN(t, done, 2, 3*time.Second,
+		"concurrent RemoveNodeProperties are serialized under gs.mu (the batch cannot fill)")
+}
