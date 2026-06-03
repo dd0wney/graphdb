@@ -496,7 +496,7 @@ func TestConformance_MergeOnCreateSet(t *testing.T) {
 		`MERGE (n:Person {name: "Eve"}) ON CREATE SET n.status = "new"`)
 
 	// Verify the node was created with the ON CREATE SET property
-	nodes, _ := gs.FindNodesByLabel("Person")
+	nodes, _ := gs.FindNodesByLabelAcrossTenants("Person")
 	if len(nodes) != 1 {
 		t.Fatalf("Expected 1 node, got %d", len(nodes))
 	}

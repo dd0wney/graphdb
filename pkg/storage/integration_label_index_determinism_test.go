@@ -48,12 +48,12 @@ func assertSameSet(t *testing.T, label string, got, want []uint64) {
 	}
 }
 
-// TestFindNodesByLabel_DeterministicOrderAfterReorderingDelete pins that the
+// TestFindNodesByLabelAcrossTenants_DeterministicOrderAfterReorderingDelete pins that the
 // global label index returns IDs in deterministic ascending order even after a
 // delete. The legacy slice index used swap-with-last removal, which permutes
 // the bucket into a mutation-history-dependent order; Path C (set + sort-on-read)
 // makes the result order a function of the surviving set alone.
-func TestFindNodesByLabel_DeterministicOrderAfterReorderingDelete(t *testing.T) {
+func TestFindNodesByLabelAcrossTenants_DeterministicOrderAfterReorderingDelete(t *testing.T) {
 	gs, err := NewGraphStorage(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewGraphStorage: %v", err)
@@ -75,17 +75,17 @@ func TestFindNodesByLabel_DeterministicOrderAfterReorderingDelete(t *testing.T) 
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	persons, err := gs.FindNodesByLabel("Person")
+	persons, err := gs.FindNodesByLabelAcrossTenants("Person")
 	if err != nil {
-		t.Fatalf("FindNodesByLabel: %v", err)
+		t.Fatalf("FindNodesByLabelAcrossTenants: %v", err)
 	}
 	got := idsOfNodes(persons)
-	assertSameSet(t, "FindNodesByLabel survivors", got, []uint64{ids[0], ids[2], ids[3]})
-	assertSorted(t, "FindNodesByLabel order", got)
+	assertSameSet(t, "FindNodesByLabelAcrossTenants survivors", got, []uint64{ids[0], ids[2], ids[3]})
+	assertSorted(t, "FindNodesByLabelAcrossTenants order", got)
 }
 
 // TestLabelIndex_SortedAndCorrectAfterReopen pins that both the global
-// (FindNodesByLabel) and per-tenant (GetNodesByLabelForTenant) label indexes
+// (FindNodesByLabelAcrossTenants) and per-tenant (GetNodesByLabelForTenant) label indexes
 // survive a Close()->reopen under the DEFAULT config (edge compression on) and
 // return the surviving set in deterministic ascending order. The per-tenant
 // index is rebuilt by iterating the snapshot's flat node map (random Go map
@@ -126,9 +126,9 @@ func TestLabelIndex_SortedAndCorrectAfterReopen(t *testing.T) {
 	}
 	defer func() { _ = gs.Close() }()
 
-	globalNodes, err := gs.FindNodesByLabel("Person")
+	globalNodes, err := gs.FindNodesByLabelAcrossTenants("Person")
 	if err != nil {
-		t.Fatalf("FindNodesByLabel after reopen: %v", err)
+		t.Fatalf("FindNodesByLabelAcrossTenants after reopen: %v", err)
 	}
 	gGlobal := idsOfNodes(globalNodes)
 	assertSameSet(t, "global survivors after reopen", gGlobal, surviving)
@@ -179,9 +179,9 @@ func TestGlobalLabelIndex_StickyLabelSurvivesReopen(t *testing.T) {
 	if !containsString(gs.GetAllLabels(), "Person") {
 		t.Errorf("after reopen: Person dropped from GetAllLabels: %v", gs.GetAllLabels())
 	}
-	persons, err := gs.FindNodesByLabel("Person")
+	persons, err := gs.FindNodesByLabelAcrossTenants("Person")
 	if err != nil {
-		t.Fatalf("FindNodesByLabel after reopen: %v", err)
+		t.Fatalf("FindNodesByLabelAcrossTenants after reopen: %v", err)
 	}
 	if len(persons) != 0 {
 		t.Errorf("after reopen: expected 0 Person nodes, got %d", len(persons))
@@ -228,9 +228,9 @@ func TestLabelIndex_CrashRecoveryDefaultConfig(t *testing.T) {
 	}
 	defer func() { _ = gs.Close() }()
 
-	globalNodes, err := gs.FindNodesByLabel("Person")
+	globalNodes, err := gs.FindNodesByLabelAcrossTenants("Person")
 	if err != nil {
-		t.Fatalf("FindNodesByLabel after crash: %v", err)
+		t.Fatalf("FindNodesByLabelAcrossTenants after crash: %v", err)
 	}
 	gGlobal := idsOfNodes(globalNodes)
 	assertSameSet(t, "global survivors after crash", gGlobal, surviving)
@@ -243,7 +243,7 @@ func TestLabelIndex_CrashRecoveryDefaultConfig(t *testing.T) {
 }
 
 // TestTypeIndex_SortedAndCorrectAfterReopen is the edge/type sibling of the
-// label test: global (FindEdgesByType) and per-tenant (GetEdgesByTypeForTenant)
+// label test: global (FindEdgesByTypeAcrossTenants) and per-tenant (GetEdgesByTypeForTenant)
 // type indexes survive reopen under the default (compression-on) config and
 // return survivors in deterministic ascending order.
 func TestTypeIndex_SortedAndCorrectAfterReopen(t *testing.T) {
@@ -290,9 +290,9 @@ func TestTypeIndex_SortedAndCorrectAfterReopen(t *testing.T) {
 	}
 	defer func() { _ = gs.Close() }()
 
-	globalEdges, err := gs.FindEdgesByType("KNOWS")
+	globalEdges, err := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 	if err != nil {
-		t.Fatalf("FindEdgesByType after reopen: %v", err)
+		t.Fatalf("FindEdgesByTypeAcrossTenants after reopen: %v", err)
 	}
 	gGlobal := idsOfEdges(globalEdges)
 	assertSameSet(t, "global type survivors after reopen", gGlobal, surviving)

@@ -26,7 +26,7 @@ func (pc *PropertyConstraint) Validate(graph GraphReader) ([]Violation, error) {
 	violations := make([]Violation, 0)
 
 	// Get all nodes with the target label
-	nodes, err := graph.FindNodesByLabel(pc.NodeLabel)
+	nodes, err := graph.FindNodesByLabelAcrossTenants(pc.NodeLabel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find nodes with label %s: %w", pc.NodeLabel, err)
 	}

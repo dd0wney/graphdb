@@ -135,8 +135,11 @@ func (gs *GraphStorage) GetAllLabels() []string {
 	return labels
 }
 
-// FindNodesByLabel finds all nodes with a specific label
-func (gs *GraphStorage) FindNodesByLabel(label string) ([]*Node, error) {
+// FindNodesByLabelAcrossTenants returns every node with the given label from
+// every tenant. The explicit name makes the cross-tenant scope visible
+// (audit A3b convention, cf. GetAllNodesAcrossTenants); tenant-scoped callers
+// must use GetNodesByLabelForTenant instead. Results are sorted by node ID.
+func (gs *GraphStorage) FindNodesByLabelAcrossTenants(label string) ([]*Node, error) {
 	defer gs.startQueryTiming()()
 
 	gs.mu.RLock()
@@ -205,8 +208,11 @@ func (gs *GraphStorage) FindNodesByPropertyForTenant(key string, value Value, te
 	return nodes, nil
 }
 
-// FindEdgesByType finds all edges of a specific type
-func (gs *GraphStorage) FindEdgesByType(edgeType string) ([]*Edge, error) {
+// FindEdgesByTypeAcrossTenants returns every edge of the given type from every
+// tenant. The explicit name makes the cross-tenant scope visible (audit A3b
+// convention); tenant-scoped callers must use GetEdgesByTypeForTenant instead.
+// Results are sorted by edge ID.
+func (gs *GraphStorage) FindEdgesByTypeAcrossTenants(edgeType string) ([]*Edge, error) {
 	defer gs.startQueryTiming()()
 
 	gs.mu.RLock()

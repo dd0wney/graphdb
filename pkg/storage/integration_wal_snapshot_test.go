@@ -144,7 +144,7 @@ func TestGraphStorage_SnapshotThenMoreOps(t *testing.T) {
 		}
 
 		// Count nodes by phase
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		phase1Count := 0
 		phase2Count := 0
 
@@ -266,7 +266,7 @@ func TestGraphStorage_MultipleSnapshotCycles(t *testing.T) {
 		}
 
 		// Verify cycle distribution
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		cycleCounts := map[int64]int{1: 0, 2: 0, 3: 0}
 
 		for _, node := range persons {
@@ -455,7 +455,7 @@ func TestGraphStorage_IndexesDurableAcrossSnapshot(t *testing.T) {
 		}
 
 		// Verify label index
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		if len(persons) != 3 {
 			t.Errorf("Expected 3 Person nodes, got %d", len(persons))
 		}

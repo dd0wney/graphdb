@@ -214,7 +214,7 @@ func TestGraphStorage_StatisticsAfterDeletion(t *testing.T) {
 		stats := gs.stats
 
 		// Count actual nodes
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		actualNodes := len(persons)
 		if stats.NodeCount != uint64(actualNodes) {
 			t.Errorf("After recovery: NodeCount mismatch - stats=%d, actual=%d",
@@ -222,7 +222,7 @@ func TestGraphStorage_StatisticsAfterDeletion(t *testing.T) {
 		}
 
 		// Count actual edges
-		knows, _ := gs.FindEdgesByType("KNOWS")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		actualEdges := len(knows)
 		if stats.EdgeCount != uint64(actualEdges) {
 			t.Errorf("After recovery: EdgeCount mismatch - stats=%d, actual=%d",
@@ -305,7 +305,7 @@ func TestGraphStorage_StatisticsAccuracyAfterManyOperations(t *testing.T) {
 
 		// Verify node count
 		stats := gs.stats
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		actualNodes := len(persons)
 
 		if stats.NodeCount != uint64(actualNodes) {
@@ -314,7 +314,7 @@ func TestGraphStorage_StatisticsAccuracyAfterManyOperations(t *testing.T) {
 		}
 
 		// Verify edge count
-		knows, _ := gs.FindEdgesByType("KNOWS")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 		actualEdges := len(knows)
 
 		if stats.EdgeCount != uint64(actualEdges) {
@@ -383,7 +383,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 		}
 
 		// Get existing nodes to create edges between old and new nodes
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		var nodeIDs []uint64
 		for _, node := range persons {
 			nodeIDs = append(nodeIDs, node.ID)
@@ -428,8 +428,8 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 		}
 
 		// Verify against actual counts
-		persons, _ := gs.FindNodesByLabel("Person")
-		knows, _ := gs.FindEdgesByType("KNOWS")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
+		knows, _ := gs.FindEdgesByTypeAcrossTenants("KNOWS")
 
 		if len(persons) != expectedNodes {
 			t.Errorf("Final: Actual node count %d doesn't match expected %d", len(persons), expectedNodes)
@@ -496,7 +496,7 @@ func TestGraphStorage_StatisticsWithConcurrentOperations(t *testing.T) {
 	}
 
 	// Verify against actual count
-	persons, _ := gs.FindNodesByLabel("Person")
+	persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 	if len(persons) != expectedTotal {
 		t.Errorf("Actual node count %d doesn't match stats %d", len(persons), stats.NodeCount)
 	}

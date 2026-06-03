@@ -18,12 +18,12 @@ type GraphReader interface {
 	// audit-A3b rename surfaces the cross-tenant semantic at the call
 	// site so the limitation is visible in code review.
 	GetAllNodesAcrossTenants() []*storage.Node
-	FindNodesByLabel(label string) ([]*storage.Node, error)
+	FindNodesByLabelAcrossTenants(label string) ([]*storage.Node, error)
 	GetAllLabels() []string
 
 	// Edge operations
 	GetEdge(edgeID uint64) (*storage.Edge, error)
-	FindEdgesByType(edgeType string) ([]*storage.Edge, error)
+	FindEdgesByTypeAcrossTenants(edgeType string) ([]*storage.Edge, error)
 	GetOutgoingEdges(nodeID uint64) ([]*storage.Edge, error)
 	GetIncomingEdges(nodeID uint64) ([]*storage.Edge, error)
 }

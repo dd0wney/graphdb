@@ -59,7 +59,7 @@ type StorageReader interface {
 	GetEdgeTypesForTenant(tenantID string) []string
 	HasPropertyIndex(key string) bool
 	GetVectorIndexMetric(propertyName string) (vector.DistanceMetric, error)
-	FindNodesByLabel(label string) ([]*Node, error)
+	FindNodesByLabelAcrossTenants(label string) ([]*Node, error)
 	GetNode(nodeID uint64) (*Node, error)
 	GetOutgoingEdges(nodeID uint64) ([]*Edge, error)
 	GetIncomingEdges(nodeID uint64) ([]*Edge, error)

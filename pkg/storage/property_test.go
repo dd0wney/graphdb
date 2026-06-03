@@ -250,7 +250,7 @@ func TestGraphInvariants(t *testing.T) {
 			_, _ = storage.CreateNode([]string{"Different"}, nil)
 
 			// Find by label
-			nodes, err := storage.FindNodesByLabel(label)
+			nodes, err := storage.FindNodesByLabelAcrossTenants(label)
 			if err != nil {
 				return true
 			}

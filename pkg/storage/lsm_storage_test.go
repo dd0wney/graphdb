@@ -330,8 +330,8 @@ func TestLSMGraphStorage_GetIncomingEdges(t *testing.T) {
 	}
 }
 
-// TestLSMGraphStorage_FindNodesByLabel tests finding nodes by label
-func TestLSMGraphStorage_FindNodesByLabel(t *testing.T) {
+// TestLSMGraphStorage_FindNodesByLabelAcrossTenants tests finding nodes by label
+func TestLSMGraphStorage_FindNodesByLabelAcrossTenants(t *testing.T) {
 	dataDir := t.TempDir()
 	gs, err := NewLSMGraphStorage(dataDir)
 	if err != nil {
@@ -345,7 +345,7 @@ func TestLSMGraphStorage_FindNodesByLabel(t *testing.T) {
 	_, _ = gs.CreateNode([]string{"Admin"}, map[string]Value{})
 
 	// Find User nodes
-	users, err := gs.FindNodesByLabel("User")
+	users, err := gs.FindNodesByLabelAcrossTenants("User")
 	if err != nil {
 		t.Fatalf("Failed to find nodes: %v", err)
 	}

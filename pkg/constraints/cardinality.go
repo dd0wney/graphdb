@@ -50,7 +50,7 @@ func (cc *CardinalityConstraint) Validate(graph GraphReader) ([]Violation, error
 	violations := make([]Violation, 0)
 
 	// Get all nodes with the target label
-	nodes, err := graph.FindNodesByLabel(cc.NodeLabel)
+	nodes, err := graph.FindNodesByLabelAcrossTenants(cc.NodeLabel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find nodes with label %s: %w", cc.NodeLabel, err)
 	}

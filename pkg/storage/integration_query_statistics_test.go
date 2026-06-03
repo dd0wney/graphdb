@@ -32,7 +32,7 @@ func TestQueryStatistics_SnapshotDurability(t *testing.T) {
 
 		// Run 10 queries to track statistics
 		for i := 0; i < 10; i++ {
-			_, _ = gs.FindNodesByLabel("Person")
+			_, _ = gs.FindNodesByLabelAcrossTenants("Person")
 		}
 
 		// Check stats before close
@@ -106,7 +106,7 @@ func TestQueryStatistics_CrashRecovery(t *testing.T) {
 
 		// Run 15 queries
 		for i := 0; i < 15; i++ {
-			_, _ = gs.FindNodesByLabel("Person")
+			_, _ = gs.FindNodesByLabelAcrossTenants("Person")
 		}
 
 		// Check stats before crash
@@ -174,7 +174,7 @@ func TestQueryStatistics_MixedRecovery(t *testing.T) {
 
 		// Run 5 queries
 		for i := 0; i < 5; i++ {
-			_, _ = gs.FindNodesByLabel("Person")
+			_, _ = gs.FindNodesByLabelAcrossTenants("Person")
 		}
 
 		// Close cleanly
@@ -202,7 +202,7 @@ func TestQueryStatistics_MixedRecovery(t *testing.T) {
 
 		// Run 10 more queries
 		for i := 0; i < 10; i++ {
-			_, _ = gs.FindNodesByLabel("Person")
+			_, _ = gs.FindNodesByLabelAcrossTenants("Person")
 		}
 
 		// Should now have 15 total queries
@@ -270,7 +270,7 @@ func TestQueryStatistics_AvgQueryTimeAccuracy(t *testing.T) {
 
 	for i := 0; i < numQueries; i++ {
 		start := time.Now()
-		_, _ = gs.FindNodesByLabel("Person")
+		_, _ = gs.FindNodesByLabelAcrossTenants("Person")
 		totalDuration += time.Since(start)
 	}
 
@@ -335,7 +335,7 @@ func TestQueryStatistics_ConcurrentQueriesDurability(t *testing.T) {
 		go func(workerID int) {
 			defer wg.Done()
 			for j := 0; j < queriesPerWorker; j++ {
-				_, _ = gs.FindNodesByLabel("Person")
+				_, _ = gs.FindNodesByLabelAcrossTenants("Person")
 			}
 		}(i)
 	}
@@ -390,12 +390,12 @@ func TestQueryStatistics_DifferentQueryTypes(t *testing.T) {
 
 	expectedQueries := 0
 
-	// Test FindNodesByLabel (1 query)
-	_, _ = gs.FindNodesByLabel("Person")
+	// Test FindNodesByLabelAcrossTenants (1 query)
+	_, _ = gs.FindNodesByLabelAcrossTenants("Person")
 	expectedQueries++
 
-	// Test FindEdgesByType (1 query)
-	_, _ = gs.FindEdgesByType("KNOWS")
+	// Test FindEdgesByTypeAcrossTenants (1 query)
+	_, _ = gs.FindEdgesByTypeAcrossTenants("KNOWS")
 	expectedQueries++
 
 	// Test FindNodesByProperty (1 query)

@@ -63,7 +63,7 @@ func TestGraphStorage_ConcurrentNodeCreation(t *testing.T) {
 	}
 
 	// Verify all nodes are retrievable
-	persons, _ := gs.FindNodesByLabel("Person")
+	persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 	if len(persons) != expectedTotal {
 		t.Errorf("Expected %d Person nodes, got %d", expectedTotal, len(persons))
 	}
@@ -191,9 +191,9 @@ func TestGraphStorage_ConcurrentReadWrite(t *testing.T) {
 				}
 
 				// Query by label
-				_, err := gs.FindNodesByLabel("Person")
+				_, err := gs.FindNodesByLabelAcrossTenants("Person")
 				if err != nil {
-					t.Errorf("Reader %d: FindNodesByLabel failed: %v", readerID, err)
+					t.Errorf("Reader %d: FindNodesByLabelAcrossTenants failed: %v", readerID, err)
 				}
 			}
 		}(i)
@@ -298,7 +298,7 @@ func TestGraphStorage_ConcurrentDeletion(t *testing.T) {
 		deleteCount.Load(), errorCount.Load())
 
 	// Verify remaining nodes
-	persons, _ := gs.FindNodesByLabel("Person")
+	persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 	remaining := len(persons)
 
 	// We should have deleted roughly half
@@ -368,7 +368,7 @@ func TestGraphStorage_ConcurrentPropertyIndex(t *testing.T) {
 	}
 
 	// Verify all nodes are indexed
-	players, _ := gs.FindNodesByLabel("Player")
+	players, _ := gs.FindNodesByLabelAcrossTenants("Player")
 	if len(players) != expectedTotal {
 		t.Errorf("Expected %d Player nodes, got %d", expectedTotal, len(players))
 	}
@@ -433,7 +433,7 @@ func TestGraphStorage_ConcurrentCrashRecovery(t *testing.T) {
 			t.Errorf("Expected %d nodes after recovery, got %d", expectedTotal, stats.NodeCount)
 		}
 
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		if len(persons) != expectedTotal {
 			t.Errorf("Expected %d Person nodes after recovery, got %d", expectedTotal, len(persons))
 		}

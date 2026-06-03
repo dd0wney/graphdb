@@ -642,7 +642,7 @@ These jobs update denormalized metrics:
 ```go
 // UpdateUserMetrics - Run hourly
 func UpdateUserMetrics(gs *storage.GraphStorage) error {
-    users := gs.FindNodesByLabel("User")
+    users := gs.FindNodesByLabelAcrossTenants("User")
 
     for _, user := range users {
         // Count MASTERY edges
@@ -670,7 +670,7 @@ func UpdateUserMetrics(gs *storage.GraphStorage) error {
 // ComputeConceptPageRank - Run daily
 // Uses the built-in PageRank algorithm
 func ComputeConceptPageRank(gs *storage.GraphStorage) error {
-    concepts := gs.FindNodesByLabel("Concept")
+    concepts := gs.FindNodesByLabelAcrossTenants("Concept")
     conceptIDs := make([]uint64, len(concepts))
     for i, c := range concepts {
         conceptIDs[i] = c.ID

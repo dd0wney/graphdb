@@ -396,7 +396,9 @@ func (gs *BTreeGraphStorage) GetNode(nodeID uint64) (*Node, error)            { 
 func (gs *BTreeGraphStorage) GetEdge(edgeID uint64) (*Edge, error)            { return nil, ErrEdgeNotFound }
 func (gs *BTreeGraphStorage) GetOutgoingEdges(nodeID uint64) ([]*Edge, error) { return nil, nil }
 func (gs *BTreeGraphStorage) GetIncomingEdges(nodeID uint64) ([]*Edge, error) { return nil, nil }
-func (gs *BTreeGraphStorage) FindNodesByLabel(label string) ([]*Node, error)  { return nil, nil }
+func (gs *BTreeGraphStorage) FindNodesByLabelAcrossTenants(label string) ([]*Node, error) {
+	return nil, nil
+}
 
 func (gs *BTreeGraphStorage) FindNodesByPropertyForTenant(key string, value Value, tenantID string) ([]*Node, error) {
 	return nil, errBTreeBackendUnsupported

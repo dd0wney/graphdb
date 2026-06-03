@@ -297,7 +297,7 @@ func TestGraphStorage_BatchedWAL_MultipleCycles(t *testing.T) {
 		}
 
 		// Verify nodes from each cycle exist
-		persons, _ := gs.FindNodesByLabel("Person")
+		persons, _ := gs.FindNodesByLabelAcrossTenants("Person")
 		if len(persons) != 6 {
 			t.Errorf("Expected 6 Person nodes, got %d", len(persons))
 		}

@@ -152,8 +152,8 @@ func (gs *LSMGraphStorage) DeleteNode(nodeID uint64) error {
 	return gs.lsm.Delete(makeNodeKey(nodeID))
 }
 
-// FindNodesByLabel returns all nodes with a given label from LSM storage
-func (gs *LSMGraphStorage) FindNodesByLabel(label string) ([]*Node, error) {
+// FindNodesByLabelAcrossTenants returns all nodes with a given label from LSM storage
+func (gs *LSMGraphStorage) FindNodesByLabelAcrossTenants(label string) ([]*Node, error) {
 	// Scan range: l:<label>:* to l:<label>:<max>
 	// We use 0 for start and max uint64 for end to capture all nodeIDs
 	start := makeLabelKey(label, 0)
