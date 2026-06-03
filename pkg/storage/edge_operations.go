@@ -287,33 +287,51 @@ func (gs *GraphStorage) createEdgeLocked(tenantID string, fromID, toID uint64, e
 		CreatedAt:  time.Now().Unix(),
 	}
 
-	// gs.mu.Lock is held by the caller (CreateEdge / UpsertEdge / etc.)
-	// for the global indexes below; lockShard excludes concurrent
-	// GetEdge readers from this edge's shard while we write to
-	// edgeShards. Audit task A4-edges (2026-05-10).
-	gs.lockShard(edgeID)
-	gs.storeEdgeInShard(edge)
-	gs.unlockShard(edgeID)
-
-	// Update global type index (for backward compatibility)
-	gs.edgesByType[edgeType] = append(gs.edgesByType[edgeType], edgeID)
-
-	// Update tenant-scoped indexes
-	gs.addEdgeToTenantIndex(edge)
-
-	if err := gs.storeOutgoingEdge(fromID, edgeID); err != nil {
-		return nil, nil, fmt.Errorf("failed to store outgoing edge: %w", err)
-	}
-	if err := gs.storeIncomingEdge(toID, edgeID); err != nil {
-		return nil, nil, fmt.Errorf("failed to store incoming edge: %w", err)
+	// Publish the edge into all in-memory structures + indexes (the shared
+	// persist helper — same logic Transaction.Commit uses). Endpoint
+	// tenant-ownership validation stays the public caller's responsibility
+	// (CreateEdge/UpsertEdge via verifyNodeExistsForTenant), unchanged.
+	if err := gs.persistEdgeLocked(edge); err != nil {
+		return nil, nil, err
 	}
 
-	atomic.AddUint64(&gs.stats.EdgeCount, 1)
 	// Enqueue under gs.mu (preserves WAL order); the public caller waits on the
 	// returned handle after releasing gs.mu (group commit, Track P item 1).
 	walPending := gs.enqueueWAL(wal.OpCreateEdge, edge)
 
 	return edge, walPending, nil
+}
+
+// persistEdgeLocked publishes a fully-built edge (ID, TenantID, endpoints,
+// Type, Properties, Weight, timestamp already set) into every in-memory
+// structure — shard map, global type index, per-tenant index, adjacency
+// lists, stats. It does NOT write the WAL or validate endpoint ownership: the
+// caller chooses durability (single-op enqueueWAL on the direct create path;
+// one atomic batch for Transaction.Commit) and is responsible for endpoint-
+// tenant validation. Caller must hold gs.mu.Lock. Single source of truth for
+// "persist an edge," shared by createEdgeLocked and Transaction.Commit.
+func (gs *GraphStorage) persistEdgeLocked(edge *Edge) error {
+	// lockShard excludes concurrent GetEdge readers from this edge's shard
+	// while we write edgeShards (A4-edges).
+	gs.lockShard(edge.ID)
+	gs.storeEdgeInShard(edge)
+	gs.unlockShard(edge.ID)
+
+	// Global type index (tenant-blind, backward compatibility).
+	gs.edgesByType[edge.Type] = append(gs.edgesByType[edge.Type], edge.ID)
+
+	// Per-tenant indexes (type + enumeration set + stats).
+	gs.addEdgeToTenantIndex(edge)
+
+	if err := gs.storeOutgoingEdge(edge.FromNodeID, edge.ID); err != nil {
+		return fmt.Errorf("failed to store outgoing edge: %w", err)
+	}
+	if err := gs.storeIncomingEdge(edge.ToNodeID, edge.ID); err != nil {
+		return fmt.Errorf("failed to store incoming edge: %w", err)
+	}
+
+	atomic.AddUint64(&gs.stats.EdgeCount, 1)
+	return nil
 }
 
 // Edge adjacency helper methods
