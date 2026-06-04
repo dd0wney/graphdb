@@ -133,7 +133,13 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	if s.tenantStore != nil {
 		// Admin-only tenant management
 		mux.HandleFunc("/api/v1/tenants", s.requireAdmin(s.handleTenantsEndpoint))
-		mux.HandleFunc("/api/v1/tenants/", s.requireAuth(s.handleTenantEndpoint))
+		// withTenant is required: handleGetTenant's self-access check compares
+		// the path tenant against getTenantFromContext(r), which without
+		// withTenant falls back to DefaultTenantID — so a non-admin was denied
+		// their own tenant AND could read the "default" tenant's metadata.
+		// withTenant resolves the caller's tenant from their claims so the
+		// self-check is correct. (Tenant-isolation sweep F2.)
+		mux.HandleFunc("/api/v1/tenants/", s.requireAuth(s.withTenant(s.handleTenantEndpoint)))
 	}
 
 	// Schema management endpoints (admin only).
