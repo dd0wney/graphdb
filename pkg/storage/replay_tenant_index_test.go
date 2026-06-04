@@ -74,6 +74,69 @@ func TestReplayDeleteNode_RemovesNodeFromTenantIndex(t *testing.T) {
 	}
 }
 
+// TestReplayDeleteNodeWithEdges_TenantCountsConsistent is the cross-cutting
+// capstone: crash-recovering a node delete that CASCADES an edge must leave
+// BOTH per-tenant counts consistent. It exercises an interaction no single
+// fix's tests could cover alone — it needs the replay node-removal (#308 item C,
+// replayDeleteNode -> removeNodeFromTenantIndex) AND the replay cascade
+// edge-removal (#307, cascadeDelete*Edge -> removeEdgeFromTenantIndex) both
+// present. With either missing, one of the asserted counts drifts.
+//
+// Crash-recovery discipline (the drift only manifests through replay).
+func TestReplayDeleteNodeWithEdges_TenantCountsConsistent(t *testing.T) {
+	dir := t.TempDir()
+	const tn = "acme"
+
+	var keep, victim uint64
+
+	// Phase 1: two nodes + an edge between them, clean close -> snapshot.
+	{
+		gs, err := NewGraphStorage(dir)
+		if err != nil {
+			t.Fatalf("phase1 NewGraphStorage: %v", err)
+		}
+		k, err := gs.CreateNodeWithTenant(tn, []string{"Doc"}, nil)
+		if err != nil {
+			t.Fatalf("create keep: %v", err)
+		}
+		v, err := gs.CreateNodeWithTenant(tn, []string{"Doc"}, nil)
+		if err != nil {
+			t.Fatalf("create victim: %v", err)
+		}
+		keep, victim = k.ID, v.ID
+		if _, err := gs.CreateEdgeWithTenant(tn, keep, victim, "LINKS", nil, 1.0); err != nil {
+			t.Fatalf("create edge: %v", err)
+		}
+		if err := gs.Close(); err != nil {
+			t.Fatalf("phase1 Close: %v", err)
+		}
+	}
+
+	// Phase 2: reopen, delete the victim (cascades the edge), crash.
+	{
+		gs := testCrashableStorage(t, dir, crashRecoveryConfig(dir))
+		if err := gs.DeleteNodeForTenant(victim, tn); err != nil {
+			t.Fatalf("DeleteNodeForTenant: %v", err)
+		}
+		// no Close — simulate crash.
+	}
+
+	// Phase 3: recover. replayDeleteNode (node) + its cascade (edge) must both
+	// update the per-tenant indexes.
+	gs, err := NewGraphStorage(dir)
+	if err != nil {
+		t.Fatalf("recovery NewGraphStorage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	if got := gs.CountNodesForTenant(tn); got != 1 {
+		t.Errorf("CountNodesForTenant = %d after crash recovery, want 1 (only the surviving endpoint) — replay node tenant-index removal regressed", got)
+	}
+	if got := gs.CountEdgesForTenant(tn); got != 0 {
+		t.Errorf("CountEdgesForTenant = %d after crash recovery, want 0 — replay cascade-edge tenant-index removal regressed", got)
+	}
+}
+
 // TestReplayDeleteEdge_RemovesEdgeFromTenantIndex is the standalone-edge sibling
 // of the node test: a DeleteEdge recovered through replayDeleteEdge must leave
 // the per-tenant edge index/count consistent. replayDeleteEdge skipped
