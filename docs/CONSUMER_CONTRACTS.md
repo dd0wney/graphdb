@@ -17,6 +17,11 @@ Find the tests: `grep -rn "CONSUMER CONTRACT:" pkg/`
 | CC4-bulkimport-tenant-visible | Data written via the batch/bulk-import path is visible to every `*ForTenant` reader, in-memory and after reopen | coi-screen / import-icij | `pkg/storage` `TestBatchCommit_VisibleToForTenantReaders`, `TestBatchCommit_VisibleAfterReopen` | #288 |
 | CC5-label-filtered-vector-search | `filter_labels` post-filters correctly on float-array-ingested vectors over REST | understand-graphdb, coi-screen | `pkg/api` `TestVectorSearch_RESTFloatArrayLabelFilter` | Q4 |
 | CC6-batch-delete-tenant-index | Data deleted via the batch path leaves the per-tenant indexes + tenant counts (the delete-side sibling of CC4) | coi-screen / import-icij | `pkg/storage` `TestBatchDeleteNode_MaintainsTenantIndexAndCounts`, `TestBatchDeleteEdge_MaintainsTenantEdgeCount` | (batch-tenant-index follow-up) |
+| CC7-batch-partial-echo | `POST /nodes/batch` returns only the nodes actually created (partial success), in unspecified order, echoing each node's properties so a client can reconcile assigned IDs to a correlation key (jailgraph's `_key`) | jailgraph | `pkg/api` `TestBatchNodes_PartialOutOfOrderEchoesProperties` | #319 |
+| CC8-label-list-properties-paginated | `GET /nodes?label=` returns nodes with their properties and is followable to completion via the `X-Next-Cursor` header | jailgraph | `pkg/api` `TestNodesByLabel_ReturnsPropertiesAcrossPages` | #319 |
+| CC9-traverse-outgoing-depth | `POST /traverse` returns the nodes reachable via outgoing edges within `max_depth` | jailgraph | `pkg/api` `TestTraverse_OutgoingNeighborsAtDepth` | #319 |
+
+**CC7–CC9 are pre-emptive guards, not bug fixes.** CC1–CC6 were each written *red* against a real divergence found by driving the consumer. CC7–CC9 instead pin behaviours the jailgraph consumer already relies on (it works against graphdb as-is) so the in-flight storage-hardening wave can't silently change them — they pass against the code they ship with. They were teeth-proven by temporarily breaking the pinned behaviour (property echo, cursor pagination) and confirming the test fails. Origin: `../jailgraph/docs/GRAPHDB_CONTRACTS_HANDOFF.md`.
 
 ## Growth rule
 
