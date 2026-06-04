@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
@@ -39,6 +40,10 @@ func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
 		return gs.replayCreatePropertyIndex(entry)
 	case wal.OpDropPropertyIndex:
 		return gs.replayDropPropertyIndex(entry)
+	case wal.OpCreateVectorIndex:
+		return gs.replayCreateVectorIndex(entry)
+	case wal.OpDropVectorIndex:
+		return gs.replayDropVectorIndex(entry)
 	}
 	return nil
 }
@@ -318,5 +323,52 @@ func (gs *GraphStorage) replayDropPropertyIndex(entry *wal.Entry) error {
 	// Remove index
 	delete(gs.propertyIndexes, indexInfo.PropertyKey)
 
+	return nil
+}
+
+// replayCreateVectorIndex restores a vector index DEFINITION recovered from the
+// WAL (an index created after the last snapshot). Only the definition is
+// recreated here — the HNSW graph is rebuilt from the final post-replay node
+// set by rebuildVectorIndexesFromNodes, which runs after replayWAL completes.
+// Populating here would be both wasted work and wrong (it would run before the
+// WAL-recovered nodes exist). Idempotent: a definition already present from the
+// snapshot is left untouched.
+func (gs *GraphStorage) replayCreateVectorIndex(entry *wal.Entry) error {
+	var def VectorIndexDef
+	if err := json.Unmarshal(entry.Data, &def); err != nil {
+		return err
+	}
+
+	tid := tenantid.TenantID(def.TenantID)
+	if tid.IsEmpty() {
+		tid = tenantid.Default
+	}
+	if gs.vectorIndex.HasIndexForTenant(tid, def.PropertyName) {
+		return nil
+	}
+	if err := gs.vectorIndex.CreateIndexForTenant(
+		tid, def.PropertyName, def.Dimensions, def.M, def.EfConstruction, def.Metric,
+	); err != nil {
+		return fmt.Errorf("failed to recreate vector index %s/%s during replay: %w", def.TenantID, def.PropertyName, err)
+	}
+	return nil
+}
+
+// replayDropVectorIndex replays a vector-index drop recovered from the WAL (a
+// drop applied after the last snapshot). Without it, the snapshotted definition
+// would resurrect on recovery. A missing index is a no-op — the drop may target
+// a definition that was never snapshotted.
+func (gs *GraphStorage) replayDropVectorIndex(entry *wal.Entry) error {
+	var info dropVectorIndexWAL
+	if err := json.Unmarshal(entry.Data, &info); err != nil {
+		return err
+	}
+
+	tid := tenantid.TenantID(info.TenantID)
+	if tid.IsEmpty() {
+		tid = tenantid.Default
+	}
+	// Ignore "no such index" — the drop is idempotent on replay.
+	_ = gs.vectorIndex.DropIndexForTenant(tid, info.PropertyName)
 	return nil
 }

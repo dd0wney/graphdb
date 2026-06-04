@@ -12,6 +12,11 @@ const (
 	OpDeleteEdge
 	OpCreatePropertyIndex
 	OpDropPropertyIndex
+	// Appended after the original set so existing WAL files (which encode
+	// OpType as a single byte) keep replaying their stored ops correctly —
+	// never renumber the values above.
+	OpCreateVectorIndex
+	OpDropVectorIndex
 )
 
 // Entry represents a single WAL entry
