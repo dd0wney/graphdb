@@ -107,6 +107,15 @@ func (tx *Transaction) Commit() error {
 		if haveObservers {
 			oldNode = node.Clone()
 		}
+		// Maintain property indexes BEFORE mutating node.Properties — the helper
+		// reads the old value off the live node to Remove it, then Inserts the
+		// new (mirrors the direct UpdateNode path). Omitting this left the
+		// property index stale after a transaction update of an existing node
+		// (the per-tenant-index/#288 class, in the dormant transaction path).
+		if err := tx.gs.updatePropertyIndexes(nodeID, node, props); err != nil {
+			tx.gs.mu.Unlock()
+			return fmt.Errorf("commit: update property indexes for node %d: %w", nodeID, err)
+		}
 		tx.gs.lockShard(nodeID)
 		for k, v := range props {
 			node.Properties[k] = v
