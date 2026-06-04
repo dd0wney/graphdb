@@ -73,6 +73,8 @@ func TestBatchCommit_VisibleToForTenantReaders(t *testing.T) {
 	if len(inE) != 1 {
 		t.Errorf("GetIncomingEdgesForTenant(acme) = %d edges, want 1", len(inE))
 	}
+
+	assertGraphInvariants(t, gs)
 }
 
 // TestBatchCommit_VisibleAfterReopen is the cross-process half of the Q3 fix.
@@ -199,6 +201,8 @@ func TestBatchDeleteNode_MaintainsTenantIndexAndCounts(t *testing.T) {
 	if got := gs.CountEdgesForTenant(""); got != 0 {
 		t.Errorf("CountEdgesForTenant = %d, want 0 — cascaded edge left in tenant edge index/count", got)
 	}
+
+	assertGraphInvariants(t, gs)
 }
 
 // TestBatchDeleteEdge_MaintainsTenantEdgeCount covers the explicit batch
@@ -236,4 +240,6 @@ func TestBatchDeleteEdge_MaintainsTenantEdgeCount(t *testing.T) {
 	if got := gs.CountEdgesForTenant(""); got != 0 {
 		t.Errorf("CountEdgesForTenant = %d, want 0 — batch edge delete left it in tenant edge count", got)
 	}
+
+	assertGraphInvariants(t, gs)
 }

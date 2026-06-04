@@ -70,6 +70,8 @@ func TestDeleteNode_CascadeRemovesEdgeFromTenantIndex(t *testing.T) {
 			if got := len(gs.GetEdgesByTypeForTenant(tn, "LINKS")); got != 0 {
 				t.Errorf("GetEdgesByTypeForTenant(LINKS) = %d after cascade delete, want 0 — enumeration set leaks the cascaded edge", got)
 			}
+
+			assertGraphInvariants(t, gs)
 		})
 	}
 }

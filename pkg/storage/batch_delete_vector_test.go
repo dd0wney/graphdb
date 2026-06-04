@@ -64,4 +64,6 @@ func TestBatchDeleteNode_RemovesNodeVectors(t *testing.T) {
 	if len(kres) != 1 || kres[0].ID != keeper.ID {
 		t.Errorf("keeper search = %v after batch delete, want exactly node %d", kres, keeper.ID)
 	}
+
+	assertGraphInvariants(t, gs)
 }
