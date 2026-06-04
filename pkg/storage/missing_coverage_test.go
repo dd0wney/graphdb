@@ -99,8 +99,8 @@ func TestGetAllLabels(t *testing.T) {
 	t.Logf("✓ GetAllLabels test passed: %v", labels)
 }
 
-// TestFindNodesByPropertyRange tests range queries (0% coverage)
-func TestFindNodesByPropertyRange(t *testing.T) {
+// TestFindNodesByPropertyRangeAcrossTenants tests range queries (0% coverage)
+func TestFindNodesByPropertyRangeAcrossTenants(t *testing.T) {
 	dataDir := t.TempDir()
 	gs, err := NewGraphStorage(dataDir)
 	if err != nil {
@@ -137,7 +137,7 @@ func TestFindNodesByPropertyRange(t *testing.T) {
 	// Test range query: age between 30 and 40 (inclusive)
 	minAge := IntValue(30)
 	maxAge := IntValue(40)
-	nodes, err := gs.FindNodesByPropertyRange("age", minAge, maxAge)
+	nodes, err := gs.FindNodesByPropertyRangeAcrossTenants("age", minAge, maxAge)
 	if err != nil {
 		t.Fatalf("Range query failed: %v", err)
 	}
@@ -164,11 +164,11 @@ func TestFindNodesByPropertyRange(t *testing.T) {
 		}
 	}
 
-	t.Logf("✓ FindNodesByPropertyRange test passed: found %d nodes", len(nodes))
+	t.Logf("✓ FindNodesByPropertyRangeAcrossTenants test passed: found %d nodes", len(nodes))
 }
 
-// TestFindNodesByPropertyPrefix tests prefix queries (0% coverage)
-func TestFindNodesByPropertyPrefix(t *testing.T) {
+// TestFindNodesByPropertyPrefixAcrossTenants tests prefix queries (0% coverage)
+func TestFindNodesByPropertyPrefixAcrossTenants(t *testing.T) {
 	dataDir := t.TempDir()
 	gs, err := NewGraphStorage(dataDir)
 	if err != nil {
@@ -202,7 +202,7 @@ func TestFindNodesByPropertyPrefix(t *testing.T) {
 	}
 
 	// Test prefix query: emails starting with "alice"
-	nodes, err := gs.FindNodesByPropertyPrefix("email", "alice")
+	nodes, err := gs.FindNodesByPropertyPrefixAcrossTenants("email", "alice")
 	if err != nil {
 		t.Fatalf("Prefix query failed: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestFindNodesByPropertyPrefix(t *testing.T) {
 
 	// Test broader prefix: emails starting with "@example.com" suffix
 	// Note: This tests partial matching behavior
-	t.Log("✓ FindNodesByPropertyPrefix test passed")
+	t.Log("✓ FindNodesByPropertyPrefixAcrossTenants test passed")
 }
 
 // TestCompressEdgeLists tests compression function (0% coverage)

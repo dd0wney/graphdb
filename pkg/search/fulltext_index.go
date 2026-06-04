@@ -26,7 +26,13 @@ func (fti *FullTextIndex) IndexPrepared(nodes []*storage.Node, labels, propertie
 	return nil
 }
 
-// IndexNodes indexes all nodes with specified labels and properties
+// IndexNodes indexes all nodes with specified labels and properties.
+//
+// CROSS-TENANT / not for request paths: it samples FindNodesByLabelAcrossTenants,
+// so it indexes every tenant's nodes into one index. The live search API uses the
+// per-tenant IndexForTenant (pkg/search/tenant_indexes.go); IndexNodes is
+// test/CLI-only. Do NOT wire it to a tenant-scoped request path — use
+// IndexForTenant. (Tenant-isolation sweep F3.)
 func (fti *FullTextIndex) IndexNodes(labels []string, properties []string) error {
 	// Collect all nodes WITHOUT holding the index lock to prevent deadlock
 	// (FindNodesByLabelAcrossTenants acquires storage locks internally)
@@ -130,7 +136,11 @@ func (fti *FullTextIndex) removeNodeLocked(nodeID uint64) {
 	fti.totalDocs--
 }
 
-// UpdateNode updates the index for a specific node
+// UpdateNode updates the index for a specific node.
+//
+// CROSS-TENANT / not for request paths: it resolves the node via the tenant-blind
+// GetNode (no tenant validation), so a request path must NOT pass it an untrusted
+// nodeID. Manual/test maintenance only. (Tenant-isolation sweep F3.)
 func (fti *FullTextIndex) UpdateNode(nodeID uint64) error {
 	fti.indexMu.Lock()
 	defer fti.indexMu.Unlock()

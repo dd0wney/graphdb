@@ -137,8 +137,15 @@ func (gs *GraphStorage) FindNodesByPropertyIndexedForTenant(key string, value Va
 	return out, nil
 }
 
-// FindNodesByPropertyRange uses an index to find nodes in a range
-func (gs *GraphStorage) FindNodesByPropertyRange(key string, start, end Value) ([]*Node, error) {
+// FindNodesByPropertyRangeAcrossTenants uses an index to find nodes in a range.
+//
+// Cross-tenant: returns matching nodes from ALL tenants (the property index is
+// value-keyed, not tenant-partitioned). The explicit *AcrossTenants name (audit
+// A3b) surfaces that — unlike the exact-match path there is no *ForTenant variant
+// yet, and the only caller is cmd/benchmark-index. A request path must add a
+// post-filtered *ForTenant variant (cf. FindNodesByPropertyIndexedForTenant)
+// before exposing range queries.
+func (gs *GraphStorage) FindNodesByPropertyRangeAcrossTenants(key string, start, end Value) ([]*Node, error) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
@@ -158,8 +165,12 @@ func (gs *GraphStorage) FindNodesByPropertyRange(key string, start, end Value) (
 	return gs.buildNodeListFromIDs(nodeIDs), nil
 }
 
-// FindNodesByPropertyPrefix uses an index to find nodes by string prefix
-func (gs *GraphStorage) FindNodesByPropertyPrefix(key string, prefix string) ([]*Node, error) {
+// FindNodesByPropertyPrefixAcrossTenants uses an index to find nodes by string prefix.
+//
+// Cross-tenant (see FindNodesByPropertyRangeAcrossTenants): returns prefix matches
+// from all tenants; only caller is cmd/benchmark-index. Add a post-filtered
+// *ForTenant variant before exposing prefix queries on a request path.
+func (gs *GraphStorage) FindNodesByPropertyPrefixAcrossTenants(key string, prefix string) ([]*Node, error) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 

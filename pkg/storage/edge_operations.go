@@ -368,9 +368,15 @@ func (gs *GraphStorage) storeIncomingEdge(nodeID, edgeID uint64) error {
 	return nil
 }
 
-// FindEdgeBetween finds an existing edge between two nodes with a specific type.
+// FindEdgeBetweenAcrossTenants finds an existing edge between two nodes with a specific type.
 // Returns nil if no such edge exists. This is useful for implementing upsert semantics.
-func (gs *GraphStorage) FindEdgeBetween(fromID, toID uint64, edgeType string) (*Edge, error) {
+//
+// Cross-tenant: matches an edge owned by ANY tenant. The explicit *AcrossTenants
+// name (audit A3b convention) makes that scope visible at the call site; a
+// tenant-scoped caller must add/use a *ForTenant variant. No request path uses
+// this today — renamed by the tenant-isolation sweep so it can't be wired in as
+// a silent cross-tenant read.
+func (gs *GraphStorage) FindEdgeBetweenAcrossTenants(fromID, toID uint64, edgeType string) (*Edge, error) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
@@ -399,9 +405,12 @@ func (gs *GraphStorage) findEdgeBetweenLocked(fromID, toID uint64, edgeType stri
 	return nil, nil
 }
 
-// FindAllEdgesBetween finds all edges between two nodes (any type).
+// FindAllEdgesBetweenAcrossTenants finds all edges between two nodes (any type).
 // Useful for checking relationship existence regardless of edge type.
-func (gs *GraphStorage) FindAllEdgesBetween(fromID, toID uint64) ([]*Edge, error) {
+//
+// Cross-tenant (see FindEdgeBetweenAcrossTenants): returns edges owned by any
+// tenant; no request path uses it. Add a *ForTenant variant for scoped callers.
+func (gs *GraphStorage) FindAllEdgesBetweenAcrossTenants(fromID, toID uint64) ([]*Edge, error) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
@@ -516,9 +525,13 @@ func (gs *GraphStorage) upsertEdgeWithTenantNoVerify(tenantID string, fromID, to
 	return edge.Clone(), true, walPending, nil
 }
 
-// DeleteEdgeBetween deletes an edge between two nodes by type.
+// DeleteEdgeBetweenAcrossTenants deletes an edge between two nodes by type.
 // Returns true if an edge was deleted, false if no matching edge existed.
-func (gs *GraphStorage) DeleteEdgeBetween(fromID, toID uint64, edgeType string) (bool, error) {
+//
+// Cross-tenant (see FindEdgeBetweenAcrossTenants): can delete an edge owned by
+// any tenant; no request path uses it. Add a *ForTenant variant for scoped
+// callers before exposing edge deletion by endpoint.
+func (gs *GraphStorage) DeleteEdgeBetweenAcrossTenants(fromID, toID uint64, edgeType string) (bool, error) {
 	gs.mu.Lock()
 	// Deferred WAL wait runs after gs.mu.Unlock (LIFO) — group commit, Track P
 	// item 1. nil handle (no-matching-edge paths) => no-op wait.
