@@ -12,9 +12,10 @@ import (
 )
 
 // Start starts the HTTP server
-func (s *Server) Start() error {
-	mux := http.NewServeMux()
-
+// registerRoutes wires every HTTP route onto mux. Extracted from Start() so the
+// route table — and the auth/tenant middleware each route is wrapped in — is
+// testable without binding a listener (see the registration tests).
+func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Health and metrics (public)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.Handle("/health/ready", s.healthChecker.ReadinessHandler())
@@ -30,8 +31,12 @@ func (s *Server) Start() error {
 		mux.Handle("/auth/oidc/", s.authRateLimitMiddleware(s.oidcHandler))
 	}
 
-	// Metrics endpoint (JSON format for dashboard, protected)
-	mux.HandleFunc("/api/metrics", s.requireAuth(s.handleMetrics))
+	// Metrics endpoint (JSON format for dashboard, admin-only). Returns
+	// GLOBAL GetStatistics() (NodeCount/EdgeCount/TotalQueries across all
+	// tenants) plus operator system stats (memory/goroutines/CPU), so it is
+	// an operator endpoint — gating it behind requireAdmin stops an
+	// authenticated tenant user from reading cross-tenant volume signals.
+	mux.HandleFunc("/api/metrics", s.requireAdmin(s.handleMetrics))
 
 	// Query endpoints (protected, tenant-scoped — audit A5).
 	// withTenant injects request-scoped tenant context so the executor
@@ -139,6 +144,11 @@ func (s *Server) Start() error {
 	// OpenAPI documentation (public)
 	mux.HandleFunc("/api/docs/openapi.yaml", s.handleOpenAPISpec)
 	mux.HandleFunc("/api/docs/openapi.json", s.handleOpenAPISpec)
+}
+
+func (s *Server) Start() error {
+	mux := http.NewServeMux()
+	s.registerRoutes(mux)
 
 	addr := fmt.Sprintf(":%d", s.port)
 
@@ -157,7 +167,7 @@ func (s *Server) Start() error {
 	log.Printf("   Readiness:     GET  %s://%s/health/ready (public)", protocol, addr)
 	log.Printf("   Liveness:      GET  %s://%s/health/live (public)", protocol, addr)
 	log.Printf("   Metrics:       GET  %s://%s/metrics (public, Prometheus format)", protocol, addr)
-	log.Printf("   API Metrics:   GET  %s://%s/api/metrics (requires auth, JSON format)", protocol, addr)
+	log.Printf("   API Metrics:   GET  %s://%s/api/metrics (admin, JSON format)", protocol, addr)
 	log.Printf("   Login:         POST %s://%s/auth/login (public)", protocol, addr)
 	log.Printf("   Register:      POST %s://%s/auth/register (requires admin)", protocol, addr)
 	log.Printf("   Refresh:       POST %s://%s/auth/refresh (public)", protocol, addr)
