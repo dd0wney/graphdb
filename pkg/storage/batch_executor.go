@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -8,10 +9,17 @@ import (
 	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
 
-// Commit executes all batched operations atomically
+// Commit executes all batched operations atomically.
+//
+// Mirrors Transaction.Commit's structure: persist + maintain every index under
+// gs.mu while COLLECTING the off-lock work (HNSW vector inserts, observer
+// snapshots), then release the lock and apply that work off-lock (Track P H2 —
+// HNSW inserts must not run under gs.mu; observers see committed state). The
+// per-op WAL writes stay under the lock, unchanged.
 func (b *Batch) Commit() error {
 	b.graph.mu.Lock()
-	defer b.graph.mu.Unlock()
+
+	b.haveObservers = len(b.graph.observers) > 0
 
 	// Execute all operations
 	for _, op := range b.ops {
@@ -29,7 +37,27 @@ func (b *Batch) Commit() error {
 			err = b.executeDeleteEdge(op)
 		}
 		if err != nil {
+			b.graph.mu.Unlock()
 			return err
+		}
+	}
+
+	b.graph.mu.Unlock()
+
+	// Off-lock: apply the collected HNSW vector inserts, then dispatch observer
+	// notifications, so auto-embed / event hooks see committed nodes (parity
+	// with the direct paths + Transaction.Commit).
+	b.graph.applyNodeVectorInserts(b.vectorPlans)
+	if b.haveObservers {
+		ctx := context.Background()
+		for _, n := range b.createdForNotify {
+			b.graph.notifyNodeCreated(ctx, n)
+		}
+		for _, u := range b.updatedForNotify {
+			b.graph.notifyNodeUpdated(ctx, u.newNode, u.oldNode)
+		}
+		for _, d := range b.deletedForNotify {
+			b.graph.notifyNodeDeleted(ctx, d.id, d.tenantID)
 		}
 	}
 
@@ -50,27 +78,19 @@ func (b *Batch) executeCreateNode(op batchOp) error {
 		Properties: op.properties,
 	}
 
-	b.graph.storeNodeInShard(node)
-	atomic.AddUint64(&b.graph.stats.NodeCount, 1)
-
-	// Update label indexes
-	for _, label := range node.Labels {
-		addToLabelIndex(b.graph.nodesByLabel, label, node.ID)
+	// Persist through the SHARED helper so the batch maintains every index the
+	// canonical create does — shard, global label, per-tenant, property indexes,
+	// stats, AND the vector-insert plan the inline batch code used to skip (G1:
+	// batch-imported nodes were silently unsearchable). persistNodeLocked plans
+	// vectors first, so a bad-dimension vector aborts before the WAL write below
+	// (parity with Transaction.Commit). Vectors are applied off-lock in Commit.
+	plans, err := b.graph.persistNodeLocked(node)
+	if err != nil {
+		return err
 	}
-
-	// Maintain the per-tenant indexes (tenantNodesByLabel + tenantNodeIDs +
-	// tenant stats) exactly as the normal create path does
-	// (persistNodeLocked -> addNodeToTenantIndex). The legacy global
-	// nodesByLabel above is not what GetNodesByLabelForTenant reads.
-	b.graph.addNodeToTenantIndex(node)
-
-	// Update property indexes
-	for key, value := range node.Properties {
-		if idx, exists := b.graph.propertyIndexes[key]; exists {
-			if err := idx.Insert(node.ID, value); err != nil {
-				return fmt.Errorf("failed to insert into property index %s: %w", key, err)
-			}
-		}
+	b.vectorPlans = append(b.vectorPlans, plans...)
+	if b.haveObservers {
+		b.createdForNotify = append(b.createdForNotify, node.Clone())
 	}
 
 	// Write to WAL for durability
@@ -135,6 +155,12 @@ func (b *Batch) executeUpdateNode(op batchOp) error {
 		return fmt.Errorf("node %d not found", op.nodeID)
 	}
 
+	// Pre-mutation snapshot for the observer (must be captured before the merge).
+	var oldNode *Node
+	if b.haveObservers {
+		oldNode = node.Clone()
+	}
+
 	// Update property indexes (remove old, add new)
 	for key, oldValue := range node.Properties {
 		if idx, exists := b.graph.propertyIndexes[key]; exists {
@@ -156,6 +182,18 @@ func (b *Batch) executeUpdateNode(op batchOp) error {
 				return fmt.Errorf("failed to insert into property index %s: %w", key, err)
 			}
 		}
+	}
+
+	// Re-index vectors for the updated node (parity with UpdateNode; G2: a batch
+	// update of a vector property left the stale vector in the HNSW index).
+	// Planned under the lock (validates dimension), applied off-lock in Commit.
+	plans, err := b.graph.planNodeVectorInserts(node)
+	if err != nil {
+		return fmt.Errorf("failed to plan vectors for updated node %d: %w", op.nodeID, err)
+	}
+	b.vectorPlans = append(b.vectorPlans, plans...)
+	if b.haveObservers {
+		b.updatedForNotify = append(b.updatedForNotify, batchUpdateNotify{oldNode: oldNode, newNode: node.Clone()})
 	}
 
 	// Write to WAL for durability
@@ -207,16 +245,20 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 		}
 	}
 
-	// Delete edges. Each cascaded edge must also leave the per-tenant edge
-	// index + tenant EdgeCount (removeEdgeFromTenantIndex), the edge analogue of
-	// the node fix above. Look the edge up before deleting its shard entry so
-	// its Type/TenantID are still available. (The global edgesByType bucket and
-	// the opposite endpoint's adjacency list are left as-is — a separate,
-	// read-self-healing index-hygiene gap, not the tenant-visibility bug here.)
+	// Delete edges. Each cascaded edge must fully leave the indexes, matching
+	// DeleteEdge: per-tenant edge index + tenant EdgeCount (removeEdgeFromTenant-
+	// Index), the global edgesByType bucket, and the OPPOSITE endpoint's
+	// adjacency list (this node's own adjacency is dropped wholesale below).
+	// Look the edge up before deleting its shard entry so its Type/endpoints are
+	// still available. Pure index maintenance: no per-edge WAL (the single
+	// OpDeleteNode below drives replay's cascade). G3.
 	outgoing := b.graph.outgoingEdges[op.nodeID]
 	for _, edgeID := range outgoing {
 		if edge, ok := b.graph.lookupEdgeShard(edgeID); ok {
 			b.graph.removeEdgeFromTenantIndex(edge)
+			removeFromLabelIndexKeepEmpty(b.graph.edgesByType, edge.Type, edgeID)
+			// a->X: drop the edge from X's incoming adjacency.
+			b.graph.incomingEdges[edge.ToNodeID] = removeEdgeFromList(b.graph.incomingEdges[edge.ToNodeID], edgeID)
 		}
 		b.graph.deleteEdgeShardEntry(edgeID)
 		atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
@@ -226,6 +268,9 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 	for _, edgeID := range incoming {
 		if edge, ok := b.graph.lookupEdgeShard(edgeID); ok {
 			b.graph.removeEdgeFromTenantIndex(edge)
+			removeFromLabelIndexKeepEmpty(b.graph.edgesByType, edge.Type, edgeID)
+			// Y->a: drop the edge from Y's outgoing adjacency.
+			b.graph.outgoingEdges[edge.FromNodeID] = removeEdgeFromList(b.graph.outgoingEdges[edge.FromNodeID], edgeID)
 		}
 		b.graph.deleteEdgeShardEntry(edgeID)
 		atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
@@ -237,6 +282,11 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 	// Delete node with atomic decrement
 	b.graph.deleteNodeShardEntry(op.nodeID)
 	atomicDecrementWithUnderflowProtection(&b.graph.stats.NodeCount)
+
+	// Dispatch OnNodeDeleted off-lock in Commit (parity with DeleteNode; G4).
+	if b.haveObservers {
+		b.deletedForNotify = append(b.deletedForNotify, batchDeleteNotify{id: op.nodeID, tenantID: node.TenantID})
+	}
 
 	// Write to WAL for durability
 	if b.graph.hasWAL() {
