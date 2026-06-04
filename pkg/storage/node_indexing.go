@@ -104,10 +104,25 @@ func (gs *GraphStorage) updatePropertyIndexes(nodeID uint64, node *Node, propert
 	return nil
 }
 
-// insertNodeIntoPropertyIndexes inserts a node into all matching property indexes
+// insertNodeIntoPropertyIndexes inserts a node into all matching property indexes.
+//
+// Type-mismatched values are SKIPPED, not treated as errors. A PropertyIndex
+// holds a single declared type, so a value of another type is not indexable
+// (graphdb is schemaless — property types are per-node). Mirrors the build path
+// (CreatePropertyIndex / replayCreatePropertyIndex, which filter on
+// prop.Type == valueType). This is also the fix for a partial-apply: the sole
+// caller persistNodeLocked has already published the node into the shard map,
+// label/tenant indexes and NodeCount by the time this runs, and createNodeLocked
+// does not roll back on error — so a fatal type-mismatch here left the node
+// half-committed (visible + counted, but the create returned an error). Skipping
+// removes that failure mode and makes the live write agree with what a snapshot
+// rebuild / WAL replay produces for the same node.
 func (gs *GraphStorage) insertNodeIntoPropertyIndexes(nodeID uint64, properties map[string]Value) error {
 	for key, value := range properties {
 		if idx, exists := gs.propertyIndexes[key]; exists {
+			if value.Type != idx.indexType {
+				continue
+			}
 			if err := idx.Insert(nodeID, value); err != nil {
 				return fmt.Errorf("failed to insert into property index %s: %w", key, err)
 			}
