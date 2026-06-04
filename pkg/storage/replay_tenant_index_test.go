@@ -72,6 +72,10 @@ func TestReplayDeleteNode_RemovesNodeFromTenantIndex(t *testing.T) {
 	if got := len(gs.GetNodesByLabelForTenant(tn, "Doc")); got != 0 {
 		t.Errorf("GetNodesByLabelForTenant(Doc) = %d after crash recovery, want 0 — tenant label index leaks the replayed-deleted node", got)
 	}
+
+	// Post-recovery is the one allowed reopen for the checker (rebuild-on-load is
+	// the thing under test here, not a self-heal to hide behind).
+	assertGraphInvariants(t, gs)
 }
 
 // TestReplayDeleteNodeWithEdges_TenantCountsConsistent is the cross-cutting
@@ -135,6 +139,8 @@ func TestReplayDeleteNodeWithEdges_TenantCountsConsistent(t *testing.T) {
 	if got := gs.CountEdgesForTenant(tn); got != 0 {
 		t.Errorf("CountEdgesForTenant = %d after crash recovery, want 0 — replay cascade-edge tenant-index removal regressed", got)
 	}
+
+	assertGraphInvariants(t, gs)
 }
 
 // TestReplayDeleteEdge_RemovesEdgeFromTenantIndex is the standalone-edge sibling
@@ -202,4 +208,6 @@ func TestReplayDeleteEdge_RemovesEdgeFromTenantIndex(t *testing.T) {
 	if got := gs.CountNodesForTenant(tn); got != 2 {
 		t.Errorf("CountNodesForTenant = %d after crash recovery, want 2 — endpoint nodes must survive a standalone edge delete", got)
 	}
+
+	assertGraphInvariants(t, gs)
 }

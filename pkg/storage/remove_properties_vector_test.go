@@ -45,6 +45,8 @@ func TestRemoveNodeProperties_DropsVectorFromIndex(t *testing.T) {
 	if len(res) != 0 {
 		t.Errorf("VectorSearch = %d results after removing the vector property, want 0 — stale vector left in the HNSW index", len(res))
 	}
+
+	assertGraphInvariants(t, gs)
 }
 
 // TestRemoveNodeProperties_KeepsOtherVectorProp pins the per-key isolation the
@@ -90,4 +92,6 @@ func TestRemoveNodeProperties_KeepsOtherVectorProp(t *testing.T) {
 	} else if len(res) != 1 {
 		t.Errorf("emb_b search = %d results after removing emb_a, want 1 — the surviving vector property was wrongly dropped", len(res))
 	}
+
+	assertGraphInvariants(t, gs)
 }
