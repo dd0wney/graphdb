@@ -29,15 +29,20 @@ is enough for M1/M2).
 | Python floor | 3.9+ |
 | PyPI name | `graphdb-client` (import `graphdb_client`) |
 
-## 3. Open decisions (resolve at spec review, before the implementation plan)
+## 3. Resolved decisions
 
-- **D1 — Models / dependency footprint.** Generate **pydantic v2** models via
-  `datamodel-code-generator` (recommended: strong validation, best DX, standard
-  for typed API clients; runtime deps = `httpx` + `pydantic`) **vs** stdlib
-  **dataclasses/TypedDict** (zero extra runtime deps beyond `httpx`, lighter
-  install, weaker validation). *Recommendation: pydantic v2.* This choice only
-  affects the `_generated/` + facade return types; the architecture is identical
-  either way.
+- **D1 — Models / dependency footprint → RESOLVED: stdlib dataclasses (runtime
+  deps = `httpx` only).** Rationale: graphdb payloads are dict-heavy
+  (`properties: dict[str, Any]` is the load-bearing field; the typed surface is
+  thin — `id`, `labels`, `from_node_id`, `weight`), so pydantic's deep runtime
+  validation has low value here. An `httpx`-only install is far friendlier to
+  drop into existing projects, and avoids the well-known pydantic v1/v2
+  environment conflicts (acute in LangChain ecosystems — a target consumer).
+  Models are emitted as dataclasses via `datamodel-code-generator`; the
+  JSON↔object boundary is a thin generated/hand-written `from_dict` (much of it
+  passes the `properties` dict straight through). *If fast validation is ever
+  needed without pydantic baggage, `msgspec` is the middle option — not pulled
+  in for M1 absent a profiling reason.*
 
 ## 4. Milestone decomposition
 
@@ -79,7 +84,8 @@ Typed models generated from the committed OpenAPI spec
   a live handler, that's a graphdb bug to fix (a productization win). M1 records
   any drift found during generation as follow-up issues; it does not silently
   paper over it.
-- D1 decides pydantic v2 vs dataclasses for the emitted models.
+- Models are emitted as **stdlib dataclasses** (D1, resolved); decode is a thin
+  generated/hand-written `from_dict`.
 
 ### 5.3 Resource facades (`src/graphdb_client/resources/`)
 Hand-written, Pythonic, return typed models. M1 ships:
@@ -167,9 +173,10 @@ nodes).
   The raw layer works regardless.
 - **Scope creep toward "full surface now"**. *Mitigation*: M1 is core facade +
   full raw access only; everything else is M2/M3, explicitly out of this plan.
-- **pydantic dependency weight** (if D1 picks pydantic). *Mitigation*: it's the
-  only non-`httpx` runtime dep; acceptable for a typed API client. D1 can pick
-  dataclasses if a zero-extra-dep install is required.
+- **No runtime response validation** (dataclasses, D1). *Mitigation*: low risk
+  here — payloads are dict-heavy (`properties` is `Any`), so there's little to
+  validate; the `from_dict` boundary coerces the thin typed surface and tests
+  cover it. `msgspec` is the escape hatch if validation/perf ever demands it.
 
 ## 10. Definition of done (M1)
 
