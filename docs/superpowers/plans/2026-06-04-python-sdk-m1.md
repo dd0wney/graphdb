@@ -6,9 +6,11 @@
 
 **Architecture:** Layered — a `Transport` (httpx wrapper: auth, error mapping, raw access, 401-refresh) under hand-written dataclass `models` under Pythonic resource facades, assembled by `GraphDBClient`. Full surface is reachable now via `client._raw.request(...)`; ergonomic facades cover the CC1–CC9 core.
 
-**Tech Stack:** Python 3.9+, `httpx` (only runtime dep), `pytest` + `respx` (tests), `ruff` + `mypy` (CI), `datamodel-code-generator` (dev-only, generates `_generated/` models). Models are **stdlib dataclasses** (spec D1).
+**Tech Stack:** Python 3.9+, **`uv`** (project + venv + tool runner), `httpx` (only runtime dep), `pytest` + `respx` (tests), `ruff` + `mypy` (CI), `datamodel-code-generator` (dev-only, generates `_generated/` models). Models are **stdlib dataclasses** (spec D1).
 
 **Spec:** `docs/superpowers/specs/2026-06-04-python-sdk-design.md`
+
+**Tooling convention (uv):** the project is uv-managed. The env is created/synced with `uv sync` (run from `clients/python/`), which installs the project editable + the dev dependency group. **Every tool command below runs via `uv run`** — for brevity the task steps write `pytest …` / `mypy` / `ruff …` / `datamodel-codegen …`, but each must be invoked as `uv run pytest …` etc. Do not create a venv with `python -m venv` or install with `pip`; use `uv`.
 
 ---
 
@@ -84,7 +86,7 @@ requires-python = ">=3.9"
 license = { text = "Apache-2.0" }
 dependencies = ["httpx>=0.27"]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = ["pytest>=8", "respx>=0.21", "ruff>=0.6", "mypy>=1.11", "datamodel-code-generator>=0.25"]
 
 [tool.hatch.build.targets.wheel]
@@ -104,13 +106,24 @@ testpaths = ["tests"]
 addopts = "-q"
 ```
 
-- [ ] **Step 2: Write the package + test init files**
+- [ ] **Step 2: Write the package + test init files + .gitignore**
 
 `src/graphdb_client/__init__.py`:
 ```python
 from __future__ import annotations
 
 __version__ = "0.1.0"
+```
+
+`clients/python/.gitignore`:
+```gitignore
+.venv/
+dist/
+__pycache__/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 ```
 
 `tests/__init__.py`: (empty file)
@@ -134,29 +147,29 @@ def base_url() -> str:
 ```makefile
 .PHONY: install generate lint typecheck test
 install:
-	pip install -e ".[dev]"
+	uv sync
 generate:
-	datamodel-codegen --input ../../docs/internals/openapi.yaml --input-file-type openapi \
+	uv run datamodel-codegen --input ../../docs/internals/openapi.yaml --input-file-type openapi \
 	  --output-model-type dataclasses.dataclass \
 	  --output src/graphdb_client/_generated/models.py
 lint:
-	ruff check src tests
+	uv run ruff check src tests
 typecheck:
-	mypy
+	uv run mypy
 test:
-	pytest
+	uv run pytest
 ```
 
-- [ ] **Step 4: Install and verify the empty suite runs**
+- [ ] **Step 4: Sync the uv env and verify the empty suite runs**
 
-Run: `cd clients/python && python -m venv .venv && . .venv/bin/activate && make install && pytest`
-Expected: `no tests ran` (exit 0) — packaging is valid, imports resolve.
+Run: `cd clients/python && uv sync && uv run pytest`
+Expected: `uv sync` creates `.venv` + `uv.lock` and installs the project editable + dev group; `uv run pytest` reports `no tests ran` (exit 0) — packaging is valid, imports resolve.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add clients/python/pyproject.toml clients/python/Makefile clients/python/src clients/python/tests
-git commit -m "feat(py-sdk): package scaffold (clients/python)"
+git add clients/python/pyproject.toml clients/python/uv.lock clients/python/Makefile clients/python/.gitignore clients/python/src clients/python/tests
+git commit -m "feat(py-sdk): package scaffold (clients/python, uv-managed)"
 ```
 
 ---
@@ -1232,7 +1245,7 @@ __all__ = [
 
 - [ ] **Step 2: Verify the package imports cleanly**
 
-Run: `python -c "import graphdb_client; print(graphdb_client.__all__)"`
+Run: `uv run python -c "import graphdb_client; print(graphdb_client.__all__)"`
 Expected: prints the `__all__` list, no ImportError.
 
 - [ ] **Step 3: Generate the full-surface models (establish M2 tooling)**
@@ -1242,7 +1255,7 @@ Expected: `src/graphdb_client/_generated/models.py` is created with dataclasses 
 
 - [ ] **Step 4: Verify the generated module imports**
 
-Run: `python -c "import graphdb_client._generated.models"`
+Run: `uv run python -c "import graphdb_client._generated.models"`
 Expected: no error (generated file is importable). Commit it as-is.
 
 - [ ] **Step 5: Write `README.md`**
@@ -1288,8 +1301,9 @@ res.data  # parsed JSON
 ```
 
 ## Tests
-- Unit: `make test` (mock transport, no server).
-- Integration: `GRAPHDB_SDK_IT=1 GRAPHDB_SDK_URL=http://localhost:8080 GRAPHDB_SDK_TOKEN=... pytest tests/integration`.
+- Setup: `uv sync`.
+- Unit: `make test` (= `uv run pytest`; mock transport, no server).
+- Integration: `GRAPHDB_SDK_IT=1 GRAPHDB_SDK_URL=http://localhost:8080 GRAPHDB_SDK_TOKEN=... uv run pytest tests/integration`.
 ````
 
 - [ ] **Step 6: Commit**
@@ -1357,8 +1371,8 @@ def test_smoke_batch_list_traverse(client):
 
 - [ ] **Step 2: Run it (skipped without the env flag)**
 
-Run: `pytest tests/integration -v`
-Expected: SKIPPED (reason printed). With a local server: `GRAPHDB_SDK_IT=1 GRAPHDB_SDK_TOKEN=... pytest tests/integration` → PASS.
+Run: `uv run pytest tests/integration -v`
+Expected: SKIPPED (reason printed). With a local server: `GRAPHDB_SDK_IT=1 GRAPHDB_SDK_TOKEN=... uv run pytest tests/integration` → PASS.
 
 - [ ] **Step 3: Write the CI workflow**
 
@@ -1382,18 +1396,18 @@ jobs:
         python-version: ["3.9", "3.12"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]"
-      - run: ruff check src tests
-      - run: mypy
-      - run: pytest
+          enable-cache: true
+      - run: uv sync --python ${{ matrix.python-version }}
+      - run: uv run ruff check src tests
+      - run: uv run mypy
+      - run: uv run pytest
 ```
 
 - [ ] **Step 4: Verify the full unit suite + lint + types locally**
 
-Run: `cd clients/python && ruff check src tests && mypy && pytest`
+Run: `cd clients/python && uv run ruff check src tests && uv run mypy && uv run pytest`
 Expected: ruff clean, mypy clean (strict), all unit tests PASS (integration SKIPPED).
 
 - [ ] **Step 5: Commit**
@@ -1428,19 +1442,14 @@ jobs:
         working-directory: clients/python
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install build
-      - run: python -m build
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: clients/python/dist
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - run: uv publish   # OIDC trusted publishing; no token needed
 ```
 
 - [ ] **Step 2: Verify the wheel builds**
 
-Run: `cd clients/python && pip install build && python -m build`
+Run: `cd clients/python && uv build`
 Expected: `dist/graphdb_client-0.1.0-py3-none-any.whl` + sdist produced, no errors.
 
 - [ ] **Step 3: Commit**
