@@ -67,6 +67,37 @@ This was a side-quest off the Track Q critical path; **Track Q remains selected 
 
 ---
 
+## State reconciliation 2026-06-04 — post-Track-Q hardening wave
+
+Track Q closed at "no earned critical path." The session that followed did **not** open a new audit-driven track; it ran a tenant-isolation sweep, brought the batch write path to full parity, executed a silent-bug hunt on the delete/persistence paths, and — answering the user's "why so many silent bugs?" — built a parallel-invariant test harness. All merged to `main` (HEAD `e49d7f6`).
+
+### Tenant-isolation sweep (F1–F3) ✅
+`#300` gate `/api/metrics` admin-only (cross-tenant stats leak); `#301` scope `/api/v1/tenants/{id}` with `withTenant`; `#302` rename orphaned tenant-blind footguns to `*AcrossTenants`; `#303` audit doc (`AUDIT_tenant_isolation_2026-06-04.md`). Live posture confirmed strong, findings small. Memory `project_tenant_isolation_sweep_2026_06_04` — don't re-commission without new evidence.
+
+### Batch-path parity ✅ (`#304`)
+Batch create/update now index vectors; create/update/delete dispatch observers; delete cascade cleans the global edge index + opposite adjacency — mirrors `Transaction.Commit`.
+
+### Delete-path silent-bug hunt ✅ (`#305`, `#307`, `#308`, `#309`)
+A systematic hunt for "write path updates index A, forgets index B" found and fixed:
+- **`#305` (CRITICAL)** — the HNSW vector index was lost on every restart; now rebuilt from the node set on load (defs persisted, graph derived; **no format bump**).
+- **`#307`** — the shared cascade helpers skipped `removeEdgeFromTenantIndex`: a **live-path** tenant edge-count drift, self-healed on reopen so invisible.
+- **`#308` (C/D/E)** — `replayDelete{Node,Edge}` skipped the tenant index (crash-recovery drift); `RemoveNodeProperties` left a stale vector; batch `executeDeleteNode` never removed the node's vectors (the gap `#304` missed).
+- **`#309`** — capstone regression guard for the C + `#307` interaction (replay-delete of a node *with* edges).
+
+The delete paths (live / replay / cascade / batch / remove-property) are now at full per-tenant + vector index parity.
+
+### Improved testing — parallel-invariant harness ✅ (`#310`, `#311`)
+Root cause of the silent-bug streak named explicitly: **N parallel representations × M write paths**, with tests asserting only one projection (the global `GetNode`/`GetEdge` view, always correct). The harness (`pkg/storage/invariants_test.go`) derives ground truth from the authoritative shards and asserts every derived structure agrees; an 8-case teeth-test proves it *fires* on drift; a write-path × op matrix (`#311`) drives it across live / batch / transaction / WAL-replay. Memory `feedback_parallel_invariant_coverage`. **This is the closest thing to an earned next track** — see candidates below.
+
+### Surfaced follow-ups (candidates — none promoted to critical path yet)
+- **Phase C — metamorphic equivalence test** (highest-value earned item): same op-script through every path, asserting vector **search-result** equality — closes the count-only limitation the new checker can't see. Spec: `~/.claude/plans/we-need-improved-testing-bubbly-wave.md` § Phase C.
+- **Extend the invariant checker to `propertyIndexes` + the FTS index** — both consciously excluded today; both can drift the same way (cheap increment).
+- **FTS index lost on restart?** — like the vector bug; verify the API-server env-bootstrap path before treating as a bug. Extending the checker to FTS would turn this into a test.
+- **`CreateVectorIndex` not WAL-logged** — an index created after the last snapshot is lost on crash. Narrow.
+- **persist-HNSW escalation** — `#305` rebuilds on load (O(N log N)); serialize the graph only if startup cost bites at very large N (e.g. the 814K ICIJ corpus). Measured follow-up.
+
+---
+
 ## Decision points
 
 ### Decision 10 (NEW) — Critical-path selection after Track P
@@ -106,9 +137,9 @@ Both shipped on branch `perf/label-index-set-m3` (PR #294). The "decision-laden"
 - **Productization / operability** (Decision 10 option C): onboarding docs, single-node framing, deployment-ordering note.
 - **Update-driven auto-embedding** (R2.5a TODO) — gated on a ctx-passing-storage-methods decision; out of scope, carried from 2026-05-15.
 
-### Inherited PRs — #240 / #241 (forcing function, now ~10 days)
+### Inherited PRs — #240 / #241 — ✅ RESOLVED 2026-06-04 (CLOSED)
 
-`#240` (property-index lifecycle + general unique_property) and `#241` (node-label mutation over HTTP) have been carried open since 2026-05-24 across multiple sessions, untouched. The disposition is still unresolved: **adopt** (rebase, review, land) or **close** (declare superseded). This perennial carry-forward should be resolved at the start of Track Q (it's cheap and clears the open-PR list to just Track Q's work).
+`#240` (property-index lifecycle + general unique_property) and `#241` (node-label mutation over HTTP) were **closed** — verified not on `main`, no consumer need (disposition resolved per the 2026-06-04 03:04 handoff). The open-PR list is clear of them. The local branches (`feat/expose-property-indexes-and-uniqueness`, `feat/expose-label-mutation`) are stale cleanup candidates (`branch-cleanup`).
 
 ---
 
@@ -123,10 +154,10 @@ Both shipped on branch `perf/label-index-set-m3` (PR #294). The "decision-laden"
 
 ## How to use this document
 
-1. **Track Q is CLOSED** — Q1 (#283), Q2 (#286), Q3 (#287 + #288), Q4 (`63c6c38`). The consumer-contract harness exists (`docs/CONSUMER_CONTRACTS.md`, `grep -rn "CONSUMER CONTRACT:" pkg/`, `scripts/consumer-drive.sh`). graphdb has no earned critical path right now — pick the next track via a planning checkpoint. See the Track Q section above for per-item outcomes.
-2. **Resolve the inherited-PR disposition (#240/#241)** — cheap, clears the board (Decision: adopt or close); still open.
-3. **If continuing Track Q**: Q4 generalizes the four pins (#283/#286/#287/#288) into standing CI contracts.
-4. **Don't** re-open the perf dimension or manufacture sub-tracks beyond what the consumers surface.
-5. If a consumer divergence turns out to be deep enough to need design, spike it (`/spike`) before implementing — but most will be bounded bugfixes.
+1. **Read § State reconciliation 2026-06-04 first** — Track Q is CLOSED, and the hardening wave after it (tenant sweep, batch parity, the delete-path silent-bug hunt, the parallel-invariant test harness) is the current state. `main` HEAD `e49d7f6`.
+2. **No critical path is forced**, but the readiest *earned* item is **Phase C** (metamorphic invariant test — closes the count-only vector-check limitation). Alternatives: extend the invariant checker to `propertyIndexes` + FTS; the FTS-on-restart / `CreateVectorIndex`-WAL-logging backlog; or productization. See the 2026-06-04 surfaced-follow-ups list.
+3. **Inherited PRs #240/#241 are CLOSED** — board is clear (no longer a forcing function).
+4. **Don't** re-open the perf dimension or manufacture sub-tracks beyond what the consumers / invariant harness surface.
+5. If a follow-up turns out deep enough to need design, spike it (`/spike`) first — but most are bounded.
 
-The critical path is **earned, not TBD**: Track Q exists because dogfooding already proved the unit tests miss correctness bugs the consumers hit.
+The critical path is **earned, not TBD**: the testing harness exists because this session proved the silent bugs are a *parallel-invariant coverage* gap, not an edge-case gap.
