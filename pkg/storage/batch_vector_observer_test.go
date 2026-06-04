@@ -45,6 +45,38 @@ func TestBatchCreate_IndexesVectors(t *testing.T) {
 	}
 }
 
+// TestBatchCreate_IndexesVectors_BulkImportMode is G1 under the exact config
+// cmd/import-icij uses (BulkImportMode: true → WAL disabled). The vector/observer
+// logic is WAL-independent (only the appendToWAL guard checks hasWAL), so the
+// fix must hold here too — this is the real consumer seam for the G1 bug.
+func TestBatchCreate_IndexesVectors_BulkImportMode(t *testing.T) {
+	gs, err := NewGraphStorageWithConfig(StorageConfig{DataDir: t.TempDir(), BulkImportMode: true})
+	if err != nil {
+		t.Fatalf("NewGraphStorageWithConfig: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	if err := gs.CreateVectorIndexForTenant(DefaultTenantID, "embedding", 3, 16, 200, vector.MetricCosine); err != nil {
+		t.Fatalf("CreateVectorIndexForTenant: %v", err)
+	}
+	b := gs.BeginBatch()
+	id, err := b.AddNode([]string{"Doc"}, map[string]Value{"embedding": VectorValue([]float32{1, 0, 0})})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := b.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	results, err := gs.VectorSearchForTenant(DefaultTenantID, "embedding", []float32{1, 0, 0}, 1, 50)
+	if err != nil {
+		t.Fatalf("VectorSearchForTenant: %v", err)
+	}
+	if len(results) != 1 || results[0].ID != id {
+		t.Errorf("got %d results (want node %d) — batch vector indexing broken under BulkImportMode (G1)", len(results), id)
+	}
+}
+
 // TestBatchUpdate_ReindexesVectors pins that a batch UpdateNode re-indexes the
 // node's vector when a vector property changes (parity with UpdateNode). The
 // node is created via the canonical path (so it IS indexed), then batch-updated
