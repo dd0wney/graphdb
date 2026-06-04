@@ -482,8 +482,19 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	// node.Properties (read) before mutation — keep those inside the
 	// shard.Lock window so a concurrent reader on this shard never sees
 	// a torn state.
+	// Vector-indexed properties being removed must also leave the HNSW index, or
+	// VectorSearch keeps returning the stale vector after the property is gone.
+	// Plan the removals under gs.mu (HasIndexForTenant reads the index map) and
+	// apply them off-lock after unlock — the same plan-under-lock / apply-off-
+	// lock discipline as the insert path (planNodeVectorInserts /
+	// applyNodeVectorInserts). Per-key (not RemoveNodeFromVectorIndexes), so a
+	// node's OTHER vector-indexed properties are untouched.
+	tid := effectiveTenantID(node.TenantID)
+	var vectorRemovals []string
+
 	gs.lockShard(nodeID)
 	for _, key := range keys {
+		_, hadKey := node.Properties[key]
 		// Remove from property indexes
 		if idx, exists := gs.propertyIndexes[key]; exists {
 			if oldValue, hasKey := node.Properties[key]; hasKey {
@@ -491,6 +502,9 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 					log.Printf("node_operations: property index Remove failed for key %q node %d: %v", key, nodeID, err)
 				}
 			}
+		}
+		if hadKey && gs.vectorIndex.HasIndexForTenant(tid, key) {
+			vectorRemovals = append(vectorRemovals, key)
 		}
 		delete(node.Properties, key)
 	}
@@ -522,6 +536,16 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 		newNode = node.Clone()
 	}
 	gs.mu.Unlock()
+
+	// Drop each removed vector property's vector from the HNSW index off-lock
+	// (mirrors applyNodeVectorInserts). RemoveVectorForTenant.Delete is
+	// idempotent; errors are logged fail-soft (the property is already durably
+	// removed, and the index is rebuilt from the node set on restart).
+	for _, prop := range vectorRemovals {
+		if err := gs.vectorIndex.RemoveVectorForTenant(tid, prop, nodeID); err != nil {
+			log.Printf("node_operations: vector index removal failed for prop %q node %d tenant %s: %v", prop, nodeID, tid, err)
+		}
+	}
 
 	gs.waitWALPending(wal.OpUpdateNode, walPending)
 	if newNode != nil {
