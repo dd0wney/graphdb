@@ -13,11 +13,13 @@ type Batch struct {
 	// observer dispatch (Track P H2 plan-under-lock / apply-off-lock), mirroring
 	// Transaction.Commit. haveObservers is computed once under the lock at the
 	// start of Commit so the execute* methods only clone for notify when needed.
-	haveObservers    bool
-	vectorPlans      []vectorInsertPlan
-	createdForNotify []*Node
-	updatedForNotify []batchUpdateNotify
-	deletedForNotify []batchDeleteNotify
+	haveObservers     bool
+	haveVectorIndex   bool
+	vectorPlans       []vectorInsertPlan
+	vectorNodeDeletes []batchDeleteNotify // nodes to drop from vector indexes off-lock (id + tenant)
+	createdForNotify  []*Node
+	updatedForNotify  []batchUpdateNotify
+	deletedForNotify  []batchDeleteNotify
 }
 
 type batchUpdateNotify struct{ oldNode, newNode *Node }

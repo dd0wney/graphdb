@@ -20,6 +20,7 @@ func (b *Batch) Commit() error {
 	b.graph.mu.Lock()
 
 	b.haveObservers = len(b.graph.observers) > 0
+	b.haveVectorIndex = b.graph.vectorIndex.HasAnyIndex()
 
 	// Execute all operations
 	for _, op := range b.ops {
@@ -44,10 +45,17 @@ func (b *Batch) Commit() error {
 
 	b.graph.mu.Unlock()
 
-	// Off-lock: apply the collected HNSW vector inserts, then dispatch observer
-	// notifications, so auto-embed / event hooks see committed nodes (parity
-	// with the direct paths + Transaction.Commit).
+	// Off-lock: apply the collected HNSW vector inserts + node-delete vector
+	// removals, then dispatch observer notifications, so auto-embed / event hooks
+	// see committed nodes (parity with the direct paths + Transaction.Commit).
+	// HNSW mutation must not run under gs.mu (Track P H2); RemoveNodeFromVector-
+	// Indexes only takes vi.mu, so it is safe here.
 	b.graph.applyNodeVectorInserts(b.vectorPlans)
+	for _, d := range b.vectorNodeDeletes {
+		// Errors are swallowed inside RemoveNodeFromVectorIndexes (a node need
+		// not be in every index); it returns nil today, so this stays fail-soft.
+		_ = b.graph.RemoveNodeFromVectorIndexes(d.id, d.tenantID)
+	}
 	if b.haveObservers {
 		ctx := context.Background()
 		for _, n := range b.createdForNotify {
@@ -282,6 +290,14 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 	// Delete node with atomic decrement
 	b.graph.deleteNodeShardEntry(op.nodeID)
 	atomicDecrementWithUnderflowProtection(&b.graph.stats.NodeCount)
+
+	// Drop the node's vectors from the HNSW index off-lock in Commit (parity
+	// with DeleteNode's RemoveNodeFromVectorIndexes; E). Wholesale per-node
+	// (the whole node is gone), unlike RemoveNodeProperties' per-key removal.
+	// Gated on haveVectorIndex so non-vector batches allocate nothing.
+	if b.haveVectorIndex {
+		b.vectorNodeDeletes = append(b.vectorNodeDeletes, batchDeleteNotify{id: op.nodeID, tenantID: node.TenantID})
+	}
 
 	// Dispatch OnNodeDeleted off-lock in Commit (parity with DeleteNode; G4).
 	if b.haveObservers {
