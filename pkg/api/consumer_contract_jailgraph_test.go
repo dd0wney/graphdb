@@ -23,7 +23,7 @@ import (
 // test below was teeth-proven by temporarily breaking the behaviour it pins
 // (echo, pagination, neighbour expansion) and confirming failure before revert.
 
-// CONSUMER CONTRACT: CC7-batch-partial-echo — jailgraph (#NN)
+// CONSUMER CONTRACT: CC7-batch-partial-echo — jailgraph (#319)
 //
 // TestBatchNodes_PartialOutOfOrderEchoesProperties pins POST /nodes/batch as a
 // partial-success path that echoes each created node's properties so a client
@@ -104,7 +104,7 @@ func TestBatchNodes_PartialOutOfOrderEchoesProperties(t *testing.T) {
 	}
 }
 
-// CONSUMER CONTRACT: CC8-label-list-properties-paginated — jailgraph (#NN)
+// CONSUMER CONTRACT: CC8-label-list-properties-paginated — jailgraph (#319)
 //
 // TestNodesByLabel_ReturnsPropertiesAcrossPages pins GET /nodes?label= as a
 // listing that (a) includes each node's properties and (b) is followable to
@@ -194,7 +194,7 @@ func TestNodesByLabel_ReturnsPropertiesAcrossPages(t *testing.T) {
 	}
 }
 
-// CONSUMER CONTRACT: CC9-traverse-outgoing-depth — jailgraph (#NN)
+// CONSUMER CONTRACT: CC9-traverse-outgoing-depth — jailgraph (#319)
 //
 // TestTraverse_OutgoingNeighborsAtDepth pins POST /traverse to return the nodes
 // reachable via outgoing edges within max_depth. jailgraph's Collect does a
