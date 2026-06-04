@@ -59,4 +59,24 @@ func TestTenantSelfAccess_WithTenantScopesCorrectly(t *testing.T) {
 	if code := get("/api/v1/tenants/default"); code != http.StatusForbidden {
 		t.Errorf("cross-tenant GET /api/v1/tenants/default = %d, want 403 — non-admin read foreign 'default' tenant without withTenant", code)
 	}
+
+	// Admin cross-tenant access must still work now that withTenant wraps the
+	// whole /api/v1/tenants/ dispatch: withTenant validates the CALLER's tenant
+	// (admin -> "default", auto-created) and handleGetTenant skips the self-check
+	// for admins, so an admin reaches any path tenant. Guards against withTenant
+	// regressing admin tenant management.
+	adminTok := mintTestToken(t, server, auth.RoleAdmin, "root-admin", "")
+	adminGet := func(path string) int {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+adminTok)
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		return rr.Code
+	}
+	if code := adminGet("/api/v1/tenants/tenant-a"); code != http.StatusOK {
+		t.Errorf("admin GET /api/v1/tenants/tenant-a = %d, want 200 — withTenant must not block admin cross-tenant ops", code)
+	}
+	if code := adminGet("/api/v1/tenants/default"); code != http.StatusOK {
+		t.Errorf("admin GET /api/v1/tenants/default = %d, want 200", code)
+	}
 }
