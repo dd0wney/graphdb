@@ -16,6 +16,7 @@ Find the tests: `grep -rn "CONSUMER CONTRACT:" pkg/`
 | CC3-adjacency-reopen | Edge adjacency survives a snapshot `Close()`→reopen under the default compression config | coi-screen, Stór | `pkg/storage` `TestEdgeAdjacencySurvivesReopen` | #287 |
 | CC4-bulkimport-tenant-visible | Data written via the batch/bulk-import path is visible to every `*ForTenant` reader, in-memory and after reopen | coi-screen / import-icij | `pkg/storage` `TestBatchCommit_VisibleToForTenantReaders`, `TestBatchCommit_VisibleAfterReopen` | #288 |
 | CC5-label-filtered-vector-search | `filter_labels` post-filters correctly on float-array-ingested vectors over REST | understand-graphdb, coi-screen | `pkg/api` `TestVectorSearch_RESTFloatArrayLabelFilter` | Q4 |
+| CC6-batch-delete-tenant-index | Data deleted via the batch path leaves the per-tenant indexes + tenant counts (the delete-side sibling of CC4) | coi-screen / import-icij | `pkg/storage` `TestBatchDeleteNode_MaintainsTenantIndexAndCounts`, `TestBatchDeleteEdge_MaintainsTenantEdgeCount` | (batch-tenant-index follow-up) |
 
 ## Growth rule
 

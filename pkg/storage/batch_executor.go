@@ -190,6 +190,14 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 		removeFromLabelIndexKeepEmpty(b.graph.nodesByLabel, label, op.nodeID)
 	}
 
+	// Remove from the per-tenant indexes (label index + enumeration set +
+	// tenant NodeCount), mirroring the non-batch DeleteNode. Without this the
+	// *ForTenant readers and CountNodes*ForTenant keep the deleted node — the
+	// delete-side counterpart of the #288 create-path gap (CC6). Pure index
+	// maintenance: no WAL write (the single OpDeleteNode logged below drives
+	// replay's own cascade via cascadeDelete*).
+	b.graph.removeNodeFromTenantIndex(node)
+
 	// Remove from property indexes
 	for key, value := range node.Properties {
 		if idx, exists := b.graph.propertyIndexes[key]; exists {
@@ -199,15 +207,26 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 		}
 	}
 
-	// Delete edges
+	// Delete edges. Each cascaded edge must also leave the per-tenant edge
+	// index + tenant EdgeCount (removeEdgeFromTenantIndex), the edge analogue of
+	// the node fix above. Look the edge up before deleting its shard entry so
+	// its Type/TenantID are still available. (The global edgesByType bucket and
+	// the opposite endpoint's adjacency list are left as-is — a separate,
+	// read-self-healing index-hygiene gap, not the tenant-visibility bug here.)
 	outgoing := b.graph.outgoingEdges[op.nodeID]
 	for _, edgeID := range outgoing {
+		if edge, ok := b.graph.lookupEdgeShard(edgeID); ok {
+			b.graph.removeEdgeFromTenantIndex(edge)
+		}
 		b.graph.deleteEdgeShardEntry(edgeID)
 		atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
 	}
 
 	incoming := b.graph.incomingEdges[op.nodeID]
 	for _, edgeID := range incoming {
+		if edge, ok := b.graph.lookupEdgeShard(edgeID); ok {
+			b.graph.removeEdgeFromTenantIndex(edge)
+		}
 		b.graph.deleteEdgeShardEntry(edgeID)
 		atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
 	}
@@ -242,6 +261,11 @@ func (b *Batch) executeDeleteEdge(op batchOp) error {
 	// Remove from the global type index (O(1)), keeping empty buckets so the
 	// type stays registered (see removeEdgeFromTypeIndex).
 	removeFromLabelIndexKeepEmpty(b.graph.edgesByType, edge.Type, op.edgeID)
+
+	// Remove from the per-tenant edge index + tenant EdgeCount, mirroring the
+	// non-batch DeleteEdge — the #288 create-path gap on the delete side (CC6).
+	// Pure index maintenance; the OpDeleteEdge WAL write below is unchanged.
+	b.graph.removeEdgeFromTenantIndex(edge)
 
 	// Remove from adjacency lists
 	outgoing := b.graph.outgoingEdges[edge.FromNodeID]

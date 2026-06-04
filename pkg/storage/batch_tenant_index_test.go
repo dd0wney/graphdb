@@ -126,3 +126,114 @@ func TestBatchCommit_VisibleAfterReopen(t *testing.T) {
 		t.Errorf("after reopen: GetOutgoingEdgesForTenant(smith) = %d, want 1", len(outE))
 	}
 }
+
+// TestBatchDeleteNode_MaintainsTenantIndexAndCounts is the delete-side sibling
+// of CC4 (#288 fixed the batch CREATE path's per-tenant indexing; the DELETE
+// path had the symmetric omission). executeDeleteNode updated the global label
+// index + global NodeCount but never called removeNodeFromTenantIndex, and its
+// cascaded edge deletes never called removeEdgeFromTenantIndex — so a tenant's
+// per-tenant indexes and stat counters kept the deleted node/edge.
+//
+// IMPORTANT — assert COUNTS, not list membership, and DO NOT Close()->reopen:
+//   - GetNodesByLabelForTenant / Get*EdgesForTenant clone-by-lookup and SKIP
+//     missing IDs, so a dangling tenant-index entry is silently filtered and the
+//     list looks correct even with the bug. Only the raw-len readers
+//     (CountNodesByLabelForTenant, CountNodesForTenant via tenant stats,
+//     CountEdgesForTenant) expose the drift.
+//   - A reopen rebuilds the per-tenant indexes from the surviving flat node/edge
+//     set (the node/edge is already gone from the shards), so reopen self-heals
+//     the bug -> false PASS. This bug lives purely in-memory between Commit() and
+//     restart; assert in-memory. (Inverts the usual reopen discipline on purpose.)
+//
+// CONSUMER CONTRACT: CC6-batch-delete-tenant-index — coi-screen / import-icij (delete sibling of CC4 #288)
+func TestBatchDeleteNode_MaintainsTenantIndexAndCounts(t *testing.T) {
+	gs, err := NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewGraphStorage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	// Build via the batch path (tenant-blind -> default tenant), node a -> b.
+	b := gs.BeginBatch()
+	a, err := b.AddNode([]string{"Entity"}, map[string]Value{"name": StringValue("A")})
+	if err != nil {
+		t.Fatalf("AddNode(a): %v", err)
+	}
+	bID, err := b.AddNode([]string{"Entity"}, map[string]Value{"name": StringValue("B")})
+	if err != nil {
+		t.Fatalf("AddNode(b): %v", err)
+	}
+	if _, err := b.AddEdge(a, bID, "linked_to", nil, 1.0); err != nil {
+		t.Fatalf("AddEdge: %v", err)
+	}
+	if err := b.Commit(); err != nil {
+		t.Fatalf("Commit(create): %v", err)
+	}
+
+	// Baseline (these hold post-#288): 2 Entity nodes, 1 edge, all in the
+	// default tenant's per-tenant indexes/stats.
+	if got := gs.CountNodesByLabelForTenant("", "Entity"); got != 2 {
+		t.Fatalf("baseline CountNodesByLabelForTenant(Entity) = %d, want 2", got)
+	}
+	if got := gs.CountNodesForTenant(""); got != 2 {
+		t.Fatalf("baseline CountNodesForTenant = %d, want 2", got)
+	}
+	if got := gs.CountEdgesForTenant(""); got != 1 {
+		t.Fatalf("baseline CountEdgesForTenant = %d, want 1", got)
+	}
+
+	// Delete node a via the batch path; its outgoing edge cascades.
+	d := gs.BeginBatch()
+	d.DeleteNode(a)
+	if err := d.Commit(); err != nil {
+		t.Fatalf("Commit(delete): %v", err)
+	}
+
+	// In-memory assertions (NO reopen — see header).
+	if got := gs.CountNodesByLabelForTenant("", "Entity"); got != 1 {
+		t.Errorf("CountNodesByLabelForTenant(Entity) = %d, want 1 — deleted node left in tenant label index", got)
+	}
+	if got := gs.CountNodesForTenant(""); got != 1 {
+		t.Errorf("CountNodesForTenant = %d, want 1 — tenant NodeCount not decremented on batch delete", got)
+	}
+	if got := gs.CountEdgesForTenant(""); got != 0 {
+		t.Errorf("CountEdgesForTenant = %d, want 0 — cascaded edge left in tenant edge index/count", got)
+	}
+}
+
+// TestBatchDeleteEdge_MaintainsTenantEdgeCount covers the explicit batch
+// edge-delete path (executeDeleteEdge), which updated the global type index but
+// never called removeEdgeFromTenantIndex. See the sibling test's header for why
+// this asserts the count and does not reopen.
+// CONSUMER CONTRACT: CC6-batch-delete-tenant-index — coi-screen / import-icij (delete sibling of CC4 #288)
+func TestBatchDeleteEdge_MaintainsTenantEdgeCount(t *testing.T) {
+	gs, err := NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewGraphStorage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	b := gs.BeginBatch()
+	a, _ := b.AddNode([]string{"Entity"}, nil)
+	bID, _ := b.AddNode([]string{"Entity"}, nil)
+	edgeID, err := b.AddEdge(a, bID, "linked_to", nil, 1.0)
+	if err != nil {
+		t.Fatalf("AddEdge: %v", err)
+	}
+	if err := b.Commit(); err != nil {
+		t.Fatalf("Commit(create): %v", err)
+	}
+	if got := gs.CountEdgesForTenant(""); got != 1 {
+		t.Fatalf("baseline CountEdgesForTenant = %d, want 1", got)
+	}
+
+	d := gs.BeginBatch()
+	d.DeleteEdge(edgeID)
+	if err := d.Commit(); err != nil {
+		t.Fatalf("Commit(delete edge): %v", err)
+	}
+
+	if got := gs.CountEdgesForTenant(""); got != 0 {
+		t.Errorf("CountEdgesForTenant = %d, want 0 — batch edge delete left it in tenant edge count", got)
+	}
+}
