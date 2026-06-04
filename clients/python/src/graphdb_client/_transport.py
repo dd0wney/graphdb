@@ -27,6 +27,8 @@ class Transport:
         password: str | None = None,
         timeout: float = 30.0,
     ) -> None:
+        if (username is None) != (password is None):
+            raise ValueError("username and password must be provided together")
         self._token = token
         self._api_key = api_key
         self._username = username

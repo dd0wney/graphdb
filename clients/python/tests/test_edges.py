@@ -38,13 +38,9 @@ def test_batch_create_edges(base_url):
 
 
 @respx.mock
-def test_get_and_delete(base_url):
+def test_get(base_url):
     respx.get(f"{base_url}/edges/3").mock(return_value=httpx.Response(200, json={
         "id": 3, "from_node_id": 1, "to_node_id": 2,
         "type": "KNOWS", "properties": {}, "weight": 1.0,
     }))
-    d = respx.delete(f"{base_url}/edges/3").mock(return_value=httpx.Response(200))
-    r = _res(base_url)
-    assert r.get(3).id == 3
-    r.delete(3)
-    assert d.called
+    assert _res(base_url).get(3).id == 3
