@@ -1,0 +1,21 @@
+name: Python SDK Publish
+on:
+  push:
+    tags: ["py-sdk-v*"]
+permissions:
+  id-token: write   # PyPI trusted publishing (OIDC)
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    # Gate: configure a protected "pypi" environment (with required reviewers)
+    # in repo settings so a tag push cannot publish without manual approval.
+    # Pair with PyPI trusted-publishing (OIDC) configured for this environment.
+    environment: pypi
+    defaults:
+      run:
+        working-directory: clients/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - run: uv publish
