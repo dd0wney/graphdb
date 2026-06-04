@@ -4,7 +4,7 @@ import (
 	"math"
 	"math/rand"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // ForceDirectedLayout implements force-directed graph layout

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
 // writeToWAL writes an operation to the write-ahead log for durability

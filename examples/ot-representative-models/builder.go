@@ -4,8 +4,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/dd0wney/cluso-graphdb/examples/ot-representative-models/models"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/examples/ot-representative-models/models"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // GraphBuilder provides a fluent interface for building OT network models

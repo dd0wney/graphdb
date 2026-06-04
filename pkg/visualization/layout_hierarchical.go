@@ -1,7 +1,7 @@
 package visualization
 
 import (
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // HierarchicalLayout arranges nodes in a tree hierarchy

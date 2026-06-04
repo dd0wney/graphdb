@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
 // Commit applies all buffered changes atomically and durably.

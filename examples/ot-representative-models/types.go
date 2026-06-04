@@ -2,8 +2,8 @@
 package main
 
 import (
-	"github.com/dd0wney/cluso-graphdb/examples/ot-representative-models/models"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/examples/ot-representative-models/models"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Re-export node and edge type constants from models package for convenience.

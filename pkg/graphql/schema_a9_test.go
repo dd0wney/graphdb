@@ -5,7 +5,7 @@ import (
 
 	"github.com/graphql-go/graphql"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Audit A9 #2 (2026-05-08): pin the per-tenant schema-builder

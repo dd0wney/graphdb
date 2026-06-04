@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/audit"
-	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
+	"github.com/dd0wney/graphdb/pkg/audit"
+	"github.com/dd0wney/graphdb/pkg/encryption"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	tlspkg "github.com/dd0wney/graphdb/pkg/tls"
 )
 
 // setupSecurityTestServer creates a test server with security features enabled

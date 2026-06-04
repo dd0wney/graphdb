@@ -24,7 +24,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // WriteOperation is a structured representation of a graph mutation in

@@ -1,6 +1,6 @@
 package algorithms
 
-import "github.com/dd0wney/cluso-graphdb/pkg/storage"
+import "github.com/dd0wney/graphdb/pkg/storage"
 
 // SCCResult holds the result of Tarjan's strongly connected components algorithm.
 // It embeds CommunityDetectionResult for compatibility with the existing community

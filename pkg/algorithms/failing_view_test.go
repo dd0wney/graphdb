@@ -3,7 +3,7 @@ package algorithms
 import (
 	"errors"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // failingView wraps a graphView and forces OutgoingEdges to return an

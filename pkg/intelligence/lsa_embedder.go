@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/search"
+	"github.com/dd0wney/graphdb/pkg/search"
 )
 
 // LSAEmbedder implements Embedder by routing each Embed call to the

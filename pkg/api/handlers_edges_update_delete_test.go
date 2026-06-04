@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // edgeFixture creates two nodes + an edge in the given tenant and returns its ID.

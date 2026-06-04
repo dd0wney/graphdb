@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/lsm"
+	"github.com/dd0wney/graphdb/pkg/lsm"
 )
 
 func main() {

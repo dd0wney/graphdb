@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/audit"
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
-	"github.com/dd0wney/cluso-graphdb/pkg/masking"
+	"github.com/dd0wney/graphdb/pkg/audit"
+	"github.com/dd0wney/graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/masking"
 )
 
 // Compliance API endpoint defaults.

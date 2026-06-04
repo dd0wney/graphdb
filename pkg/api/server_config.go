@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
-	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
+	"github.com/dd0wney/graphdb/pkg/encryption"
+	tlspkg "github.com/dd0wney/graphdb/pkg/tls"
 )
 
 // SetTLSConfig sets the TLS configuration for the server

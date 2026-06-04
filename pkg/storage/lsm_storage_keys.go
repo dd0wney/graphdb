@@ -3,7 +3,7 @@ package storage
 import (
 	"fmt"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/pools"
+	"github.com/dd0wney/graphdb/pkg/pools"
 )
 
 // Key prefixes for LSM storage

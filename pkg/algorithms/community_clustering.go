@@ -1,6 +1,6 @@
 package algorithms
 
-import "github.com/dd0wney/cluso-graphdb/pkg/storage"
+import "github.com/dd0wney/graphdb/pkg/storage"
 
 // ClusteringCoefficient computes local clustering coefficient for all nodes
 // Measures how close a node's neighbors are to being a complete graph.

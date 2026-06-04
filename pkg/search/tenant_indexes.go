@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // TenantIndexes holds a FullTextIndex per tenant. Each tenant's index

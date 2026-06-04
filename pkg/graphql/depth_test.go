@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // TestShallowQueryAllowed tests that queries within depth limit are allowed

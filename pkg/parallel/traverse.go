@@ -3,7 +3,7 @@ package parallel
 import (
 	"runtime"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // ParallelTraverser performs parallel graph traversals

@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // adminReq is a small harness for posting admin index requests with

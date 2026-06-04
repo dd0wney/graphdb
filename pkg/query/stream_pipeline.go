@@ -3,7 +3,7 @@ package query
 import (
 	"sync"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // PipelineStage represents a stage in a query pipeline

@@ -3,7 +3,7 @@ package algorithms
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // TestIsDAG_EmptyGraph tests DAG check on empty graph

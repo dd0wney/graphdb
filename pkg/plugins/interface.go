@@ -3,8 +3,8 @@ package plugins
 import (
 	"context"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/licensing"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/licensing"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // EnterprisePlugin defines the interface for Enterprise feature plugins

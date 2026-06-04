@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/audit"
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
-	"github.com/dd0wney/cluso-graphdb/pkg/masking"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
-	"github.com/dd0wney/cluso-graphdb/pkg/wal/apply"
+	"github.com/dd0wney/graphdb/pkg/audit"
+	"github.com/dd0wney/graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/masking"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/wal/apply"
 )
 
 // TestAuditRegressionSuite_CrossTenantIsolation is the consolidated

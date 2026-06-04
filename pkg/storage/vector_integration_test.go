@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // TestVectorValue tests encoding and decoding of vector values

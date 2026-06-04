@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/search"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/search"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Defaults from F2 spike (#28) §2 Q4–Q6. Configurable per-request via

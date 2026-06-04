@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/api"
+	"github.com/dd0wney/graphdb/pkg/api"
 )
 
 const baseURL = "http://localhost:8080"

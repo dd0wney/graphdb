@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/updater"
+	"github.com/dd0wney/graphdb/pkg/updater"
 )
 
 func TestUpdateJobManager(t *testing.T) {

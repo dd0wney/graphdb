@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
+	"github.com/dd0wney/graphdb/pkg/metrics"
 )
 
 // NodeRole represents the role of a node in the cluster

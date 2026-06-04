@@ -6,7 +6,7 @@ import (
 
 	"github.com/graphql-go/graphql"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // nodeSampler returns nodes carrying the given label, used during schema

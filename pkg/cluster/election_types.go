@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
+	"github.com/dd0wney/graphdb/pkg/metrics"
 )
 
 // ElectionState represents the current state of this node in the election process

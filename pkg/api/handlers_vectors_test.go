@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // TestCreateVectorIndex tests the POST /vector-indexes endpoint

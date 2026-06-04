@@ -3,7 +3,7 @@ package search
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Audit F2 #2 (2026-05-08): tests for SearchHybridForTenant. The

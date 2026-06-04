@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // These tests pin vector-index DEFINITION durability across a crash. The HNSW

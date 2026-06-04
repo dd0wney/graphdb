@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/auth"
 )
 
 // TestAuditCollector_PopulatedAfterAuth pins the load-bearing fix in PR-0

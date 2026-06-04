@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
-	"github.com/dd0wney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
 // dropVectorIndexWAL is the WAL payload for OpDropVectorIndex. Create uses the

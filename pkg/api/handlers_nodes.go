@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/validation"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/validation"
 )
 
 // claimLabel + claimUniquePropertyKey mirror pkg/graphql/mutations_resolvers.go's

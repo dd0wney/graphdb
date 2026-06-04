@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // Audit A6c-algorithms (2026-05-08): HTTP-level cross-tenant

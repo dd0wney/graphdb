@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
-	"github.com/dd0wney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
 // replayWAL replays WAL entries to recover state

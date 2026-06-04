@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/dd0wney/cluso-graphdb/pkg/api/middleware"
+	"github.com/dd0wney/graphdb/pkg/api/middleware"
 )
 
 // Re-export types from middleware package for backward compatibility

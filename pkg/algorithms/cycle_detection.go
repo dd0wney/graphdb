@@ -1,7 +1,7 @@
 package algorithms
 
 import (
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Cycle represents a detected cycle as a sequence of node IDs

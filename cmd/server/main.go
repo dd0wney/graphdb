@@ -14,13 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/api"
-	"github.com/dd0wney/cluso-graphdb/pkg/editions"
-	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
-	"github.com/dd0wney/cluso-graphdb/pkg/licensing"
-	"github.com/dd0wney/cluso-graphdb/pkg/plugins"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
+	"github.com/dd0wney/graphdb/pkg/api"
+	"github.com/dd0wney/graphdb/pkg/editions"
+	"github.com/dd0wney/graphdb/pkg/encryption"
+	"github.com/dd0wney/graphdb/pkg/licensing"
+	"github.com/dd0wney/graphdb/pkg/plugins"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	tlspkg "github.com/dd0wney/graphdb/pkg/tls"
 )
 
 // loadLicense attempts to load a license from various sources

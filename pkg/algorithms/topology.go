@@ -3,7 +3,7 @@ package algorithms
 import (
 	"fmt"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // IsDAG checks if the graph is a Directed Acyclic Graph

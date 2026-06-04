@@ -5,9 +5,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/parallel"
-	"github.com/dd0wney/cluso-graphdb/pkg/query"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/parallel"
+	"github.com/dd0wney/graphdb/pkg/query"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 func main() {

@@ -6,8 +6,8 @@ import (
 
 	"github.com/graphql-go/graphql"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // GenerateSchema generates a GraphQL schema from the storage layer

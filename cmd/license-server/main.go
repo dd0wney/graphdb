@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/licensing"
+	"github.com/dd0wney/graphdb/pkg/licensing"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/updater"
+	"github.com/dd0wney/graphdb/pkg/updater"
 )
 
 // Version is the build version, set at compile time via:

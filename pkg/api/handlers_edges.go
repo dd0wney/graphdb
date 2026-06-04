@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/validation"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/validation"
 )
 
 func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {

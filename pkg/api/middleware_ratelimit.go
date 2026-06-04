@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/api/middleware"
-	"github.com/dd0wney/cluso-graphdb/pkg/audit"
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/api/middleware"
+	"github.com/dd0wney/graphdb/pkg/audit"
+	"github.com/dd0wney/graphdb/pkg/auth"
 )
 
 // rateLimitMiddleware applies rate limiting per client IP

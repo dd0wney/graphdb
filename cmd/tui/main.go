@@ -15,10 +15,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
-	"github.com/dd0wney/cluso-graphdb/pkg/query"
-	"github.com/dd0wney/cluso-graphdb/pkg/queryutil"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/algorithms"
+	"github.com/dd0wney/graphdb/pkg/query"
+	"github.com/dd0wney/graphdb/pkg/queryutil"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Styles

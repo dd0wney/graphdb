@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // Performance audit (2026-06-02): concurrent multi-tenant write benchmark

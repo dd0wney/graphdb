@@ -3,7 +3,7 @@ package query
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // setupPhase4Graph creates a test graph for Phase 4 (expression operators).

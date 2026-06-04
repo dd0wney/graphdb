@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
-	"github.com/dd0wney/cluso-graphdb/pkg/masking"
+	"github.com/dd0wney/graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/masking"
 )
 
 // callMaskingPolicySet issues a POST to /v1/compliance/masking-policy

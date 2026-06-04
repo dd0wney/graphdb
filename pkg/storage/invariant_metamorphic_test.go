@@ -5,7 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // This file is Phase C of the parallel-invariant test work (Phases A/B live in

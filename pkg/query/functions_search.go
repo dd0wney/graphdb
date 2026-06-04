@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/search"
+	"github.com/dd0wney/graphdb/pkg/search"
 )
 
 // SetSearchIndex configures full-text search for use in queries.

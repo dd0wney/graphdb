@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/security"
+	"github.com/dd0wney/graphdb/pkg/security"
 )
 
 // InputValidationConfig configures input validation middleware

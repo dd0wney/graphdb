@@ -3,7 +3,7 @@ package storage
 import (
 	"fmt"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
 // CreatePropertyIndex creates an index on a node property

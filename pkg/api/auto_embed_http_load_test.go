@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/intelligence"
+	"github.com/dd0wney/graphdb/pkg/intelligence"
 )
 
 // httpLoadFakeEmbedder is the pkg/api-local fake Embedder used by the

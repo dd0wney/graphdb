@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
 // removeEdgeFromList removes a specific edge ID from a list of edge IDs in-place.

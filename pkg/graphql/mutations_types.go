@@ -5,7 +5,7 @@ import (
 
 	"github.com/graphql-go/graphql"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // createGenericNodeType creates a generic MutationNode type for mutation responses.

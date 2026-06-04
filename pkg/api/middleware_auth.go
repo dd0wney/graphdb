@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/audit"
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/audit"
+	"github.com/dd0wney/graphdb/pkg/auth"
 )
 
 // Context key for storing claims

@@ -3,7 +3,7 @@ package algorithms
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // TestDetectCycles_NoCycles tests a graph with no cycles (linear path)

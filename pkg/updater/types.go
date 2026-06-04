@@ -20,7 +20,7 @@
 //     the orchestrator swap on restart.
 //   - The current version is held in package var Version, settable at
 //     build time via:
-//     go build -ldflags "-X github.com/dd0wney/cluso-graphdb/pkg/updater.Version=v1.2.3"
+//     go build -ldflags "-X github.com/dd0wney/graphdb/pkg/updater.Version=v1.2.3"
 //     If unset, Version defaults to "dev" and every update check returns
 //     "update available" (intentional for dev builds).
 package updater

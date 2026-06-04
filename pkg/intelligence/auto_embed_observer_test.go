@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/search"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/search"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // fakeWriter is a minimal nodeWriter for unit tests. Records every

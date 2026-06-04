@@ -1,6 +1,6 @@
 package algorithms
 
-import "github.com/dd0wney/cluso-graphdb/pkg/storage"
+import "github.com/dd0wney/graphdb/pkg/storage"
 
 // TriangleCountResult holds triangle counting results including per-node counts,
 // global count, clustering coefficients, and top nodes by triangle participation.

@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // NewNodeDataLoader creates a DataLoader for loading nodes by ID

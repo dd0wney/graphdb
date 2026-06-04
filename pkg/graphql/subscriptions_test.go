@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/pubsub"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/pubsub"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // TestNodeCreatedSubscription tests subscribing to node creation events

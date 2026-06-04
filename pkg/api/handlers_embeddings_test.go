@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/search"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/search"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // embeddingsRequest sends a request body to /v1/embeddings on the given

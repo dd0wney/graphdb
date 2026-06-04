@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/health"
-	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/health"
+	"github.com/dd0wney/graphdb/pkg/metrics"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 func createTestServer(t *testing.T) (*Server, func()) {

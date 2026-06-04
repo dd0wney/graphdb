@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/auth"
 )
 
 // TestMetricsEndpoint_AdminOnly pins that GET /api/metrics is admin-gated.

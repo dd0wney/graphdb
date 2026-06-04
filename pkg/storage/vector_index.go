@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // VectorIndex manages vector search indexes for node properties, partitioned

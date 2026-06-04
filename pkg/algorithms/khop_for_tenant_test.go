@@ -3,7 +3,7 @@ package algorithms
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Audit A6c-algorithms (2026-05-17): kHop is registered behind the

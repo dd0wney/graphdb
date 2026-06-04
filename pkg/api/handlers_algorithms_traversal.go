@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
+	"github.com/dd0wney/graphdb/pkg/algorithms"
 )
 
 func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {

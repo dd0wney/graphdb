@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // Audit A9 #4 (2026-05-09): HTTP-level proof that the per-tenant

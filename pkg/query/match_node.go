@@ -3,7 +3,7 @@ package query
 import (
 	"fmt"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // matchNode matches a single node pattern against the graph.

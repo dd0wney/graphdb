@@ -6,7 +6,7 @@ import (
 
 	"github.com/graphql-go/graphql"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // GenerateSchemaWithCursors generates a GraphQL schema with cursor-based pagination

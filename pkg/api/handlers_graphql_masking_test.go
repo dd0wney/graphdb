@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
-	"github.com/dd0wney/cluso-graphdb/pkg/masking"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/masking"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // gqlPropertiesAsMap parses the JSON-encoded "properties" string returned

@@ -3,7 +3,7 @@ package constraints
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // TestCardinalityConstraint_MinEdges tests minimum edge count validation
