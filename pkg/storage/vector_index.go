@@ -215,6 +215,15 @@ func (vi *VectorIndex) HasIndex(propertyName string) bool {
 	return vi.HasIndexForTenant(tenantid.Default, propertyName)
 }
 
+// HasAnyIndex reports whether any vector index exists across all tenants. A
+// cheap O(1) guard (one map-length read) so write paths can skip vector
+// bookkeeping entirely on graphs that use no vector search.
+func (vi *VectorIndex) HasAnyIndex() bool {
+	vi.mu.RLock()
+	defer vi.mu.RUnlock()
+	return len(vi.indexes) > 0
+}
+
 // HasIndexForTenant reports whether (tenantID, propertyName) has an index.
 // Returns false (not an error) for both "no such tenant" and "no index on
 // this property" — the unified false response prevents tenant-existence

@@ -174,6 +174,14 @@ func (gs *GraphStorage) replayDeleteEdge(entry *wal.Entry) error {
 	// Remove from type index
 	gs.removeEdgeFromTypeIndex(edge.Type, edge.ID)
 
+	// Remove from the per-tenant edge index (type map + enumeration set + tenant
+	// EdgeCount), mirroring the live DeleteEdge. loadFromDisk rebuilt the tenant
+	// index over the SNAPSHOT edge set before replay, so without this a
+	// post-snapshot DeleteEdge recovered here leaves the edge in
+	// CountEdgesForTenant / GetEdgesByTypeForTenant forever. Replay is
+	// single-threaded during init.
+	gs.removeEdgeFromTenantIndex(&edge)
+
 	// Remove from adjacency lists (disk-backed or in-memory)
 	if err := gs.removeOutgoingEdge(edge.FromNodeID, edge.ID); err != nil {
 		return fmt.Errorf("failed to remove outgoing edge during replay: %w", err)
@@ -234,6 +242,15 @@ func (gs *GraphStorage) replayDeleteNode(entry *wal.Entry) error {
 	for _, label := range node.Labels {
 		gs.removeFromLabelIndex(label, node.ID)
 	}
+
+	// Remove from the per-tenant node index (label map + enumeration set + tenant
+	// NodeCount), mirroring the live DeleteNode. loadFromDisk rebuilt the tenant
+	// index over the SNAPSHOT node set before replay, so without this a
+	// post-snapshot DeleteNode recovered here leaves the node in
+	// CountNodesForTenant / GetNodesByLabelForTenant forever. The WAL delete
+	// entry carries the full node (TenantID + Labels), so the removal routes to
+	// the right tenant. Replay is single-threaded during init.
+	gs.removeNodeFromTenantIndex(&node)
 
 	// Remove from property indexes
 	if err := gs.removeNodeFromPropertyIndexes(node.ID, node.Properties); err != nil {
