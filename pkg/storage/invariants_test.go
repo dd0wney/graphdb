@@ -68,11 +68,34 @@ func checkGraphInvariants(gs *GraphStorage) []string {
 	}
 	gs.vectorIndex.mu.RUnlock()
 
+	// --- snapshot the property-index buckets (nested idx.mu under gs.mu, the
+	// production lock order: callers hold gs.mu.Lock before idx.mu) so the node
+	// pass computes ground truth without holding idx.mu across the shard scan.
+	// propertyIndexes is GLOBAL (one map[string]*PropertyIndex, no tenant
+	// dimension), so this checks index correctness, not tenant isolation. ---
+	type propSnapshot struct {
+		idx     *PropertyIndex      // for valueToKey + indexType (both lock-free)
+		buckets map[string][]uint64 // value-key -> node IDs
+	}
+	propIdx := map[string]propSnapshot{} // property key -> snapshot
+	for key, idx := range gs.propertyIndexes {
+		idx.mu.RLock()
+		buckets := make(map[string][]uint64, len(idx.index))
+		for v, ids := range idx.index {
+			cp := make([]uint64, len(ids))
+			copy(cp, ids)
+			buckets[v] = cp
+		}
+		idx.mu.RUnlock()
+		propIdx[key] = propSnapshot{idx: idx, buckets: buckets}
+	}
+
 	// --- ground truth: NODES ---
 	gtNodeIDs := map[tenantid.TenantID]idSet{}               // tid -> node IDs
 	gtNodeLabels := map[tenantid.TenantID]map[string]idSet{} // tid -> label -> IDs
 	gtGlobalNodeLabels := map[string]idSet{}                 // global label -> IDs
 	gtVecCount := map[tenantid.TenantID]map[string]int{}     // tid -> indexed prop -> decodable-vector count
+	gtProp := map[string]map[string]idSet{}                  // property key -> value-key -> node IDs
 	gtNodeCount := 0
 
 	for i := range gs.nodeShards {
@@ -108,6 +131,23 @@ func checkGraphInvariants(gs *GraphStorage) []string {
 					}
 					gtVecCount[tid][prop]++
 				}
+			}
+			// property-index ground truth: only for indexed keys, and only when
+			// the value type matches the index's declared type (Insert rejects
+			// mismatches, so they are legitimately absent from the index).
+			for key, snap := range propIdx {
+				val, ok := node.Properties[key]
+				if !ok || val.Type != snap.idx.indexType {
+					continue
+				}
+				vk := snap.idx.valueToKey(val)
+				if gtProp[key] == nil {
+					gtProp[key] = map[string]idSet{}
+				}
+				if gtProp[key][vk] == nil {
+					gtProp[key][vk] = idSet{}
+				}
+				gtProp[key][vk][id] = struct{}{}
 			}
 		}
 	}
@@ -299,6 +339,41 @@ func checkGraphInvariants(gs *GraphStorage) []string {
 			}
 			if length != want {
 				report("vector: index (tenant %q, prop %q) Len()=%d != decodable-vector node count=%d", tid, prop, length, want)
+			}
+		}
+	}
+
+	// === PROPERTY index (exact membership, per indexed key; tenant-blind) ===
+	// PropertyIndex.Insert rejects type-mismatched values and does NOT dedup;
+	// Remove deletes a bucket once it empties. So the invariant is: no empty
+	// buckets, every member is a live node carrying that value, and every
+	// qualifying node appears exactly once in the right bucket.
+	for key, snap := range propIdx {
+		gt := gtProp[key] // value-key -> node IDs (nil if no qualifying nodes)
+		// reverse: members live + carrying value; no empty buckets; no duplicates.
+		for vk, ids := range snap.buckets {
+			if len(ids) == 0 {
+				report("property %q: empty bucket %q (Remove must delete empties)", key, vk)
+				continue
+			}
+			seen := idSet{}
+			for _, id := range ids {
+				if _, dup := seen[id]; dup {
+					report("property %q bucket %q: id %d appears more than once", key, vk, id)
+					continue
+				}
+				seen[id] = struct{}{}
+				if gt == nil || !inBucket(gt[vk], id) {
+					report("property %q bucket %q: lists id %d not backed by a live node carrying that value", key, vk, id)
+				}
+			}
+		}
+		// forward: every qualifying node is in the right bucket.
+		for vk, ids := range gt {
+			for id := range ids {
+				if !containsUint64(snap.buckets[vk], id) {
+					report("property %q: node %d missing from bucket %q", key, id, vk)
+				}
 			}
 		}
 	}
