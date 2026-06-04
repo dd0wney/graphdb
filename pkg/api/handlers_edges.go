@@ -195,6 +195,10 @@ func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
 			s.respondError(w, http.StatusNotFound, "Source or target node not found")
 			return
 		}
+		if errors.Is(err, storage.ErrInvalidEdgeWeight) {
+			s.respondError(w, http.StatusBadRequest, "weight must be a finite number")
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create edge"))
 		return
 	}

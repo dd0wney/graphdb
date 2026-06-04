@@ -226,6 +226,13 @@ func (gs *GraphStorage) UpdateEdgeForTenant(edgeID uint64, properties map[string
 //
 // Tenant-blind. New callers should prefer UpdateEdgeForTenant.
 func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, weight *float64) error {
+	// Reject a non-finite new weight before taking any lock (#328) — an
+	// Inf/NaN weight can't be WAL-marshaled. nil weight = leave unchanged.
+	if weight != nil {
+		if err := validateEdgeWeight(*weight); err != nil {
+			return err
+		}
+	}
 	gs.mu.Lock()
 	// Deferred WAL wait runs after gs.mu.Unlock AND gs.unlockShard (LIFO) —
 	// group commit, Track P item 1. nil handle (not-found path) => no-op wait.
@@ -310,7 +317,15 @@ func (gs *GraphStorage) createEdgeLocked(tenantID string, fromID, toID uint64, e
 // one atomic batch for Transaction.Commit) and is responsible for endpoint-
 // tenant validation. Caller must hold gs.mu.Lock. Single source of truth for
 // "persist an edge," shared by createEdgeLocked and Transaction.Commit.
+//
+// It DOES enforce one invariant — a finite Weight (#328): a non-finite weight
+// can't be WAL/snapshot-marshaled, so rejecting here (the last point before any
+// in-memory mutation) keeps a bad-weight edge from ever existing, covering every
+// create path including Transaction.Commit. Returns ErrInvalidEdgeWeight.
 func (gs *GraphStorage) persistEdgeLocked(edge *Edge) error {
+	if err := validateEdgeWeight(edge.Weight); err != nil {
+		return err
+	}
 	// lockShard excludes concurrent GetEdge readers from this edge's shard
 	// while we write edgeShards (A4-edges).
 	gs.lockShard(edge.ID)
@@ -492,6 +507,12 @@ func (gs *GraphStorage) UpsertEdgeWithTenant(tenantID string, fromID, toID uint6
 // must hold gs.mu.Lock and (when relevant) have validated tenant
 // ownership of the source/target nodes.
 func (gs *GraphStorage) upsertEdgeWithTenantNoVerify(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, bool, *wal.Pending, error) {
+	// Reject non-finite weight (#328) before mutating anything. The create
+	// branch funnels through persistEdgeLocked (which re-checks), but the
+	// update branch mutates the existing edge in place, so guard here too.
+	if err := validateEdgeWeight(weight); err != nil {
+		return nil, false, nil, err
+	}
 	existing, err := gs.findEdgeBetweenLocked(fromID, toID, edgeType)
 	if err != nil {
 		return nil, false, nil, fmt.Errorf("failed to check existing edge: %w", err)

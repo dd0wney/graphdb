@@ -116,6 +116,12 @@ func (b *Batch) executeCreateNode(op batchOp) error {
 }
 
 func (b *Batch) executeCreateEdge(op batchOp) error {
+	// Reject non-finite weight (#328) before any in-memory mutation — the WAL
+	// marshal below would otherwise fail after the edge is already in the shard
+	// map (a partial apply).
+	if err := validateEdgeWeight(op.weight); err != nil {
+		return err
+	}
 	edge := &Edge{
 		ID:         op.edgeID,
 		FromNodeID: op.fromNodeID,
