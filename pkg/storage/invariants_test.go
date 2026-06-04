@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/tenantid"
 )
 
 // assertGraphInvariants verifies that every DERIVED representation of the graph

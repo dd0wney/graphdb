@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // TestBootstrapAutoEmbedFromEnv_Disabled pins the default: with no env

@@ -4,8 +4,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 const (

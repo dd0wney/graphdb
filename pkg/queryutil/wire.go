@@ -3,10 +3,10 @@
 package queryutil
 
 import (
-	"github.com/dd0wney/cluso-graphdb/pkg/query"
-	"github.com/dd0wney/cluso-graphdb/pkg/search"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/query"
+	"github.com/dd0wney/graphdb/pkg/search"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // WireCapabilities attaches full-text search and vector search to an executor.

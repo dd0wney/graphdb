@@ -1,6 +1,6 @@
 package algorithms
 
-import "github.com/dd0wney/cluso-graphdb/pkg/storage"
+import "github.com/dd0wney/graphdb/pkg/storage"
 
 // LabelPropagation performs label propagation for community detection
 // Fast, scalable algorithm for large graphs

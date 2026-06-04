@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // ParallelTraversal performs parallel BFS traversal

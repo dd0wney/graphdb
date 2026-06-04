@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // BFS performs breadth-first search traversal

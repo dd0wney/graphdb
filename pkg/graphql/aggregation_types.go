@@ -3,7 +3,7 @@ package graphql
 import (
 	"github.com/graphql-go/graphql"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // buildNodeAggregateTypes creates node types and aggregate types for a label.

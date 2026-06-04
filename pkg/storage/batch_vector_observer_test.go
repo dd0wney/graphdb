@@ -3,7 +3,7 @@ package storage
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // (recordingObserver lives in observation_test.go)

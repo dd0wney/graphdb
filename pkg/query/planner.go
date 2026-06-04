@@ -28,7 +28,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Planner translates a Query AST into a tree of PhysicalOperators.

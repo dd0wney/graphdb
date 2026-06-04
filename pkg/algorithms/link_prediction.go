@@ -4,7 +4,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // LinkPredictionMethod selects the scoring formula for link prediction.

@@ -3,7 +3,7 @@ package algorithms
 import (
 	"container/list"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // ConnectedComponents finds all connected components in the graph

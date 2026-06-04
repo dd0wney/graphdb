@@ -29,8 +29,8 @@
 package storage
 
 import (
-	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/encryption"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // StorageReader defines the read-only surface of the graph database.

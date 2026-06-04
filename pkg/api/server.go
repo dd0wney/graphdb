@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	tlspkg "github.com/dd0wney/cluso-graphdb/pkg/tls"
+	tlspkg "github.com/dd0wney/graphdb/pkg/tls"
 )
 
 // Start starts the HTTP server

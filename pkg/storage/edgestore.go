@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/lsm"
+	"github.com/dd0wney/graphdb/pkg/lsm"
 )
 
 // makeEdgeStoreKey generates edge storage key more efficiently than fmt.Sprintf

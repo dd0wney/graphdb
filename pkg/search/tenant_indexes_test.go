@@ -3,7 +3,7 @@ package search
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // TestTenantIndexes_Isolation is the red-first acceptance test for

@@ -12,7 +12,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
+	"github.com/dd0wney/graphdb/pkg/algorithms"
 )
 
 func main() {

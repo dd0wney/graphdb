@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/api/middleware"
-	"github.com/dd0wney/cluso-graphdb/pkg/audit"
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/api/middleware"
+	"github.com/dd0wney/graphdb/pkg/audit"
+	"github.com/dd0wney/graphdb/pkg/auth"
 )
 
 // TestBodySizeLimitMiddleware tests the request body size limiting middleware

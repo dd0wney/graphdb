@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/search"
+	"github.com/dd0wney/graphdb/pkg/search"
 )
 
 // SearchRequest is the JSON body shape for POST /search.

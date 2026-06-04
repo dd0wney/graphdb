@@ -3,7 +3,7 @@ package algorithms
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Audit A6b (2026-05-08): algorithm-level contract for the

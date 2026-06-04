@@ -3,7 +3,7 @@ package query
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // setupPhase5Graph creates a test graph for Phase 5 (query language gap closure).

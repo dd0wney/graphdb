@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/updater"
+	"github.com/dd0wney/graphdb/pkg/updater"
 )
 
 const defaultUpdateManifestURL = "https://raw.githubusercontent.com/dd0wney/graphdb/main/releases.json"

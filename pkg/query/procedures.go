@@ -21,8 +21,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/algorithms"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Procedure is the function signature for a Cypher procedure callable via

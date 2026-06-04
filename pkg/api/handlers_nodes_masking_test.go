@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
-	"github.com/dd0wney/cluso-graphdb/pkg/masking"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/masking"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // seedMaskingNode creates a node with the given properties under

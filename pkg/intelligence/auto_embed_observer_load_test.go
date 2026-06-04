@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // slowFakeEmbedder simulates a real Embedder that takes time per call —

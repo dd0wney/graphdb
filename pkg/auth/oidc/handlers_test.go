@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/auth"
 )
 
 // setupTestOIDCProvider creates a mock OIDC provider for testing

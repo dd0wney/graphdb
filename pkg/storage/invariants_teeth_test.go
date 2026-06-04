@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // validGraph builds a small healthy graph (one tenant, two labelled nodes, one

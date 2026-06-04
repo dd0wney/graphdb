@@ -19,7 +19,7 @@ import (
 
 // Version is the current build's semver string. Set via -ldflags:
 //
-//	go build -ldflags "-X github.com/dd0wney/cluso-graphdb/pkg/updater.Version=v1.2.3"
+//	go build -ldflags "-X github.com/dd0wney/graphdb/pkg/updater.Version=v1.2.3"
 //
 // If unset (i.e., "dev"), every CheckForUpdates call reports an update
 // available — intentional for development builds.

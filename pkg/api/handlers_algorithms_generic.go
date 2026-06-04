@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/algorithms"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {

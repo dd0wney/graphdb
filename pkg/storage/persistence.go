@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/encryption"
+	"github.com/dd0wney/graphdb/pkg/tenantid"
 )
 
 // PropertyIndexSnapshot is a serializable representation of a PropertyIndex

@@ -1,7 +1,7 @@
 package algorithms
 
 import (
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // graphView abstracts graph access so tenant-blind and tenant-scoped

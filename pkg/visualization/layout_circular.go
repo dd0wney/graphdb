@@ -3,7 +3,7 @@ package visualization
 import (
 	"math"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // CircularLayout arranges nodes in a circle

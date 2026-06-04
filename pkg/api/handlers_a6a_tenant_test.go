@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // Audit A6a (2026-05-08): pin the cross-tenant contract for /nodes and

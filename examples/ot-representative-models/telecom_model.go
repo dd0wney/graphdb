@@ -3,7 +3,7 @@
 package main
 
 import (
-	"github.com/dd0wney/cluso-graphdb/examples/ot-representative-models/models"
+	"github.com/dd0wney/graphdb/examples/ot-representative-models/models"
 )
 
 // BuildTelecomProvider creates Model 4: Telecommunications Provider (114 nodes, 253 undirected edges)

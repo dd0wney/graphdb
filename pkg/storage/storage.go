@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/metrics"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
-	"github.com/dd0wney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/graphdb/pkg/metrics"
+	"github.com/dd0wney/graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
 // ErrNodeNotFound and ErrEdgeNotFound are defined in errors.go
@@ -142,7 +142,7 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 // NOTE: Parallel traversal methods (BFS, DFS, shortest path) are available
 // via the parallel package to avoid circular dependencies:
 //
-//   import "github.com/dd0wney/cluso-graphdb/pkg/parallel"
+//   import "github.com/dd0wney/graphdb/pkg/parallel"
 //
 //   traverser := parallel.NewParallelTraverser(graph, numWorkers)
 //   defer traverser.Close()

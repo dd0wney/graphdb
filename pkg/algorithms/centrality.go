@@ -5,7 +5,7 @@ import (
 	"container/list"
 	"sort"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // predEdge tracks a predecessor node and the edge used to reach it during BFS.

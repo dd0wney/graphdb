@@ -30,9 +30,9 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/btree"
-	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/btree"
+	"github.com/dd0wney/graphdb/pkg/encryption"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // errBTreeBackendUnsupported is returned by every BTreeGraphStorage method

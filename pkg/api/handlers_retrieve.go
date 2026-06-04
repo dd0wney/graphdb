@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/retrieval"
+	"github.com/dd0wney/graphdb/pkg/retrieval"
 )
 
 // RetrieveRequest is the JSON body for POST /v1/retrieve. Shape

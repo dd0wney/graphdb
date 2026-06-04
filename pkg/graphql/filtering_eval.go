@@ -3,7 +3,7 @@ package graphql
 import (
 	"strings"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // evaluateFilter checks if a node matches the filter expression

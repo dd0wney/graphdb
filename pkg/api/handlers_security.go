@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/audit"
-	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
+	"github.com/dd0wney/graphdb/pkg/audit"
+	"github.com/dd0wney/graphdb/pkg/encryption"
 )
 
 // handleSecurityKeyRotate rotates the encryption key

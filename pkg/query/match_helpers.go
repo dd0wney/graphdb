@@ -1,6 +1,6 @@
 package query
 
-import "github.com/dd0wney/cluso-graphdb/pkg/storage"
+import "github.com/dd0wney/graphdb/pkg/storage"
 
 func (ms *MatchStep) hasLabels(node *storage.Node, labels []string) bool {
 	for _, requiredLabel := range labels {

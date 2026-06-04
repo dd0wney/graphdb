@@ -1,7 +1,7 @@
 package constraints
 
 import (
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // GraphReader defines the read-only operations needed for constraint validation.

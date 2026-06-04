@@ -18,8 +18,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/algorithms"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // PipelineModel holds the graph and metadata for the pipeline network.

@@ -16,8 +16,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/algorithms"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // NodeMeta tracks node metadata for display and analysis.

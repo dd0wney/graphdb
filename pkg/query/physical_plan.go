@@ -28,7 +28,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // PhysicalOperator is the interface for physical query operators (Volcano model).

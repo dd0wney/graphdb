@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
-	"github.com/dd0wney/cluso-graphdb/pkg/query"
-	"github.com/dd0wney/cluso-graphdb/pkg/queryutil"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/algorithms"
+	"github.com/dd0wney/graphdb/pkg/query"
+	"github.com/dd0wney/graphdb/pkg/queryutil"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 type CLI struct {

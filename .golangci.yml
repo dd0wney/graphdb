@@ -51,13 +51,13 @@ linters:
       check-type-assertions: true
       check-blank: true
       exclude-functions:
-        - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetOutgoingEdges
-        - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetIncomingEdges
-        - (*github.com/dd0wney/cluso-graphdb/pkg/storage.GraphStorage).GetNode
-        - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.Compactor).CleanupOldSSTables
-        - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.LSMStorage).compact
-        - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.BlockCache).evict
-        - (*github.com/dd0wney/cluso-graphdb/pkg/lsm.BlockCache).Put
+        - (*github.com/dd0wney/graphdb/pkg/storage.GraphStorage).GetOutgoingEdges
+        - (*github.com/dd0wney/graphdb/pkg/storage.GraphStorage).GetIncomingEdges
+        - (*github.com/dd0wney/graphdb/pkg/storage.GraphStorage).GetNode
+        - (*github.com/dd0wney/graphdb/pkg/lsm.Compactor).CleanupOldSSTables
+        - (*github.com/dd0wney/graphdb/pkg/lsm.LSMStorage).compact
+        - (*github.com/dd0wney/graphdb/pkg/lsm.BlockCache).evict
+        - (*github.com/dd0wney/graphdb/pkg/lsm.BlockCache).Put
         - encoding/binary.Read
     goconst:
       min-len: 3
@@ -174,7 +174,7 @@ formatters:
       simplify: true
     goimports:
       local-prefixes:
-        - github.com/dd0wney/cluso-graphdb
+        - github.com/dd0wney/graphdb
   exclusions:
     generated: lax
     paths:

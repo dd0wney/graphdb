@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // These tests pin Track P item (3) / H2: the HNSW insert is lifted out of

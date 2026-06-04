@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/masking"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
-	"github.com/dd0wney/cluso-graphdb/pkg/tenant"
+	"github.com/dd0wney/graphdb/pkg/masking"
+	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // MaskingDeps bundles the per-tenant masking dependencies that GraphQL

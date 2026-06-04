@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/api/middleware"
+	"github.com/dd0wney/graphdb/pkg/api/middleware"
 )
 
 // panicRecoveryMiddleware recovers from panics in HTTP handlers

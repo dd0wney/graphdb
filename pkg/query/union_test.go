@@ -3,7 +3,7 @@ package query
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 func TestLexer_UnionTokens(t *testing.T) {

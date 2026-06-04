@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // TestGraphQL_ComplexityValidation tests that complex queries are rejected

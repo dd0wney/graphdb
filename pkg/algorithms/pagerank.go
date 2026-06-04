@@ -4,7 +4,7 @@ import (
 	"container/heap"
 	"math"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // PageRankOptions configures PageRank algorithm

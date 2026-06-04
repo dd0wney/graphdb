@@ -4,7 +4,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // NeighborDirection controls which edges to follow when building neighbor sets.

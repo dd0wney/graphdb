@@ -5,9 +5,9 @@ import (
 	"log"
 	"math"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
-	"github.com/dd0wney/cluso-graphdb/pkg/constraints"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/algorithms"
+	"github.com/dd0wney/graphdb/pkg/constraints"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Proof-of-concept: ISO 15288 System Modeling with GraphDB

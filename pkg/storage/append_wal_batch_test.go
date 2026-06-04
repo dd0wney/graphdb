@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/wal"
+	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
 // TestAppendWALBatch_DurableAcrossCrash pins that gs.appendWALBatch writes a

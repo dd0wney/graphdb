@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/search"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/search"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // retrievalFixture builds a minimal two-tenant corpus suitable for

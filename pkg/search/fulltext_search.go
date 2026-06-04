@@ -3,7 +3,7 @@ package search
 import (
 	"strings"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // Search performs a basic text search (multi-word is treated as AND)

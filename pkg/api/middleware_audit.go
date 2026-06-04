@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/api/middleware"
-	"github.com/dd0wney/cluso-graphdb/pkg/audit"
+	"github.com/dd0wney/graphdb/pkg/api/middleware"
+	"github.com/dd0wney/graphdb/pkg/audit"
 )
 
 // logAuditEvent logs an event to both audit loggers when persistent logging is enabled.

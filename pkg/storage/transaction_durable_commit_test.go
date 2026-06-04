@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // txCfg is a batched-WAL config (a sane FlushInterval avoids the NewTicker(0)

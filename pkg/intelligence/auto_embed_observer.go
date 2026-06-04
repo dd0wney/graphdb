@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // AutoEmbedObserver is the bridge between pkg/storage's NodeObserver

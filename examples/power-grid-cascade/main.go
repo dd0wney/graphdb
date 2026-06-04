@@ -19,8 +19,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/algorithms"
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/algorithms"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // GridModel holds the graph and metadata for a power grid scenario.

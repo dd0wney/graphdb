@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/tenantid"
 )
 
 // DefaultTenantID is used when no tenant is specified (backward compatibility).

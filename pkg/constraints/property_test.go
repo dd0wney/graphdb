@@ -3,7 +3,7 @@ package constraints
 import (
 	"testing"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 func setupTestGraph(t *testing.T) *storage.GraphStorage {

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/tenantid"
 )
 
 const (
