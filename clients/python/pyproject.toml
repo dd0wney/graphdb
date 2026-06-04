@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "graphdb-client"
+version = "0.1.0"
+description = "First-party Python client for graphdb"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+dependencies = ["httpx>=0.27,<1"]
+
+[dependency-groups]
+dev = ["pytest>=8", "respx>=0.21", "ruff>=0.6", "mypy>=1.11", "datamodel-code-generator>=0.26"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/graphdb_client"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.mypy]
+python_version = "3.9"
+mypy_path = "src"
+packages = ["graphdb_client"]
+strict = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
