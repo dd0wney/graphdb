@@ -119,6 +119,30 @@ func TestUpdateEdge_CrossTenantNotFound(t *testing.T) {
 	}
 }
 
+// TestCreateEdge_NonFiniteWeightRejected: POST /edges with a JSON overflow
+// literal (1e400 → +Inf) must be a 400, not a silently-dropped WAL write (#328).
+func TestCreateEdge_NonFiniteWeightRejected(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+	const tenantID = "acme"
+	a, _ := server.graph.CreateNodeWithTenant(tenantID, []string{"N"}, nil)
+	b, _ := server.graph.CreateNodeWithTenant(tenantID, []string{"N"}, nil)
+
+	body := fmt.Sprintf(`{"from_node_id": %d, "to_node_id": %d, "type": "T", "weight": 1e400}`, a.ID, b.ID)
+	req := httptest.NewRequest(http.MethodPost, "/edges", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(tenant.WithTenant(req.Context(), tenantID))
+
+	rr := httptest.NewRecorder()
+	server.createEdge(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("POST /edges non-finite weight: want 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if n := server.graph.CountEdgesForTenant(tenantID); n != 0 {
+		t.Errorf("CountEdgesForTenant = %d after rejected create, want 0", n)
+	}
+}
+
 func TestDeleteEdge(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()

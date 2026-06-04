@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"math"
 )
 
 // Common sentinel errors
@@ -15,7 +16,22 @@ var (
 	ErrMarshalFailed             = errors.New("marshal failed")
 	ErrIndexFailed               = errors.New("index operation failed")
 	ErrUniqueConstraintViolation = errors.New("unique constraint violation")
+	// ErrInvalidEdgeWeight is returned by edge create/update when the weight is
+	// non-finite (±Inf or NaN). The WAL JSON-encodes the edge and cannot marshal
+	// non-finite floats, so such an edge would silently fail to persist and be
+	// lost on crash — reject it at the boundary instead (#328).
+	ErrInvalidEdgeWeight = errors.New("edge weight must be a finite number")
 )
+
+// validateEdgeWeight rejects non-finite (±Inf/NaN) edge weights, which the WAL
+// cannot JSON-marshal (#328). Returns ErrInvalidEdgeWeight wrapped with the
+// offending value.
+func validateEdgeWeight(weight float64) error {
+	if math.IsInf(weight, 0) || math.IsNaN(weight) {
+		return fmt.Errorf("%w: got %v", ErrInvalidEdgeWeight, weight)
+	}
+	return nil
+}
 
 // UniqueConstraintError is returned by CreateNodeWithUniquePropertyForTenant
 // when a node with the same (label, propertyKey, propertyValue) already
