@@ -23,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: cluso-graphdb-1c
+    container_name: graphdb-1c
     command: ["/app/cluso-server", "--data", "/data", "--port", "8080"]
     environment:
       PORT: "8080"

@@ -45,7 +45,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: cluso-graphdb
+    container_name: graphdb
     environment:
       PORT: "8080"
       # JWT_SECRET is required for the server to boot (fail-closed per
