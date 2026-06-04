@@ -137,7 +137,7 @@ func main() {
 
 	totalFound := 0
 	for i := 0; i < *queries; i++ {
-		nodes, err := graph.FindNodesByPropertyRange(
+		nodes, err := graph.FindNodesByPropertyRangeAcrossTenants(
 			"trustScore",
 			storage.IntValue(500),
 			storage.IntValue(600),
@@ -160,7 +160,7 @@ func main() {
 
 	totalFound = 0
 	for i := 0; i < *queries; i++ {
-		nodes, err := graph.FindNodesByPropertyPrefix("email", "user1")
+		nodes, err := graph.FindNodesByPropertyPrefixAcrossTenants("email", "user1")
 		if err != nil {
 			log.Fatalf("Query failed: %v", err)
 		}

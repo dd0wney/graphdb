@@ -175,8 +175,8 @@ func TestEdgeErrors(t *testing.T) {
 	}
 }
 
-// Test FindEdgeBetween
-func TestFindEdgeBetween(t *testing.T) {
+// Test FindEdgeBetweenAcrossTenants
+func TestFindEdgeBetweenAcrossTenants(t *testing.T) {
 	gs := setupTestStorage(t)
 	defer func() { _ = gs.Close() }()
 
@@ -190,9 +190,9 @@ func TestFindEdgeBetween(t *testing.T) {
 	_, _ = gs.CreateEdge(node1.ID, node3.ID, "KNOWS", nil, 1.0)
 
 	// Find existing edge
-	found, err := gs.FindEdgeBetween(node1.ID, node2.ID, "KNOWS")
+	found, err := gs.FindEdgeBetweenAcrossTenants(node1.ID, node2.ID, "KNOWS")
 	if err != nil {
-		t.Fatalf("FindEdgeBetween failed: %v", err)
+		t.Fatalf("FindEdgeBetweenAcrossTenants failed: %v", err)
 	}
 	if found == nil {
 		t.Fatal("Expected to find edge, got nil")
@@ -206,9 +206,9 @@ func TestFindEdgeBetween(t *testing.T) {
 	}
 
 	// Find edge with different type
-	found, err = gs.FindEdgeBetween(node1.ID, node2.ID, "LIKES")
+	found, err = gs.FindEdgeBetweenAcrossTenants(node1.ID, node2.ID, "LIKES")
 	if err != nil {
-		t.Fatalf("FindEdgeBetween failed: %v", err)
+		t.Fatalf("FindEdgeBetweenAcrossTenants failed: %v", err)
 	}
 	if found == nil {
 		t.Fatal("Expected to find LIKES edge")
@@ -218,35 +218,35 @@ func TestFindEdgeBetween(t *testing.T) {
 	}
 
 	// Find non-existent edge (wrong type)
-	found, err = gs.FindEdgeBetween(node1.ID, node2.ID, "FOLLOWS")
+	found, err = gs.FindEdgeBetweenAcrossTenants(node1.ID, node2.ID, "FOLLOWS")
 	if err != nil {
-		t.Fatalf("FindEdgeBetween failed: %v", err)
+		t.Fatalf("FindEdgeBetweenAcrossTenants failed: %v", err)
 	}
 	if found != nil {
 		t.Error("Expected nil for non-existent edge type")
 	}
 
 	// Find non-existent edge (wrong direction)
-	found, err = gs.FindEdgeBetween(node2.ID, node1.ID, "KNOWS")
+	found, err = gs.FindEdgeBetweenAcrossTenants(node2.ID, node1.ID, "KNOWS")
 	if err != nil {
-		t.Fatalf("FindEdgeBetween failed: %v", err)
+		t.Fatalf("FindEdgeBetweenAcrossTenants failed: %v", err)
 	}
 	if found != nil {
 		t.Error("Expected nil for reversed direction")
 	}
 
 	// Find edge between nodes with no relationship
-	found, err = gs.FindEdgeBetween(node2.ID, node3.ID, "KNOWS")
+	found, err = gs.FindEdgeBetweenAcrossTenants(node2.ID, node3.ID, "KNOWS")
 	if err != nil {
-		t.Fatalf("FindEdgeBetween failed: %v", err)
+		t.Fatalf("FindEdgeBetweenAcrossTenants failed: %v", err)
 	}
 	if found != nil {
 		t.Error("Expected nil for unconnected nodes")
 	}
 }
 
-// Test FindAllEdgesBetween
-func TestFindAllEdgesBetween(t *testing.T) {
+// Test FindAllEdgesBetweenAcrossTenants
+func TestFindAllEdgesBetweenAcrossTenants(t *testing.T) {
 	gs := setupTestStorage(t)
 	defer func() { _ = gs.Close() }()
 
@@ -259,9 +259,9 @@ func TestFindAllEdgesBetween(t *testing.T) {
 	_, _ = gs.CreateEdge(node1.ID, node2.ID, "FOLLOWS", nil, 0.8)
 
 	// Find all edges
-	edges, err := gs.FindAllEdgesBetween(node1.ID, node2.ID)
+	edges, err := gs.FindAllEdgesBetweenAcrossTenants(node1.ID, node2.ID)
 	if err != nil {
-		t.Fatalf("FindAllEdgesBetween failed: %v", err)
+		t.Fatalf("FindAllEdgesBetweenAcrossTenants failed: %v", err)
 	}
 	if len(edges) != 3 {
 		t.Errorf("Expected 3 edges, got %d", len(edges))
@@ -277,7 +277,7 @@ func TestFindAllEdgesBetween(t *testing.T) {
 	}
 
 	// Check reverse direction (should be empty)
-	edges, _ = gs.FindAllEdgesBetween(node2.ID, node1.ID)
+	edges, _ = gs.FindAllEdgesBetweenAcrossTenants(node2.ID, node1.ID)
 	if len(edges) != 0 {
 		t.Errorf("Expected 0 edges in reverse direction, got %d", len(edges))
 	}
@@ -313,7 +313,7 @@ func TestUpsertEdge_Create(t *testing.T) {
 	}
 
 	// Verify it exists
-	found, _ := gs.FindEdgeBetween(node1.ID, node2.ID, "MASTERY")
+	found, _ := gs.FindEdgeBetweenAcrossTenants(node1.ID, node2.ID, "MASTERY")
 	if found == nil {
 		t.Fatal("Edge not found after upsert")
 	}
@@ -368,7 +368,7 @@ func TestUpsertEdge_Update(t *testing.T) {
 	}
 
 	// Verify only one edge exists
-	edges, _ := gs.FindAllEdgesBetween(node1.ID, node2.ID)
+	edges, _ := gs.FindAllEdgesBetweenAcrossTenants(node1.ID, node2.ID)
 	if len(edges) != 1 {
 		t.Errorf("Expected exactly 1 edge after upsert, got %d", len(edges))
 	}
@@ -432,7 +432,7 @@ func TestUpsertEdge_DifferentTypes(t *testing.T) {
 	}
 
 	// Verify both exist
-	allEdges, _ := gs.FindAllEdgesBetween(node1.ID, node2.ID)
+	allEdges, _ := gs.FindAllEdgesBetweenAcrossTenants(node1.ID, node2.ID)
 	if len(allEdges) != 2 {
 		t.Errorf("Expected 2 edges of different types, got %d", len(allEdges))
 	}
@@ -446,14 +446,14 @@ func TestUpsertEdge_DifferentTypes(t *testing.T) {
 	}
 
 	// Still only 2 edges
-	allEdges, _ = gs.FindAllEdgesBetween(node1.ID, node2.ID)
+	allEdges, _ = gs.FindAllEdgesBetweenAcrossTenants(node1.ID, node2.ID)
 	if len(allEdges) != 2 {
 		t.Errorf("Still expected 2 edges, got %d", len(allEdges))
 	}
 }
 
-// Test DeleteEdgeBetween
-func TestDeleteEdgeBetween(t *testing.T) {
+// Test DeleteEdgeBetweenAcrossTenants
+func TestDeleteEdgeBetweenAcrossTenants(t *testing.T) {
 	gs := setupTestStorage(t)
 	defer func() { _ = gs.Close() }()
 
@@ -465,28 +465,28 @@ func TestDeleteEdgeBetween(t *testing.T) {
 	_, _ = gs.CreateEdge(node1.ID, node2.ID, "LIKES", nil, 0.5)
 
 	// Delete KNOWS edge
-	deleted, err := gs.DeleteEdgeBetween(node1.ID, node2.ID, "KNOWS")
+	deleted, err := gs.DeleteEdgeBetweenAcrossTenants(node1.ID, node2.ID, "KNOWS")
 	if err != nil {
-		t.Fatalf("DeleteEdgeBetween failed: %v", err)
+		t.Fatalf("DeleteEdgeBetweenAcrossTenants failed: %v", err)
 	}
 	if !deleted {
 		t.Error("Expected deleted=true")
 	}
 
 	// Verify KNOWS is gone but LIKES remains
-	knows, _ := gs.FindEdgeBetween(node1.ID, node2.ID, "KNOWS")
+	knows, _ := gs.FindEdgeBetweenAcrossTenants(node1.ID, node2.ID, "KNOWS")
 	if knows != nil {
 		t.Error("KNOWS edge should be deleted")
 	}
-	likes, _ := gs.FindEdgeBetween(node1.ID, node2.ID, "LIKES")
+	likes, _ := gs.FindEdgeBetweenAcrossTenants(node1.ID, node2.ID, "LIKES")
 	if likes == nil {
 		t.Error("LIKES edge should still exist")
 	}
 
 	// Delete non-existent edge
-	deleted, err = gs.DeleteEdgeBetween(node1.ID, node2.ID, "FOLLOWS")
+	deleted, err = gs.DeleteEdgeBetweenAcrossTenants(node1.ID, node2.ID, "FOLLOWS")
 	if err != nil {
-		t.Fatalf("DeleteEdgeBetween failed: %v", err)
+		t.Fatalf("DeleteEdgeBetweenAcrossTenants failed: %v", err)
 	}
 	if deleted {
 		t.Error("Expected deleted=false for non-existent edge")
