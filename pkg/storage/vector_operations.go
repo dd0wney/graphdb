@@ -6,7 +6,16 @@ import (
 
 	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
 	"github.com/dd0wney/cluso-graphdb/pkg/vector"
+	"github.com/dd0wney/cluso-graphdb/pkg/wal"
 )
+
+// dropVectorIndexWAL is the WAL payload for OpDropVectorIndex. Create uses the
+// richer VectorIndexDef (construction params); a drop only needs to identify
+// the (tenant, property) pair to remove on replay.
+type dropVectorIndexWAL struct {
+	TenantID     string
+	PropertyName string
+}
 
 // CreateVectorIndex creates a vector index for a node property under the
 // default tenant. Tenant-blind; new callers should prefer
@@ -18,7 +27,22 @@ func (gs *GraphStorage) CreateVectorIndex(
 	efConstruction int,
 	metric vector.DistanceMetric,
 ) error {
-	return gs.vectorIndex.CreateIndex(propertyName, dimensions, m, efConstruction, metric)
+	if err := gs.vectorIndex.CreateIndex(propertyName, dimensions, m, efConstruction, metric); err != nil {
+		return err
+	}
+	// Durability: the definition lives only in memory + the snapshot until
+	// logged. Without this, an index created after the last snapshot is lost
+	// on crash (its vectors un-indexed on recovery). Mirrors
+	// CreatePropertyIndex. Tenant-blind create lands under the default tenant.
+	gs.writeToWAL(wal.OpCreateVectorIndex, VectorIndexDef{
+		TenantID:       tenantid.Default.String(),
+		PropertyName:   propertyName,
+		Dimensions:     dimensions,
+		M:              m,
+		EfConstruction: efConstruction,
+		Metric:         metric,
+	})
+	return nil
 }
 
 // VectorSearch performs k-NN search on a vector-indexed property in the
@@ -36,7 +60,16 @@ func (gs *GraphStorage) VectorSearch(
 // DropVectorIndex removes a vector index from the default tenant.
 // Tenant-blind; new callers should prefer DropVectorIndexForTenant.
 func (gs *GraphStorage) DropVectorIndex(propertyName string) error {
-	return gs.vectorIndex.DropIndex(propertyName)
+	if err := gs.vectorIndex.DropIndex(propertyName); err != nil {
+		return err
+	}
+	// Durability: a drop applied after the last snapshot must be logged, or
+	// the snapshotted definition resurrects on recovery.
+	gs.writeToWAL(wal.OpDropVectorIndex, dropVectorIndexWAL{
+		TenantID:     tenantid.Default.String(),
+		PropertyName: propertyName,
+	})
+	return nil
 }
 
 // HasVectorIndex checks if a vector index exists in the default tenant.
@@ -94,9 +127,21 @@ func (gs *GraphStorage) CreateVectorIndexForTenant(
 	if tenantID == "" {
 		return fmt.Errorf("create vector index: tenantID must not be empty")
 	}
-	return gs.vectorIndex.CreateIndexForTenant(
+	if err := gs.vectorIndex.CreateIndexForTenant(
 		tenantid.TenantID(tenantID), propertyName, dimensions, m, efConstruction, metric,
-	)
+	); err != nil {
+		return err
+	}
+	// Durability — see CreateVectorIndex. The replayed def routes by TenantID.
+	gs.writeToWAL(wal.OpCreateVectorIndex, VectorIndexDef{
+		TenantID:       tenantID,
+		PropertyName:   propertyName,
+		Dimensions:     dimensions,
+		M:              m,
+		EfConstruction: efConstruction,
+		Metric:         metric,
+	})
+	return nil
 }
 
 // VectorSearchForTenant performs k-NN search on a vector-indexed property,
@@ -141,7 +186,15 @@ func (gs *GraphStorage) DropVectorIndexForTenant(tenantID string, propertyName s
 	if tenantID == "" {
 		return fmt.Errorf("drop vector index: tenantID must not be empty")
 	}
-	return gs.vectorIndex.DropIndexForTenant(tenantid.TenantID(tenantID), propertyName)
+	if err := gs.vectorIndex.DropIndexForTenant(tenantid.TenantID(tenantID), propertyName); err != nil {
+		return err
+	}
+	// Durability — see DropVectorIndex.
+	gs.writeToWAL(wal.OpDropVectorIndex, dropVectorIndexWAL{
+		TenantID:     tenantID,
+		PropertyName: propertyName,
+	})
+	return nil
 }
 
 // ListVectorIndexesForTenant returns the given tenant's vector-indexed
