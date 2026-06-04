@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -211,6 +212,8 @@ func (s *Server) handleEdge(w http.ResponseWriter, r *http.Request) {
 
 	s.NewMethodRouter(w, r).
 		Get(func() { s.getEdge(w, r, edgeID) }).
+		Put(func() { s.updateEdge(w, r, edgeID) }).
+		Delete(func() { s.deleteEdge(w, r, edgeID) }).
 		NotAllowed()
 }
 
@@ -226,6 +229,65 @@ func (s *Server) getEdge(w http.ResponseWriter, r *http.Request, edgeID uint64) 
 
 	response := s.edgeToResponse(r.Context(), edge)
 	s.respondJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) updateEdge(w http.ResponseWriter, r *http.Request, edgeID uint64) {
+	var req EdgeUpdateRequest
+	decoder := s.NewRequestDecoder(w, r)
+	decoder.DecodeJSON(&req)
+	if decoder.RespondError() {
+		return
+	}
+
+	// Reject non-finite weights — the WAL JSON-encodes the edge and cannot
+	// marshal ±Inf/NaN (see #328); surface as a 400 rather than a silently
+	// dropped (fail-soft) WAL write.
+	if req.Weight != nil && (math.IsInf(*req.Weight, 0) || math.IsNaN(*req.Weight)) {
+		s.respondError(w, http.StatusBadRequest, "weight must be a finite number")
+		return
+	}
+
+	// Convert and sanitize properties (nil when absent — UpdateEdge merges,
+	// so an absent properties map leaves existing properties untouched).
+	converter := newPropertyConverter()
+	props := converter.ConvertAndSanitize(req.Properties, s.convertToValue)
+
+	// Audit A6b: tenant-scoped update. Cross-tenant or missing edge both
+	// surface as ErrEdgeNotFound → 404 (no existence-leak side channel).
+	// req.Weight is a pointer: nil leaves the weight unchanged.
+	tenantID := getTenantFromContext(r)
+	if err := s.graph.UpdateEdgeForTenant(edgeID, props, req.Weight, tenantID); err != nil {
+		if errors.Is(err, storage.ErrEdgeNotFound) {
+			s.respondError(w, http.StatusNotFound, "Edge not found")
+			return
+		}
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "update edge"))
+		return
+	}
+
+	edge, err := s.graph.GetEdgeForTenant(edgeID, tenantID)
+	if err != nil {
+		// Update succeeded but re-fetch failed — return success-with-id.
+		s.respondJSON(w, http.StatusOK, map[string]any{"updated": edgeID})
+		return
+	}
+	response := s.edgeToResponse(r.Context(), edge)
+	s.respondJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) deleteEdge(w http.ResponseWriter, r *http.Request, edgeID uint64) {
+	tenantID := getTenantFromContext(r)
+	if err := s.graph.DeleteEdgeForTenant(edgeID, tenantID); err != nil {
+		// Cross-tenant or missing → 404 (no existence leak).
+		if errors.Is(err, storage.ErrEdgeNotFound) {
+			s.respondError(w, http.StatusNotFound, "Edge not found")
+			return
+		}
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete edge"))
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, map[string]any{"deleted": edgeID})
 }
 
 func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {

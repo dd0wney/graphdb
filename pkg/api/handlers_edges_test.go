@@ -368,19 +368,17 @@ func TestHandleEdges_MethodNotAllowed(t *testing.T) {
 		// GET on /edges is now a supported method (returns tenant-scoped
 		// edge list per issue #225); coverage moved to
 		// TestListEdges_NewHandler_TypeFilter in handlers_list_filter_test.go.
+		//
+		// PUT/DELETE on /edges/{id} are now SUPPORTED (#330) and are covered by
+		// handlers_edges_update_delete_test.go — they are no longer 405 cases.
 		{
 			name:   "PUT on /edges",
 			method: http.MethodPut,
 			path:   "/edges",
 		},
 		{
-			name:   "DELETE on /edges/{id}",
-			method: http.MethodDelete,
-			path:   "/edges/1",
-		},
-		{
-			name:   "PUT on /edges/{id}",
-			method: http.MethodPut,
+			name:   "PATCH on /edges/{id}",
+			method: http.MethodPatch,
 			path:   "/edges/1",
 		},
 	}

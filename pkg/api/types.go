@@ -41,6 +41,15 @@ type EdgeRequest struct {
 	Weight     float64        `json:"weight"`
 }
 
+// EdgeUpdateRequest is the body for PUT /edges/{id}. Weight is a *pointer* so an
+// omitted weight means "leave it unchanged" — a bare float64 would decode a
+// missing weight as 0.0 and silently zero the edge's weight on a
+// properties-only update. Maps to storage.UpdateEdgeForTenant(weight *float64).
+type EdgeUpdateRequest struct {
+	Properties map[string]any `json:"properties,omitempty"`
+	Weight     *float64       `json:"weight,omitempty"`
+}
+
 // EdgeResponse represents an edge in API responses
 type EdgeResponse struct {
 	ID         uint64         `json:"id"`
