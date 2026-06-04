@@ -32,11 +32,29 @@ class EdgesResource:
         res = self._t.request("GET", f"/edges/{edge_id}")
         return Edge.from_dict(res.data)
 
-    # NOTE: no update()/delete() — the server's /edges/{id} route registers only
-    # GET (pkg/api/handlers_edges.go), unlike /nodes/{id} which also has PUT/DELETE.
-    # The OpenAPI spec documents PUT/DELETE /edges/{id} but the handlers are not
-    # implemented, so exposing them here would 405. They land in a later milestone
-    # once graphdb implements the edge update/delete handlers.
+    def update(
+        self,
+        edge_id: int,
+        properties: Mapping[str, Any] | None = None,
+        *,
+        weight: float | None = None,
+    ) -> Edge:
+        """Update an edge's properties and/or weight (PUT /edges/{id}).
+
+        `weight` is only sent when provided — an omitted weight leaves the
+        edge's weight unchanged (the server treats it as nil), so a
+        properties-only update never zeroes the weight.
+        """
+        body: dict[str, Any] = {}
+        if properties is not None:
+            body["properties"] = dict(properties)
+        if weight is not None:
+            body["weight"] = weight
+        res = self._t.request("PUT", f"/edges/{edge_id}", json=body)
+        return Edge.from_dict(res.data)
+
+    def delete(self, edge_id: int) -> None:
+        self._t.request("DELETE", f"/edges/{edge_id}")
 
     def batch_create(self, edges: Sequence[Mapping[str, Any]]) -> list[Edge]:
         payload = {"edges": [

@@ -44,3 +44,34 @@ def test_get(base_url):
         "type": "KNOWS", "properties": {}, "weight": 1.0,
     }))
     assert _res(base_url).get(3).id == 3
+
+
+@respx.mock
+def test_update_edge_sends_properties_and_weight(base_url):
+    route = respx.put(f"{base_url}/edges/3").mock(return_value=httpx.Response(200, json={
+        "id": 3, "from_node_id": 1, "to_node_id": 2, "type": "KNOWS",
+        "properties": {"k": "v2"}, "weight": 2.0,
+    }))
+    e = _res(base_url).update(3, {"k": "v2"}, weight=2.0)
+    assert e.weight == 2.0 and e.properties["k"] == "v2"
+    body = route.calls.last.request.content
+    assert b'"weight"' in body and b'"k"' in body
+
+
+@respx.mock
+def test_update_edge_omits_weight_when_not_given(base_url):
+    # Pointer-weight contract: a properties-only update must NOT send a weight
+    # field, so the server leaves the edge's weight unchanged.
+    route = respx.put(f"{base_url}/edges/3").mock(return_value=httpx.Response(200, json={
+        "id": 3, "from_node_id": 1, "to_node_id": 2, "type": "KNOWS",
+        "properties": {"k": "v2"}, "weight": 5.0,
+    }))
+    _res(base_url).update(3, {"k": "v2"})
+    assert b'"weight"' not in route.calls.last.request.content
+
+
+@respx.mock
+def test_delete_edge(base_url):
+    route = respx.delete(f"{base_url}/edges/3").mock(return_value=httpx.Response(200))
+    _res(base_url).delete(3)
+    assert route.called
