@@ -87,7 +87,7 @@ Environment variables:
 
 ## Documentation
 
-Full documentation: [GitHub Repository](https://github.com/dd0wney/cluso-graphdb)
+Full documentation: [GitHub Repository](https://github.com/dd0wney/graphdb)
 
 ## License
 

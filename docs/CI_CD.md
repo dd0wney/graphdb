@@ -133,12 +133,12 @@ Uses **GoReleaser** to:
 
 **Artifacts:**
 ```
-cluso-graphdb_1.0.0_Linux_x86_64.tar.gz
-cluso-graphdb_1.0.0_Linux_arm64.tar.gz
-cluso-graphdb_1.0.0_Darwin_x86_64.tar.gz
-cluso-graphdb_1.0.0_Darwin_arm64.tar.gz
-cluso-graphdb_1.0.0_Windows_x86_64.zip
-cluso-graphdb_1.0.0_Windows_arm64.zip
+graphdb_1.0.0_Linux_x86_64.tar.gz
+graphdb_1.0.0_Linux_arm64.tar.gz
+graphdb_1.0.0_Darwin_x86_64.tar.gz
+graphdb_1.0.0_Darwin_arm64.tar.gz
+graphdb_1.0.0_Windows_x86_64.zip
+graphdb_1.0.0_Windows_arm64.zip
 ```
 
 #### b) Docker Build & Push
@@ -183,13 +183,13 @@ This installs:
 ### Build Docker Image Locally
 
 ```bash
-docker build -t cluso-graphdb:dev .
+docker build -t graphdb:dev .
 ```
 
 ### Run Docker Container
 
 ```bash
-docker run -p 8080:8080 -v $(pwd)/data:/data cluso-graphdb:dev
+docker run -p 8080:8080 -v $(pwd)/data:/data graphdb:dev
 ```
 
 ### Docker Compose (Optional)
