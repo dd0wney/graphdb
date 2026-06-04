@@ -7,6 +7,23 @@ type Batch struct {
 	graph *GraphStorage
 	ops   []batchOp
 	mu    sync.Mutex
+
+	// Off-lock work collected by the execute* methods during Commit's locked
+	// phase and drained after gs.mu is released — HNSW vector inserts and
+	// observer dispatch (Track P H2 plan-under-lock / apply-off-lock), mirroring
+	// Transaction.Commit. haveObservers is computed once under the lock at the
+	// start of Commit so the execute* methods only clone for notify when needed.
+	haveObservers    bool
+	vectorPlans      []vectorInsertPlan
+	createdForNotify []*Node
+	updatedForNotify []batchUpdateNotify
+	deletedForNotify []batchDeleteNotify
+}
+
+type batchUpdateNotify struct{ oldNode, newNode *Node }
+type batchDeleteNotify struct {
+	id       uint64
+	tenantID string
 }
 
 type batchOpType int
