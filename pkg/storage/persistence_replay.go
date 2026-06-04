@@ -32,6 +32,8 @@ func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
 		return gs.replayUpdateNode(entry)
 	case wal.OpCreateEdge:
 		return gs.replayCreateEdge(entry)
+	case wal.OpUpdateEdge:
+		return gs.replayUpdateEdge(entry)
 	case wal.OpDeleteEdge:
 		return gs.replayDeleteEdge(entry)
 	case wal.OpDeleteNode:
@@ -118,6 +120,30 @@ func (gs *GraphStorage) replayUpdateNode(entry *wal.Entry) error {
 		node.Properties[key] = value
 	}
 
+	return nil
+}
+
+// replayUpdateEdge replays an edge property/weight update recovered from the WAL.
+// UpdateEdge / the upsert-update path enqueue the FULL post-update Edge under
+// wal.OpUpdateEdge, so applying it is a straight replace of the stored edge's
+// Properties + Weight. Edge updates never change type/from/to, so the type
+// index and adjacency lists are untouched (unlike replayCreateEdge). Sibling of
+// replayUpdateNode; without this case a post-snapshot edge update was silently
+// reverted to its snapshot state on recovery.
+func (gs *GraphStorage) replayUpdateEdge(entry *wal.Entry) error {
+	var edge Edge
+	if err := json.Unmarshal(entry.Data, &edge); err != nil {
+		return err
+	}
+
+	// Skip if the edge doesn't exist (e.g. deleted later in the WAL).
+	existing, exists := gs.lookupEdgeShard(edge.ID)
+	if !exists {
+		return nil
+	}
+
+	existing.Properties = edge.Properties
+	existing.Weight = edge.Weight
 	return nil
 }
 
