@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dd0wney/cluso-graphdb/pkg/encryption"
+	"github.com/dd0wney/cluso-graphdb/pkg/tenantid"
 )
 
 // PropertyIndexSnapshot is a serializable representation of a PropertyIndex
@@ -56,6 +57,7 @@ func (gs *GraphStorage) Snapshot() error {
 		OutgoingEdges   map[uint64][]uint64
 		IncomingEdges   map[uint64][]uint64
 		PropertyIndexes map[string]PropertyIndexSnapshot
+		VectorIndexes   []VectorIndexDef
 		NextNodeID      uint64
 		NextEdgeID      uint64
 		Stats           Statistics
@@ -67,9 +69,15 @@ func (gs *GraphStorage) Snapshot() error {
 		OutgoingEdges:   gs.outgoingEdges,
 		IncomingEdges:   gs.incomingEdges,
 		PropertyIndexes: propertyIndexSnapshots,
-		NextNodeID:      gs.nextNodeID,
-		NextEdgeID:      gs.nextEdgeID,
-		Stats:           stats,
+		// Vector index DEFINITIONS only — the HNSW graph is not serialized; it
+		// is rebuilt from the node set after WAL replay (rebuildVectorIndexes-
+		// FromNodes). Additive field: snapshots written before this stay
+		// readable (absent field -> no indexes recreated -> the prior
+		// vectors-lost-on-restart behaviour, unchanged for old files).
+		VectorIndexes: gs.vectorIndex.IndexDefinitions(),
+		NextNodeID:    gs.nextNodeID,
+		NextEdgeID:    gs.nextEdgeID,
+		Stats:         stats,
 	}
 
 	gs.mu.RUnlock()
@@ -140,6 +148,7 @@ func (gs *GraphStorage) loadFromDisk() error {
 		OutgoingEdges   map[uint64][]uint64
 		IncomingEdges   map[uint64][]uint64
 		PropertyIndexes map[string]PropertyIndexSnapshot
+		VectorIndexes   []VectorIndexDef
 		NextNodeID      uint64
 		NextEdgeID      uint64
 		Stats           Statistics
@@ -205,6 +214,23 @@ func (gs *GraphStorage) loadFromDisk() error {
 			index:       idxSnapshot.Index,
 		}
 		gs.propertyIndexes[key] = idx
+	}
+
+	// Recreate the vector index DEFINITIONS (empty HNSW graphs). The vectors
+	// themselves are inserted after WAL replay, over the final node set, by
+	// rebuildVectorIndexesFromNodes — so post-snapshot writes recovered from the
+	// WAL are indexed too. Skip a definition whose index already exists (it can
+	// when reopening into a process that pre-created indexes).
+	for _, def := range snapshot.VectorIndexes {
+		if gs.vectorIndex.HasIndexForTenant(tenantid.TenantID(def.TenantID), def.PropertyName) {
+			continue
+		}
+		if err := gs.vectorIndex.CreateIndexForTenant(
+			tenantid.TenantID(def.TenantID), def.PropertyName,
+			def.Dimensions, def.M, def.EfConstruction, def.Metric,
+		); err != nil {
+			return fmt.Errorf("failed to recreate vector index %s/%s: %w", def.TenantID, def.PropertyName, err)
+		}
 	}
 
 	// H4.3-followup: rebuild tenantNodesByLabel + tenantStats from the

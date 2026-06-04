@@ -129,6 +129,13 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		return nil, fmt.Errorf("failed to replay WAL: %w", err)
 	}
 
+	// Rebuild the HNSW vector index from the FINAL node set (snapshot + WAL
+	// replay). The index definitions were recreated in loadFromDisk; the graph
+	// itself is not serialized, so without this every vector search silently
+	// returns nothing after a restart. Must run last so post-snapshot writes
+	// recovered above are indexed too.
+	gs.rebuildVectorIndexesFromNodes()
+
 	return gs, nil
 }
 

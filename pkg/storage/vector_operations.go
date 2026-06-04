@@ -270,6 +270,35 @@ func (gs *GraphStorage) planNodeVectorInserts(node *Node) ([]vectorInsertPlan, e
 	return plans, nil
 }
 
+// rebuildVectorIndexesFromNodes re-inserts every node's vectors into the
+// (already-recreated, empty) HNSW indexes. It MUST run as the last step of
+// storage init — after loadFromDisk AND replayWAL — so it indexes the FINAL
+// node set, including post-snapshot writes recovered from the WAL (rebuilding
+// over snapshot.Nodes would silently drop them). The HNSW graph is not
+// serialized; only the index DEFINITIONS are (persistence.go), and this rebuild
+// reconstructs the graph from node properties.
+//
+// Cost: O(N log N) HNSW construction over nodes carrying a vector-indexed
+// property — the dominant startup cost when vectors are in use. No-op (one map
+// length check) when no vector index exists, so non-vector graphs pay nothing.
+func (gs *GraphStorage) rebuildVectorIndexesFromNodes() {
+	if len(gs.vectorIndex.IndexDefinitions()) == 0 {
+		return
+	}
+	var plans []vectorInsertPlan
+	gs.forEachNodeUnlocked(func(node *Node) bool {
+		p, err := gs.planNodeVectorInserts(node)
+		if err != nil {
+			// A single malformed stored vector must not abort recovery.
+			fmt.Fprintf(os.Stderr, "vector rebuild: skipping node %d: %v\n", node.ID, err)
+			return true
+		}
+		plans = append(plans, p...)
+		return true
+	})
+	gs.applyNodeVectorInserts(plans)
+}
+
 // applyNodeVectorInserts runs the HNSW remove+add for each planned vector.
 // Called AFTER gs.mu.Unlock so the O(log N) graph traversal + O(M^2) neighbor
 // pruning runs off the global write lock (Track P item 3 / H2 — the next
@@ -278,7 +307,7 @@ func (gs *GraphStorage) planNodeVectorInserts(node *Node) ([]vectorInsertPlan, e
 // The plans are pre-validated local snapshots, so the only errors here are
 // internal HNSW invariant violations, not caller input. They are logged
 // fail-soft (not propagated): the node is already durable, the vector index is
-// rebuilt by the application on restart (it is not snapshot-persisted), and a
+// rebuilt from the node set on restart (rebuildVectorIndexesFromNodes), and a
 // propagated error would imply a rollback that does not happen — mirroring the
 // post-lock WAL-wait fail-soft contract (Track P item 1).
 func (gs *GraphStorage) applyNodeVectorInserts(plans []vectorInsertPlan) {

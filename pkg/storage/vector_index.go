@@ -299,6 +299,41 @@ func (vi *VectorIndex) DimensionsForTenant(tenantID tenantid.TenantID, propertyN
 	return index.Dimensions(), true
 }
 
+// VectorIndexDef is a serializable description of one vector index — the
+// construction parameters needed to recreate it on restart. The HNSW graph
+// itself is NOT persisted; it is rebuilt from the node set on load (see
+// GraphStorage.rebuildVectorIndexesFromNodes).
+type VectorIndexDef struct {
+	TenantID       string
+	PropertyName   string
+	Dimensions     int
+	M              int
+	EfConstruction int
+	Metric         vector.DistanceMetric
+}
+
+// IndexDefinitions returns the definition of every vector index across all
+// tenants, for snapshot persistence. Order is unspecified.
+func (vi *VectorIndex) IndexDefinitions() []VectorIndexDef {
+	vi.mu.RLock()
+	defer vi.mu.RUnlock()
+
+	var defs []VectorIndexDef
+	for tenantID, inner := range vi.indexes {
+		for propName, idx := range inner {
+			defs = append(defs, VectorIndexDef{
+				TenantID:       tenantID.String(),
+				PropertyName:   propName,
+				Dimensions:     idx.Dimensions(),
+				M:              idx.M(),
+				EfConstruction: idx.EfConstruction(),
+				Metric:         idx.Metric(),
+			})
+		}
+	}
+	return defs
+}
+
 // lookupIndexLocked returns (tenantID, propertyName)'s HNSWIndex and a
 // presence flag. Caller must hold vi.mu (read or write).
 func (vi *VectorIndex) lookupIndexLocked(tenantID tenantid.TenantID, propertyName string) (*vector.HNSWIndex, bool) {
