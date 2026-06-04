@@ -21,7 +21,15 @@ func validGraph(t *testing.T) (gs *GraphStorage, a, b uint64) {
 	if err := gs.CreateVectorIndexForTenant("acme", "embedding", 3, 16, 200, vector.MetricCosine); err != nil {
 		t.Fatalf("CreateVectorIndexForTenant: %v", err)
 	}
-	na, err := gs.CreateNodeWithTenant("acme", []string{"Doc"}, map[string]Value{"embedding": VectorValue([]float32{1, 0, 0})})
+	// A property index too, so the property-index invariants are exercised (node
+	// a carries "kind", node b does not — covering the not-indexed-node case).
+	if err := gs.CreatePropertyIndex("kind", TypeString); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+	na, err := gs.CreateNodeWithTenant("acme", []string{"Doc"}, map[string]Value{
+		"embedding": VectorValue([]float32{1, 0, 0}),
+		"kind":      StringValue("alpha"),
+	})
 	if err != nil {
 		t.Fatalf("create a: %v", err)
 	}
@@ -36,6 +44,19 @@ func validGraph(t *testing.T) (gs *GraphStorage, a, b uint64) {
 		t.Fatalf("baseline graph is not invariant-clean: %v", v)
 	}
 	return gs, na.ID, nb.ID
+}
+
+// propIndexFor fetches a property index by key under gs.mu (the map itself is
+// guarded by gs.mu; the returned *PropertyIndex has its own mu for its buckets).
+func propIndexFor(t *testing.T, gs *GraphStorage, key string) *PropertyIndex {
+	t.Helper()
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+	idx, ok := gs.propertyIndexes[key]
+	if !ok {
+		t.Fatalf("no property index for %q", key)
+	}
+	return idx
 }
 
 // TestGraphInvariants_DetectsDrift proves the checker has TEETH: each case
@@ -123,6 +144,48 @@ func TestGraphInvariants_DetectsDrift(t *testing.T) {
 				}
 			},
 			want: "vector: index",
+		},
+		{
+			name: "phantom id in property bucket (reverse)",
+			corrupt: func(gs *GraphStorage, a, b uint64) {
+				idx := propIndexFor(t, gs, "kind")
+				idx.mu.Lock()
+				idx.index["alpha"] = append(idx.index["alpha"], 888888)
+				idx.mu.Unlock()
+			},
+			want: "not backed by a live node",
+		},
+		{
+			name: "node dropped from property bucket (forward)",
+			corrupt: func(gs *GraphStorage, a, b uint64) {
+				// Drop the whole "alpha" bucket: node a still carries kind="alpha"
+				// in the shard, so the forward check must report it missing.
+				idx := propIndexFor(t, gs, "kind")
+				idx.mu.Lock()
+				delete(idx.index, "alpha")
+				idx.mu.Unlock()
+			},
+			want: "missing from bucket",
+		},
+		{
+			name: "empty property bucket (must be GC'd)",
+			corrupt: func(gs *GraphStorage, a, b uint64) {
+				idx := propIndexFor(t, gs, "kind")
+				idx.mu.Lock()
+				idx.index["ghost"] = []uint64{}
+				idx.mu.Unlock()
+			},
+			want: "empty bucket",
+		},
+		{
+			name: "duplicate id in property bucket",
+			corrupt: func(gs *GraphStorage, a, b uint64) {
+				idx := propIndexFor(t, gs, "kind")
+				idx.mu.Lock()
+				idx.index["alpha"] = append(idx.index["alpha"], a) // a listed twice
+				idx.mu.Unlock()
+			},
+			want: "appears more than once",
 		},
 	}
 
