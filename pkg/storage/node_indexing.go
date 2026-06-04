@@ -85,19 +85,33 @@ func flattenLabelIndex(idx labelIndex) map[string][]uint64 {
 
 // Property index helper methods
 
-// updatePropertyIndexes updates property indexes when a node's properties change
+// updatePropertyIndexes updates property indexes when a node's properties change.
+//
+// Both Remove and Insert are gated on value.Type == idx.indexType, mirroring
+// insertNodeIntoPropertyIndexes (the create path). A PropertyIndex holds one
+// declared type, so only type-matching values are ever indexed: a mismatched
+// NEW value is skipped (not indexable — same as the build path), and a
+// mismatched OLD value is skipped on removal because it was never inserted, so
+// idx.Remove would error "not found". Without the gates this helper left a
+// partial apply — UpdateNode runs it before mutating node.Properties and does
+// not roll back, so a removed-old-then-failed-insert dropped a value the node
+// still carried, and a Remove of a never-indexed value failed the update
+// outright. Completeness: every value in the index has the matching type
+// (insert gates on it), so gating Remove never skips a removal that should fire.
 func (gs *GraphStorage) updatePropertyIndexes(nodeID uint64, node *Node, properties map[string]Value) error {
 	for k, newValue := range properties {
 		if idx, exists := gs.propertyIndexes[k]; exists {
-			// Remove old value from index if it exists
-			if oldValue, exists := node.Properties[k]; exists {
+			// Remove old value only if it was actually indexed (type matched).
+			if oldValue, exists := node.Properties[k]; exists && oldValue.Type == idx.indexType {
 				if err := idx.Remove(nodeID, oldValue); err != nil {
 					return fmt.Errorf("failed to remove from property index %s: %w", k, err)
 				}
 			}
-			// Add new value to index
-			if err := idx.Insert(nodeID, newValue); err != nil {
-				return fmt.Errorf("failed to insert into property index %s: %w", k, err)
+			// Add new value only if its type matches the index.
+			if newValue.Type == idx.indexType {
+				if err := idx.Insert(nodeID, newValue); err != nil {
+					return fmt.Errorf("failed to insert into property index %s: %w", k, err)
+				}
 			}
 		}
 	}
@@ -131,10 +145,17 @@ func (gs *GraphStorage) insertNodeIntoPropertyIndexes(nodeID uint64, properties 
 	return nil
 }
 
-// removeNodeFromPropertyIndexes removes a node from all property indexes
+// removeNodeFromPropertyIndexes removes a node from all property indexes.
+//
+// Gated on value.Type == idx.indexType: a mismatched value was never indexed
+// (insert skips it), so idx.Remove would error "not found" and fail the delete.
+// Mirrors the gate in updatePropertyIndexes / the create path.
 func (gs *GraphStorage) removeNodeFromPropertyIndexes(nodeID uint64, properties map[string]Value) error {
 	for key, value := range properties {
 		if idx, exists := gs.propertyIndexes[key]; exists {
+			if value.Type != idx.indexType {
+				continue
+			}
 			if err := idx.Remove(nodeID, value); err != nil {
 				return fmt.Errorf("failed to remove from property index %s: %w", key, err)
 			}

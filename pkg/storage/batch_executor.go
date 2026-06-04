@@ -169,9 +169,12 @@ func (b *Batch) executeUpdateNode(op batchOp) error {
 		oldNode = node.Clone()
 	}
 
-	// Update property indexes (remove old, add new)
+	// Update property indexes (remove old, add new). Gated on type-match,
+	// mirroring updatePropertyIndexes: only type-matching values are indexed,
+	// so a mismatched old value was never inserted (Remove would error
+	// "not found") and a mismatched new value is not indexable (skip).
 	for key, oldValue := range node.Properties {
-		if idx, exists := b.graph.propertyIndexes[key]; exists {
+		if idx, exists := b.graph.propertyIndexes[key]; exists && oldValue.Type == idx.indexType {
 			if err := idx.Remove(node.ID, oldValue); err != nil {
 				return fmt.Errorf("failed to remove from property index %s: %w", key, err)
 			}
@@ -185,7 +188,7 @@ func (b *Batch) executeUpdateNode(op batchOp) error {
 
 	// Re-index
 	for key, value := range node.Properties {
-		if idx, exists := b.graph.propertyIndexes[key]; exists {
+		if idx, exists := b.graph.propertyIndexes[key]; exists && value.Type == idx.indexType {
 			if err := idx.Insert(node.ID, value); err != nil {
 				return fmt.Errorf("failed to insert into property index %s: %w", key, err)
 			}
@@ -244,9 +247,10 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 	// replay's own cascade via cascadeDelete*).
 	b.graph.removeNodeFromTenantIndex(node)
 
-	// Remove from property indexes
+	// Remove from property indexes. Gated on type-match (see executeUpdateNode):
+	// a mismatched value was never indexed, so Remove would error "not found".
 	for key, value := range node.Properties {
-		if idx, exists := b.graph.propertyIndexes[key]; exists {
+		if idx, exists := b.graph.propertyIndexes[key]; exists && value.Type == idx.indexType {
 			if err := idx.Remove(op.nodeID, value); err != nil {
 				return fmt.Errorf("failed to remove from property index %s: %w", key, err)
 			}

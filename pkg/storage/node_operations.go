@@ -495,9 +495,11 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	gs.lockShard(nodeID)
 	for _, key := range keys {
 		_, hadKey := node.Properties[key]
-		// Remove from property indexes
+		// Remove from property indexes. Gated on type-match (see
+		// updatePropertyIndexes): a mismatched value was never indexed, so
+		// Remove would log a spurious "not found".
 		if idx, exists := gs.propertyIndexes[key]; exists {
-			if oldValue, hasKey := node.Properties[key]; hasKey {
+			if oldValue, hasKey := node.Properties[key]; hasKey && oldValue.Type == idx.indexType {
 				if err := idx.Remove(nodeID, oldValue); err != nil {
 					log.Printf("node_operations: property index Remove failed for key %q node %d: %v", key, nodeID, err)
 				}

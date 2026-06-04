@@ -99,3 +99,165 @@ func TestCreateNode_MatchingIndexedProperty_StillIndexed(t *testing.T) {
 	}
 	assertGraphInvariants(t, gs)
 }
+
+// --- Update / delete cells (follow-up to the create-cell fix above) ---
+//
+// The create cell skipped type-mismatched inserts. The update and delete cells
+// had the symmetric problem at idx.Remove: PropertyIndex.Remove errors
+// "node not found" when the (value, node) pair isn't in the index — which is
+// exactly the case for a type-mismatched value (never inserted). So updating or
+// deleting a node carrying a mismatched indexed property hit a spurious error +
+// partial apply. The fix gates BOTH Remove and Insert on value.Type ==
+// idx.indexType across updatePropertyIndexes (live/transaction/replay),
+// removeNodeFromPropertyIndexes (delete), and the batch executor's inline copies.
+
+// TestUpdateNode_IndexedPropertyToMismatchedType_NoPartialApply: a node with a
+// type-MATCHING indexed value, updated to a MISMATCHED type. Pre-fix:
+// updatePropertyIndexes removed the old (matching) value then failed to insert
+// the mismatched one — leaving the index missing a value the node still carried
+// (checker-catchable drift) and returning an error. Post-fix: old value removed,
+// new value skipped (not indexable), update succeeds, no drift.
+func TestUpdateNode_IndexedPropertyToMismatchedType_NoPartialApply(t *testing.T) {
+	gs, err := NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewGraphStorage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	if err := gs.CreatePropertyIndex("age", TypeInt); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+	const tenant = "acme"
+	node, err := gs.CreateNodeWithTenant(tenant, []string{"Person"}, map[string]Value{"age": IntValue(25)})
+	if err != nil {
+		t.Fatalf("CreateNodeWithTenant: %v", err)
+	}
+
+	// age 25 (int, indexed) -> "later" (string, mismatch).
+	if err := gs.UpdateNode(node.ID, map[string]Value{"age": StringValue("later")}); err != nil {
+		t.Fatalf("UpdateNode errored converting an indexed property to a mismatched type: %v "+
+			"(pre-fix: Remove(old) succeeded, Insert(new) failed → index lost a value the node still had)", err)
+	}
+	// The old indexed value must be gone (the node no longer holds age=25).
+	if found, _ := gs.FindNodesByPropertyIndexedForTenant("age", IntValue(25), tenant); len(found) != 0 {
+		t.Errorf("indexed lookup age=25 = %d after update, want 0 (old value not removed)", len(found))
+	}
+	assertGraphInvariants(t, gs)
+}
+
+// TestUpdateNode_PreviouslyMismatchedProperty_NoRemoveError: a node whose
+// indexed property was ALWAYS a mismatched type (so never indexed), updated
+// again. Pre-fix: updatePropertyIndexes tried to Remove the never-indexed old
+// value → "not found" error → the update failed spuriously. Teeth is err==nil
+// (the checker passes either way — a mismatched value is never expected in the
+// index).
+func TestUpdateNode_PreviouslyMismatchedProperty_NoRemoveError(t *testing.T) {
+	gs, err := NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewGraphStorage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	if err := gs.CreatePropertyIndex("age", TypeInt); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+	const tenant = "acme"
+	node, err := gs.CreateNodeWithTenant(tenant, []string{"Person"}, map[string]Value{"age": StringValue("foo")})
+	if err != nil {
+		t.Fatalf("CreateNodeWithTenant: %v", err)
+	}
+
+	if err := gs.UpdateNode(node.ID, map[string]Value{"age": StringValue("bar")}); err != nil {
+		t.Errorf("UpdateNode errored removing a never-indexed (type-mismatched) old value: %v", err)
+	}
+	assertGraphInvariants(t, gs)
+}
+
+// TestDeleteNode_TypeMismatchedIndexedProperty_NoRemoveError: deleting a node
+// that carries a type-mismatched indexed property. Pre-fix:
+// removeNodeFromPropertyIndexes tried to Remove the never-indexed value →
+// "not found" → DeleteNode errored, leaving the node behind. Teeth is err==nil
+// + the node actually gone.
+func TestDeleteNode_TypeMismatchedIndexedProperty_NoRemoveError(t *testing.T) {
+	gs, err := NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewGraphStorage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	if err := gs.CreatePropertyIndex("age", TypeInt); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+	const tenant = "acme"
+	node, err := gs.CreateNodeWithTenant(tenant, []string{"Person"}, map[string]Value{"age": StringValue("foo")})
+	if err != nil {
+		t.Fatalf("CreateNodeWithTenant: %v", err)
+	}
+
+	if err := gs.DeleteNode(node.ID); err != nil {
+		t.Fatalf("DeleteNode errored removing a node with a type-mismatched indexed property: %v "+
+			"(pre-fix: removeNodeFromPropertyIndexes Remove → not found)", err)
+	}
+	if got := gs.CountNodesForTenant(tenant); got != 0 {
+		t.Errorf("CountNodesForTenant = %d after delete, want 0", got)
+	}
+	assertGraphInvariants(t, gs)
+}
+
+// TestBatchUpdateNode_TypeMismatchedIndexedProperty_NoPartialApply pins the
+// batch executor's inline update copy (separate from updatePropertyIndexes).
+func TestBatchUpdateNode_TypeMismatchedIndexedProperty_NoPartialApply(t *testing.T) {
+	gs, err := NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewGraphStorage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	if err := gs.CreatePropertyIndex("age", TypeInt); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+	const tenant = "acme"
+	node, err := gs.CreateNodeWithTenant(tenant, []string{"Person"}, map[string]Value{"age": IntValue(25)})
+	if err != nil {
+		t.Fatalf("CreateNodeWithTenant: %v", err)
+	}
+
+	b := gs.BeginBatch()
+	b.UpdateNode(node.ID, map[string]Value{"age": StringValue("later")})
+	if err := b.Commit(); err != nil {
+		t.Fatalf("batch Commit errored on a type-mismatched indexed update: %v", err)
+	}
+	if found, _ := gs.FindNodesByPropertyIndexedForTenant("age", IntValue(25), tenant); len(found) != 0 {
+		t.Errorf("indexed lookup age=25 = %d after batch update, want 0", len(found))
+	}
+	assertGraphInvariants(t, gs)
+}
+
+// TestBatchDeleteNode_TypeMismatchedIndexedProperty_NoRemoveError pins the
+// batch executor's inline delete copy.
+func TestBatchDeleteNode_TypeMismatchedIndexedProperty_NoRemoveError(t *testing.T) {
+	gs, err := NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewGraphStorage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	if err := gs.CreatePropertyIndex("age", TypeInt); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+	const tenant = "acme"
+	node, err := gs.CreateNodeWithTenant(tenant, []string{"Person"}, map[string]Value{"age": StringValue("foo")})
+	if err != nil {
+		t.Fatalf("CreateNodeWithTenant: %v", err)
+	}
+
+	b := gs.BeginBatch()
+	b.DeleteNode(node.ID)
+	if err := b.Commit(); err != nil {
+		t.Fatalf("batch Commit errored deleting a node with a type-mismatched indexed property: %v", err)
+	}
+	if got := gs.CountNodesForTenant(tenant); got != 0 {
+		t.Errorf("CountNodesForTenant = %d after batch delete, want 0", got)
+	}
+	assertGraphInvariants(t, gs)
+}
