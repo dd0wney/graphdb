@@ -1,0 +1,25 @@
+name: Python SDK
+on:
+  pull_request:
+    paths: ["clients/python/**", ".github/workflows/python-sdk.yml"]
+  push:
+    branches: [main]
+    paths: ["clients/python/**"]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/python
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --python ${{ matrix.python-version }}
+      - run: uv run ruff check src tests
+      - run: uv run mypy
+      - run: uv run pytest
