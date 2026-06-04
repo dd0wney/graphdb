@@ -76,6 +76,12 @@ func (gs *GraphStorage) cascadeDeleteOutgoingEdge(edgeID uint64) error {
 	}
 	// Remove from type index
 	gs.removeEdgeFromTypeIndex(edge.Type, edgeID)
+	// Remove from the per-tenant edge index (type map + enumeration set + tenant
+	// EdgeCount), mirroring the non-cascade DeleteEdge. Without this a cascaded
+	// edge leaks the *ForTenant readers and CountEdgesForTenant in NORMAL
+	// operation — the cascade-path sibling of the #288/#298 tenant-index gaps.
+	// Caller (DeleteNode) holds gs.mu.Lock, which guards the tenant index.
+	gs.removeEdgeFromTenantIndex(edge)
 	// Decrement stats with underflow protection
 	atomicDecrementWithUnderflowProtection(&gs.stats.EdgeCount)
 	return nil
@@ -99,6 +105,8 @@ func (gs *GraphStorage) cascadeDeleteIncomingEdge(edgeID uint64) error {
 	}
 	// Remove from type index
 	gs.removeEdgeFromTypeIndex(edge.Type, edgeID)
+	// Remove from the per-tenant edge index — see cascadeDeleteOutgoingEdge.
+	gs.removeEdgeFromTenantIndex(edge)
 	// Decrement stats with underflow protection
 	atomicDecrementWithUnderflowProtection(&gs.stats.EdgeCount)
 	return nil
