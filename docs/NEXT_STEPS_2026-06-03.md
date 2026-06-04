@@ -65,6 +65,8 @@ Completed as a real, durable, tenant-aware Go primitive (brainstorm-approved spe
 
 This was a side-quest off the Track Q critical path; **Track Q remains selected but not yet started.**
 
+**Correction 2026-06-04 (cross-repo, stór-confirmed — IMPORTANT):** the "`Transaction` had zero non-test callers … dormant" claim above is **graphdb-internal only and WRONG at the ecosystem level.** The stór consumer's core writes — `Register` / `LinkRealisation` in `graphstore.go` — are **live `Transaction.Commit` callers** on the realisation hot path (primary source: `BeginTransaction → tx.CreateNode/tx.CreateEdge → tx.Commit`). **Do NOT deprecate, remove, or refactor the `Transaction` path on a "no callers" assumption** — it would break stór; any migration to `Batch` is a coordinated interface change to flag, not a unilateral cleanup. (stór's transactions are **create-only** — no `tx.UpdateNode` — which is why the `#316` property-index drift on *existing-node update* had no consumer impact. That's the reason, not "dormant.")
+
 ---
 
 ## State reconciliation 2026-06-04 — post-Track-Q hardening wave
@@ -91,8 +93,8 @@ Root cause of the silent-bug streak named explicitly: **N parallel representatio
 
 ### Surfaced follow-ups (candidates — none promoted to critical path yet)
 - **Phase C — metamorphic equivalence test ✅ DONE 2026-06-04 (`#314`).** Same op-script through every path (live / batch / transaction / WAL-replay), asserting vector **search-result** equality (`VectorSearchForTenant` top-k) — closed the count-only limitation the `#310`/`#311` checker can't see. A non-vacuity teeth-test proves the op-script's vector update moves the ranking, so the comparison can't pass for the wrong reason; a teeth-mutation confirmed the search assertion fires while count checks stay green. Test-only (`pkg/storage/invariant_metamorphic_test.go`), no production change. Spec: `~/.claude/plans/we-need-improved-testing-bubbly-wave.md` § Phase C.
-- **Extend the invariant checker to `propertyIndexes` + the FTS index** — both consciously excluded today; both can drift the same way (cheap increment). **Now the readiest earned testing increment** with Phase C done.
-- **FTS index lost on restart?** — like the vector bug; verify the API-server env-bootstrap path before treating as a bug. Extending the checker to FTS would turn this into a test.
+- **Extend the invariant checker to `propertyIndexes` ✅ DONE 2026-06-04 (`#316`).** The global property index is now asserted by `checkGraphInvariants` (exact membership, no empty buckets, no duplicates) + 4 teeth cases + a property-index matrix across live / batch / WAL-replay / transaction. **Found and fixed a real bug:** `Transaction.Commit`'s existing-node update re-indexed vectors but skipped `updatePropertyIndexes`, drifting the property index (the per-tenant-index/#288 class). **FTS reframed — NOT a storage-checker target:** the FTS index is API-layer (`pkg/search`, owned by `pkg/api`), admin-rebuilt (`POST /search/index`), non-persisted, and stale-by-design between rebuilds; `GraphStorage` has zero references to it. It has no must-agree-with-shards invariant, so it does not belong in `checkGraphInvariants` — any FTS test is a separate API-layer rebuild-postcondition test.
+- **~~FTS index lost on restart?~~ — RESOLVED (by-design, not a bug).** Confirmed during `#316`: the FTS index is built only by the admin `POST /search/index` rebuild and is not persisted, so restart-loss is expected behaviour (rebuild to repopulate), not drift. The open question is only whether a deployment auto-rebuilds at API bootstrap — an ops/bootstrap concern, not a storage invariant.
 - **`CreateVectorIndex` not WAL-logged** — an index created after the last snapshot is lost on crash. Narrow.
 - **persist-HNSW escalation** — `#305` rebuilds on load (O(N log N)); serialize the graph only if startup cost bites at very large N (e.g. the 814K ICIJ corpus). Measured follow-up.
 
@@ -154,8 +156,8 @@ Both shipped on branch `perf/label-index-set-m3` (PR #294). The "decision-laden"
 
 ## How to use this document
 
-1. **Read § State reconciliation 2026-06-04 first** — Track Q is CLOSED, and the hardening wave after it (tenant sweep, batch parity, the delete-path silent-bug hunt, the parallel-invariant test harness, and Phase C metamorphic equivalence) is the current state. `main` HEAD `66beda3` (`#314`).
-2. **No critical path is forced.** Phase C is now done (`#314`); the readiest *earned* testing increment is **extending the invariant checker to `propertyIndexes` + the FTS index** (cheap; closes two more drift surfaces; turns "FTS lost on restart?" into a test). Other candidates: the FTS-on-restart / `CreateVectorIndex`-WAL-logging backlog; or productization. See the 2026-06-04 surfaced-follow-ups list.
+1. **Read § State reconciliation 2026-06-04 first** — Track Q is CLOSED, and the hardening wave after it (tenant sweep, batch parity, the delete-path silent-bug hunt, the parallel-invariant test harness, Phase C metamorphic equivalence, and the propertyIndexes checker `#316`) is the current state. `main` HEAD `cf51aff` (`#316`). **Released as `v0.4.0` (2026-06-04)** from this HEAD — consumers can drop `replace => ../graphdb` and pin the tag.
+2. **No critical path is forced.** Phase C (`#314`) and the propertyIndexes checker (`#316`) are done; FTS is reframed out of the storage checker (API-layer, by-design). Remaining *earned* testing candidates: the `CreateVectorIndex`-not-WAL-logged backlog; LSA-stale-after-replay. Otherwise: productization (the `v0.4.0` release just unblocked the consumer-pin path). See the 2026-06-04 surfaced-follow-ups list.
 3. **Inherited PRs #240/#241 are CLOSED** — board is clear (no longer a forcing function).
 4. **Don't** re-open the perf dimension or manufacture sub-tracks beyond what the consumers / invariant harness surface.
 5. If a follow-up turns out deep enough to need design, spike it (`/spike`) first — but most are bounded.
