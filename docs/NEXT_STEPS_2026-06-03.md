@@ -86,12 +86,12 @@ A systematic hunt for "write path updates index A, forgets index B" found and fi
 
 The delete paths (live / replay / cascade / batch / remove-property) are now at full per-tenant + vector index parity.
 
-### Improved testing — parallel-invariant harness ✅ (`#310`, `#311`)
-Root cause of the silent-bug streak named explicitly: **N parallel representations × M write paths**, with tests asserting only one projection (the global `GetNode`/`GetEdge` view, always correct). The harness (`pkg/storage/invariants_test.go`) derives ground truth from the authoritative shards and asserts every derived structure agrees; an 8-case teeth-test proves it *fires* on drift; a write-path × op matrix (`#311`) drives it across live / batch / transaction / WAL-replay. Memory `feedback_parallel_invariant_coverage`. **This is the closest thing to an earned next track** — see candidates below.
+### Improved testing — parallel-invariant harness ✅ (`#310`, `#311`, `#314`)
+Root cause of the silent-bug streak named explicitly: **N parallel representations × M write paths**, with tests asserting only one projection (the global `GetNode`/`GetEdge` view, always correct). The harness (`pkg/storage/invariants_test.go`) derives ground truth from the authoritative shards and asserts every derived structure agrees; an 8-case teeth-test proves it *fires* on drift; a write-path × op matrix (`#311`) drives it across live / batch / transaction / WAL-replay. **Phase C — metamorphic cross-path equivalence (`#314`)** then closed the harness's one conscious blind spot: its vector check is *count-only*, so `#314` drives one op-script through all four paths and asserts observationally identical results — crucially identical `VectorSearchForTenant` top-k — catching a vector re-indexed under the wrong *value* but right *count*. Memory `feedback_parallel_invariant_coverage`.
 
 ### Surfaced follow-ups (candidates — none promoted to critical path yet)
-- **Phase C — metamorphic equivalence test** (highest-value earned item): same op-script through every path, asserting vector **search-result** equality — closes the count-only limitation the new checker can't see. Spec: `~/.claude/plans/we-need-improved-testing-bubbly-wave.md` § Phase C.
-- **Extend the invariant checker to `propertyIndexes` + the FTS index** — both consciously excluded today; both can drift the same way (cheap increment).
+- **Phase C — metamorphic equivalence test ✅ DONE 2026-06-04 (`#314`).** Same op-script through every path (live / batch / transaction / WAL-replay), asserting vector **search-result** equality (`VectorSearchForTenant` top-k) — closed the count-only limitation the `#310`/`#311` checker can't see. A non-vacuity teeth-test proves the op-script's vector update moves the ranking, so the comparison can't pass for the wrong reason; a teeth-mutation confirmed the search assertion fires while count checks stay green. Test-only (`pkg/storage/invariant_metamorphic_test.go`), no production change. Spec: `~/.claude/plans/we-need-improved-testing-bubbly-wave.md` § Phase C.
+- **Extend the invariant checker to `propertyIndexes` + the FTS index** — both consciously excluded today; both can drift the same way (cheap increment). **Now the readiest earned testing increment** with Phase C done.
 - **FTS index lost on restart?** — like the vector bug; verify the API-server env-bootstrap path before treating as a bug. Extending the checker to FTS would turn this into a test.
 - **`CreateVectorIndex` not WAL-logged** — an index created after the last snapshot is lost on crash. Narrow.
 - **persist-HNSW escalation** — `#305` rebuilds on load (O(N log N)); serialize the graph only if startup cost bites at very large N (e.g. the 814K ICIJ corpus). Measured follow-up.
@@ -154,8 +154,8 @@ Both shipped on branch `perf/label-index-set-m3` (PR #294). The "decision-laden"
 
 ## How to use this document
 
-1. **Read § State reconciliation 2026-06-04 first** — Track Q is CLOSED, and the hardening wave after it (tenant sweep, batch parity, the delete-path silent-bug hunt, the parallel-invariant test harness) is the current state. `main` HEAD `e49d7f6`.
-2. **No critical path is forced**, but the readiest *earned* item is **Phase C** (metamorphic invariant test — closes the count-only vector-check limitation). Alternatives: extend the invariant checker to `propertyIndexes` + FTS; the FTS-on-restart / `CreateVectorIndex`-WAL-logging backlog; or productization. See the 2026-06-04 surfaced-follow-ups list.
+1. **Read § State reconciliation 2026-06-04 first** — Track Q is CLOSED, and the hardening wave after it (tenant sweep, batch parity, the delete-path silent-bug hunt, the parallel-invariant test harness, and Phase C metamorphic equivalence) is the current state. `main` HEAD `66beda3` (`#314`).
+2. **No critical path is forced.** Phase C is now done (`#314`); the readiest *earned* testing increment is **extending the invariant checker to `propertyIndexes` + the FTS index** (cheap; closes two more drift surfaces; turns "FTS lost on restart?" into a test). Other candidates: the FTS-on-restart / `CreateVectorIndex`-WAL-logging backlog; or productization. See the 2026-06-04 surfaced-follow-ups list.
 3. **Inherited PRs #240/#241 are CLOSED** — board is clear (no longer a forcing function).
 4. **Don't** re-open the perf dimension or manufacture sub-tracks beyond what the consumers / invariant harness surface.
 5. If a follow-up turns out deep enough to need design, spike it (`/spike`) first — but most are bounded.
