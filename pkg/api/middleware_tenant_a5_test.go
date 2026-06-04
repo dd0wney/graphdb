@@ -157,23 +157,14 @@ func TestA5_NoAuthReturnsUnauthorized(t *testing.T) {
 	}
 }
 
-// buildTestMux replicates server.go's route registration so tests can
-// exercise the full middleware chain without spinning up a network
-// listener. Updated alongside server.go; if you add a route there, add
-// it here.
+// buildTestMux returns the server's REAL route table so middleware-chain tests
+// exercise the actual registration without binding a listener. It used to be a
+// hand-maintained replica of server.go, which drifted (it omitted
+// /api/v1/tenants/, the route whose missing withTenant the sweep's F2 fixed) —
+// delegating to registerRoutes removes that drift class entirely.
 func buildTestMux(s *Server) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/query", s.requireAuth(s.withTenant(s.handleQuery)))
-	mux.HandleFunc("/graphql", s.requireAuth(s.withTenant(s.handleGraphQL)))
-	mux.HandleFunc("/nodes", s.requireAuth(s.withTenant(s.handleNodes)))
-	mux.HandleFunc("/nodes/", s.requireAuth(s.withTenant(s.handleNode)))
-	mux.HandleFunc("/nodes/batch", s.requireAuth(s.withTenant(s.handleBatchNodes)))
-	mux.HandleFunc("/edges", s.requireAuth(s.withTenant(s.handleEdges)))
-	mux.HandleFunc("/edges/", s.requireAuth(s.withTenant(s.handleEdge)))
-	mux.HandleFunc("/edges/batch", s.requireAuth(s.withTenant(s.handleBatchEdges)))
-	mux.HandleFunc("/traverse", s.requireAuth(s.withTenant(s.handleTraversal)))
-	mux.HandleFunc("/shortest-path", s.requireAuth(s.withTenant(s.handleShortestPath)))
-	mux.HandleFunc("/algorithms", s.requireAuth(s.withTenant(s.handleAlgorithm)))
+	s.registerRoutes(mux)
 	return mux
 }
 
