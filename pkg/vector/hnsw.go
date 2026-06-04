@@ -118,6 +118,19 @@ func (h *HNSWIndex) Metric() DistanceMetric {
 	return h.metric
 }
 
+// M returns the construction parameter m (bi-directional links per node).
+// Exposed so the index definition can be persisted and recreated identically
+// on restart (the HNSW graph itself is not serialized; it is rebuilt from the
+// node set on load).
+func (h *HNSWIndex) M() int {
+	return h.m
+}
+
+// EfConstruction returns the construction-time candidate-list size. See M.
+func (h *HNSWIndex) EfConstruction() int {
+	return h.efConstruction
+}
+
 // Len returns the number of vectors in the index
 func (h *HNSWIndex) Len() int {
 	h.mu.RLock()
