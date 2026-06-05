@@ -25,13 +25,14 @@ BENCH_TIME := 5s
 # slow pole (pkg/storage) still dominates wall-clock.
 TEST_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
 	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... \
-	./pkg/api/... ./pkg/graphql/...
+	./pkg/api/... ./pkg/graphql/... ./cmd/graphdb-admin/...
 
 # Race detector omits ./pkg/api/...: its server-spinning suite exceeds the 10m
-# budget under -race -p 2 (a timeout, NOT a data race). pkg/graphql is
-# race-clean and fast, so it stays in.
+# budget under -race -p 2 (a timeout, NOT a data race). pkg/graphql and
+# cmd/graphdb-admin are race-clean and fast, so they stay in.
 RACE_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
-	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... ./pkg/graphql/...
+	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... \
+	./pkg/graphql/... ./cmd/graphdb-admin/...
 
 # Build variables
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
