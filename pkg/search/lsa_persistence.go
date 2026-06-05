@@ -186,6 +186,21 @@ func LoadLSAFromFile(path string) (*LSAIndex, error) {
 	return ReadLSASnapshot(f)
 }
 
+// DeleteLSASnapshot removes a tenant's on-disk LSA snapshot (<dir>/<tenant>.lsa).
+// A missing file is not an error. Call this on tenant deletion so LoadAll
+// doesn't resurrect the deleted tenant's index on the next restart. Mirrors
+// LoadAll's filename sanitization so the path matches what SaveToFile wrote.
+func DeleteLSASnapshot(dir, tenantID string) error {
+	safe, err := sanitizeTenantForFilename(tenantID)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(dir, safe+lsaSnapshotExt)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // SaveAll writes every tenant's LSA index to dir/<tenantID>.lsa. Tenants
 // with no registered index are skipped (no file written, no error).
 // Errors per tenant are returned as a single aggregate; one tenant's
