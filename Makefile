@@ -23,16 +23,22 @@ BENCH_TIME := 5s
 # gap let a deterministically-red pkg/api test merge under green CI (#344,
 # surfaced while fixing #224). They run in parallel with the others, so the
 # slow pole (pkg/storage) still dominates wall-clock.
+#
+# ./cmd/... is included as a unit (not just cmd/graphdb-admin) to future-proof:
+# only graphdb-admin has tests today, but listing the whole tree means a test
+# added to ANY cmd binary later auto-runs in CI instead of silently skipping
+# (the #344/#348 trap). The test-less cmd mains are a ~1s compile no-op here and
+# are already compile-checked by `go vet ./...`.
 TEST_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
 	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... \
-	./pkg/api/... ./pkg/graphql/... ./cmd/graphdb-admin/...
+	./pkg/api/... ./pkg/graphql/... ./cmd/...
 
 # Race detector omits ./pkg/api/...: its server-spinning suite exceeds the 10m
-# budget under -race -p 2 (a timeout, NOT a data race). pkg/graphql and
-# cmd/graphdb-admin are race-clean and fast, so they stay in.
+# budget under -race -p 2 (a timeout, NOT a data race). pkg/graphql and ./cmd/...
+# are race-clean and fast, so they stay in.
 RACE_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
 	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... \
-	./pkg/graphql/... ./cmd/graphdb-admin/...
+	./pkg/graphql/... ./cmd/...
 
 # Build variables
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
