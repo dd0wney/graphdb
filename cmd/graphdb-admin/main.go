@@ -37,9 +37,17 @@ func main() {
 		handleSecurityCommand(os.Args[2:])
 	case "update":
 		handleUpdateCommand(os.Args[2:])
+	case "login":
+		handleLoginCommand(os.Args[2:])
+	case "mint-token":
+		handleMintTokenCommand(os.Args[2:])
 	case "help", "--help", "-h":
 		if len(os.Args) >= 3 && os.Args[2] == "update" {
 			printUpdateUsage()
+			return
+		}
+		if len(os.Args) >= 3 && (os.Args[2] == "login" || os.Args[2] == "mint-token") {
+			printAuthUsage()
 			return
 		}
 		printUsage()
@@ -61,6 +69,8 @@ Usage:
 Available Commands:
   security    Security management commands
   update      Check for and apply software updates
+  login       Log in to a running server and print an access token
+  mint-token  Mint a JWT offline from JWT_SECRET
   help        Show this help message
   version     Show version information
 
