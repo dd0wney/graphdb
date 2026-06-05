@@ -17,11 +17,10 @@ import "fmt"
 //   - bool           → TypeBool
 //   - []any          → dispatches on element type for the all-same-type
 //     cases (float64, string, int/int64, bool); mixed
-//     or empty arrays fall through to the string path.
-//   - anything else  → fmt.Sprintf("%v", v) stored as TypeString
-//     (legacy fallback, kept so unknown shapes don't
-//     drop the property; surfacing on read is the
-//     caller's concern).
+//     or empty arrays store as TypeJSON.
+//   - nil / map / any other shape → TypeJSON (the JSON encoding),
+//     so null/objects/nested structures round-trip instead of being
+//     stringified to "<nil>" / "map[]" (#224).
 //
 // Never errors. Inverse of valueToInterface (in pkg/api/server_helpers.go).
 //
@@ -50,32 +49,43 @@ func ValueFromJSON(v any) Value {
 	case []any:
 		return arrayValueFromJSON(val)
 	default:
-		return StringValue(fmt.Sprintf("%v", v))
+		// nil (JSON null), map (JSON object), and any other shape:
+		// preserve the structure as TypeJSON instead of %v-stringifying.
+		return jsonValueOrString(v)
 	}
 }
 
+// jsonValueOrString stores v as TypeJSON, falling back to the legacy
+// %v-string only if v isn't JSON-marshallable (never happens for
+// json.Unmarshal output, but preserves the "never drop the property"
+// guarantee for arbitrary Go callers).
+func jsonValueOrString(v any) Value {
+	jv, err := JSONValue(v)
+	if err != nil {
+		return StringValue(fmt.Sprintf("%v", v))
+	}
+	return jv
+}
+
 // arrayValueFromJSON dispatches an []any (JSON array) on element type.
-// All-same-type arrays map to the matching TypeXxxArray. Mixed-type
-// or empty arrays fall through to fmt.Sprintf — preserving the
-// pre-consolidation behaviour for those shapes (a future change can
-// promote mixed arrays to a structured representation if a workload
-// needs it).
+// All-same-type arrays map to the matching TypeXxxArray. Mixed-type or
+// empty arrays store as TypeJSON so they round-trip to a proper JSON
+// array instead of a %v-stringified blob (#224).
 func arrayValueFromJSON(arr []any) Value {
 	if len(arr) == 0 {
-		// Empty array carries no element-type signal. Keep legacy
-		// fmt.Sprintf path so behaviour is unchanged.
-		return StringValue(fmt.Sprintf("%v", arr))
+		// Empty array carries no element-type signal — store as TypeJSON
+		// so it round-trips to [] rather than the string "[]".
+		return jsonValueOrString(arr)
 	}
 	// One pass: classify element type by inspecting the first element,
-	// then verify all remaining elements share that type. Mixed → string
-	// fallback.
+	// then verify all remaining elements share that type. Mixed → TypeJSON.
 	switch arr[0].(type) {
 	case float64:
 		out := make([]float64, len(arr))
 		for i, v := range arr {
 			f, ok := v.(float64)
 			if !ok {
-				return StringValue(fmt.Sprintf("%v", arr))
+				return jsonValueOrString(arr)
 			}
 			out[i] = f
 		}
@@ -85,7 +95,7 @@ func arrayValueFromJSON(arr []any) Value {
 		for i, v := range arr {
 			s, ok := v.(string)
 			if !ok {
-				return StringValue(fmt.Sprintf("%v", arr))
+				return jsonValueOrString(arr)
 			}
 			out[i] = s
 		}
@@ -95,7 +105,7 @@ func arrayValueFromJSON(arr []any) Value {
 		for i, v := range arr {
 			b, ok := v.(bool)
 			if !ok {
-				return StringValue(fmt.Sprintf("%v", arr))
+				return jsonValueOrString(arr)
 			}
 			out[i] = b
 		}
@@ -113,11 +123,11 @@ func arrayValueFromJSON(arr []any) Value {
 			case int64:
 				out[i] = n
 			default:
-				return StringValue(fmt.Sprintf("%v", arr))
+				return jsonValueOrString(arr)
 			}
 		}
 		return IntArrayValue(out)
 	default:
-		return StringValue(fmt.Sprintf("%v", arr))
+		return jsonValueOrString(arr)
 	}
 }

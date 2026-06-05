@@ -21,10 +21,10 @@ func TestValueFromJSON(t *testing.T) {
 		{"float64 fractional stays float", 3.14, TypeFloat},
 		{"bool true", true, TypeBool},
 		{"bool false", false, TypeBool},
-		// Unknown shapes hit the legacy string fallback so callers
-		// don't silently drop a property.
-		{"unknown type falls back to string", struct{ Foo int }{Foo: 1}, TypeString},
-		{"nil falls back to string", nil, TypeString},
+		// Structured / unrepresentable shapes now store as TypeJSON so
+		// they round-trip instead of being %v-stringified (#224).
+		{"struct stores as JSON", struct{ Foo int }{Foo: 1}, TypeJSON},
+		{"nil stores as JSON null", nil, TypeJSON},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -52,11 +52,12 @@ func TestValueFromJSON_ArrayDispatch(t *testing.T) {
 		{"all int (Go-typed callers)", []any{int(1), int(2), int(3)}, TypeIntArray},
 		{"all int64 (Go-typed callers)", []any{int64(1), int64(2)}, TypeIntArray},
 		{"mixed int and int64", []any{int(1), int64(2)}, TypeIntArray},
-		// Mixed-type arrays should fall through to the string path —
-		// no signal to discriminate. Same with empty.
-		{"mixed float and string", []any{0.1, "x"}, TypeString},
-		{"mixed types", []any{0.1, true, "x"}, TypeString},
-		{"empty array", []any{}, TypeString},
+		// Mixed-type and empty arrays have no single element-type signal,
+		// so they store as TypeJSON and round-trip to a proper JSON array
+		// instead of a %v-stringified blob (#224).
+		{"mixed float and string", []any{0.1, "x"}, TypeJSON},
+		{"mixed types", []any{0.1, true, "x"}, TypeJSON},
+		{"empty array", []any{}, TypeJSON},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
