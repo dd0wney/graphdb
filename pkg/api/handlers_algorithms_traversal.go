@@ -51,6 +51,27 @@ func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Direction: which edges to follow. Default "outgoing" preserves the
+	// historical behaviour; "incoming"/"both" are now honoured (#331 — they
+	// were previously decoded and silently ignored).
+	direction := req.Direction
+	if direction == "" {
+		direction = directionOutgoing
+	}
+	if direction != directionOutgoing && direction != directionIncoming && direction != directionBoth {
+		s.respondError(w, http.StatusBadRequest, "direction must be one of: outgoing, incoming, both")
+		return
+	}
+	// Optional edge-type filter (empty = all types) — also previously ignored.
+	var edgeTypes map[string]bool
+	if len(req.EdgeTypes) > 0 {
+		edgeTypes = make(map[string]bool, len(req.EdgeTypes))
+		for _, t := range req.EdgeTypes {
+			edgeTypes[t] = true
+		}
+	}
+	opts := traverseOpts{maxDepth: req.MaxDepth, direction: direction, edgeTypes: edgeTypes}
+
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(r.Context(), DefaultAlgorithmTimeout)
 	defer cancel()
@@ -60,7 +81,7 @@ func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {
 	// Simple BFS traversal with context, scoped to caller's tenant.
 	visited := make(map[uint64]bool)
 	nodes := make([]*NodeResponse, 0)
-	if err := s.traverseFromWithContext(ctx, tenantID, req.StartNodeID, 0, req.MaxDepth, visited, &nodes); err != nil {
+	if err := s.traverseFromWithContext(ctx, tenantID, req.StartNodeID, 0, opts, visited, &nodes); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			s.respondError(w, http.StatusRequestTimeout, "Traversal timed out")
 			return
@@ -78,11 +99,33 @@ func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, response)
 }
 
+// Traversal directions for the /traverse `direction` parameter.
+const (
+	directionOutgoing = "outgoing"
+	directionIncoming = "incoming"
+	directionBoth     = "both"
+)
+
+// traverseOpts carries the per-request traversal configuration through the
+// recursive BFS (#331): how deep, which edge direction(s) to follow, and an
+// optional edge-type allowlist (nil/empty = all types).
+type traverseOpts struct {
+	maxDepth  int
+	direction string
+	edgeTypes map[string]bool
+}
+
+// allowsType reports whether an edge of the given type passes the edge-type
+// filter. An empty filter admits every type.
+func (o traverseOpts) allowsType(edgeType string) bool {
+	return len(o.edgeTypes) == 0 || o.edgeTypes[edgeType]
+}
+
 // traverseFromWithContext performs BFS traversal with context
 // cancellation support, scoped to the given tenant.
 //
-// Audit A6b: dual-filter — both edges (GetOutgoingEdgesForTenant) and
-// nodes (GetNodeForTenant) are scoped.
+// Audit A6b: dual-filter — both edges (GetOutgoingEdgesForTenant /
+// GetIncomingEdgesForTenant) and nodes (GetNodeForTenant) are scoped.
 //
 // As of the A6a follow-up, the node filter is technically belt-and-
 // braces against the API surface: CreateEdgeWithTenant is now
@@ -97,7 +140,7 @@ func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {
 // in the in-memory GraphStorage instance the API serves, the node
 // filter is the only thing keeping their cross-tenant edges out of
 // /traverse results.
-func (s *Server) traverseFromWithContext(ctx context.Context, tenantID string, nodeID uint64, depth int, maxDepth int, visited map[uint64]bool, nodes *[]*NodeResponse) error {
+func (s *Server) traverseFromWithContext(ctx context.Context, tenantID string, nodeID uint64, depth int, opts traverseOpts, visited map[uint64]bool, nodes *[]*NodeResponse) error {
 	// Check for cancellation
 	select {
 	case <-ctx.Done():
@@ -105,7 +148,7 @@ func (s *Server) traverseFromWithContext(ctx context.Context, tenantID string, n
 	default:
 	}
 
-	if depth > maxDepth || visited[nodeID] {
+	if depth > opts.maxDepth || visited[nodeID] {
 		return nil
 	}
 
@@ -118,13 +161,32 @@ func (s *Server) traverseFromWithContext(ctx context.Context, tenantID string, n
 
 	*nodes = append(*nodes, s.nodeToResponse(ctx, node))
 
-	edges, err := s.graph.GetOutgoingEdgesForTenant(nodeID, tenantID)
-	if err != nil {
-		return nil // Skip on edge retrieval error
+	// Collect neighbours per the requested direction, filtered by edge type.
+	// outgoing → edge.ToNodeID; incoming → edge.FromNodeID; both → union.
+	var neighbors []uint64
+	if opts.direction == directionOutgoing || opts.direction == directionBoth {
+		edges, err := s.graph.GetOutgoingEdgesForTenant(nodeID, tenantID)
+		if err == nil {
+			for _, edge := range edges {
+				if opts.allowsType(edge.Type) {
+					neighbors = append(neighbors, edge.ToNodeID)
+				}
+			}
+		}
+	}
+	if opts.direction == directionIncoming || opts.direction == directionBoth {
+		edges, err := s.graph.GetIncomingEdgesForTenant(nodeID, tenantID)
+		if err == nil {
+			for _, edge := range edges {
+				if opts.allowsType(edge.Type) {
+					neighbors = append(neighbors, edge.FromNodeID)
+				}
+			}
+		}
 	}
 
-	for _, edge := range edges {
-		if err := s.traverseFromWithContext(ctx, tenantID, edge.ToNodeID, depth+1, maxDepth, visited, nodes); err != nil {
+	for _, nb := range neighbors {
+		if err := s.traverseFromWithContext(ctx, tenantID, nb, depth+1, opts, visited, nodes); err != nil {
 			return err
 		}
 	}
