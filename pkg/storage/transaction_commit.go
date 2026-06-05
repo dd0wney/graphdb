@@ -5,10 +5,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/dd0wney/graphdb/pkg/wal"
 )
+
+// sortedTxIDs returns m's keys in ascending order. Node/edge IDs come from the
+// monotonic atomic counter, so ascending ID == creation order. Commit iterates
+// its buffers through this so the apply order (persist, WAL, and especially HNSW
+// vector inserts) is deterministic — the direct and batch paths already apply in
+// creation order, and a map's random iteration order made the transaction path's
+// vector index occasionally disconnect on a tiny graph (the flaky
+// TestMetamorphic_NoDelete: transaction top-k lost neighbours live/batch kept).
+func sortedTxIDs[V any](m map[uint64]V) []uint64 {
+	ids := make([]uint64, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
 
 // Commit applies all buffered changes atomically and durably.
 //
@@ -59,8 +76,10 @@ func (tx *Transaction) Commit() error {
 	var updatesForNotify []updateNotify
 
 	// (2a) Created nodes — through the shared persist helper (indexes, stats,
-	// vector plan), then a WAL entry.
-	for _, node := range tx.createdNodes {
+	// vector plan), then a WAL entry. Iterate in creation (ascending-ID) order so
+	// the HNSW vector-insert order is deterministic (see sortedTxIDs).
+	for _, nodeID := range sortedTxIDs(tx.createdNodes) {
+		node := tx.createdNodes[nodeID]
 		plans, err := tx.gs.persistNodeLocked(node)
 		if err != nil {
 			tx.gs.mu.Unlock()
@@ -79,7 +98,9 @@ func (tx *Transaction) Commit() error {
 	}
 
 	// (2b) Created edges — endpoints are now persisted (or pre-existing).
-	for _, edge := range tx.createdEdges {
+	// Ascending-ID order for deterministic persist + WAL ordering.
+	for _, edgeID := range sortedTxIDs(tx.createdEdges) {
+		edge := tx.createdEdges[edgeID]
 		if err := tx.gs.persistEdgeLocked(edge); err != nil {
 			tx.gs.mu.Unlock()
 			return fmt.Errorf("commit: persist edge %d: %w", edge.ID, err)
@@ -96,7 +117,8 @@ func (tx *Transaction) Commit() error {
 	// same transaction were merged into the buffered node by tx.UpdateNode, so
 	// they ride the OpCreateNode entry above — updatedNodes holds only existing-
 	// node updates.)
-	for nodeID, props := range tx.updatedNodes {
+	for _, nodeID := range sortedTxIDs(tx.updatedNodes) {
+		props := tx.updatedNodes[nodeID]
 		node, exists := tx.gs.lookupNodeShard(nodeID)
 		if !exists {
 			// validateLocked guaranteed existence + ownership; defensive only.
