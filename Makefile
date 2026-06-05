@@ -18,6 +18,21 @@ GOFLAGS :=
 TEST_TIMEOUT := 10m
 BENCH_TIME := 5s
 
+# Packages the CI test jobs cover. pkg/api + pkg/graphql were historically
+# absent from this list, so CI never ran the REST/GraphQL test suites — that
+# gap let a deterministically-red pkg/api test merge under green CI (#344,
+# surfaced while fixing #224). They run in parallel with the others, so the
+# slow pole (pkg/storage) still dominates wall-clock.
+TEST_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
+	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... \
+	./pkg/api/... ./pkg/graphql/...
+
+# Race detector omits ./pkg/api/...: its server-spinning suite exceeds the 10m
+# budget under -race -p 2 (a timeout, NOT a data race). pkg/graphql is
+# race-clean and fast, so it stays in.
+RACE_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
+	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... ./pkg/graphql/...
+
 # Build variables
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
@@ -33,18 +48,16 @@ help:
 ## test: Run all tests (excluding integration tests and tag-gated replication packages)
 test:
 	@echo "Running all tests..."
-	$(GO) test -timeout $(TEST_TIMEOUT) \
-		./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
-		./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/...
+	$(GO) test -timeout $(TEST_TIMEOUT) $(TEST_PKGS)
 
 ## test-verbose: Run tests with verbose output
 test-verbose:
 	@echo "Running tests (verbose)..."
-	$(GO) test -v -timeout $(TEST_TIMEOUT) \
-		./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
-		./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/...
+	$(GO) test -v -timeout $(TEST_TIMEOUT) $(TEST_PKGS)
 
 ## test-short: Run tests in short mode (skip long-running tests)
+# Core packages only — pkg/api's server-spinning suite is ~100s even under
+# -short, which doesn't fit this target's 1m smoke budget.
 test-short:
 	@echo "Running short tests..."
 	$(GO) test -short -timeout 1m \
@@ -53,14 +66,15 @@ test-short:
 
 ## test-race: Run tests with race detector
 # -p 2 caps package-parallelism to fit the race detector's memory footprint
-# inside the GitHub-hosted ubuntu runner's 7GB.
+# inside the GitHub-hosted runner's 7GB. Uses RACE_PKGS (omits pkg/api).
 test-race:
 	@echo "Running tests with race detector..."
-	$(GO) test -race -p 2 -timeout $(TEST_TIMEOUT) \
-		./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
-		./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/...
+	$(GO) test -race -p 2 -timeout $(TEST_TIMEOUT) $(RACE_PKGS)
 
 ## test-cover: Run tests with coverage analysis
+# Core packages only — this runs on the ubuntu coverage job; keeping pkg/api
+# (slow, server-spinning) off it avoids loading the exit-143-prone runner. The
+# correctness gate for api/graphql is the macOS test-verbose job.
 test-cover:
 	@echo "Running tests with coverage..."
 	@mkdir -p $(COVERAGE_DIR)
