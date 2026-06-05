@@ -50,7 +50,9 @@ func GenerateSchemaWithSearch(gs *storage.GraphStorage, searchIndex *search.Full
 							// F3 masking hook: search results respect
 							// the same per-tenant policy as direct reads.
 							maskedProps := applyMaskingPolicyForGraphQL(p.Context, deps, node.Properties)
-							propsJSON, err := json.Marshal(maskedProps)
+							// Convert via the shared storage helper — marshalling the
+							// raw Value map emitted {"Type":N,"Data":"base64"} (#224).
+							propsJSON, err := json.Marshal(storage.PropertiesToJSON(maskedProps))
 							if err != nil {
 								return nil, fmt.Errorf("failed to marshal node properties: %w", err)
 							}

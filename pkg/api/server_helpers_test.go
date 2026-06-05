@@ -176,18 +176,20 @@ func TestConvertToValue_FloatArrayRoundTrips(t *testing.T) {
 	}
 }
 
-// TestConvertToValue_MixedArrayHitsLegacyPath documents the deliberate
-// non-fix in this PR: arrays with non-float64 elements (string arrays,
-// mixed-type arrays) still hit the fmt.Sprintf fallback. The right fix
-// for those is to extend allFloat64 into allStrings/allBools/etc — a
-// separate scope.
-func TestConvertToValue_MixedArrayHitsLegacyPath(t *testing.T) {
+// TestConvertToValue_MixedArrayRoundTrips: mixed-type arrays have no single
+// element-type signal, so they store as TypeJSON and round-trip to the original
+// array instead of a %v-stringified blob (#224 — previously TypeString).
+func TestConvertToValue_MixedArrayRoundTrips(t *testing.T) {
 	s := &Server{}
-	// Mixed array: should NOT be treated as a float array.
 	in := []any{1.0, "two", 3.0}
 	v := s.convertToValue(in)
-	if v.Type != storage.TypeString {
-		t.Errorf("mixed array stored as %v, expected TypeString (legacy path)", v.Type)
+	if v.Type != storage.TypeJSON {
+		t.Fatalf("mixed array stored as %v, expected TypeJSON", v.Type)
+	}
+	// Read-back shape must match input (numbers compare as float64).
+	got, ok := valueToInterface(v).([]any)
+	if !ok || len(got) != 3 || got[0] != float64(1) || got[1] != "two" || got[2] != float64(3) {
+		t.Errorf("mixed array round-trip = %#v, want [1 two 3]", valueToInterface(v))
 	}
 }
 

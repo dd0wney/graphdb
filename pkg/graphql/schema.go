@@ -1,6 +1,7 @@
 package graphql
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -142,38 +143,14 @@ func createNodeType(label string, deps *MaskingDeps) *graphql.Object {
 						// serializing. Nil deps / no policy → pass-through.
 						maskedProps := applyMaskingPolicyForGraphQL(p.Context, deps, node.Properties)
 
-						// Convert properties to JSON-like string
-						props := "{"
-						first := true
-						for k, v := range maskedProps {
-							if !first {
-								props += ", "
-							}
-							first = false
-
-							// Format value based on type
-							var valStr string
-							switch v.Type {
-							case storage.TypeString:
-								s, _ := v.AsString()
-								valStr = fmt.Sprintf("\"%s\"", s)
-							case storage.TypeInt:
-								i, _ := v.AsInt()
-								valStr = fmt.Sprintf("%d", i)
-							case storage.TypeFloat:
-								f, _ := v.AsFloat()
-								valStr = fmt.Sprintf("%f", f)
-							case storage.TypeBool:
-								b, _ := v.AsBool()
-								valStr = fmt.Sprintf("%t", b)
-							default:
-								valStr = "null"
-							}
-
-							props += fmt.Sprintf("\"%s\": %s", k, valStr)
+						// Serialize via the shared storage converter so every
+						// value kind (arrays, vectors, nested objects, null)
+						// round-trips as proper JSON instead of "null" (#224).
+						b, err := json.Marshal(storage.PropertiesToJSON(maskedProps))
+						if err != nil {
+							return nil, fmt.Errorf("marshal node properties: %w", err)
 						}
-						props += "}"
-						return props, nil
+						return string(b), nil
 					}
 					return nil, nil
 				},

@@ -1,6 +1,7 @@
 package graphql
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/graphql-go/graphql"
@@ -43,36 +44,11 @@ func createGenericNodeType(deps *MaskingDeps) *graphql.Object {
 						// F3 masking hook: mutation responses respect
 						// the same per-tenant policy as reads.
 						maskedProps := applyMaskingPolicyForGraphQL(p.Context, deps, node.Properties)
-						props := "{"
-						first := true
-						for k, v := range maskedProps {
-							if !first {
-								props += ", "
-							}
-							first = false
-
-							var valStr string
-							switch v.Type {
-							case storage.TypeString:
-								s, _ := v.AsString()
-								valStr = fmt.Sprintf("\"%s\"", s)
-							case storage.TypeInt:
-								i, _ := v.AsInt()
-								valStr = fmt.Sprintf("%d", i)
-							case storage.TypeFloat:
-								f, _ := v.AsFloat()
-								valStr = fmt.Sprintf("%f", f)
-							case storage.TypeBool:
-								b, _ := v.AsBool()
-								valStr = fmt.Sprintf("%t", b)
-							default:
-								valStr = "null"
-							}
-
-							props += fmt.Sprintf("\"%s\": %s", k, valStr)
+						b, err := json.Marshal(storage.PropertiesToJSON(maskedProps))
+						if err != nil {
+							return nil, fmt.Errorf("marshal node properties: %w", err)
 						}
-						props += "}"
-						return props, nil
+						return string(b), nil
 					}
 					return nil, nil
 				},
