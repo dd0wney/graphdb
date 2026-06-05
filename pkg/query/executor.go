@@ -204,14 +204,36 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 // and injected into the query before execution. ParameterRef values in property maps
 // are resolved to actual values, and parameters are made available in bindings as "$name" keys.
 func (e *Executor) ExecuteWithParams(query *Query, params map[string]any) (*ResultSet, error) {
+	if err := e.injectParams(query, params); err != nil {
+		return nil, err
+	}
+	return e.Execute(query)
+}
+
+// ExecuteWithParamsContext is ExecuteWithParams that honours a caller-supplied
+// context (timeout / cancellation). The HTTP query handler uses this so that
+// parameterized queries get both parameter substitution AND the request
+// timeout — calling ExecuteWithContext directly drops req.Parameters and stores
+// the literal "&{name}" instead of the value (#237).
+func (e *Executor) ExecuteWithParamsContext(ctx context.Context, query *Query, params map[string]any) (*ResultSet, error) {
+	if err := e.injectParams(query, params); err != nil {
+		return nil, err
+	}
+	return e.ExecuteWithContext(ctx, query)
+}
+
+// injectParams resolves ParameterRef values in property maps, validates that
+// every ParameterExpression has a corresponding param, and seeds the initial
+// bindings with "$name" keys. Shared by ExecuteWithParams[Context].
+func (e *Executor) injectParams(query *Query, params map[string]any) error {
 	// Validate and resolve ParameterRef values in property maps
 	if err := resolveParameters(query, params); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Validate that all ParameterExpression references have corresponding params
 	if err := validateParameterExpressions(query, params); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Inject params into initial bindings with "$" prefix to avoid collision with variables
@@ -220,8 +242,7 @@ func (e *Executor) ExecuteWithParams(query *Query, params map[string]any) (*Resu
 		bindings.bindings["$"+k] = v
 	}
 	query.InitialBindings = []*BindingSet{bindings}
-
-	return e.Execute(query)
+	return nil
 }
 
 // resolveParameters replaces ParameterRef values in pattern property maps with actual param values

@@ -153,7 +153,15 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
-	results, err := s.executor.ExecuteWithContext(ctx, parsedQuery)
+	// Honor request parameters ($name) when present — ExecuteWithParamsContext
+	// substitutes them before execution. Calling ExecuteWithContext directly
+	// dropped req.Parameters and stored the literal "&{name}" (#237).
+	var results *query.ResultSet
+	if len(req.Parameters) > 0 {
+		results, err = s.executor.ExecuteWithParamsContext(ctx, parsedQuery, req.Parameters)
+	} else {
+		results, err = s.executor.ExecuteWithContext(ctx, parsedQuery)
+	}
 	if err != nil {
 		// Check if it was a timeout
 		if ctx.Err() == context.DeadlineExceeded {

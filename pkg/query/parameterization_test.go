@@ -256,3 +256,84 @@ func TestExecutor_ParameterInjectionSafety(t *testing.T) {
 		t.Errorf("injection attempt should return 0 rows, got %d", result.Count)
 	}
 }
+
+// mustExecParams parses and runs a parameterized query, failing the test on any
+// error. Shared by the CREATE/MERGE substitution tests below.
+func mustExecParams(t *testing.T, e *Executor, q string, params map[string]any) *ResultSet {
+	t.Helper()
+	tokens, err := NewLexer(q).Tokenize()
+	if err != nil {
+		t.Fatalf("lex %q: %v", q, err)
+	}
+	parsed, err := NewParser(tokens).Parse()
+	if err != nil {
+		t.Fatalf("parse %q: %v", q, err)
+	}
+	res, err := e.ExecuteWithParams(parsed, params)
+	if err != nil {
+		t.Fatalf("exec %q: %v", q, err)
+	}
+	return res
+}
+
+// TestExecutor_CreateWithParams is the #237 core: a parameterized CREATE must
+// store the actual parameter value, not the literal "&{name}" placeholder.
+func TestExecutor_CreateWithParams(t *testing.T) {
+	gs, cleanup := setupExecutorTestGraph(t)
+	defer cleanup()
+	executor := NewExecutor(gs)
+
+	mustExecParams(t, executor, `CREATE (n:Person {name: $name, city: $city})`,
+		map[string]any{"name": "Alice", "city": "Dublin"})
+
+	res := mustExecParams(t, executor, `MATCH (n:Person) RETURN n.name, n.city`, nil)
+	if res.Count != 1 {
+		t.Fatalf("rows = %d, want 1", res.Count)
+	}
+	if got := res.Rows[0]["n.name"]; got != "Alice" {
+		t.Errorf("n.name = %#v, want \"Alice\" (literal placeholder stored?)", got)
+	}
+	if got := res.Rows[0]["n.city"]; got != "Dublin" {
+		t.Errorf("n.city = %#v, want \"Dublin\"", got)
+	}
+}
+
+// TestExecutor_MergeWithParams: MERGE's ON CREATE path must substitute params.
+func TestExecutor_MergeWithParams(t *testing.T) {
+	gs, cleanup := setupExecutorTestGraph(t)
+	defer cleanup()
+	executor := NewExecutor(gs)
+
+	mustExecParams(t, executor, `MERGE (n:City {name: $name})`, map[string]any{"name": "Cork"})
+
+	res := mustExecParams(t, executor, `MATCH (n:City) RETURN n.name`, nil)
+	if res.Count != 1 {
+		t.Fatalf("rows = %d, want 1", res.Count)
+	}
+	if got := res.Rows[0]["n.name"]; got != "Cork" {
+		t.Errorf("n.name = %#v, want \"Cork\" (literal placeholder stored?)", got)
+	}
+}
+
+// TestExecutor_CreateUnresolvedParamFailsLoud is the #237 defense-in-depth:
+// running a parameterized CREATE via Execute (no substitution) must error rather
+// than silently persisting the "&{name}" placeholder.
+func TestExecutor_CreateUnresolvedParamFailsLoud(t *testing.T) {
+	gs, cleanup := setupExecutorTestGraph(t)
+	defer cleanup()
+	executor := NewExecutor(gs)
+
+	tokens, err := NewLexer(`CREATE (n:Person {name: $name})`).Tokenize()
+	if err != nil {
+		t.Fatalf("lex: %v", err)
+	}
+	parsed, err := NewParser(tokens).Parse()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	// Execute (not ExecuteWithParams) — parameters never substituted.
+	if _, err := executor.Execute(parsed); err == nil {
+		t.Fatal("expected error for unresolved parameter, got nil (literal stored?)")
+	}
+}
