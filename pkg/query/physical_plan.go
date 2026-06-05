@@ -363,7 +363,11 @@ func (o *CreateOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 			// Create new node
 			props := make(map[string]storage.Value)
 			for k, v := range nodePat.Properties {
-				props[k] = convertToStorageValue(v)
+				sv, err := convertCreateProperty(v)
+				if err != nil {
+					return nil, err
+				}
+				props[k] = sv
 			}
 			node, err := ctx.graph.CreateNodeWithTenant(ctx.tenantID, nodePat.Labels, props)
 			if err != nil {
@@ -381,7 +385,11 @@ func (o *CreateOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 
 			props := make(map[string]storage.Value)
 			for k, v := range relPat.Properties {
-				props[k] = convertToStorageValue(v)
+				sv, err := convertCreateProperty(v)
+				if err != nil {
+					return nil, err
+				}
+				props[k] = sv
 			}
 
 			edge, err := ctx.graph.CreateEdgeWithTenant(ctx.tenantID, src.ID, dst.ID, relPat.Type, props, 1.0)
@@ -643,7 +651,11 @@ func (o *MergeOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 		// Not found - ON CREATE
 		props := make(map[string]storage.Value)
 		for k, v := range nodePat.Properties {
-			props[k] = convertToStorageValue(v)
+			sv, err := convertCreateProperty(v)
+			if err != nil {
+				return nil, err
+			}
+			props[k] = sv
 		}
 		newNode, err := ctx.graph.CreateNodeWithTenant(ctx.tenantID, nodePat.Labels, props)
 		if err != nil {

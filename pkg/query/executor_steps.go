@@ -67,6 +67,18 @@ func convertToStorageValue(val any) storage.Value {
 	}
 }
 
+// convertCreateProperty converts a CREATE/MERGE property value to a
+// storage.Value, failing loud on an unresolved *ParameterRef (#237). Such a
+// value means the query ran without parameter substitution (Execute /
+// ExecuteWithContext instead of ExecuteWithParams[Context]); previously it was
+// %v-stringified and the literal "&{name}" was persisted — silent corruption.
+func convertCreateProperty(val any) (storage.Value, error) {
+	if ref, ok := val.(*ParameterRef); ok {
+		return storage.Value{}, fmt.Errorf("unresolved query parameter $%s: parameterized queries must run via ExecuteWithParams", ref.Name)
+	}
+	return convertToStorageValue(val), nil
+}
+
 // IndexLookupStep uses a property index for efficient node lookup
 // This replaces a full scan when the optimizer detects an indexable equality condition
 type IndexLookupStep struct {
@@ -148,7 +160,11 @@ func (cs *CreateStep) createNodes(ctx *ExecutionContext, pattern *Pattern) error
 		// Convert properties
 		props := make(map[string]storage.Value)
 		for key, val := range nodePattern.Properties {
-			props[key] = convertToStorageValue(val)
+			sv, err := convertCreateProperty(val)
+			if err != nil {
+				return err
+			}
+			props[key] = sv
 		}
 
 		// Audit A6c-query: tenant-scoped node create.
@@ -187,7 +203,11 @@ func (cs *CreateStep) createRelationships(ctx *ExecutionContext, pattern *Patter
 
 		props := make(map[string]storage.Value)
 		for key, val := range relPattern.Properties {
-			props[key] = convertToStorageValue(val)
+			sv, err := convertCreateProperty(val)
+			if err != nil {
+				return err
+			}
+			props[key] = sv
 		}
 
 		// Audit A6c-query: tenant-scoped edge create. Uses
