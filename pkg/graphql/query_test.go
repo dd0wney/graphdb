@@ -200,6 +200,70 @@ func TestExecuteQueryWithProperties(t *testing.T) {
 	}
 }
 
+// TestExecuteQueryWithProperties_JSONFidelity is the #224 GraphQL teeth:
+// structured property kinds (objects, arrays, null) must serialize as proper
+// JSON inside the properties string — not the literal "null" the old hand-built
+// switch emitted, and not the {"Type":N,"Data":"base64"} the raw json.Marshal
+// path emitted.
+func TestExecuteQueryWithProperties_JSONFidelity(t *testing.T) {
+	tmpDir := t.TempDir()
+	gs, err := storage.NewGraphStorageWithConfig(storage.StorageConfig{DataDir: tmpDir, BulkImportMode: true})
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	nested, err := storage.JSONValue(map[string]any{"city": "Dublin", "zip": float64(2)})
+	if err != nil {
+		t.Fatalf("JSONValue: %v", err)
+	}
+	nullV, err := storage.JSONValue(nil)
+	if err != nil {
+		t.Fatalf("JSONValue(nil): %v", err)
+	}
+	if _, err := gs.CreateNode([]string{"Person"}, map[string]storage.Value{
+		"name": storage.StringValue("Alice"),
+		"tags": storage.StringArrayValue([]string{"a", "b"}),
+		"meta": nested,
+		"opt":  nullV,
+	}); err != nil {
+		t.Fatalf("CreateNode: %v", err)
+	}
+
+	schema, err := GenerateSchema(gs)
+	if err != nil {
+		t.Fatalf("GenerateSchema() error = %v", err)
+	}
+	result := ExecuteQuery(context.Background(), `{ person(id: "1") { properties } }`, schema)
+	if result.HasErrors() {
+		t.Fatalf("Query execution failed: %v", result.Errors)
+	}
+
+	propsStr := result.Data.(map[string]any)["person"].(map[string]any)["properties"].(string)
+	var props map[string]any
+	if err := json.Unmarshal([]byte(propsStr), &props); err != nil {
+		t.Fatalf("properties not valid JSON: %v\n%s", err, propsStr)
+	}
+
+	// Array stays an array (not "null").
+	tags, ok := props["tags"].([]any)
+	if !ok || len(tags) != 2 || tags[0] != "a" {
+		t.Errorf("tags = %#v, want [a b] array", props["tags"])
+	}
+	// Nested object stays a nested object (not "null", not a {"Type","Data"} blob).
+	meta, ok := props["meta"].(map[string]any)
+	if !ok || meta["city"] != "Dublin" {
+		t.Errorf("meta = %#v, want nested object {city:Dublin,...}", props["meta"])
+	}
+	if _, leaked := meta["Type"]; leaked {
+		t.Errorf("meta leaked the raw Value struct shape: %#v", meta)
+	}
+	// JSON null stays null.
+	if v, present := props["opt"]; !present || v != nil {
+		t.Errorf("opt = %#v (present=%v), want JSON null", v, present)
+	}
+}
+
 // TestExecuteQueryNotFound tests querying a non-existent node
 func TestExecuteQueryNotFound(t *testing.T) {
 	tmpDir := t.TempDir()

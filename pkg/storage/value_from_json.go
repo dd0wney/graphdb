@@ -1,6 +1,82 @@
 package storage
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
+
+// ValueToJSON converts a storage Value back to a JSON-ready Go value — the
+// documented inverse of ValueFromJSON. Scalars and arrays decode to their Go
+// types; timestamps render as RFC3339 strings; bytes stay []byte (encoding/json
+// base64-encodes them); TypeJSON unmarshals to its original shape (#224).
+//
+// On a decode error (corruption / malformed Data) it falls back to the raw
+// bytes rather than a sentinel string, preserving the value's presence in the
+// response. Centralising this here lets the REST handlers and the GraphQL
+// resolvers share one converter instead of each hand-rolling a type switch
+// (the divergence that caused #224's GraphQL "null" / {"Type","Data"} bugs).
+func ValueToJSON(v Value) any {
+	switch v.Type {
+	case TypeString:
+		if s, err := v.AsString(); err == nil {
+			return s
+		}
+	case TypeInt:
+		if i, err := v.AsInt(); err == nil {
+			return i
+		}
+	case TypeFloat:
+		if f, err := v.AsFloat(); err == nil {
+			return f
+		}
+	case TypeBool:
+		if b, err := v.AsBool(); err == nil {
+			return b
+		}
+	case TypeTimestamp:
+		if t, err := v.AsTimestamp(); err == nil {
+			return t.UTC().Format(time.RFC3339)
+		}
+	case TypeBytes:
+		return v.Data // base64 is the right JSON encoding for raw bytes
+	case TypeVector:
+		if vec, err := v.AsVector(); err == nil {
+			return vec
+		}
+	case TypeStringArray:
+		if arr, err := v.AsStringArray(); err == nil {
+			return arr
+		}
+	case TypeIntArray:
+		if arr, err := v.AsIntArray(); err == nil {
+			return arr
+		}
+	case TypeFloatArray:
+		if arr, err := v.AsFloatArray(); err == nil {
+			return arr
+		}
+	case TypeBoolArray:
+		if arr, err := v.AsBoolArray(); err == nil {
+			return arr
+		}
+	case TypeJSON:
+		if out, err := v.AsJSON(); err == nil {
+			return out
+		}
+	}
+	return v.Data
+}
+
+// PropertiesToJSON converts a property map to a JSON-ready map by running each
+// value through ValueToJSON. Returns a non-nil empty map for a nil/empty input
+// so json.Marshal emits {} rather than null.
+func PropertiesToJSON(props map[string]Value) map[string]any {
+	out := make(map[string]any, len(props))
+	for k, v := range props {
+		out[k] = ValueToJSON(v)
+	}
+	return out
+}
 
 // ValueFromJSON converts a JSON-decoded Go value (the result of
 // json.Unmarshal into `any` / `map[string]any` / `[]any`) into a

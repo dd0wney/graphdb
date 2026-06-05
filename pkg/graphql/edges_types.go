@@ -1,6 +1,7 @@
 package graphql
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/graphql-go/graphql"
@@ -63,36 +64,11 @@ func createEdgeType() *graphql.Object {
 				Type: graphql.String,
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if edge, ok := p.Source.(*storage.Edge); ok {
-						props := "{"
-						first := true
-						for k, v := range edge.Properties {
-							if !first {
-								props += ", "
-							}
-							first = false
-
-							var valStr string
-							switch v.Type {
-							case storage.TypeString:
-								s, _ := v.AsString()
-								valStr = fmt.Sprintf("\"%s\"", s)
-							case storage.TypeInt:
-								i, _ := v.AsInt()
-								valStr = fmt.Sprintf("%d", i)
-							case storage.TypeFloat:
-								f, _ := v.AsFloat()
-								valStr = fmt.Sprintf("%f", f)
-							case storage.TypeBool:
-								b, _ := v.AsBool()
-								valStr = fmt.Sprintf("%t", b)
-							default:
-								valStr = "null"
-							}
-
-							props += fmt.Sprintf("\"%s\": %s", k, valStr)
+						b, err := json.Marshal(storage.PropertiesToJSON(edge.Properties))
+						if err != nil {
+							return nil, fmt.Errorf("marshal edge properties: %w", err)
 						}
-						props += "}"
-						return props, nil
+						return string(b), nil
 					}
 					return nil, nil
 				},
@@ -136,37 +112,11 @@ func createNodeTypeWithEdges(label string, edgeType *graphql.Object, gs *storage
 					if node, ok := p.Source.(*storage.Node); ok {
 						// F3 masking hook (design doc §3 Decision 3).
 						maskedProps := applyMaskingPolicyForGraphQL(p.Context, deps, node.Properties)
-
-						props := "{"
-						first := true
-						for k, v := range maskedProps {
-							if !first {
-								props += ", "
-							}
-							first = false
-
-							var valStr string
-							switch v.Type {
-							case storage.TypeString:
-								s, _ := v.AsString()
-								valStr = fmt.Sprintf("\"%s\"", s)
-							case storage.TypeInt:
-								i, _ := v.AsInt()
-								valStr = fmt.Sprintf("%d", i)
-							case storage.TypeFloat:
-								f, _ := v.AsFloat()
-								valStr = fmt.Sprintf("%f", f)
-							case storage.TypeBool:
-								b, _ := v.AsBool()
-								valStr = fmt.Sprintf("%t", b)
-							default:
-								valStr = "null"
-							}
-
-							props += fmt.Sprintf("\"%s\": %s", k, valStr)
+						b, err := json.Marshal(storage.PropertiesToJSON(maskedProps))
+						if err != nil {
+							return nil, fmt.Errorf("marshal node properties: %w", err)
 						}
-						props += "}"
-						return props, nil
+						return string(b), nil
 					}
 					return nil, nil
 				},

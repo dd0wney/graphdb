@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
-	"time"
 
 	"github.com/dd0wney/graphdb/pkg/masking"
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -107,83 +106,11 @@ func (s *Server) convertToValue(v any) storage.Value {
 // On a decode error (storage corruption / malformed Data), falls back to
 // returning the raw bytes — preserves current base64-output behaviour
 // rather than corrupting the response shape with a sentinel string.
+//
+// The conversion logic lives in storage.ValueToJSON so the REST and GraphQL
+// paths share one converter (#224).
 func valueToInterface(v storage.Value) any {
-	switch v.Type {
-	case storage.TypeString:
-		s, err := v.AsString()
-		if err != nil {
-			return v.Data
-		}
-		return s
-	case storage.TypeInt:
-		i, err := v.AsInt()
-		if err != nil {
-			return v.Data
-		}
-		return i
-	case storage.TypeFloat:
-		f, err := v.AsFloat()
-		if err != nil {
-			return v.Data
-		}
-		return f
-	case storage.TypeBool:
-		b, err := v.AsBool()
-		if err != nil {
-			return v.Data
-		}
-		return b
-	case storage.TypeTimestamp:
-		t, err := v.AsTimestamp()
-		if err != nil {
-			return v.Data
-		}
-		return t.UTC().Format(time.RFC3339)
-	case storage.TypeBytes:
-		// base64 is the right JSON encoding for raw bytes
-		return v.Data
-	case storage.TypeVector:
-		vec, err := v.AsVector()
-		if err != nil {
-			return v.Data
-		}
-		return vec
-	case storage.TypeStringArray:
-		arr, err := v.AsStringArray()
-		if err != nil {
-			return v.Data
-		}
-		return arr
-	case storage.TypeIntArray:
-		arr, err := v.AsIntArray()
-		if err != nil {
-			return v.Data
-		}
-		return arr
-	case storage.TypeFloatArray:
-		arr, err := v.AsFloatArray()
-		if err != nil {
-			return v.Data
-		}
-		return arr
-	case storage.TypeBoolArray:
-		arr, err := v.AsBoolArray()
-		if err != nil {
-			return v.Data
-		}
-		return arr
-	case storage.TypeJSON:
-		// null, objects, nested structures, and mixed/empty arrays (#224).
-		// Unmarshalling returns the original shape (nil, map, slice) so the
-		// REST response carries proper JSON instead of "<nil>" / "map[]".
-		out, err := v.AsJSON()
-		if err != nil {
-			return v.Data
-		}
-		return out
-	default:
-		return v.Data
-	}
+	return storage.ValueToJSON(v)
 }
 
 func (s *Server) respondJSON(w http.ResponseWriter, status int, data any) {
