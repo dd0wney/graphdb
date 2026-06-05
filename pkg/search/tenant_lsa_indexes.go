@@ -50,6 +50,15 @@ func (tli *TenantLSAIndexes) Set(tenantID string, idx *LSAIndex) {
 	tli.indexes[tenantID] = idx
 }
 
+// Delete removes the in-memory LSA index for tenantID (no-op if absent).
+// Does NOT remove the on-disk snapshot — pair with DeleteLSASnapshot on
+// tenant deletion, or LoadAll resurrects the index on the next restart.
+func (tli *TenantLSAIndexes) Delete(tenantID string) {
+	tli.mu.Lock()
+	defer tli.mu.Unlock()
+	delete(tli.indexes, tenantID)
+}
+
 // Tenants returns the IDs of tenants with a registered LSA index.
 // Order is unspecified.
 func (tli *TenantLSAIndexes) Tenants() []string {

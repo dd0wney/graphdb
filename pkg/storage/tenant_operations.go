@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -423,6 +425,60 @@ func (gs *GraphStorage) CountEdgesForTenant(tenantID string) uint64 {
 		return 0
 	}
 	return stats.EdgeCount
+}
+
+// DeleteTenant cascade-deletes all of a tenant's graph data — every node and
+// edge it owns, plus the per-tenant indexes/counts those deletes maintain, plus
+// the tenant's vector-index definitions. Returns how many nodes and edges were
+// removed. The default tenant cannot be deleted.
+//
+// Mechanism: loop DeleteNodeForTenant over the tenant's nodes (reusing the
+// tested cascade — each node delete removes its incident edges and maintains
+// global+per-tenant indexes and the WAL), then a defensive pass over any edges
+// not already cascaded (edges are intra-tenant, so the node pass usually clears
+// them). Per-node ErrNodeNotFound / per-edge ErrEdgeNotFound are tolerated so
+// the cascade is idempotent and re-runnable. Vector index definitions are
+// dropped via the WAL-logged DropVectorIndexForTenant (#320) so the drop
+// survives a crash, mirroring the WAL-durable node/edge deletes.
+//
+// Search indexes (on-disk LSA, in-memory FTS) are owned by the API server, not
+// GraphStorage — the caller drops those (see handleDeleteTenant).
+//
+// Cost is O(nodes+edges) individually-locked deletes; acceptable for a
+// correctness fix. A bulk in-storage purge is a future optimization.
+func (gs *GraphStorage) DeleteTenant(tenantID string) (nodesDeleted, edgesDeleted int, err error) {
+	if effectiveTenantID(tenantID) == tenantid.Default {
+		return 0, 0, fmt.Errorf("cannot delete the default tenant")
+	}
+
+	for _, n := range gs.GetAllNodesForTenant(tenantID) {
+		if derr := gs.DeleteNodeForTenant(n.ID, tenantID); derr != nil {
+			if errors.Is(derr, ErrNodeNotFound) {
+				continue // already removed via another node's edge cascade
+			}
+			return nodesDeleted, edgesDeleted, fmt.Errorf("delete node %d: %w", n.ID, derr)
+		}
+		nodesDeleted++
+	}
+
+	// Defensive sweep: any edges the node pass didn't cascade.
+	for _, e := range gs.GetAllEdgesForTenant(tenantID) {
+		if derr := gs.DeleteEdgeForTenant(e.ID, tenantID); derr != nil {
+			if errors.Is(derr, ErrEdgeNotFound) {
+				continue
+			}
+			return nodesDeleted, edgesDeleted, fmt.Errorf("delete edge %d: %w", e.ID, derr)
+		}
+		edgesDeleted++
+	}
+
+	// Drop the tenant's vector-index definitions (WAL-durable). Best-effort:
+	// a concurrently-dropped index just surfaces as an error we can ignore.
+	for _, prop := range gs.ListVectorIndexesForTenant(tenantID) {
+		_ = gs.DropVectorIndexForTenant(tenantID, prop)
+	}
+
+	return nodesDeleted, edgesDeleted, nil
 }
 
 // GetLabelsForTenant returns all unique labels used by a tenant.

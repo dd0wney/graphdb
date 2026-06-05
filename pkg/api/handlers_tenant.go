@@ -2,11 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/dd0wney/graphdb/pkg/audit"
 	"github.com/dd0wney/graphdb/pkg/auth"
+	"github.com/dd0wney/graphdb/pkg/search"
 	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
@@ -269,16 +272,44 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Guard BEFORE any cascade: the default tenant is undeletable, and a
+	// missing tenant is a 404 — don't cascade graph data for a non-tenant.
+	// (Cascade-before-record-delete is retry-safe: the record soft-delete is
+	// last, so a mid-cascade failure leaves the tenant re-deletable.)
+	if tenantID == tenant.DefaultTenantID {
+		s.respondError(w, http.StatusForbidden, "cannot delete default tenant")
+		return
+	}
+	if _, err := s.tenantStore.Get(tenantID); err != nil {
+		s.respondError(w, http.StatusNotFound, "Tenant not found")
+		return
+	}
+
+	// 1. Cascade the tenant's graph data — nodes, edges, per-tenant indexes,
+	//    and vector-index definitions (#223). Without this the tenant's data
+	//    stayed queryable under its ID after the record was deleted.
+	nodesDeleted, edgesDeleted, err := s.graph.DeleteTenant(tenantID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete tenant data"))
+		return
+	}
+
+	// 2. Drop the tenant's server-owned search indexes. LSA must be unlinked
+	//    on disk too (else LoadAll resurrects it on restart); FTS is in-memory.
+	if s.lsaIndexes != nil {
+		s.lsaIndexes.Delete(tenantID)
+		if rmErr := search.DeleteLSASnapshot(filepath.Join(s.dataDir, "lsa"), tenantID); rmErr != nil {
+			log.Printf("tenant delete %q: LSA snapshot cleanup failed: %v", tenantID, rmErr)
+		}
+	}
+	if s.searchIndexes != nil {
+		s.searchIndexes.Delete(tenantID)
+	}
+
+	// 3. Mark the tenant record deleted (authoritative soft-delete; idempotent).
 	if err := s.tenantStore.Delete(tenantID); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			s.respondError(w, http.StatusNotFound, "Tenant not found")
-			return
-		}
-		if strings.Contains(err.Error(), "cannot delete") {
-			s.respondError(w, http.StatusForbidden, err.Error())
-			return
-		}
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		// Already guarded for default/missing above, so this is unexpected.
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete tenant record"))
 		return
 	}
 
@@ -295,9 +326,11 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 		UserAgent:    r.UserAgent(),
 	})
 
-	s.respondJSON(w, http.StatusOK, map[string]string{
-		"message": "Tenant deleted successfully",
-		"id":      tenantID,
+	s.respondJSON(w, http.StatusOK, map[string]any{
+		"message":       "Tenant deleted successfully",
+		"id":            tenantID,
+		"nodes_deleted": nodesDeleted,
+		"edges_deleted": edgesDeleted,
 	})
 }
 

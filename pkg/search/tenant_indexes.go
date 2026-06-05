@@ -73,6 +73,15 @@ func (ti *TenantIndexes) IndexForTenant(tenantID string, labels, properties []st
 	return nil
 }
 
+// Delete removes a tenant's in-memory full-text index (no-op if absent).
+// The FTS index is not persisted (admin-rebuilt via POST /search/index), so
+// no on-disk cleanup is needed — unlike LSA.
+func (ti *TenantIndexes) Delete(tenantID string) {
+	ti.mu.Lock()
+	defer ti.mu.Unlock()
+	delete(ti.indexes, tenantID)
+}
+
 // Tenants returns the IDs of tenants that currently have an index
 // (whether populated or just touched via Get). Order is unspecified.
 func (ti *TenantIndexes) Tenants() []string {
