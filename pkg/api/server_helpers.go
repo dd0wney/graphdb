@@ -172,6 +172,15 @@ func valueToInterface(v storage.Value) any {
 			return v.Data
 		}
 		return arr
+	case storage.TypeJSON:
+		// null, objects, nested structures, and mixed/empty arrays (#224).
+		// Unmarshalling returns the original shape (nil, map, slice) so the
+		// REST response carries proper JSON instead of "<nil>" / "map[]".
+		out, err := v.AsJSON()
+		if err != nil {
+			return v.Data
+		}
+		return out
 	default:
 		return v.Data
 	}

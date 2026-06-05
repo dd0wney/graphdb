@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
 	"time"
@@ -24,6 +25,18 @@ const (
 	TypeIntArray
 	TypeFloatArray
 	TypeBoolArray
+
+	// TypeJSON stores the marshalled JSON encoding of a value the typed
+	// enum above can't represent: null, objects, nested structures, and
+	// mixed/empty arrays (#224). Data holds the JSON bytes; AsJSON
+	// unmarshals them back to the original shape so the value round-trips
+	// instead of being stringified via %v ("<nil>", "map[]").
+	//
+	// MUST stay last in the enum: ValueType is persisted as its numeric
+	// iota, so appending here leaves every existing on-disk value's tag
+	// unchanged. Do not insert a type above this line without a snapshot
+	// version bump.
+	TypeJSON
 )
 
 // Value represents a typed property value
@@ -59,6 +72,22 @@ func BoolValue(b bool) Value {
 
 func BytesValue(b []byte) Value {
 	return Value{Type: TypeBytes, Data: b}
+}
+
+// JSONValue stores v as its JSON encoding (#224). Used for value shapes the
+// typed constructors can't represent — null, objects, nested structures, and
+// mixed/empty arrays. The bytes round-trip back to the original shape via
+// AsJSON, so reads return proper JSON instead of a %v-stringified blob.
+//
+// Returns an error only if v isn't JSON-marshallable; callers that must not
+// drop the property (ValueFromJSON) fall back to the legacy string path on
+// error.
+func JSONValue(v any) (Value, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return Value{}, fmt.Errorf("marshal JSON value: %w", err)
+	}
+	return Value{Type: TypeJSON, Data: data}, nil
 }
 
 func TimestampValue(t time.Time) Value {
@@ -148,6 +177,21 @@ func (v Value) AsString() (string, error) {
 		return "", fmt.Errorf("value is not a string")
 	}
 	return string(v.Data), nil
+}
+
+// AsJSON unmarshals a TypeJSON value back to its original Go shape (nil for
+// JSON null, map[string]any for objects, []any for arrays). Returns an error
+// for non-TypeJSON values so callers can't accidentally treat a typed value
+// as JSON.
+func (v Value) AsJSON() (any, error) {
+	if v.Type != TypeJSON {
+		return nil, fmt.Errorf("value is not JSON")
+	}
+	var out any
+	if err := json.Unmarshal(v.Data, &out); err != nil {
+		return nil, fmt.Errorf("unmarshal JSON value: %w", err)
+	}
+	return out, nil
 }
 
 func (v Value) AsInt() (int64, error) {
