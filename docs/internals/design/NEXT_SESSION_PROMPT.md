@@ -7,8 +7,8 @@
 The integrator-bug backlog is cleared — **no open issues remain** and no critical path is forced. Pick one:
 
 1. **Python SDK M2** (the only remaining productization item) — ergonomic facades for hybrid-search / embeddings / `/v1/retrieve` / query / graphql / admin / tenants / apikeys. Start from `docs/superpowers/specs/2026-06-04-python-sdk-*.md` + memory `project_python_sdk`; the M1 core (`clients/python/`) and `_raw` escape hatch already exist. Use brainstorm→writing-plans→subagent-driven-development like M1.
-2. **CI-hygiene follow-ups** (small, surfaced this session): add `./cmd/...` to the `Makefile` `TEST_PKGS` allowlist (cmd tests aren't run in CI); enable the `gofmt` linter in `.golangci.yml` (lint doesn't catch formatting today).
+2. **Optional CI tidy** (low priority): assess whether the broad `./cmd/...` (benchmark exercisers, interactive `tui`) can join the `Makefile` `TEST_PKGS` allowlist — needs a runtime/interactivity check first. (`cmd/graphdb-admin` is already in, #352; `golangci-lint` now enforces gofmt in `cmd/`, #353.)
 
-**Pre-flight:** none beyond the usual. Verify `gofmt -l` clean and run the FULL affected-package suite locally before any PR — CI's `make test` only covers `storage/lsm/query/algorithms/parallel/wal/api/graphql` (NOT cmd/), and lint doesn't catch gofmt (see memory `feedback_graphdb_ci_test_gaps`). Run `pkg/storage` alone with `-timeout 600s`.
+**Pre-flight:** none beyond the usual. Run the FULL affected-package suite locally before any PR — CI's `make test` covers `storage/lsm/query/algorithms/parallel/wal/api/graphql` + `cmd/graphdb-admin` (NOT the rest of `cmd/`). `golangci-lint run` now catches gofmt everywhere (incl. cmd/). Run `pkg/storage` alone with `-timeout 600s`. See memory `feedback_graphdb_ci_test_gaps`.
 
 End the session with the `session-handoff` skill.

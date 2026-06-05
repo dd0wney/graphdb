@@ -37,8 +37,10 @@ Per `docs/NEXT_STEPS_2026-06-03.md`: **no critical path is forced.** The only re
 
 ### New CI-hygiene follow-ups surfaced this session (not yet ticketed)
 
-1. **`cmd/...` packages are not in the CI test allowlist** — `cmd/graphdb-admin`'s #348 tests run locally only. Extend `TEST_PKGS` in `Makefile` to `./cmd/...` (verify they fit the 10m budget; they're fast).
-2. **`golangci-lint` doesn't flag `gofmt` violations** — #348 passed lint but failed CI's separate `go fmt ./...` step. Either enable the `gofmt`/`gofumpt` linter in `.golangci.yml`, or accept the CI `go fmt` step as the gate (and run `gofmt -l` locally pre-push).
+### CI-hygiene follow-ups surfaced this session — both FIXED
+
+1. **`cmd/graphdb-admin` added to the CI test allowlist** (#352) — its #348 login/mint-token tests now run in CI (`TEST_PKGS` + `RACE_PKGS`). *Remaining:* the broad `./cmd/...` (benchmark exercisers, interactive `tui`) is still out, pending a runtime check that they fit the 10m budget and aren't interactive.
+2. **`golangci-lint` now enforces `gofmt` in `cmd/`** (#353) — the formatters block had excluded `cmd/`, which is why #348's misformat passed lint but failed CI's `go fmt` step. `golangci-lint run` now catches it locally.
 
 ## Stale assumptions to retire
 
@@ -48,7 +50,7 @@ Per `docs/NEXT_STEPS_2026-06-03.md`: **no critical path is forced.** The only re
 
 ## Open questions for the user
 
-- Should the two CI-hygiene follow-ups (cmd/... in allowlist; golangci-lint gofmt) be filed as issues and fixed, or left as documented debt? They're small and low-risk.
+- None outstanding. (The two CI-hygiene follow-ups were fixed this session — #352, #353. The only deferred item is whether the broad `./cmd/...` belongs in the CI test allowlist; it needs a runtime check first.)
 
 ## Next-session prompt (paste-ready)
 
