@@ -383,7 +383,7 @@ paths:
         description: Node ID
         schema:
           type: integer
-          format: uint64
+          format: int64
           example: 12345
     
     get:
@@ -534,13 +534,13 @@ paths:
           description: Filter by source node ID
           schema:
             type: integer
-            format: uint64
+            format: int64
         - name: to_node_id
           in: query
           description: Filter by target node ID
           schema:
             type: integer
-            format: uint64
+            format: int64
         - name: type
           in: query
           description: Filter by edge type
@@ -599,11 +599,11 @@ paths:
               properties:
                 from_node_id:
                   type: integer
-                  format: uint64
+                  format: int64
                   example: 12345
                 to_node_id:
                   type: integer
-                  format: uint64
+                  format: int64
                   example: 67890
                 type:
                   type: string
@@ -641,7 +641,7 @@ paths:
         description: Edge ID
         schema:
           type: integer
-          format: uint64
+          format: int64
     
     get:
       tags:
@@ -740,10 +740,10 @@ paths:
                     properties:
                       from_node_id:
                         type: integer
-                        format: uint64
+                        format: int64
                       to_node_id:
                         type: integer
-                        format: uint64
+                        format: int64
                       type:
                         type: string
                       weight:
@@ -790,7 +790,7 @@ paths:
               properties:
                 start_node_id:
                   type: integer
-                  format: uint64
+                  format: int64
                   example: 12345
                 max_depth:
                   type: integer
@@ -827,7 +827,7 @@ paths:
                           type: array
                           items:
                             type: integer
-                            format: uint64
+                            format: int64
                         depth:
                           type: integer
         '400':
@@ -853,11 +853,11 @@ paths:
               properties:
                 start_node_id:
                   type: integer
-                  format: uint64
+                  format: int64
                   example: 12345
                 end_node_id:
                   type: integer
-                  format: uint64
+                  format: int64
                   example: 67890
                 weighted:
                   type: boolean
@@ -876,7 +876,7 @@ paths:
                     type: array
                     items:
                       type: integer
-                      format: uint64
+                      format: int64
                     example: [12345, 23456, 34567, 67890]
                   distance:
                     type: number
@@ -1755,7 +1755,7 @@ components:
       properties:
         id:
           type: integer
-          format: uint64
+          format: int64
           example: 12345
         labels:
           type: array
@@ -1775,15 +1775,15 @@ components:
       properties:
         id:
           type: integer
-          format: uint64
+          format: int64
           example: 78901
         from_node_id:
           type: integer
-          format: uint64
+          format: int64
           example: 12345
         to_node_id:
           type: integer
-          format: uint64
+          format: int64
           example: 67890
         type:
           type: string
@@ -1920,7 +1920,7 @@ components:
       properties:
         node_id:
           type: integer
-          format: uint64
+          format: int64
           description: ID of the matching node
           example: 12345
         distance:
