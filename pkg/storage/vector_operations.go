@@ -331,9 +331,16 @@ func (gs *GraphStorage) planNodeVectorInserts(node *Node) ([]vectorInsertPlan, e
 // serialized; only the index DEFINITIONS are (persistence.go), and this rebuild
 // reconstructs the graph from node properties.
 //
-// Cost: O(N log N) HNSW construction over nodes carrying a vector-indexed
+// Cost: ~O(N log N) HNSW construction over nodes carrying a vector-indexed
 // property — the dominant startup cost when vectors are in use. No-op (one map
 // length check) when no vector index exists, so non-vector graphs pay nothing.
+//
+// The O(N log N) holds for real embeddings, which cluster on a low-dimensional
+// manifold so neighbour search stays discriminative. It is data-dependent, not
+// guaranteed: uniform-random or otherwise maximal-intrinsic-dimensionality
+// vectors degrade toward O(N²) under concentration of measure (#248). This is a
+// property of the data distribution, not a fixable algorithm bug; see
+// BenchmarkHNSWInsert vs BenchmarkHNSWInsert_Clustered in pkg/vector.
 func (gs *GraphStorage) rebuildVectorIndexesFromNodes() {
 	if len(gs.vectorIndex.IndexDefinitions()) == 0 {
 		return
