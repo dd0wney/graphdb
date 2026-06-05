@@ -10,11 +10,29 @@ from .errors import (
     ServerError,
     ValidationError,
 )
-from .models import Edge, Node, SearchResult
+from .models import (
+    AlgorithmResult,
+    Edge,
+    EmbeddingsResult,
+    HybridSearchResult,
+    Node,
+    QueryResult,
+    RetrieveDocument,
+    RetrieveResult,
+    RetrieveSource,
+    SearchHit,
+    SearchResult,
+    ShortestPath,
+    VectorIndex,
+)
 
 __version__ = "0.1.0"
 __all__ = [
-    "GraphDBClient", "Node", "Edge", "SearchResult",
+    "GraphDBClient",
+    "Node", "Edge", "SearchResult",
+    "SearchHit", "HybridSearchResult", "VectorIndex",
+    "RetrieveSource", "RetrieveDocument", "RetrieveResult",
+    "EmbeddingsResult", "QueryResult", "AlgorithmResult", "ShortestPath",
     "GraphDBError", "ValidationError", "AuthError", "NotFoundError",
     "ConflictError", "RateLimitError", "ServerError",
 ]

@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 from types import TracebackType
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from ._transport import Transport
-from .models import Node, SearchResult
+from .models import (
+    EmbeddingsResult,
+    Node,
+    QueryResult,
+    RetrieveResult,
+    SearchResult,
+)
+from .resources.algorithms import AlgorithmsResource
 from .resources.edges import EdgesResource
 from .resources.nodes import NodesResource
+from .resources.search import SearchResource
+from .resources.vector_indexes import VectorIndexesResource
 
 
 class GraphDBClient:
@@ -32,6 +41,9 @@ class GraphDBClient:
         )
         self.nodes = NodesResource(self._raw)
         self.edges = EdgesResource(self._raw)
+        self.search = SearchResource(self._raw)
+        self.vector_indexes = VectorIndexesResource(self._raw)
+        self.algorithms = AlgorithmsResource(self._raw)
 
     def traverse(
         self,
@@ -83,6 +95,85 @@ class GraphDBClient:
             body["filter_labels"] = list(filter_labels)
         res = self._raw.request("POST", "/vector-search", json=body)
         return [SearchResult.from_dict(d) for d in (res.data.get("results") or [])]
+
+    def retrieve(
+        self,
+        query: str,
+        *,
+        k: int | None = None,
+        max_tokens: int | None = None,
+        max_hops: int | None = None,
+        alpha: float | None = None,
+        beta: float | None = None,
+        tau: float | None = None,
+        labels: Sequence[str] | None = None,
+        include_node: bool = False,
+    ) -> RetrieveResult:
+        """Graph-augmented retrieval (POST /v1/retrieve). Each document carries the
+        graph signal in source.path. `degraded` mirrors hybrid-search fallback."""
+        body: dict[str, Any] = {"query": query}
+        for name, val in (("k", k), ("max_tokens", max_tokens), ("max_hops", max_hops),
+                          ("alpha", alpha), ("beta", beta), ("tau", tau)):
+            if val is not None:
+                body[name] = val
+        if labels is not None:
+            body["labels"] = list(labels)
+        if include_node:
+            body["include_node"] = True
+        res = self._raw.request("POST", "/v1/retrieve", json=body)
+        return RetrieveResult.from_dict(res.data)
+
+    def embeddings(
+        self,
+        input: str | Sequence[str],
+        *,
+        model: str | None = None,
+        dimensions: int | None = None,
+    ) -> EmbeddingsResult:
+        """OpenAI-shaped embeddings (POST /v1/embeddings). A str is sent as a
+        one-element input array; vectors come back ordered to match the input."""
+        items = [input] if isinstance(input, str) else list(input)
+        body: dict[str, Any] = {"input": items}
+        if model is not None:
+            body["model"] = model
+        if dimensions is not None:
+            body["dimensions"] = dimensions
+        res = self._raw.request("POST", "/v1/embeddings", json=body)
+        return EmbeddingsResult.from_dict(res.data)
+
+    def query(
+        self,
+        cypher: str,
+        *,
+        parameters: Mapping[str, Any] | None = None,
+        timeout_seconds: int | None = None,
+    ) -> QueryResult:
+        """Run a Cypher query (POST /query)."""
+        body: dict[str, Any] = {"query": cypher}
+        if parameters is not None:
+            body["parameters"] = dict(parameters)
+        if timeout_seconds is not None:
+            body["timeout_seconds"] = timeout_seconds
+        res = self._raw.request("POST", "/query", json=body)
+        return QueryResult.from_dict(res.data)
+
+    def graphql(
+        self,
+        query: str,
+        *,
+        variables: Mapping[str, Any] | None = None,
+        operation_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute a GraphQL document (POST /graphql). Returns the raw response
+        dict ({"data": ..., "errors": ...}); GraphQL-level errors are returned in
+        the dict, not raised (only HTTP >= 400 raises)."""
+        body: dict[str, Any] = {"query": query}
+        if variables is not None:
+            body["variables"] = dict(variables)
+        if operation_name is not None:
+            body["operationName"] = operation_name
+        res = self._raw.request("POST", "/graphql", json=body)
+        return res.data if isinstance(res.data, dict) else {}
 
     def close(self) -> None:
         """Close the underlying HTTP transport. Safe to call multiple times."""

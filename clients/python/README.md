@@ -37,6 +37,31 @@ res = db._raw.request("POST", "/hybrid-search", json={"query": "..."})
 res.data  # parsed JSON
 ```
 
+## Search & query
+
+```python
+with GraphDBClient("http://localhost:8080", token=TOKEN) as db:
+    # vector index management
+    db.vector_indexes.create("embedding", dimensions=384)
+    print(db.vector_indexes.list())
+
+    # full-text + hybrid search
+    hits = db.search.fulltext("graph database", labels=["Doc"])
+    hybrid = db.search.hybrid("graph database", alpha=0.5)
+    if hybrid.degraded:
+        print("hybrid degraded:", hybrid.degraded)
+
+    # embeddings + graph-augmented retrieval
+    vecs = db.embeddings(["hello", "world"]).vectors
+    docs = db.retrieve("how does X relate to Y?", k=5).documents
+
+    # cypher + graphql + algorithms
+    rows = db.query("MATCH (n:Person) RETURN n.name").rows
+    gql = db.graphql("{ __typename }")
+    pr = db.algorithms.run("pagerank").results
+    path = db.algorithms.shortest_path(1, 42)
+```
+
 ## Tests
 - Setup: `uv sync`.
 - Unit: `make test` (= `uv run pytest`; mock transport, no server).
