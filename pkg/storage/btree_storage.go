@@ -19,6 +19,7 @@
 //
 // Surface area follow-ups tracked as C2.1 (write-method completion) and
 // R1/F4 (tenant-strict vector redesign).
+
 package storage
 
 import (

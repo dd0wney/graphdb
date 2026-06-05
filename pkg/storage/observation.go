@@ -30,6 +30,7 @@
 // the F4 *VectorIndexForTenant methods. External wiring (server_init.go in
 // R2.5) calls AddObserver via the concrete type at startup before serving
 // requests.
+
 package storage
 
 import "context"
