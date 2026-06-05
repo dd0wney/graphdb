@@ -301,7 +301,15 @@ func TestHNSWAccuracy(t *testing.T) {
 	}
 }
 
-// BenchmarkHNSWInsert benchmarks insertion performance
+// BenchmarkHNSWInsert benchmarks insertion with uniform-random vectors.
+//
+// #248: this is the WORST CASE, not the representative one. Uniform-random
+// high-dimensional vectors have maximal intrinsic dimensionality, so under
+// concentration of measure nearly all pairwise distances are equal and the
+// neighbour search degrades toward O(N²). Real embeddings cluster on a
+// low-dimensional manifold and build in ~O(N log N) — see
+// BenchmarkHNSWInsert_Clustered. Do not read this benchmark as HNSW's
+// production construction cost.
 func BenchmarkHNSWInsert(b *testing.B) {
 	dimensions := []int{128, 384, 768}
 
@@ -316,6 +324,53 @@ func BenchmarkHNSWInsert(b *testing.B) {
 					vec[j] = rand.Float32()
 				}
 				index.Insert(uint64(i), vec)
+			}
+		})
+	}
+}
+
+// makeClusterCenters builds nClusters random centers — a stand-in for the
+// low-intrinsic-dimensionality structure real embeddings carry (#248).
+func makeClusterCenters(rng *rand.Rand, nClusters, dim int) [][]float32 {
+	centers := make([][]float32, nClusters)
+	for c := range centers {
+		v := make([]float32, dim)
+		for j := range v {
+			v[j] = rng.Float32()
+		}
+		centers[c] = v
+	}
+	return centers
+}
+
+// clusteredVector returns a vector near a randomly chosen cluster center with
+// small Gaussian jitter, so pairwise distances stay discriminative.
+func clusteredVector(rng *rand.Rand, centers [][]float32, dim int) []float32 {
+	c := centers[rng.Intn(len(centers))]
+	v := make([]float32, dim)
+	for j := 0; j < dim; j++ {
+		v[j] = c[j] + float32(rng.NormFloat64()*0.05)
+	}
+	return v
+}
+
+// BenchmarkHNSWInsert_Clustered inserts vectors with low intrinsic
+// dimensionality (a handful of Gaussian clusters) — the regime real embeddings
+// occupy. Construction here is ~O(N log N), the cost operators should expect in
+// production. Contrast with BenchmarkHNSWInsert (uniform-random) above, which is
+// the pathological O(N²) worst case (#248).
+func BenchmarkHNSWInsert_Clustered(b *testing.B) {
+	dimensions := []int{128, 384, 768}
+
+	for _, dim := range dimensions {
+		b.Run(fmt.Sprintf("dim=%d", dim), func(b *testing.B) {
+			rng := rand.New(rand.NewSource(42))
+			centers := makeClusterCenters(rng, 16, dim)
+			index, _ := NewHNSWIndex(dim, 16, 200, MetricCosine)
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				index.Insert(uint64(i), clusteredVector(rng, centers, dim))
 			}
 		})
 	}
