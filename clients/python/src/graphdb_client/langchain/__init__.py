@@ -10,5 +10,6 @@ except ImportError as exc:  # pragma: no cover - exercised via sys.modules patch
     ) from exc
 
 from .retriever import GraphDBRetriever
+from .vectorstore import GraphDBVectorStore
 
-__all__ = ["GraphDBRetriever"]
+__all__ = ["GraphDBRetriever", "GraphDBVectorStore"]
