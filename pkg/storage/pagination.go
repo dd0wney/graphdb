@@ -20,7 +20,7 @@ import "sort"
 // checking whether the page is full. When the page fills, we return the
 // full page with the last appended item's ID as the cursor — guaranteeing
 // that next != 0 implies at least one live item exists beyond the page.
-// This matches paginateNodes semantics in pkg/api/pagination.go.
+// This matches the REST cursor contract in pkg/api/pagination.go (paginateEdges).
 //
 // limit < 1 returns an empty page; it is the caller's responsibility to pass a
 // sensible limit (the API layer enforces [1, MaxPageLimit]).
@@ -38,7 +38,7 @@ func pageFromSortedIDs[T any](ids []uint64, afterID uint64, limit int,
 	for i := start; i < len(ids); i++ {
 		// Probe liveness before checking page capacity: this ensures that
 		// when we return next != 0 the caller has at least one live item
-		// awaiting them on the next page (matches paginateNodes contract).
+		// awaiting them on the next page (matches the REST cursor contract).
 		ent, ok := cloneAt(ids[i])
 		if !ok {
 			// Entity was deleted between ID collection and clone — skip it.

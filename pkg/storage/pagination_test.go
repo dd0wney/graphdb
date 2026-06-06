@@ -554,7 +554,7 @@ func BenchmarkNodesGetAllThenPaginate(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		all := gs.GetAllNodesForTenant("")
-		// Mirror what paginateNodes does: take the first 100 items with ID > 0.
+		// Mirror the old GetAll+paginate baseline: take the first 100 items with ID > 0.
 		var page []*Node
 		for _, n := range all {
 			if n.ID > 0 {
