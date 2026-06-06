@@ -68,7 +68,7 @@ func parsePageRequest(r *http.Request) (pageRequest, int, string) {
 	return p, 0, ""
 }
 
-// paginateEdges slices a materalized edge list to the requested page.
+// paginateEdges slices a materialized edge list to the requested page.
 // Edges are sorted by ID ascending; cursor semantics are identical to the
 // storage-level page methods. Used by the ?from=/?to= adjacency branch in
 // listEdges (which must compose multiple index results in memory before
