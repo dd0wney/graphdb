@@ -149,6 +149,38 @@ func TestListNodes_CursorPagination(t *testing.T) {
 		}
 	})
 
+	t.Run("label cursor walk returns every matching item exactly once", func(t *testing.T) {
+		// Walk all 25 Doc-labelled nodes in pages of 8; every item must appear
+		// exactly once and all 25 must be seen before the cursor is exhausted.
+		seen := make(map[uint64]bool)
+		query := "?label=Doc&limit=8"
+		for iter := 0; iter < 10; iter++ {
+			page, next := fetchPage(t, query)
+			for _, n := range page {
+				if seen[n.ID] {
+					t.Errorf("iter %d: node ID %d appeared twice in label walk", iter, n.ID)
+				}
+				seen[n.ID] = true
+				foundDoc := false
+				for _, l := range n.Labels {
+					if l == "Doc" {
+						foundDoc = true
+					}
+				}
+				if !foundDoc {
+					t.Errorf("label walk returned node %d without Doc label", n.ID)
+				}
+			}
+			if next == "" {
+				break
+			}
+			query = "?label=Doc&cursor=" + next + "&limit=8"
+		}
+		if len(seen) != 25 {
+			t.Errorf("label walk saw %d distinct items, want 25", len(seen))
+		}
+	})
+
 	t.Run("invalid limit/cursor returns 400", func(t *testing.T) {
 		cases := []struct {
 			name  string
@@ -240,6 +272,32 @@ func TestListEdges_CursorPagination(t *testing.T) {
 		}
 		if next == "" {
 			t.Error("X-Next-Cursor missing on non-final filtered page")
+		}
+	})
+
+	t.Run("type cursor walk returns every KNOWS edge exactly once", func(t *testing.T) {
+		// Walk all 20 KNOWS edges in pages of 7; every item must appear
+		// exactly once and all 20 must be seen before the cursor is exhausted.
+		seen := make(map[uint64]bool)
+		query := "?type=KNOWS&limit=7"
+		for iter := 0; iter < 10; iter++ {
+			page, next := fetchPage(t, query)
+			for _, e := range page {
+				if seen[e.ID] {
+					t.Errorf("iter %d: edge ID %d appeared twice in type walk", iter, e.ID)
+				}
+				seen[e.ID] = true
+				if e.Type != "KNOWS" {
+					t.Errorf("type walk returned edge %d with type %q, want KNOWS", e.ID, e.Type)
+				}
+			}
+			if next == "" {
+				break
+			}
+			query = "?type=KNOWS&cursor=" + next + "&limit=7"
+		}
+		if len(seen) != 20 {
+			t.Errorf("type walk saw %d distinct items, want 20", len(seen))
 		}
 	})
 
