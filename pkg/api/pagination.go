@@ -68,39 +68,11 @@ func parsePageRequest(r *http.Request) (pageRequest, int, string) {
 	return p, 0, ""
 }
 
-// paginateNodes returns the requested page of nodes (sorted by ID
-// ascending, items with ID > cursor) plus the next cursor value
-// (0 if the returned page is the last one).
-//
-// The sort is in-place on the caller's slice — pass a slice you own
-// (the storage primitives return fresh slices, so this is safe at the
-// call site). Sort cost is O(N log N) on the materialized list; for
-// the API surface today this is acceptable since the list is already
-// materialized before pagination. When pagination moves into storage,
-// the sort moves with it and this helper retires.
-func paginateNodes(items []*storage.Node, p pageRequest) ([]*storage.Node, uint64) {
-	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
-	start := 0
-	for start < len(items) && items[start].ID <= p.cursor {
-		start++
-	}
-	end := start + p.limit
-	if end > len(items) {
-		end = len(items)
-	}
-	page := items[start:end]
-	var next uint64
-	if end < len(items) {
-		// next cursor = ID of the last item on the current page; the
-		// next request will return items with ID > this value.
-		next = page[len(page)-1].ID
-	}
-	return page, next
-}
-
-// paginateEdges is the edge equivalent of paginateNodes. Edges are
-// sorted by ID ascending (Edge.ID is a uint64 like Node.ID); cursor
-// semantics are identical.
+// paginateEdges slices a materalized edge list to the requested page.
+// Edges are sorted by ID ascending; cursor semantics are identical to the
+// storage-level page methods. Used by the ?from=/?to= adjacency branch in
+// listEdges (which must compose multiple index results in memory before
+// pagination — those cases cannot use the storage page methods directly).
 func paginateEdges(items []*storage.Edge, p pageRequest) ([]*storage.Edge, uint64) {
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	start := 0

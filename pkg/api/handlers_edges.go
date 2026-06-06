@@ -127,12 +127,26 @@ func (s *Server) listEdges(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, status, msg)
 		return
 	}
-	allEdges, err := s.filteredEdgesForTenant(getTenantFromContext(r), f)
-	if err != nil {
-		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "list edges"))
-		return
+	// ?from=/?to= adjacency cases still need the compose+paginate path because
+	// filteredEdgesForTenant applies in-memory cross-parameter filtering (from+to
+	// intersect; type filter on top). Index-set-only cases (?type= and unfiltered)
+	// use the storage page methods to clone only the requested page.
+	tenantID := getTenantFromContext(r)
+	var pageItems []*storage.Edge
+	var next uint64
+	switch {
+	case f.hasFromID || f.hasToID:
+		allEdges, err := s.filteredEdgesForTenant(tenantID, f)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "list edges"))
+			return
+		}
+		pageItems, next = paginateEdges(allEdges, page)
+	case f.edgeType != "":
+		pageItems, next = s.graph.EdgesByTypePageForTenant(tenantID, f.edgeType, page.cursor, page.limit)
+	default:
+		pageItems, next = s.graph.EdgesPageForTenant(tenantID, page.cursor, page.limit)
 	}
-	pageItems, next := paginateEdges(allEdges, page)
 	writeNextCursor(w, next)
 	edges := make([]*EdgeResponse, 0, len(pageItems))
 	for _, edge := range pageItems {

@@ -68,19 +68,17 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Optional ?label= filter routes through the typed storage primitive
-	// (GetNodesByLabelForTenant) so the indexed lookup is used instead of
-	// scanning + post-filtering. Empty value is treated as absent — same
-	// as omitting the parameter — so a typo like `?label=` doesn't silently
-	// return zero results to the caller.
-	var allNodes []*storage.Node
+	// Route through the index-level page methods so only the requested page
+	// is cloned, not the whole tenant set. Empty ?label= is treated as absent
+	// (same as omitting the parameter) — a typo like `?label=` returns zero
+	// results rather than the full unfiltered corpus.
+	var pageItems []*storage.Node
+	var next uint64
 	if label := r.URL.Query().Get("label"); label != "" {
-		allNodes = s.graph.GetNodesByLabelForTenant(tenantID, label)
+		pageItems, next = s.graph.NodesByLabelPageForTenant(tenantID, label, page.cursor, page.limit)
 	} else {
-		allNodes = s.graph.GetAllNodesForTenant(tenantID)
+		pageItems, next = s.graph.NodesPageForTenant(tenantID, page.cursor, page.limit)
 	}
-
-	pageItems, next := paginateNodes(allNodes, page)
 	writeNextCursor(w, next)
 
 	nodes := make([]*NodeResponse, 0, len(pageItems))
