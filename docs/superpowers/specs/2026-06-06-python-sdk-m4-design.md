@@ -136,10 +136,16 @@ wrapper as `_raw`):
   On hit (and unexpired) → return the cached `ApiResult` (data **and** headers, so
   `X-Next-Cursor` survives), count a hit. On miss → delegate, store with
   `config.default_ttl` (or a per-path-prefix override), count a miss.
-- **Writes invalidate.** Any mutating method (`POST/PUT/PATCH/DELETE`) with
-  `config.invalidate_on_write` (default `True`) → `backend.clear()` after the
-  delegated call succeeds (conservative + correct; TTL is the secondary staleness
-  bound, matching the TS reference's TTL-driven freshness).
+- **Writes invalidate.** A mutating method with `config.invalidate_on_write`
+  (default `True`) → `backend.clear()` after the delegated call succeeds
+  (conservative + correct; TTL is the secondary staleness bound, matching the TS
+  reference's TTL-driven freshness).
+  - **Reconciled with shipped M4b (#362):** the mutating set is **`PUT/PATCH/DELETE`
+    only** — `POST` is **excluded**. graphdb uses `POST` for *reads* (`/query`,
+    `/search`, `/traverse`, `/v1/retrieve`, …), so clearing on `POST` would defeat
+    the cache on every search. `POST`-creates therefore rely on TTL for freshness,
+    not invalidation (a create-then-list can be TTL-stale). This refines the
+    original `POST/PUT/PATCH/DELETE` wording above.
 - **Fail-open.** Any backend exception on get/set/clear is swallowed (optionally
   logged via the stdlib `logging`), and the request proceeds — a cache must never
   break a call (mirrors `workers/graphdb-client/src/cache.ts`).
