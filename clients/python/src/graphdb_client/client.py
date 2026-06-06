@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Any, Mapping, Sequence
 
+from ._retry import RetryConfig, coerce_retry_config
 from ._transport import Transport
 from .models import (
     EmbeddingsResult,
@@ -34,6 +35,7 @@ class GraphDBClient:
         username: str | None = None,
         password: str | None = None,
         timeout: float = 30.0,
+        retries: RetryConfig | int | None = 2,
     ) -> None:
         self._raw = Transport(
             base_url,
@@ -42,6 +44,7 @@ class GraphDBClient:
             username=username,
             password=password,
             timeout=timeout,
+            retries=coerce_retry_config(retries),
         )
         self.nodes = NodesResource(self._raw)
         self.edges = EdgesResource(self._raw)

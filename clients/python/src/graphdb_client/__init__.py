@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ._retry import RetryConfig
 from .aio import AsyncGraphDBClient
 from .client import GraphDBClient
 from .errors import (
@@ -34,6 +35,7 @@ from .models import (
 __version__ = "0.1.0"
 __all__ = [
     "AsyncGraphDBClient",
+    "RetryConfig",
     "GraphDBClient",
     "Node", "Edge", "SearchResult",
     "SearchHit", "HybridSearchResult", "VectorIndex",

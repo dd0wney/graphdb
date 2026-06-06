@@ -103,6 +103,28 @@ async def main():
 asyncio.run(main())
 ```
 
+## Resilience (retry & backoff)
+
+The client retries transient failures automatically. **This is on by default**
+(`retries=2`) — the one behavioral change in M4. Retries use full-jitter
+exponential backoff and honor a `Retry-After` header.
+
+- Retried: connection failures, HTTP `429`, and `502/503/504`.
+- Idempotency-safe: `429` and connection-refused are retried on any method; other
+  `5xx` only on idempotent methods (`GET/PUT/DELETE/HEAD/OPTIONS`).
+
+~~~python
+from graphdb_client import GraphDBClient, RetryConfig
+
+# Tune it:
+db = GraphDBClient(url, token=TOKEN, retries=RetryConfig(max_retries=5, backoff_factor=1.0))
+
+# Or disable:
+db = GraphDBClient(url, token=TOKEN, retries=0)
+~~~
+
+`AsyncGraphDBClient` takes the same `retries` argument.
+
 ## Tests
 - Setup: `uv sync`.
 - Unit: `make test` (= `uv run pytest`; mock transport, no server).

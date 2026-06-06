@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Any, Mapping, Sequence
 
+from .._retry import RetryConfig, coerce_retry_config
 from ..models import EmbeddingsResult, Node, QueryResult, RetrieveResult, SearchResult
 from .resources.algorithms import AsyncAlgorithmsResource
 from .resources.api_keys import AsyncApiKeysResource
@@ -28,10 +29,12 @@ class AsyncGraphDBClient:
         username: str | None = None,
         password: str | None = None,
         timeout: float = 30.0,
+        retries: RetryConfig | int | None = 2,
     ) -> None:
         self._raw = AsyncTransport(
             base_url, token=token, api_key=api_key,
             username=username, password=password, timeout=timeout,
+            retries=coerce_retry_config(retries),
         )
         self.nodes = AsyncNodesResource(self._raw)
         self.edges = AsyncEdgesResource(self._raw)
