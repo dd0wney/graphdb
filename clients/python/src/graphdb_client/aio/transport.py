@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Mapping
 
 import httpx
 
+from .._retry import RetryConfig, compute_delay, is_retryable, parse_retry_after
 from .._transport import ApiResult, _safe_json, build_auth_headers
 from ..errors import from_response
 
@@ -24,6 +26,7 @@ class AsyncTransport:
         username: str | None = None,
         password: str | None = None,
         timeout: float = 30.0,
+        retries: RetryConfig | None = None,
     ) -> None:
         if (username is None) != (password is None):
             raise ValueError("username and password must be provided together")
@@ -33,6 +36,7 @@ class AsyncTransport:
         self._password = password
         self._refresh_token: str | None = None
         self._http = httpx.AsyncClient(base_url=base_url.rstrip("/"), timeout=timeout)
+        self._retries = retries if retries is not None else RetryConfig()
 
     def _has_credentials(self) -> bool:
         return self._username is not None and self._password is not None
@@ -60,14 +64,14 @@ class AsyncTransport:
             return True
         return False
 
-    async def request(
+    async def _attempt(
         self,
         method: str,
         path: str,
         *,
         json: Any = None,
         params: Mapping[str, Any] | None = None,
-    ) -> ApiResult:
+    ) -> httpx.Response:
         if self._token is None and self._has_credentials():
             await self._login()
 
@@ -82,10 +86,46 @@ class AsyncTransport:
                     method, path, json=json, params=params,
                     headers=build_auth_headers(self._token, self._api_key),
                 )
+        return resp
 
-        if resp.status_code >= 400:
-            raise from_response(resp.status_code, _safe_json(resp), method, path)
-        return ApiResult(data=_safe_json(resp), headers=resp.headers)
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Any = None,
+        params: Mapping[str, Any] | None = None,
+    ) -> ApiResult:
+        attempt = 0
+        while True:
+            try:
+                resp = await self._attempt(method, path, json=json, params=params)
+            except httpx.TransportError as exc:
+                if attempt < self._retries.max_retries and is_retryable(
+                    method, None, exc, self._retries
+                ):
+                    await asyncio.sleep(compute_delay(attempt, self._retries, None))
+                    attempt += 1
+                    continue
+                raise
+
+            if (
+                resp.status_code >= 400
+                and attempt < self._retries.max_retries
+                and is_retryable(method, resp.status_code, None, self._retries)
+            ):
+                retry_after = (
+                    parse_retry_after(resp.headers.get("Retry-After"))
+                    if self._retries.respect_retry_after
+                    else None
+                )
+                await asyncio.sleep(compute_delay(attempt, self._retries, retry_after))
+                attempt += 1
+                continue
+
+            if resp.status_code >= 400:
+                raise from_response(resp.status_code, _safe_json(resp), method, path)
+            return ApiResult(data=_safe_json(resp), headers=resp.headers)
 
     async def aclose(self) -> None:
         await self._http.aclose()
