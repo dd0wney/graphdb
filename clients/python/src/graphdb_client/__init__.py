@@ -12,6 +12,8 @@ from .errors import (
 )
 from .models import (
     AlgorithmResult,
+    APIKey,
+    CreatedAPIKey,
     Edge,
     EmbeddingsResult,
     HybridSearchResult,
@@ -23,6 +25,8 @@ from .models import (
     SearchHit,
     SearchResult,
     ShortestPath,
+    Tenant,
+    TenantUsage,
     VectorIndex,
 )
 
@@ -33,6 +37,7 @@ __all__ = [
     "SearchHit", "HybridSearchResult", "VectorIndex",
     "RetrieveSource", "RetrieveDocument", "RetrieveResult",
     "EmbeddingsResult", "QueryResult", "AlgorithmResult", "ShortestPath",
+    "Tenant", "TenantUsage", "APIKey", "CreatedAPIKey",
     "GraphDBError", "ValidationError", "AuthError", "NotFoundError",
     "ConflictError", "RateLimitError", "ServerError",
 ]
