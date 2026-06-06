@@ -213,6 +213,31 @@ func TestNodesPageForTenant(t *testing.T) {
 		}
 	})
 
+	t.Run("liveness probe: next = 0 when all post-page items deleted", func(t *testing.T) {
+		// Build a fresh fixture with exactly limit+2 nodes so the first page
+		// fills completely and the two trailing nodes can be deleted. After
+		// deletion, the probe must find no live items beyond the page and
+		// return next=0 rather than a stale cursor pointing at a dead ID.
+		gs3, ids3, _ := paginationFixture(t, "probe-tenant", limit+2, 0)
+
+		// Delete both trailing nodes (ids3[limit] and ids3[limit+1]).
+		for _, id := range ids3[limit:] {
+			if err := gs3.DeleteNodeForTenant(id, "probe-tenant"); err != nil {
+				t.Fatalf("DeleteNodeForTenant(%d): %v", id, err)
+			}
+		}
+
+		// First page should be full (limit items), next must be 0 because no
+		// live items remain beyond the page.
+		page, next := gs3.NodesPageForTenant("probe-tenant", 0, limit)
+		if len(page) != limit {
+			t.Errorf("page len = %d, want %d", len(page), limit)
+		}
+		if next != 0 {
+			t.Errorf("next = %d, want 0 — liveness probe failed: stale cursor to deleted items", next)
+		}
+	})
+
 	t.Run("full cursor-walk yields every node exactly once in ascending order", func(t *testing.T) {
 		walked := walkNodes(t, gs, tenant, limit)
 		if !slicesEqual(walked, nodeIDs) {

@@ -4,8 +4,9 @@ import "sort"
 
 // pageFromSortedIDs returns up to `limit` cloned entities whose ID is > afterID,
 // in ascending-ID order, plus the next cursor (the last returned item's ID, or 0
-// if this is the last page). It clones only the page, not the whole ID set —
-// the index-level allocation win over "clone everything then slice".
+// if this is the last page). It clones only the page (+1 liveness probe), not
+// the whole ID set — the index-level allocation win over "clone everything then
+// slice".
 //
 // `ids` MUST be sorted ascending. `cloneAt` clones the live entity for an ID
 // under its shard lock, returning ok=false when the entity was deleted between
@@ -14,6 +15,12 @@ import "sort"
 // simply skipped rather than blocking the reader). When ok=false for an entity
 // that would have been within the page, the page may be shorter than `limit`
 // for that call — callers that need a strict page size should loop.
+//
+// The +1 liveness probe: cloneAt is called on the candidate item BEFORE
+// checking whether the page is full. When the page fills, we return the
+// full page with the last appended item's ID as the cursor — guaranteeing
+// that next != 0 implies at least one live item exists beyond the page.
+// This matches paginateNodes semantics in pkg/api/pagination.go.
 //
 // limit < 1 returns an empty page; it is the caller's responsibility to pass a
 // sensible limit (the API layer enforces [1, MaxPageLimit]).
@@ -29,15 +36,18 @@ func pageFromSortedIDs[T any](ids []uint64, afterID uint64, limit int,
 	var lastID uint64
 
 	for i := start; i < len(ids); i++ {
-		if len(page) == limit {
-			// We already have a full page and there are more IDs remaining;
-			// lastID is the ID of the last item on this page.
-			return page, lastID
-		}
+		// Probe liveness before checking page capacity: this ensures that
+		// when we return next != 0 the caller has at least one live item
+		// awaiting them on the next page (matches paginateNodes contract).
 		ent, ok := cloneAt(ids[i])
 		if !ok {
 			// Entity was deleted between ID collection and clone — skip it.
 			continue
+		}
+		if len(page) == limit {
+			// Page is full and we have confirmed a live item beyond it;
+			// return immediately without appending the probe item.
+			return page, lastID
 		}
 		page = append(page, ent)
 		lastID = ids[i]
