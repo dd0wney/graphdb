@@ -61,6 +61,7 @@ class GraphDBVectorStore(VectorStore):
     def similarity_search_by_vector(
         self, embedding: list[float], k: int = 4, **kwargs: Any
     ) -> list[Document]:
+        kwargs.pop("include_nodes", None)  # always include nodes (needed for page_content)
         results = self._client.vector_search(
             self._property_name, embedding, k=k, include_nodes=True, **kwargs
         )
@@ -79,6 +80,7 @@ class GraphDBVectorStore(VectorStore):
     async def asimilarity_search_by_vector(
         self, embedding: list[float], k: int = 4, **kwargs: Any
     ) -> list[Document]:
+        kwargs.pop("include_nodes", None)  # always include nodes (needed for page_content)
         if self._aclient is None:
             raise ValueError("GraphDBVectorStore requires an `aclient` for async search")
         results = await self._aclient.vector_search(
