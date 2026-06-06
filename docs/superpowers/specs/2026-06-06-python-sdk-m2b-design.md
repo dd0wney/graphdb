@@ -110,7 +110,7 @@ never). `list` maps the `keys` envelope key (NOT `api_keys`).
 def rotate_keys(self) -> dict     # POST /api/v1/security/keys/rotate    -> {message, new_version, timestamp}
 def key_info(self) -> dict        # GET  /api/v1/security/keys/info      -> {statistics, keys}
 def audit_logs(self, *, limit=None) -> dict   # GET /api/v1/security/audit/logs  -> {events, count, total, persistent_audit?}
-def audit_export(self) -> list[dict]  # GET /api/v1/security/audit/export -> JSON array of event records
+def audit_export(self) -> list[dict]  # POST /api/v1/security/audit/export -> JSON array of event records
 def health(self) -> dict          # GET  /api/v1/security/health         -> {status, components, ...}
 ```
 
@@ -125,7 +125,7 @@ implementer must coerce a non-list body to `[]` for type-safety (mirrors the
 ```python
 def audit_log(self, *, user_id=None, username=None, action=None, resource_type=None,
               status=None, start_time=None, end_time=None, limit=None, offset=None) -> dict   # GET /v1/compliance/audit-log
-def get_masking_policy(self) -> dict                                  # GET  /v1/compliance/masking-policy
+def get_masking_policy(self, tenant) -> dict                          # GET  /v1/compliance/masking-policy/{tenant}
 def set_masking_policy(self, properties, *, auto_detect=False) -> dict  # POST /v1/compliance/masking-policy
 ```
 
@@ -133,6 +133,11 @@ def set_masking_policy(self, properties, *, auto_detect=False) -> dict  # POST /
 `end_time` are RFC3339 strings (caller-formatted). `set_masking_policy` body:
 `{properties, auto_detect}` where `properties` is `Mapping[str, str]`
 (property → strategy: `"full"|"partial"|"hash"|"redact"|"tokenize"|"none"`).
+
+**Server asymmetry (verified against handlers):** `get_masking_policy` takes the
+tenant as a **path segment** (`/v1/compliance/masking-policy/{tenant}` — the bare
+path 404s), but `set_masking_policy` resolves the tenant from the caller's auth
+context and POSTs to the bare path. Likewise `audit_export` is **POST**, not GET.
 
 ### 4.5 Wiring (`client.py`)
 
