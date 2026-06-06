@@ -9,7 +9,8 @@ except ImportError as exc:  # pragma: no cover - exercised via sys.modules patch
         "pip install 'graphdb-client[langchain]'"
     ) from exc
 
+from .loader import GraphDBLoader
 from .retriever import GraphDBRetriever
 from .vectorstore import GraphDBVectorStore
 
-__all__ = ["GraphDBRetriever", "GraphDBVectorStore"]
+__all__ = ["GraphDBLoader", "GraphDBRetriever", "GraphDBVectorStore"]
