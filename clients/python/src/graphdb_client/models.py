@@ -220,3 +220,95 @@ class ShortestPath:
             length=int(d.get("length", 0)),
             found=bool(d.get("found", False)),
         )
+
+
+@dataclass
+class Tenant:
+    id: str
+    name: str
+    status: str
+    description: str | None = None
+    quota: dict[str, Any] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: int = 0
+    updated_at: int = 0
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "Tenant":
+        return cls(
+            id=str(d["id"]),
+            name=str(d.get("name", "")),
+            status=str(d.get("status", "")),
+            description=d.get("description") or None,
+            quota=dict(d["quota"]) if d.get("quota") is not None else None,
+            metadata=dict(d.get("metadata") or {}),
+            created_at=int(d.get("created_at", 0)),
+            updated_at=int(d.get("updated_at", 0)),
+        )
+
+
+@dataclass
+class TenantUsage:
+    tenant_id: str
+    node_count: int = 0
+    edge_count: int = 0
+    storage_bytes: int = 0
+    quota_usage: dict[str, Any] | None = None
+    last_updated: int = 0
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "TenantUsage":
+        return cls(
+            tenant_id=str(d.get("tenant_id", "")),
+            node_count=int(d.get("node_count", 0)),
+            edge_count=int(d.get("edge_count", 0)),
+            storage_bytes=int(d.get("storage_bytes", 0)),
+            quota_usage=dict(d["quota_usage"]) if d.get("quota_usage") is not None else None,
+            last_updated=int(d.get("last_updated", 0)),
+        )
+
+
+@dataclass
+class APIKey:
+    id: str
+    name: str
+    prefix: str
+    permissions: list[str] = field(default_factory=list)
+    created: str | None = None
+    expires: str | None = None
+    last_used: str | None = None
+    revoked: bool = False
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "APIKey":
+        return cls(
+            id=str(d["id"]),
+            name=str(d.get("name", "")),
+            prefix=str(d.get("prefix", "")),
+            permissions=list(d.get("permissions") or []),
+            created=d.get("created") or None,
+            expires=d.get("expires") or None,
+            last_used=d.get("last_used") or None,
+            revoked=bool(d.get("revoked", False)),
+        )
+
+
+@dataclass
+class CreatedAPIKey:
+    key: str
+    id: str
+    name: str
+    prefix: str
+    created: str | None = None
+    expires: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "CreatedAPIKey":
+        return cls(
+            key=str(d.get("key", "")),
+            id=str(d["id"]),
+            name=str(d.get("name", "")),
+            prefix=str(d.get("prefix", "")),
+            created=d.get("created") or None,
+            expires=d.get("expires") or None,
+        )
