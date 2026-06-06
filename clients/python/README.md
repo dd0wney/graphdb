@@ -162,6 +162,35 @@ Two caveats:
   (e.g. one Redis) into multiple clients using different tokens/tenants, they will
   collide — give each auth context its own backend (or key namespace).
 
+## LangChain integration (optional)
+
+Install the extra: `pip install 'graphdb-client[langchain]'`. Adapters live under
+`graphdb_client.langchain` (the core install stays httpx-only):
+
+```python
+from graphdb_client import GraphDBClient
+from graphdb_client.langchain import GraphDBRetriever, GraphDBVectorStore, GraphDBLoader
+
+db = GraphDBClient(url, token=TOKEN)
+
+# GraphRAG retriever (/v1/retrieve) — drop into any LangChain chain
+retriever = GraphDBRetriever(client=db, k=5)
+docs = retriever.invoke("how does auth work?")
+
+# Vector store (retrieval over /vector-search; embeds via graphdb if no Embeddings given)
+store = GraphDBVectorStore(db, property_name="embedding", content_key="text")
+hits = store.similarity_search("graph database", k=3)
+
+# Document loader (nodes -> Documents)
+loader = GraphDBLoader(db, label="Doc", content_key="text")
+documents = loader.load()
+```
+
+`GraphDBVectorStore` is retrieval-only (`add_texts`/`from_texts` raise); ingest
+vectors with `db.nodes.create(...)` + a vector index. Pass an `aclient=AsyncGraphDBClient(...)`
+to `GraphDBRetriever`/`GraphDBVectorStore`/`GraphDBLoader` for the async paths
+(`ainvoke`/`asimilarity_search`/`alazy_load`).
+
 ## Tests
 - Setup: `uv sync`.
 - Unit: `make test` (= `uv run pytest`; mock transport, no server).
