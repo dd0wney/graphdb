@@ -9,7 +9,7 @@ from langchain_core.documents import Document
 def _node_to_document(node: Any, content_key: str) -> Document:
     props = dict(node.properties)
     content = str(props.pop(content_key, ""))
-    metadata: dict[str, Any] = {"id": node.id, "labels": node.labels}
+    metadata: dict[str, Any] = {"node_id": node.id, "labels": node.labels}
     metadata.update(props)
     return Document(page_content=content, metadata=metadata)
 

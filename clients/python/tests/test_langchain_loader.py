@@ -34,7 +34,7 @@ def test_loader_maps_nodes_to_documents():
     loader = GraphDBLoader(fc, label="Doc", content_key="text")
     docs = loader.load()
     assert [d.page_content for d in docs] == ["alpha", "beta"]
-    assert docs[0].metadata["id"] == 1
+    assert docs[0].metadata["node_id"] == 1
     assert docs[0].metadata["labels"] == ["Doc"]
     assert docs[0].metadata["k"] == 1          # non-content prop in metadata
     assert "text" not in docs[0].metadata      # content_key excluded from metadata
@@ -71,7 +71,7 @@ async def test_loader_alazy_load_yields_documents():
     loader = GraphDBLoader(client=None, label="Doc", content_key="text", aclient=fac)
     docs = [d async for d in loader.alazy_load()]
     assert [d.page_content for d in docs] == ["alpha", "beta"]
-    assert docs[0].metadata["id"] == 1
+    assert docs[0].metadata["node_id"] == 1
     assert "text" not in docs[0].metadata
     assert fac.nodes.last_label == "Doc"
 
