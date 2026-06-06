@@ -33,9 +33,9 @@ class SecurityResource:
         return _as_dict(self._t.request("GET", "/api/v1/security/audit/logs", params=params).data)
 
     def audit_export(self) -> list[dict[str, Any]]:
-        """Export the audit-log events (GET /api/v1/security/audit/export). The
+        """Export the audit-log events (POST /api/v1/security/audit/export). The
         server encodes a JSON array of event records; returned in-memory (no file)."""
-        data = self._t.request("GET", "/api/v1/security/audit/export").data
+        data = self._t.request("POST", "/api/v1/security/audit/export").data
         return data if isinstance(data, list) else []
 
     def health(self) -> dict[str, Any]:

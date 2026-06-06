@@ -42,9 +42,12 @@ class ComplianceResource:
                 params[name] = val
         return _as_dict(self._t.request("GET", "/v1/compliance/audit-log", params=params).data)
 
-    def get_masking_policy(self) -> dict[str, Any]:
-        """Get the tenant's masking policy (GET /v1/compliance/masking-policy)."""
-        return _as_dict(self._t.request("GET", "/v1/compliance/masking-policy").data)
+    def get_masking_policy(self, tenant: str) -> dict[str, Any]:
+        """Get a tenant's masking policy (GET /v1/compliance/masking-policy/{tenant}).
+
+        The tenant is a path segment for reads (writes via set_masking_policy take
+        the tenant from the caller's auth context — server asymmetry)."""
+        return _as_dict(self._t.request("GET", f"/v1/compliance/masking-policy/{tenant}").data)
 
     def set_masking_policy(
         self, properties: Mapping[str, str], *, auto_detect: bool = False

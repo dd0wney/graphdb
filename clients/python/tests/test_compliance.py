@@ -14,7 +14,7 @@ def _res(base_url):
 @respx.mock
 def test_audit_log_builds_params_omitting_none(base_url):
     route = respx.get(f"{base_url}/v1/compliance/audit-log").mock(return_value=httpx.Response(
-        200, json={"entries": [], "count": 0}))
+        200, json={"events": [], "count": 0}))
     out = _res(base_url).audit_log(username="alice", action="create", limit=10)
     assert out["count"] == 0
     p = route.calls.last.request.url.params
@@ -24,9 +24,9 @@ def test_audit_log_builds_params_omitting_none(base_url):
 
 @respx.mock
 def test_get_masking_policy(base_url):
-    respx.get(f"{base_url}/v1/compliance/masking-policy").mock(return_value=httpx.Response(
+    respx.get(f"{base_url}/v1/compliance/masking-policy/acme").mock(return_value=httpx.Response(
         200, json={"properties": {"email": "hash"}, "auto_detect": True}))
-    out = _res(base_url).get_masking_policy()
+    out = _res(base_url).get_masking_policy("acme")
     assert out["properties"]["email"] == "hash" and out["auto_detect"] is True
 
 

@@ -45,7 +45,7 @@ def test_audit_logs_omits_limit_when_none(base_url):
 
 @respx.mock
 def test_audit_export_returns_list(base_url):
-    respx.get(f"{base_url}/api/v1/security/audit/export").mock(return_value=httpx.Response(
+    respx.post(f"{base_url}/api/v1/security/audit/export").mock(return_value=httpx.Response(
         200, json=[{"action": "login"}, {"action": "logout"}]))
     out = _res(base_url).audit_export()
     assert isinstance(out, list) and out[0]["action"] == "login"
