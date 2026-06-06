@@ -83,6 +83,26 @@ with GraphDBClient("http://localhost:8080", token=ADMIN_TOKEN) as db:
     print(db.compliance.audit_log(username="admin", limit=10))
 ```
 
+## Async
+
+`AsyncGraphDBClient` is a drop-in async twin of `GraphDBClient` — same resources
+and methods, awaitable:
+
+```python
+import asyncio
+from graphdb_client import AsyncGraphDBClient
+
+async def main():
+    async with AsyncGraphDBClient("http://localhost:8080", token=TOKEN) as db:
+        node = await db.nodes.create(["Person"], {"name": "Ada"})
+        async for n in db.nodes.list(label="Person"):
+            print(n.id)
+        hits = await db.search.hybrid("graph database")
+        rows = (await db.query("MATCH (n) RETURN n LIMIT 1")).rows
+
+asyncio.run(main())
+```
+
 ## Tests
 - Setup: `uv sync`.
 - Unit: `make test` (= `uv run pytest`; mock transport, no server).
