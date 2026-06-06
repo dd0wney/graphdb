@@ -125,6 +125,30 @@ db = GraphDBClient(url, token=TOKEN, retries=0)
 
 `AsyncGraphDBClient` takes the same `retries` argument.
 
+## Caching (optional)
+
+Pass a cache backend to enable opt-in, GET-only response caching (off by default —
+zero overhead when unset). The built-in `InMemoryCache` is a thread-safe bounded
+LRU with per-entry TTL; implement `CacheBackend` (sync) / `AsyncCacheBackend`
+(async) to plug in Redis etc.
+
+```python
+from graphdb_client import GraphDBClient, InMemoryCache, CacheConfig
+
+db = GraphDBClient(url, token=TOKEN,
+                   cache=InMemoryCache(maxsize=2048),
+                   cache_config=CacheConfig(default_ttl=60))
+
+db.nodes.get(1)          # fetched + cached
+db.nodes.get(1)          # served from cache
+print(db.cache_stats)    # {"hits": 1, "misses": 1, "hit_rate": 0.5}
+```
+
+Only `GET` responses are cached. Freshness is TTL-bounded; `PUT`/`PATCH`/`DELETE`
+clear the cache (graphdb uses `POST` for reads, so `POST` does not invalidate).
+`AsyncGraphDBClient` takes the same `cache`/`cache_config` arguments
+(pass a backend implementing `AsyncCacheBackend`; `InMemoryCache` implements both).
+
 ## Tests
 - Setup: `uv sync`.
 - Unit: `make test` (= `uv run pytest`; mock transport, no server).

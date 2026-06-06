@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from types import TracebackType
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, cast
 
 from .._retry import RetryConfig, coerce_retry_config
+from ..cache import AsyncCacheBackend, CacheConfig
 from ..models import EmbeddingsResult, Node, QueryResult, RetrieveResult, SearchResult
+from .caching import AsyncCachingTransport
 from .resources.algorithms import AsyncAlgorithmsResource
 from .resources.api_keys import AsyncApiKeysResource
 from .resources.compliance import AsyncComplianceResource
@@ -30,11 +32,18 @@ class AsyncGraphDBClient:
         password: str | None = None,
         timeout: float = 30.0,
         retries: RetryConfig | int | None = 2,
+        cache: AsyncCacheBackend | None = None,
+        cache_config: CacheConfig | None = None,
     ) -> None:
-        self._raw = AsyncTransport(
+        inner = AsyncTransport(
             base_url, token=token, api_key=api_key,
             username=username, password=password, timeout=timeout,
             retries=coerce_retry_config(retries),
+        )
+        self._raw: AsyncTransport = (
+            cast(AsyncTransport, AsyncCachingTransport(inner, cache, cache_config or CacheConfig()))
+            if cache is not None
+            else inner
         )
         self.nodes = AsyncNodesResource(self._raw)
         self.edges = AsyncEdgesResource(self._raw)
@@ -155,6 +164,12 @@ class AsyncGraphDBClient:
             body["operationName"] = operation_name
         res = await self._raw.request("POST", "/graphql", json=body)
         return res.data if isinstance(res.data, dict) else {}
+
+    @property
+    def cache_stats(self) -> dict[str, float] | None:
+        """Cache hit/miss stats, or None when caching is disabled."""
+        stats = getattr(self._raw, "stats", None)
+        return stats if isinstance(stats, dict) else None
 
     async def aclose(self) -> None:
         await self._raw.aclose()
