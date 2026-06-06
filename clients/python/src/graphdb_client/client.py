@@ -12,9 +12,13 @@ from .models import (
     SearchResult,
 )
 from .resources.algorithms import AlgorithmsResource
+from .resources.api_keys import ApiKeysResource
+from .resources.compliance import ComplianceResource
 from .resources.edges import EdgesResource
 from .resources.nodes import NodesResource
 from .resources.search import SearchResource
+from .resources.security import SecurityResource
+from .resources.tenants import TenantsResource
 from .resources.vector_indexes import VectorIndexesResource
 
 
@@ -44,6 +48,10 @@ class GraphDBClient:
         self.search = SearchResource(self._raw)
         self.vector_indexes = VectorIndexesResource(self._raw)
         self.algorithms = AlgorithmsResource(self._raw)
+        self.tenants = TenantsResource(self._raw)
+        self.api_keys = ApiKeysResource(self._raw)
+        self.security = SecurityResource(self._raw)
+        self.compliance = ComplianceResource(self._raw)
 
     def traverse(
         self,

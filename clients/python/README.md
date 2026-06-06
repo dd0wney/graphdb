@@ -62,6 +62,27 @@ with GraphDBClient("http://localhost:8080", token=TOKEN) as db:
     path = db.algorithms.shortest_path(1, 42)
 ```
 
+## Admin (requires an admin token)
+
+```python
+with GraphDBClient("http://localhost:8080", token=ADMIN_TOKEN) as db:
+    # tenants
+    db.tenants.create("acme", "Acme Corp")
+    print([t.id for t in db.tenants.list()])
+    print(db.tenants.usage("acme").node_count)
+    db.tenants.suspend("acme"); db.tenants.activate("acme")
+
+    # api keys (the plaintext key is returned ONCE)
+    created = db.api_keys.create("ci-pipeline", permissions=["read"], expires_in=86400)
+    print("save this:", created.key)
+    db.api_keys.revoke(created.id)
+
+    # security + compliance (raw dicts)
+    print(db.security.health()["status"])
+    db.compliance.set_masking_policy({"email": "hash"}, auto_detect=True)
+    print(db.compliance.audit_log(username="admin", limit=10))
+```
+
 ## Tests
 - Setup: `uv sync`.
 - Unit: `make test` (= `uv run pytest`; mock transport, no server).
