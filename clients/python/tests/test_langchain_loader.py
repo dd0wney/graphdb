@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from graphdb_client.langchain import GraphDBLoader
 from graphdb_client.models import Node
 
@@ -45,3 +47,38 @@ def test_loader_lazy_load_is_iterator():
     it = loader.lazy_load()
     first = next(it)
     assert first.page_content == "alpha"
+
+
+class _AsyncNodesList:
+    def __init__(self, nodes):
+        self._nodes = nodes
+        self.last_label = "UNSET"
+
+    async def list(self, *, label=None, page_size=100):
+        self.last_label = label
+        for n in self._nodes:
+            yield n
+
+
+class FakeAsyncClient:
+    def __init__(self, nodes):
+        self.nodes = _AsyncNodesList(nodes)
+
+
+@pytest.mark.asyncio
+async def test_loader_alazy_load_yields_documents():
+    fac = FakeAsyncClient(_nodes())
+    loader = GraphDBLoader(client=None, label="Doc", content_key="text", aclient=fac)
+    docs = [d async for d in loader.alazy_load()]
+    assert [d.page_content for d in docs] == ["alpha", "beta"]
+    assert docs[0].metadata["id"] == 1
+    assert "text" not in docs[0].metadata
+    assert fac.nodes.last_label == "Doc"
+
+
+@pytest.mark.asyncio
+async def test_loader_alazy_load_requires_aclient():
+    loader = GraphDBLoader(FakeClient(_nodes()))
+    with pytest.raises(ValueError):
+        async for _ in loader.alazy_load():
+            pass
