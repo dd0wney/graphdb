@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ._retry import RetryConfig
 from .aio import AsyncGraphDBClient
+from .cache import AsyncCacheBackend, CacheBackend, CacheConfig, InMemoryCache
 from .client import GraphDBClient
 from .errors import (
     AuthError,
@@ -36,6 +37,7 @@ __version__ = "0.1.0"
 __all__ = [
     "AsyncGraphDBClient",
     "RetryConfig",
+    "InMemoryCache", "CacheConfig", "CacheBackend", "AsyncCacheBackend",
     "GraphDBClient",
     "Node", "Edge", "SearchResult",
     "SearchHit", "HybridSearchResult", "VectorIndex",

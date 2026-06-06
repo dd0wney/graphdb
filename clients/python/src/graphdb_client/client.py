@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from types import TracebackType
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, cast
 
+from ._caching import CachingTransport
 from ._retry import RetryConfig, coerce_retry_config
 from ._transport import Transport
+from .cache import CacheBackend, CacheConfig
 from .models import (
     EmbeddingsResult,
     Node,
@@ -36,8 +38,10 @@ class GraphDBClient:
         password: str | None = None,
         timeout: float = 30.0,
         retries: RetryConfig | int | None = 2,
+        cache: CacheBackend | None = None,
+        cache_config: CacheConfig | None = None,
     ) -> None:
-        self._raw = Transport(
+        inner = Transport(
             base_url,
             token=token,
             api_key=api_key,
@@ -45,6 +49,13 @@ class GraphDBClient:
             password=password,
             timeout=timeout,
             retries=coerce_retry_config(retries),
+        )
+        # CachingTransport implements the request()/close() surface resources + client use;
+        # cast keeps the resource transport type as Transport (it duck-types correctly).
+        self._raw: Transport = (
+            cast(Transport, CachingTransport(inner, cache, cache_config or CacheConfig()))
+            if cache is not None
+            else inner
         )
         self.nodes = NodesResource(self._raw)
         self.edges = EdgesResource(self._raw)
@@ -185,6 +196,12 @@ class GraphDBClient:
             body["operationName"] = operation_name
         res = self._raw.request("POST", "/graphql", json=body)
         return res.data if isinstance(res.data, dict) else {}
+
+    @property
+    def cache_stats(self) -> dict[str, float] | None:
+        """Cache hit/miss stats, or None when caching is disabled."""
+        stats = getattr(self._raw, "stats", None)
+        return stats if isinstance(stats, dict) else None
 
     def close(self) -> None:
         """Close the underlying HTTP transport. Safe to call multiple times."""
