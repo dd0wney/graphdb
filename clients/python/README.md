@@ -149,6 +149,19 @@ clear the cache (graphdb uses `POST` for reads, so `POST` does not invalidate).
 `AsyncGraphDBClient` takes the same `cache`/`cache_config` arguments
 (pass a backend implementing `AsyncCacheBackend`; `InMemoryCache` implements both).
 
+Two caveats:
+
+- **Creates rely on TTL, not invalidation.** `POST` is treated as a read (graphdb
+  uses it for `/query`, `/search`, etc.), so `nodes.create(...)` does **not** evict
+  a cached `nodes.list(...)`. A create followed immediately by a list can be
+  TTL-stale; use a short `default_ttl` (or `cache=None`) if read-your-writes
+  matters.
+- **Do not share one backend across auth contexts.** The cache key is
+  `method:path?params` with no tenant/token component. The per-client
+  `InMemoryCache` default is safe, but if you wire a *shared* external backend
+  (e.g. one Redis) into multiple clients using different tokens/tenants, they will
+  collide — give each auth context its own backend (or key namespace).
+
 ## Tests
 - Setup: `uv sync`.
 - Unit: `make test` (= `uv run pytest`; mock transport, no server).
