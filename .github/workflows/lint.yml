@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+permissions:
+  contents: read
+
 jobs:
   golangci-lint:
     name: golangci-lint
@@ -13,13 +16,14 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.26'
-        cache: false  # golangci-lint-action has its own cache
+        # setup-go's cache stays on: golangci-lint-action v5+ caches only
+        # its own analysis data and delegates Go module/build caching here.
 
     - name: Run golangci-lint
       # @v4-@v6 only support golangci-lint v1. The repo's
@@ -41,10 +45,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.26'
 
@@ -65,15 +69,17 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Run Gosec Security Scanner
-      uses: securego/gosec@master
+      # Pinned: @master is a mutable ref (upstream pushes change CI
+      # behavior with no diff here to bisect against).
+      uses: securego/gosec@v2.27.1
       with:
         args: '-no-fail -fmt=json -out=results.json ./...'
 
     - name: Upload security results
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: always()
       with:
         name: security-scan-results

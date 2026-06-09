@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
     paths: ["clients/python/**"]
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,7 +17,7 @@ jobs:
       matrix:
         python-version: ["3.9", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true

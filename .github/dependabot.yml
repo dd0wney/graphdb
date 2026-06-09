@@ -1,0 +1,14 @@
+# Keeps GitHub Actions versions current so runtime-deprecation sweeps
+# (like the 2026-06 Node 20 -> 24 migration) stop being manual 8-file
+# events. Scoped to actions only: gomod / pip update PRs are opt-in
+# later if wanted.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
