@@ -116,7 +116,14 @@ func ValueFromJSON(v any) Value {
 	case int64:
 		return IntValue(val)
 	case float64:
-		if val == float64(int64(val)) {
+		// Only treat a whole float as an int within ±2^53, the range where
+		// float64 represents every integer exactly (security audit L-7).
+		// Beyond it, `val == float64(int64(val))` can be true for a value
+		// that int64(val) has already rounded — e.g. floats near MaxInt64 —
+		// silently corrupting the stored integer. Outside the safe range,
+		// keep it a float.
+		const maxExactInt = float64(1 << 53)
+		if val >= -maxExactInt && val <= maxExactInt && val == float64(int64(val)) {
 			return IntValue(int64(val))
 		}
 		return FloatValue(val)

@@ -13,28 +13,33 @@ const (
 )
 
 var (
-	// Dangerous patterns that could indicate injection attacks
+	// Dangerous patterns that could indicate injection attacks.
+	//
+	// SQL-injection patterns (drop/delete from/union select) were removed
+	// in the L-5 hardening (security audit 2026-06-10): this engine speaks
+	// a graph query language, not SQL, so they are not injection vectors —
+	// a crafted `DROP TABLE` is just invalid syntax the parser rejects.
+	// Meanwhile the pre-parse substring match rejected *legitimate* queries
+	// containing those words in a string literal (e.g. a note `'drop it'`),
+	// an availability bug. The XSS / null-byte patterns are kept as
+	// defense-in-depth in case a query string is ever reflected.
 	dangerousPatterns = []string{
-		"<script",      // XSS: Script tags
-		"</script>",    // XSS: Script closing tags
-		"javascript:",  // XSS: JavaScript protocol
-		"eval(",        // Code injection
-		"eval (",       // Code injection with space
-		"drop ",        // SQL injection: DROP command
-		"drop\t",       // SQL injection: DROP with tab
-		"delete from",  // SQL injection: DELETE FROM
-		"onclick",      // XSS: Event handler
-		"onerror",      // XSS: Error handler
-		"onload",       // XSS: Load handler
-		"onmouseover",  // XSS: Mouse event handler
-		"data:",        // XSS: Data URL
-		"vbscript:",    // XSS: VBScript protocol
-		"file:",        // File access attempt
-		"<iframe",      // XSS: Iframe injection
-		"<object",      // XSS: Object tag
-		"<embed",       // XSS: Embed tag
-		"union select", // SQL injection: UNION attack
-		"\x00",         // Null byte injection
+		"<script",     // XSS: Script tags
+		"</script>",   // XSS: Script closing tags
+		"javascript:", // XSS: JavaScript protocol
+		"eval(",       // Code injection
+		"eval (",      // Code injection with space
+		"onclick",     // XSS: Event handler
+		"onerror",     // XSS: Error handler
+		"onload",      // XSS: Load handler
+		"onmouseover", // XSS: Mouse event handler
+		"data:",       // XSS: Data URL
+		"vbscript:",   // XSS: VBScript protocol
+		"file:",       // File access attempt
+		"<iframe",     // XSS: Iframe injection
+		"<object",     // XSS: Object tag
+		"<embed",      // XSS: Embed tag
+		"\x00",        // Null byte injection
 	}
 
 	// whitespaceRegex matches one or more whitespace characters

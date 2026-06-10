@@ -46,17 +46,21 @@ func TestSanitizeQuery(t *testing.T) {
 			expectError: true,
 			errorType:   "forbidden pattern",
 		},
+		// L-5 (security audit 2026-06-10): the sanitizer no longer pre-parse-
+		// rejects SQL keywords (drop / delete from / union select) — this
+		// engine doesn't speak SQL, so those are invalid syntax the parser
+		// rejects, not injection vectors. The two cases below pin that
+		// LEGITIMATE graph queries whose string literals merely contain those
+		// words now pass sanitization (the availability bug L-5 fixed).
 		{
-			name:        "Query with DROP command - SQL injection attempt",
-			query:       "MATCH (n:Person); DROP TABLE users; --",
-			expectError: true,
-			errorType:   "forbidden pattern",
+			name:        "Legit query with 'drop' in a string literal - passes (L-5)",
+			query:       "MATCH (n) WHERE n.note = 'please drop this later' RETURN n",
+			expectError: false,
 		},
 		{
-			name:        "Query with DELETE all - destructive attempt",
-			query:       "DELETE FROM nodes WHERE 1=1",
-			expectError: true,
-			errorType:   "forbidden pattern",
+			name:        "Legit query with 'delete from' in a string literal - passes (L-5)",
+			query:       "MATCH (n) WHERE n.text = 'delete from the cache' RETURN n",
+			expectError: false,
 		},
 		{
 			name:        "Query too long - DoS prevention",
@@ -129,10 +133,12 @@ func TestSanitizeQuery(t *testing.T) {
 			errorType:   "forbidden pattern",
 		},
 		{
-			name:        "Query with UNION attack - SQL injection",
+			// L-5: a SQL UNION SELECT is no longer pre-parse-rejected — it's
+			// invalid graph syntax the parser rejects, not a sanitizer-stage
+			// injection vector. It passes sanitization here.
+			name:        "SQL UNION passes sanitizer (rejected later at parse) (L-5)",
 			query:       "MATCH (n) WHERE n.id = 1 UNION SELECT * FROM users RETURN n",
-			expectError: true,
-			errorType:   "forbidden pattern",
+			expectError: false,
 		},
 		{
 			name:        "Query with comment injection",
@@ -189,9 +195,10 @@ func TestSanitizeQuery_CaseInsensitive(t *testing.T) {
 		"JavaScript:alert(1)",
 		"eval('code')",
 		"EVAL('code')",
-		"DROP TABLE users",
-		"drop table users",
-		"DrOp TaBlE users",
+		// SQL keywords (DROP/DELETE FROM/UNION SELECT) intentionally removed
+		// from this list in the L-5 hardening — see the dangerousPatterns
+		// comment in sanitizer.go. They're invalid graph syntax the parser
+		// rejects, not sanitizer-stage injection vectors.
 	}
 
 	for _, pattern := range dangerousPatterns {

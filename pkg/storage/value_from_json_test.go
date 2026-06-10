@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"math"
 	"reflect"
 	"testing"
 )
@@ -113,5 +114,32 @@ func TestValueFromJSON_StringArrayRoundTrips(t *testing.T) {
 	want := []string{"alpha", "beta", "gamma"}
 	if !reflect.DeepEqual(arr, want) {
 		t.Errorf("got %v, want %v", arr, want)
+	}
+}
+
+// TestValueFromJSON_LargeFloatStaysFloat pins security audit finding L-7:
+// a float64 outside ±2^53 (the exact-integer range) must NOT be collapsed
+// to int. Before the fix, `val == float64(int64(val))` was true for floats
+// near MaxInt64 because int64(val) had already rounded, silently storing a
+// corrupted integer.
+func TestValueFromJSON_LargeFloatStaysFloat(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      float64
+		wantTyp ValueType
+	}{
+		{"MaxInt64 as float64 stays float", math.MaxInt64, TypeFloat},
+		{"just past 2^53 stays float", float64(1<<53) + 2, TypeFloat},
+		{"large negative stays float", -math.MaxInt64, TypeFloat},
+		{"within 2^53 still collapses to int", float64(1 << 52), TypeInt},
+		{"small whole float still int", float64(42), TypeInt},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := ValueFromJSON(tc.in)
+			if v.Type != tc.wantTyp {
+				t.Errorf("ValueFromJSON(%g) type = %v, want %v", tc.in, v.Type, tc.wantTyp)
+			}
+		})
 	}
 }
