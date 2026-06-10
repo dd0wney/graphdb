@@ -8,7 +8,7 @@ import (
 // NewLSMStorage creates a new LSM storage engine
 func NewLSMStorage(opts LSMOptions) (*LSMStorage, error) {
 	// Create data directory
-	if err := os.MkdirAll(opts.DataDir, 0755); err != nil {
+	if err := os.MkdirAll(opts.DataDir, 0o700); err != nil {
 		return nil, err
 	}
 

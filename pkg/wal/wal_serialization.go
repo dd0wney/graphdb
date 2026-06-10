@@ -65,6 +65,13 @@ func (w *WAL) readEntry(reader *bufio.Reader) (*Entry, error) {
 		return nil, err
 	}
 
+	// Bound the allocation before trusting dataLen (security audit H-4).
+	// An oversize length is corruption; ReadAll stops at the last valid
+	// record rather than allocating up to 4 GiB.
+	if dataLen > maxWALRecordSize {
+		return nil, errWALRecordTooLarge
+	}
+
 	// Read data
 	entry.Data = make([]byte, dataLen)
 	if _, err := io.ReadFull(reader, entry.Data); err != nil {

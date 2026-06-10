@@ -12,9 +12,13 @@ import (
 )
 
 const (
-	// File and directory permissions
-	dirPermissions  = 0755 // rwxr-xr-x: Owner can read/write/execute, others can read/execute
-	filePermissions = 0644 // rw-r--r--: Owner can read/write, others can read
+	// File and directory permissions. Owner-only (security audit H-2):
+	// the snapshot file is customer-data-equivalent and the data
+	// directory holds the WAL + snapshots, so neither should be readable
+	// by other local users. (The audit named wal/search/lsm and assumed
+	// pkg/storage was already 0600 — it was 0644/0755; tightened here too.)
+	dirPermissions  = 0o700 // rwx------: owner only
+	filePermissions = 0o600 // rw-------: owner only
 )
 
 // GraphStorage is the core in-memory graph storage engine

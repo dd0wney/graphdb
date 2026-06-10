@@ -26,7 +26,7 @@ func NewFileRotator(path string, bufferSize int) *FileRotator {
 
 // Open opens or creates the file for appending.
 func (fr *FileRotator) Open() error {
-	file, err := os.OpenFile(fr.path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	file, err := os.OpenFile(fr.path, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", fr.path, err)
 	}
@@ -97,7 +97,7 @@ func (fr *FileRotator) Rotate() error {
 	newPath := fr.path + ".new"
 
 	// Create new file before closing old one
-	newFile, err := os.OpenFile(newPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	newFile, err := os.OpenFile(newPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)
 	if err != nil {
 		return fmt.Errorf("failed to create new file: %w", err)
 	}
@@ -109,7 +109,7 @@ func (fr *FileRotator) Rotate() error {
 	if err := os.Rename(newPath, fr.path); err != nil {
 		// Failed to rename - cleanup and try to recover
 		newFile.Close()
-		if oldFile, reopenErr := os.OpenFile(fr.path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644); reopenErr == nil {
+		if oldFile, reopenErr := os.OpenFile(fr.path, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm); reopenErr == nil {
 			fr.file = oldFile
 			if fr.bufferSize > 0 {
 				fr.writer = bufio.NewWriterSize(oldFile, fr.bufferSize)
@@ -161,7 +161,7 @@ func (sw *SafeWriter) Flush() error {
 
 // EnsureDir creates a directory if it doesn't exist.
 func EnsureDir(path string) error {
-	return os.MkdirAll(path, 0755)
+	return os.MkdirAll(path, walDirPerm)
 }
 
 // FileExists checks if a file exists.

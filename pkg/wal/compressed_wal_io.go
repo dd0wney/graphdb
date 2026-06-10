@@ -136,6 +136,12 @@ func (w *CompressedWAL) ReadAll() ([]*Entry, error) {
 			return nil, err
 		}
 
+		// Bound the allocation before trusting dataLen (security audit
+		// H-4) — an oversize length is corruption, not a 4 GiB allocation.
+		if dataLen > maxWALRecordSize {
+			return nil, errWALRecordTooLarge
+		}
+
 		// Data (compressed)
 		compressedData := make([]byte, dataLen)
 		if _, err := io.ReadFull(reader, compressedData); err != nil {
