@@ -4,9 +4,10 @@
 > **Singleton file**: every `session-handoff` skill invocation overwrites this. The latest handoff is the source.
 > **Usage**: paste the block below to the next Claude Code session in this repo.
 
-`main` is clean at `9937f6e`; the 2026-06-10 security audit is shipped through Wave 3's executable items — **all 11 Highs addressed**, L-tier dispositioned. Track S active (`NEXT_STEPS_2026-06-03.md`). Pick per the user:
+`main` is clean at `4f78fd4`; the 2026-06-10 security audit shipped **all 11 Highs + all targeted Mediums** (M-7 #390 was the last). L-tier dispositioned. Track S active (`NEXT_STEPS_2026-06-03.md`). The remaining Wave 3 items are all decision-gated:
 
-1. **Cut the versioned client release** (#379/#380) — decide semver (the TS M-11 retry change is arguably breaking at 1.x) + the PyPI-publish decision; OR
-2. **`/spike` a Wave 3 design item** (each is design-gated): M-1 WAL-remanence (concurrency-safe compaction — naive snapshot+truncate loses concurrent writes), M-7 revocation (gen-counter claim), H-3 WAL encryption, M-14 snapshot format-header, M-15 plugin verification (cross-repo).
+1. **Decide M-1 — Option A or C** (read `DESIGN_m1_wal_remanence_2026-06-10.md`): A = a `TruncateUpTo(lsn)` checkpoint across the 3 WAL backends (real durability change, no data loss); C = document-window interim. Implement the chosen path — this also gates H-3; OR
+2. **Cut the versioned client release** (#379/#380) — decide semver (the TS retry change is arguably breaking at 1.x) + the PyPI-publish decision; OR
+3. **M-14** (snapshot format-header version bump) / **M-15** (plugin hash verification, cross-repo with graphdb-enterprise).
 
 The audit doc's "consolidated confirmed-clean" + "L-tier disposition" sections are the start points — don't re-derive them. End the session via the `session-handoff` skill.
