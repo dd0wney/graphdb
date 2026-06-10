@@ -132,7 +132,7 @@ login flags:
 mint-token flags (requires JWT_SECRET in the environment):
   --username NAME    Username to embed (required)
   --user-id ID       User ID to embed (default: --username)
-  --role ROLE        admin | editor | viewer (default: admin)
+  --role ROLE        admin | editor | viewer (default: viewer)
   --tenant ID        Tenant ID (default: the default tenant)
   --ttl DURATION     Token lifetime, e.g. 15m, 24h (default: 15m)
 
@@ -140,8 +140,8 @@ Examples:
   # Log in and capture a token for subsequent admin calls
   export GRAPHDB_PASSWORD=...; TOKEN=$(graphdb-admin login --username admin)
 
-  # Mint an admin token offline (CI / ops)
-  export JWT_SECRET=...; graphdb-admin mint-token --username admin --ttl 24h
+  # Mint an admin token offline (CI / ops) — admin must be explicit
+  export JWT_SECRET=...; graphdb-admin mint-token --username admin --role admin --ttl 24h
 `
 	fmt.Print(usage)
 }
