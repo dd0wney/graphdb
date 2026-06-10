@@ -120,17 +120,29 @@ All six server-side Highs + all five targeted Mediums shipped, each TDD-pinned (
 - **#380** TS Workers client: H-11 (cache identity namespace), M-11 (idempotent-only retries), L-9 (`redirect: 'manual'`)
 - **Follow-up:** cut a versioned Python/TS client release bundling #379/#380; decide the PyPI-publish open question.
 
-### Wave 3 — design-required (NOT started; each needs a `/spike` or short spec first)
-- **H-3** encrypt WAL payloads (snapshot encryption currently leaves the WAL plaintext)
-- **H-5** rate limiting on by default (config-compat decision — don't silently throttle existing deployments)
-- **H-6** thread `context.Context` through algorithm inner loops (betweenness/similarity/triangles — uncancellable goroutines)
-- **M-1/M-2** tenant-delete data remanence (snapshot+truncate after cascade; wire into `pkg/compliance` GDPR controls; fail-or-retry on LSA-snapshot delete)
-- **M-7** token revocation (per-user generation counter as a claim)
-- **M-8** OIDC: thread the composite `TokenValidator` into the user-management handlers + add `nbf` check
-- **M-14** snapshot magic-header + version (needs the snapshot-format version-bump discipline)
-- **M-15** enterprise `.so` plugin hash/signature verification (cross-repo with graphdb-enterprise)
+### Wave 3 — partially shipped (2026-06-10); the executable items are done, the design-gated remainder is queued
 
-### L-tier (10 Lows) — batch or accept-risk
+**Shipped (no design decision needed):**
+- **H-6** ✅ (#385) — `context.Context` threaded through betweenness/edge-betweenness/scc/triangles/node-similarity-all loops (interface change, Option A approved); handler maps deadline → 408.
+- **H-5** ✅ (#387) — rate limiting *activated* (`InitRateLimiterFromEnv` was never called → both limiters nil → no protection, incl. auth brute-force) + general limiter on-by-default with `RATE_LIMIT_ENABLED=false` opt-out.
+- **M-8** ✅ (#383) — user-management handlers route through the composite JWT+OIDC validator (OIDC admins can manage users) + OIDC `nbf` check.
+- **M-2** ✅ (#384) — tenant-delete fails (500) instead of orphaning the deleted tenant's `.lsa` content file.
+
+**With H-5, all 11 Highs in the audit are addressed.**
+
+**Remaining — each needs a `/spike` or short spec first (NOT started):**
+- **H-3** encrypt WAL payloads (snapshot encryption leaves the WAL plaintext) — thread the encryption engine through the WAL layer.
+- **M-1** tenant-delete WAL remanence — snapshot+truncate after cascade is **not** safe naively (`Snapshot` takes only RLock + the WAL `Truncate` is a full clear → a mid-flight compaction loses concurrent tenants' writes). Needs a concurrency-safe compaction design. (M-2, its LSA sibling, shipped in #384.)
+- **M-7** token revocation (per-user generation counter as a JWT claim) — schema design.
+- **M-14** snapshot magic-header + version — snapshot-format version-bump discipline.
+- **M-15** enterprise `.so` plugin hash/signature verification — cross-repo with graphdb-enterprise.
+
+**Also ready (pending your call):** cut a versioned **client release** bundling #379/#380 (semver judgment — the TS retry change is arguably breaking at 1.x — + the PyPI-publish decision).
+
+### L-tier (10 Lows) — ✅ DISPOSITIONED (2026-06-10)
+**L-5, L-7 fixed** (#386 — Cypher sanitizer SQL false-positives; float→int corruption near MaxInt64); **L-9, L-10 fixed** in the client release (#379/#380); **L-1/L-2/L-3/L-4/L-6/L-8 accept-risk or deferred** with rationale recorded in `AUDIT_security_2026-06-10.md` § L-tier disposition (L-1/L-4 pair with the M-1 spike; L-6 is by-design for coord). Original batch-or-accept-risk note below is superseded.
+
+### L-tier (original note — superseded by the disposition above)
 Each is a one-liner or a documented accepted-risk (edge TOCTOU, adjacency timing channel, ID-gap inference, zombie tenant, Cypher SQL-pattern false positives, 409 node-ID disclosure, float→int near MaxInt64, usage-endpoint admin-check placement, SDK redirect docs, cache-POST-invalidation). Bundle into one cleanup PR or close as won't-fix with rationale.
 
 **`AUDIT_security_2026-06-10.md` § "Consolidated confirmed-clean" is the starting point for any future security audit — don't re-derive it.** Memory: `project_security_audit_2026_06_10`.
@@ -198,6 +210,6 @@ Both shipped on branch `perf/label-index-set-m3` (PR #294). The "decision-laden"
 3. **Inherited PRs #240/#241 are CLOSED** — board is clear (no longer a forcing function).
 4. **Don't** re-open the perf dimension or manufacture sub-tracks beyond what the consumers / invariant harness surface.
 5. If a follow-up turns out deep enough to need design, spike it (`/spike`) first — but most are bounded.
-6. **Current state (2026-06-10): Track S (security audit) is the active track.** Read § Track S — the audit (`AUDIT_security_2026-06-10.md`) found no live cross-tenant exposure; Waves 1 (server hardening, #372–378) and 2 (client release, #379/#380) are shipped. **Remaining: Wave 3 (design-required, each needs a `/spike`) + the L-tier cleanup, + cut a versioned client release.** Don't re-commission a security audit without new evidence.
+6. **Current state (2026-06-10): Track S (security audit) is the active track — Waves 1 + 2 done, Wave 3's executable items done.** Read § Track S. The audit (`AUDIT_security_2026-06-10.md`) found no live cross-tenant exposure. Waves 1 (server, #372–378) + 2 (clients, #379/#380) shipped; Wave 3's no-decision items shipped (H-6 #385, H-5 #387, M-8 #383, M-2 #384 — **all 11 Highs now addressed**); the L-tier is dispositioned (L-5/L-7 #386, rest accept-risk). **Remaining: 5 design-gated items (H-3, M-1, M-7, M-14, M-15 — each needs a `/spike`/format-bump/cross-repo) + cut a versioned client release.** Don't re-commission a security audit without new evidence.
 
 The critical path is **earned, not TBD**: the testing harness exists because this session proved the silent bugs are a *parallel-invariant coverage* gap, not an edge-case gap; Track S then closed the long-deferred security dimension with measured findings.
