@@ -130,6 +130,13 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		log.Printf("✅ OIDC authentication enabled (issuer: %s)", oidcConfig.Issuer)
 	}
 
+	// Route the auth + user-management handlers through the same validator
+	// the rest of the API uses (M-8 / AUTH-4). When OIDC is enabled this is
+	// the composite validator, so OIDC-provisioned admins can register and
+	// manage users instead of being forced to keep a parallel local admin.
+	authHandler.SetTokenValidator(tokenValidator)
+	userHandler.SetTokenValidator(tokenValidator)
+
 	// Initialize audit logging - always have in-memory for GetEvents/GetRecentEvents API
 	inMemoryAuditLogger := audit.NewAuditLogger(10000) // Store last 10,000 events
 

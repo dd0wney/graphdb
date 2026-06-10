@@ -12,13 +12,25 @@ import (
 type UserManagementHandler struct {
 	userStore  *UserStore
 	jwtManager *JWTManager
+	// tokenValidator validates incoming access tokens; defaults to
+	// jwtManager and is swapped for the composite JWT+OIDC validator via
+	// SetTokenValidator so OIDC admins can manage users (M-8 / AUTH-4).
+	tokenValidator TokenValidator
 }
 
 // NewUserManagementHandler creates a new user management handler
 func NewUserManagementHandler(userStore *UserStore, jwtManager *JWTManager) *UserManagementHandler {
 	return &UserManagementHandler{
-		userStore:  userStore,
-		jwtManager: jwtManager,
+		userStore:      userStore,
+		jwtManager:     jwtManager,
+		tokenValidator: jwtManager,
+	}
+}
+
+// SetTokenValidator overrides the access-token validator (nil ignored).
+func (h *UserManagementHandler) SetTokenValidator(v TokenValidator) {
+	if v != nil {
+		h.tokenValidator = v
 	}
 }
 
@@ -248,7 +260,7 @@ func (h *UserManagementHandler) extractAndValidateToken(r *http.Request) (*Claim
 	}
 
 	token := parts[1]
-	claims, err := h.jwtManager.ValidateToken(r.Context(), token)
+	claims, err := h.tokenValidator.ValidateToken(r.Context(), token)
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: %w", err)
 	}

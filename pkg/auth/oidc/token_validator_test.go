@@ -214,6 +214,33 @@ func TestOIDCTokenValidator_ValidateToken(t *testing.T) {
 			wantErr:  false,
 			wantRole: "viewer",
 		},
+		{
+			// Security audit M-8 / AUTH-5: a future nbf must be rejected.
+			name: "Token not yet valid (future nbf)",
+			claims: map[string]any{
+				"iss": serverURL,
+				"sub": "user123",
+				"aud": "test-client-id",
+				"exp": now + 3600,
+				"iat": now,
+				"nbf": now + 1800,
+			},
+			wantErr:     true,
+			errContains: "not yet valid",
+		},
+		{
+			name: "Token with past nbf is accepted",
+			claims: map[string]any{
+				"iss": serverURL,
+				"sub": "user123",
+				"aud": "test-client-id",
+				"exp": now + 3600,
+				"iat": now,
+				"nbf": now - 60,
+			},
+			wantErr:  false,
+			wantRole: "viewer",
+		},
 	}
 
 	for _, tt := range tests {
