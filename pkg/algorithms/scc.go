@@ -1,6 +1,10 @@
 package algorithms
 
-import "github.com/dd0wney/graphdb/pkg/storage"
+import (
+	"context"
+
+	"github.com/dd0wney/graphdb/pkg/storage"
+)
 
 // SCCResult holds the result of Tarjan's strongly connected components algorithm.
 // It embeds CommunityDetectionResult for compatibility with the existing community
@@ -31,17 +35,18 @@ type tarjanState struct {
 // (directed graph semantics). Multi-tenant API callers must use
 // StronglyConnectedComponentsForTenant.
 func StronglyConnectedComponents(graph storage.Storage) (*SCCResult, error) {
-	return sccView(newTenantBlindView(graph))
+	return sccView(context.Background(), newTenantBlindView(graph))
 }
 
 // StronglyConnectedComponentsForTenant computes SCCs within the
-// caller's tenant subgraph. Audit A6c-algorithms (2026-05-08).
-func StronglyConnectedComponentsForTenant(graph storage.Storage, tenantID string) (*SCCResult, error) {
-	return sccView(newTenantScopedView(graph, tenantID))
+// caller's tenant subgraph. Audit A6c-algorithms (2026-05-08). ctx
+// cancels the traversal when the request deadline fires (H-6).
+func StronglyConnectedComponentsForTenant(ctx context.Context, graph storage.Storage, tenantID string) (*SCCResult, error) {
+	return sccView(ctx, newTenantScopedView(graph, tenantID))
 }
 
 // sccView is the shared algorithm body operating against a graphView.
-func sccView(view graphView) (*SCCResult, error) {
+func sccView(ctx context.Context, view graphView) (*SCCResult, error) {
 	allNodes := view.AllNodes()
 	nodeIDs := make([]uint64, 0, len(allNodes))
 	for _, n := range allNodes {
@@ -110,6 +115,10 @@ func sccView(view graphView) (*SCCResult, error) {
 	}
 
 	for _, nodeID := range nodeIDs {
+		// Cancellation check between components (H-6).
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if _, exists := state[nodeID]; !exists {
 			strongconnect(nodeID)
 		}

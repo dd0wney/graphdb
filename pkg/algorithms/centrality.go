@@ -3,6 +3,7 @@ package algorithms
 import (
 	"container/heap"
 	"container/list"
+	"context"
 	"sort"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -19,7 +20,7 @@ type predEdge struct {
 // both node and edge betweenness centrality (raw, unnormalised).
 // Operates against a graphView so tenant-blind and tenant-scoped
 // callers share the implementation.
-func brandesCentrality(view graphView) (nodeBetweenness map[uint64]float64, edgeBetweenness map[uint64]float64, nodeIDs []uint64, err error) {
+func brandesCentrality(ctx context.Context, view graphView) (nodeBetweenness map[uint64]float64, edgeBetweenness map[uint64]float64, nodeIDs []uint64, err error) {
 	allNodes := view.AllNodes()
 	nodeIDs = make([]uint64, 0, len(allNodes))
 	for _, n := range allNodes {
@@ -33,6 +34,13 @@ func brandesCentrality(view graphView) (nodeBetweenness map[uint64]float64, edge
 	}
 
 	for _, source := range nodeIDs {
+		// Cancellation check (security audit H-6): a single Brandes pass is
+		// O(V·E); without this the loop ignores the request deadline and the
+		// goroutine runs to completion after the client has disconnected.
+		if err := ctx.Err(); err != nil {
+			return nil, nil, nil, err
+		}
+
 		stack := make([]uint64, 0, len(nodeIDs))
 		predecessors := make(map[uint64][]predEdge, len(nodeIDs))
 		sigma := make(map[uint64]float64, len(nodeIDs))
@@ -105,17 +113,18 @@ func brandesCentrality(view graphView) (nodeBetweenness map[uint64]float64, edge
 // BetweennessCentrality computes betweenness centrality for all nodes
 // (tenant-blind). Measures how often a node appears on shortest paths.
 func BetweennessCentrality(graph *storage.GraphStorage) (map[uint64]float64, error) {
-	return betweennessCentralityView(newTenantBlindView(graph))
+	return betweennessCentralityView(context.Background(), newTenantBlindView(graph))
 }
 
 // BetweennessCentralityForTenant restricts computation to the
-// caller's tenant subgraph. Audit A6c-algorithms.
-func BetweennessCentralityForTenant(graph *storage.GraphStorage, tenantID string) (map[uint64]float64, error) {
-	return betweennessCentralityView(newTenantScopedView(graph, tenantID))
+// caller's tenant subgraph. Audit A6c-algorithms. ctx cancels the
+// O(V·E) computation when the request deadline fires (H-6).
+func BetweennessCentralityForTenant(ctx context.Context, graph *storage.GraphStorage, tenantID string) (map[uint64]float64, error) {
+	return betweennessCentralityView(ctx, newTenantScopedView(graph, tenantID))
 }
 
-func betweennessCentralityView(view graphView) (map[uint64]float64, error) {
-	nodeBetweenness, _, nodeIDs, err := brandesCentrality(view)
+func betweennessCentralityView(ctx context.Context, view graphView) (map[uint64]float64, error) {
+	nodeBetweenness, _, nodeIDs, err := brandesCentrality(ctx, view)
 	if err != nil {
 		return nil, err
 	}
@@ -153,17 +162,18 @@ type EdgeBetweennessResult struct {
 // edges (tenant-blind). Measures how often an edge appears on
 // shortest paths between all node pairs.
 func EdgeBetweennessCentrality(graph *storage.GraphStorage) (*EdgeBetweennessResult, error) {
-	return edgeBetweennessCentralityView(newTenantBlindView(graph))
+	return edgeBetweennessCentralityView(context.Background(), newTenantBlindView(graph))
 }
 
 // EdgeBetweennessCentralityForTenant restricts computation to the
-// caller's tenant subgraph. Audit A6c-algorithms.
-func EdgeBetweennessCentralityForTenant(graph *storage.GraphStorage, tenantID string) (*EdgeBetweennessResult, error) {
-	return edgeBetweennessCentralityView(newTenantScopedView(graph, tenantID))
+// caller's tenant subgraph. Audit A6c-algorithms. ctx cancels the
+// O(V·E) computation when the request deadline fires (H-6).
+func EdgeBetweennessCentralityForTenant(ctx context.Context, graph *storage.GraphStorage, tenantID string) (*EdgeBetweennessResult, error) {
+	return edgeBetweennessCentralityView(ctx, newTenantScopedView(graph, tenantID))
 }
 
-func edgeBetweennessCentralityView(view graphView) (*EdgeBetweennessResult, error) {
-	_, edgeBetweenness, nodeIDs, err := brandesCentrality(view)
+func edgeBetweennessCentralityView(ctx context.Context, view graphView) (*EdgeBetweennessResult, error) {
+	_, edgeBetweenness, nodeIDs, err := brandesCentrality(ctx, view)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +304,7 @@ type CentralityResult struct {
 // possible. Node and edge betweenness share one Brandes traversal.
 func ComputeAllCentrality(graph *storage.GraphStorage) (*CentralityResult, error) {
 	view := newTenantBlindView(graph)
-	nodeBetweenness, edgeBetweennessRaw, nodeIDs, err := brandesCentrality(view)
+	nodeBetweenness, edgeBetweennessRaw, nodeIDs, err := brandesCentrality(context.Background(), view)
 	if err != nil {
 		return nil, err
 	}

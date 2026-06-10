@@ -1,6 +1,10 @@
 package algorithms
 
-import "github.com/dd0wney/graphdb/pkg/storage"
+import (
+	"context"
+
+	"github.com/dd0wney/graphdb/pkg/storage"
+)
 
 // TriangleCountResult holds triangle counting results including per-node counts,
 // global count, clustering coefficients, and top nodes by triangle participation.
@@ -15,13 +19,14 @@ type TriangleCountResult struct {
 // as undirected (tenant-blind). Multi-tenant API callers must use
 // CountTrianglesForTenant.
 func CountTriangles(graph storage.Storage) (*TriangleCountResult, error) {
-	return countTrianglesView(newTenantBlindView(graph))
+	return countTrianglesView(context.Background(), newTenantBlindView(graph))
 }
 
 // CountTrianglesForTenant counts triangles within the caller's
-// tenant subgraph. Audit A6c-algorithms (2026-05-08).
-func CountTrianglesForTenant(graph storage.Storage, tenantID string) (*TriangleCountResult, error) {
-	return countTrianglesView(newTenantScopedView(graph, tenantID))
+// tenant subgraph. Audit A6c-algorithms (2026-05-08). ctx cancels the
+// O(V·d²) computation when the request deadline fires (H-6).
+func CountTrianglesForTenant(ctx context.Context, graph storage.Storage, tenantID string) (*TriangleCountResult, error) {
+	return countTrianglesView(ctx, newTenantScopedView(graph, tenantID))
 }
 
 // countTrianglesView is the shared algorithm body. For each node u
@@ -29,7 +34,7 @@ func CountTrianglesForTenant(graph storage.Storage, tenantID string) (*TriangleC
 // also neighbors, that's a triangle. Each triangle is counted once
 // per participating node, so GlobalCount = sum(PerNode) / 3.
 // Clustering coefficients are computed in the same pass.
-func countTrianglesView(view graphView) (*TriangleCountResult, error) {
+func countTrianglesView(ctx context.Context, view graphView) (*TriangleCountResult, error) {
 	allNodes := view.AllNodes()
 	nodeIDs := make([]uint64, 0, len(allNodes))
 	for _, n := range allNodes {
@@ -67,6 +72,11 @@ func countTrianglesView(view graphView) (*TriangleCountResult, error) {
 
 	perNode := make(map[uint64]int, len(nodeIDs))
 	for _, u := range nodeIDs {
+		// Cancellation check (H-6): the per-node neighbor-pair scan is the
+		// O(V·d²) hot loop.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		uNeighbors := neighborSets[u]
 		neighborsSlice := make([]uint64, 0, len(uNeighbors))
 		for v := range uNeighbors {

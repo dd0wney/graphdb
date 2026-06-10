@@ -1,6 +1,7 @@
 package algorithms
 
 import (
+	"context"
 	"math"
 	"sort"
 
@@ -217,16 +218,17 @@ func nodeSimilarityForView(view graphView, sourceNodeID uint64, opts NodeSimilar
 // NodeSimilarityAll computes similarity for every node against every
 // other node (tenant-blind).
 func NodeSimilarityAll(graph storage.Storage, opts NodeSimilarityOptions) ([]NodeSimilarityResult, error) {
-	return nodeSimilarityAllView(newTenantBlindView(graph), opts)
+	return nodeSimilarityAllView(context.Background(), newTenantBlindView(graph), opts)
 }
 
 // NodeSimilarityAllForTenant restricts to caller's tenant.
-// Audit A6c-algorithms.
-func NodeSimilarityAllForTenant(graph storage.Storage, opts NodeSimilarityOptions, tenantID string) ([]NodeSimilarityResult, error) {
-	return nodeSimilarityAllView(newTenantScopedView(graph, tenantID), opts)
+// Audit A6c-algorithms. ctx cancels the O(V²) all-pairs computation when
+// the request deadline fires (H-6).
+func NodeSimilarityAllForTenant(ctx context.Context, graph storage.Storage, opts NodeSimilarityOptions, tenantID string) ([]NodeSimilarityResult, error) {
+	return nodeSimilarityAllView(ctx, newTenantScopedView(graph, tenantID), opts)
 }
 
-func nodeSimilarityAllView(view graphView, opts NodeSimilarityOptions) ([]NodeSimilarityResult, error) {
+func nodeSimilarityAllView(ctx context.Context, view graphView, opts NodeSimilarityOptions) ([]NodeSimilarityResult, error) {
 	allNodes := view.AllNodes()
 	nodeIDs := make([]uint64, 0, len(allNodes))
 	for _, n := range allNodes {
@@ -241,6 +243,11 @@ func nodeSimilarityAllView(view graphView, opts NodeSimilarityOptions) ([]NodeSi
 
 	results := make([]NodeSimilarityResult, 0, len(nodeIDs))
 	for _, sourceID := range nodeIDs {
+		// Cancellation check (H-6): the inner loop over all other nodes is
+		// O(V) per source, O(V²) total.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		var scores []NodeSimilarityScore
 		for _, otherID := range nodeIDs {
 			if otherID == sourceID {

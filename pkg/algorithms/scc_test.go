@@ -1,6 +1,7 @@
 package algorithms
 
 import (
+	"context"
 	"os"
 	"sort"
 	"testing"
@@ -111,7 +112,7 @@ func TestSCC_DefensiveDegradeOnEdgeReadFailure(t *testing.T) {
 		inner:  newTenantBlindView(gs),
 		failOn: b.ID,
 	}
-	result, err := sccView(view)
+	result, err := sccView(context.Background(), view)
 	if err != nil {
 		t.Fatalf("sccView failed: %v", err)
 	}
