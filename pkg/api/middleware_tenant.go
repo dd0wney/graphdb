@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
@@ -29,15 +30,25 @@ func (s *Server) withTenant(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// Determine tenant ID
-		tenantID := s.resolveTenantID(r, claims)
+		// Determine tenant ID. A malformed admin override (M-5) is a
+		// client error, distinct from a well-formed-but-unknown tenant.
+		tenantID, err := s.resolveTenantID(r, claims)
+		if err != nil {
+			s.respondError(w, http.StatusBadRequest, "Invalid tenant identifier")
+			return
+		}
 
-		// Validate tenant exists (if tenant store is configured)
+		// Validate tenant exists AND is active (if tenant store is
+		// configured). GetActive — not Get — so a suspended or deleted
+		// tenant is rejected here rather than retaining access until its
+		// JWT expires (security audit H-1).
 		if s.tenantStore != nil {
-			_, err := s.tenantStore.Get(tenantID)
+			_, err := s.tenantStore.GetActive(tenantID)
 			if err != nil {
-				// For default tenant, auto-create if it doesn't exist
-				if tenantID == tenant.DefaultTenantID {
+				// The default tenant is auto-created on first use, but
+				// only when it is genuinely absent — never resurrect a
+				// suspended/deleted default tenant by recreating it.
+				if tenantID == tenant.DefaultTenantID && errors.Is(err, tenant.ErrTenantNotFound) {
 					defaultTenant := &tenant.Tenant{
 						ID:     tenant.DefaultTenantID,
 						Name:   "Default Tenant",
@@ -63,27 +74,37 @@ func (s *Server) withTenant(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // resolveTenantID determines the tenant ID based on headers and claims.
-// Priority: X-Tenant-ID header (admin only) > JWT claim > default
-func (s *Server) resolveTenantID(r *http.Request, claims *auth.Claims) string {
+// Priority: X-Tenant-ID header (admin only) > JWT claim > default.
+//
+// A non-nil error means an admin supplied a malformed X-Tenant-ID header
+// (security audit M-5); the caller maps it to 400. The raw header value
+// is never logged before validation passes, so a value containing CR/LF
+// cannot forge log entries (the M-5 log-injection vector).
+func (s *Server) resolveTenantID(r *http.Request, claims *auth.Claims) (string, error) {
 	// Check for admin override via header
 	headerTenantID := r.Header.Get(TenantIDHeader)
 	if headerTenantID != "" {
 		// Only admins can override tenant
 		if claims.Role == auth.RoleAdmin {
+			if err := tenant.ValidateTenantID(headerTenantID); err != nil {
+				return "", err
+			}
+			// Safe to log: a validated ID has no control characters.
 			log.Printf("Admin %s overriding tenant to: %s", claims.Username, headerTenantID)
-			return headerTenantID
+			return headerTenantID, nil
 		}
-		// Non-admin trying to override - log and ignore
-		log.Printf("Non-admin user %s attempted tenant override to %s (ignored)", claims.Username, headerTenantID)
+		// Non-admin trying to override — ignore. Do NOT log the raw
+		// attacker-controlled value (M-5); record only that it happened.
+		log.Printf("Non-admin user %s attempted tenant override (ignored)", claims.Username)
 	}
 
 	// Use tenant from JWT claims if present
 	if claims.TenantID != "" {
-		return claims.TenantID
+		return claims.TenantID, nil
 	}
 
 	// Default tenant for backward compatibility
-	return tenant.DefaultTenantID
+	return tenant.DefaultTenantID, nil
 }
 
 // getTenantFromContext extracts the tenant ID from request context.
