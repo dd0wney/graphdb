@@ -101,6 +101,42 @@ Root cause of the silent-bug streak named explicitly: **N parallel representatio
 
 ---
 
+## Track S (NEW) — security audit + hardening (2026-06-10)
+
+Commissioned per **Decision 10 option B** (the security dimension was last audited 2026-05-06; the surface had grown substantially since — admin `mint-token`, the Value⇄JSON converter, Cypher param substitution, edge mutation, pagination, tenant cascade delete, WAL/transaction durability, the Python SDK). Full-surface re-audit doc: **`docs/internals/design/AUDIT_security_2026-06-10.md`** (six parallel specialist passes + gosec/govulncheck). **Verdict: no live cross-tenant exposure** — the 2026-05-06 FAIL areas (multi-tenancy) are now the strongest part; the findings are hardening-defaults, data-remanence, and client-library polish. **11 High / 16 Medium / 10 Low**, organized into a 3-wave backlog.
+
+### Wave 1 — server hardening ✅ CLOSED (2026-06-10)
+All six server-side Highs + all five targeted Mediums shipped, each TDD-pinned (RED→GREEN):
+- **#372** H-1 (suspended tenants kept access — `withTenant` now uses `GetActive`) + M-5 (tenant-ID override validation / log-injection)
+- **#373** H-7 (HNSW `M`/`ef` caps) + H-8 (`/traverse` node cap + `X-Truncated`)
+- **#374** H-9 (toolchain → go1.26.4; govulncheck 2 reachable → 0)
+- **#375** H-2 (at-rest files 0600/0700 across wal/storage/search/lsm) + H-4 (WAL record-size cap → no 4 GiB restart-loop OOM)
+- **#376** M-3 (GraphQL depth limit wired) + M-4 (pre-auth body cap) + M-16 (audit-log endpoint caps)
+- **#377** M-6 (mint-token defaults to viewer)
+- **#378** M-13 (SDK `CreatedAPIKey.key` `repr=False`)
+
+### Wave 2 — client release ✅ SHIPPED (2026-06-10)
+- **#379** Python SDK: H-10 (path-segment encoding — `quote_segment` at all 20 sites; the experimentally-confirmed `../admin` traversal), M-10 (cache namespace), M-11 (429 not retried on POST), M-12 (`trust_env=False`), L-10 (cache-error logging), L-9 (explicit `follow_redirects=False`)
+- **#380** TS Workers client: H-11 (cache identity namespace), M-11 (idempotent-only retries), L-9 (`redirect: 'manual'`)
+- **Follow-up:** cut a versioned Python/TS client release bundling #379/#380; decide the PyPI-publish open question.
+
+### Wave 3 — design-required (NOT started; each needs a `/spike` or short spec first)
+- **H-3** encrypt WAL payloads (snapshot encryption currently leaves the WAL plaintext)
+- **H-5** rate limiting on by default (config-compat decision — don't silently throttle existing deployments)
+- **H-6** thread `context.Context` through algorithm inner loops (betweenness/similarity/triangles — uncancellable goroutines)
+- **M-1/M-2** tenant-delete data remanence (snapshot+truncate after cascade; wire into `pkg/compliance` GDPR controls; fail-or-retry on LSA-snapshot delete)
+- **M-7** token revocation (per-user generation counter as a claim)
+- **M-8** OIDC: thread the composite `TokenValidator` into the user-management handlers + add `nbf` check
+- **M-14** snapshot magic-header + version (needs the snapshot-format version-bump discipline)
+- **M-15** enterprise `.so` plugin hash/signature verification (cross-repo with graphdb-enterprise)
+
+### L-tier (10 Lows) — batch or accept-risk
+Each is a one-liner or a documented accepted-risk (edge TOCTOU, adjacency timing channel, ID-gap inference, zombie tenant, Cypher SQL-pattern false positives, 409 node-ID disclosure, float→int near MaxInt64, usage-endpoint admin-check placement, SDK redirect docs, cache-POST-invalidation). Bundle into one cleanup PR or close as won't-fix with rationale.
+
+**`AUDIT_security_2026-06-10.md` § "Consolidated confirmed-clean" is the starting point for any future security audit — don't re-derive it.** Memory: `project_security_audit_2026_06_10`.
+
+---
+
 ## Decision points
 
 ### Decision 10 (NEW) — Critical-path selection after Track P
@@ -162,5 +198,6 @@ Both shipped on branch `perf/label-index-set-m3` (PR #294). The "decision-laden"
 3. **Inherited PRs #240/#241 are CLOSED** — board is clear (no longer a forcing function).
 4. **Don't** re-open the perf dimension or manufacture sub-tracks beyond what the consumers / invariant harness surface.
 5. If a follow-up turns out deep enough to need design, spike it (`/spike`) first — but most are bounded.
+6. **Current state (2026-06-10): Track S (security audit) is the active track.** Read § Track S — the audit (`AUDIT_security_2026-06-10.md`) found no live cross-tenant exposure; Waves 1 (server hardening, #372–378) and 2 (client release, #379/#380) are shipped. **Remaining: Wave 3 (design-required, each needs a `/spike`) + the L-tier cleanup, + cut a versioned client release.** Don't re-commission a security audit without new evidence.
 
-The critical path is **earned, not TBD**: the testing harness exists because this session proved the silent bugs are a *parallel-invariant coverage* gap, not an edge-case gap.
+The critical path is **earned, not TBD**: the testing harness exists because this session proved the silent bugs are a *parallel-invariant coverage* gap, not an edge-case gap; Track S then closed the long-deferred security dimension with measured findings.
