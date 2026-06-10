@@ -77,7 +77,10 @@ func handleMintTokenCommand(args []string) {
 	fs := flag.NewFlagSet("mint-token", flag.ExitOnError)
 	username := fs.String("username", "", "Username to embed in the token (required)")
 	userID := fs.String("user-id", "", "User ID to embed (defaults to --username)")
-	role := fs.String("role", auth.RoleAdmin, "Role: admin, editor, or viewer")
+	// Default to the least-privileged role (security audit M-6). Minting
+	// admin tokens must be a conscious choice — runbooks that copy the
+	// example without --role should not silently produce admin credentials.
+	role := fs.String("role", auth.RoleViewer, "Role: admin, editor, or viewer")
 	tenant := fs.String("tenant", "", "Tenant ID (empty = default tenant)")
 	ttl := fs.Duration("ttl", auth.DefaultTokenDuration, "Token lifetime (e.g. 15m, 24h)")
 	_ = fs.Parse(args)
@@ -100,6 +103,10 @@ func handleMintTokenCommand(args []string) {
 	fmt.Println(token)
 	fmt.Fprintf(os.Stderr, "Minted %s token for %q (user-id %q, tenant %q), valid %s\n",
 		*role, *username, id, tenantLabel(*tenant), *ttl)
+	if *role == auth.RoleAdmin {
+		fmt.Fprintln(os.Stderr,
+			"WARNING: minted an ADMIN token — use --role viewer or --role editor for service accounts and time-limited sessions.")
+	}
 }
 
 func tenantLabel(t string) string {
