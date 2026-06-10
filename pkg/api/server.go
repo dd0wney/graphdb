@@ -240,7 +240,10 @@ func (s *Server) Start() error {
 	suil := newSuilClient()
 
 	// Create HTTP server with timeouts for production security
-	// Middleware chain: suil -> metrics -> panicRecovery -> requestID -> rateLimit -> securityHeaders -> inputValidation -> auditCollector -> audit -> logging -> CORS -> routes
+	// Middleware chain: suil -> metrics -> panicRecovery -> requestID -> rateLimit -> securityHeaders -> bodyLimit -> inputValidation -> auditCollector -> audit -> logging -> CORS -> routes
+	// bodyLimit sits ahead of inputValidation so EVERY request — including
+	// the /auth/* paths inputValidation skips — has a body bound before
+	// anything reads it (security audit M-4).
 	// auditCollector must wrap audit so the per-request mutable identity
 	// holder is in context before audit emits the event; inner per-route
 	// middlewares (requireAuth, withTenant) then write through the
@@ -249,7 +252,7 @@ func (s *Server) Start() error {
 	// via r.WithContext(ctx) — visible only downstream of the wrap.
 	server := &http.Server{
 		Addr:         addr,
-		Handler:      suilMiddleware(suil)(s.metricsMiddleware(s.panicRecoveryMiddleware(s.requestIDMiddleware(s.rateLimitMiddleware(s.securityHeadersMiddleware(s.inputValidationMiddleware(s.auditCollectorMiddleware(s.auditMiddleware(s.loggingMiddleware(s.corsMiddleware(mux))))))))))),
+		Handler:      suilMiddleware(suil)(s.metricsMiddleware(s.panicRecoveryMiddleware(s.requestIDMiddleware(s.rateLimitMiddleware(s.securityHeadersMiddleware(s.bodyLimitMiddleware(s.inputValidationMiddleware(s.auditCollectorMiddleware(s.auditMiddleware(s.loggingMiddleware(s.corsMiddleware(mux)))))))))))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,

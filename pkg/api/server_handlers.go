@@ -246,6 +246,11 @@ func (s *Server) getGraphQLHandlerForTenant(tenantID string) (*graphql.GraphQLHa
 	return h, nil
 }
 
+// maxGraphQLQueryDepth bounds nesting depth on /graphql (security audit
+// M-3). Legitimate queries against this schema are shallow; 10 leaves
+// generous headroom while preventing resolver-recursion DoS.
+const maxGraphQLQueryDepth = 10
+
 func (s *Server) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 	// Resolve the per-tenant handler. Audit A9 #3: schema is now
 	// keyed by tenantID; cold-start path runs through singleflight.
@@ -296,6 +301,22 @@ func (s *Server) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+	}
+
+	// Validate query depth before execution (security audit M-3).
+	// Complexity is computed from query structure with a fixed per-field
+	// weight, so a deeply nested but narrow query can stay under the
+	// complexity ceiling while still forcing deep resolver recursion
+	// (stack growth / large allocation). The depth check is the missing
+	// guard — the validator existed but was never wired into this path.
+	if err := graphql.ValidateQueryDepth(gqlReq.Query, maxGraphQLQueryDepth); err != nil {
+		s.respondJSON(w, http.StatusOK, map[string]any{
+			"data": nil,
+			"errors": []map[string]string{
+				{"message": fmt.Sprintf("Query rejected: %v", err)},
+			},
+		})
+		return
 	}
 
 	// Restore the request body for the handler.
