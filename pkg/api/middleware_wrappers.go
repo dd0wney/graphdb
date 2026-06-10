@@ -2,9 +2,40 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/dd0wney/graphdb/pkg/api/middleware"
 )
+
+// Request body caps (security audit M-4). The general cap matches the
+// input-validation middleware's existing 10 MB limit; the auth cap is
+// tight because /auth/* payloads are small JSON — and those paths are
+// the ones inputValidationMiddleware skips, so without this outer layer
+// they had no body bound at all (an unbounded pre-auth read).
+const (
+	maxAuthBodyBytes    = 64 * 1024        // 64 KiB
+	maxGeneralBodyBytes = 10 * 1024 * 1024 // 10 MiB
+)
+
+// bodyLimitMiddleware caps the request body size for EVERY request,
+// including the pre-auth /auth/* paths that inputValidationMiddleware
+// skips (security audit M-4). It runs ahead of input validation so an
+// oversized body is rejected before anything reads it.
+func (s *Server) bodyLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		limit := int64(maxGeneralBodyBytes)
+		if strings.HasPrefix(r.URL.Path, "/auth/") {
+			limit = maxAuthBodyBytes
+		}
+		if r.ContentLength > limit {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		// Safety net for chunked/absent Content-Length.
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+		next.ServeHTTP(w, r)
+	})
+}
 
 // panicRecoveryMiddleware recovers from panics in HTTP handlers
 func (s *Server) panicRecoveryMiddleware(next http.Handler) http.Handler {

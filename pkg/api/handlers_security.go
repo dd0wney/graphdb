@@ -11,6 +11,15 @@ import (
 	"github.com/dd0wney/graphdb/pkg/encryption"
 )
 
+// Bounds on the admin audit-log endpoints (security audit M-16). The
+// per-request limit matches the F3 compliance handler's cap; the export
+// bound defends against materializing an unbounded ring buffer in one
+// response.
+const (
+	maxAuditLogLimit    = 1000
+	maxAuditExportLimit = 100000
+)
+
 // handleSecurityKeyRotate rotates the encryption key
 func (s *Server) handleSecurityKeyRotate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -108,12 +117,17 @@ func (s *Server) handleSecurityAuditLogs(w http.ResponseWriter, r *http.Request)
 	// Note: inMemoryAuditLogger always keeps recent events for API access
 	events := s.inMemoryAuditLogger.GetEvents(filter)
 
-	// Parse limit
+	// Parse limit, capped at maxAuditLogLimit (security audit M-16): the
+	// caller-supplied limit was previously unbounded, so a single request
+	// could force serialization of the entire ring buffer.
 	limit := 100 // default
 	if limitStr := query.Get("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
 			limit = l
 		}
+	}
+	if limit > maxAuditLogLimit {
+		limit = maxAuditLogLimit
 	}
 
 	// Limit results
@@ -149,8 +163,14 @@ func (s *Server) handleSecurityAuditExport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Get all events from in-memory logger
+	// Get events from in-memory logger, bounded by maxAuditExportLimit
+	// (security audit M-16) so a single export can't materialize and
+	// serialize an unbounded set. Truncation is signalled in a header.
 	events := s.inMemoryAuditLogger.GetEvents(nil)
+	if len(events) > maxAuditExportLimit {
+		events = events[:maxAuditExportLimit]
+		w.Header().Set("X-Truncated", "true")
+	}
 
 	// Set headers for file download
 	w.Header().Set("Content-Type", "application/json")
