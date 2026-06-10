@@ -327,6 +327,14 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 	// fire for. Fails soft — missing config = no observer registered.
 	server.bootstrapAutoEmbedFromEnv()
 
+	// Activate rate limiting (security audit H-5). This was previously
+	// never called, so BOTH the auth brute-force limiter and the general
+	// limiter were nil — middleware.RateLimit passes through on a nil
+	// limiter, meaning no protection at all. Auth limiting is always on;
+	// general limiting is now on by default (opt out with
+	// RATE_LIMIT_ENABLED=false).
+	server.InitRateLimiterFromEnv()
+
 	return server, nil
 }
 

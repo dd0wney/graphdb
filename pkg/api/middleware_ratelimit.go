@@ -51,11 +51,16 @@ func (s *Server) InitRateLimiterFromEnv() {
 	// This is a security-critical feature that should not be disabled
 	s.initAuthRateLimiter()
 
-	// Check if general rate limiting is enabled
+	// General API rate limiting is ON by default (security audit H-5):
+	// previously it was opt-in AND this function was never invoked, so
+	// there was no flood protection at all. Operators can disable it with
+	// RATE_LIMIT_ENABLED=false (the auth brute-force limiter stays on
+	// regardless). The default limits (100 req/s sustained, burst 200,
+	// per authenticated user or per IP) are generous enough not to throttle
+	// normal use; tune via RATE_LIMIT_RPS / RATE_LIMIT_BURST.
 	enabled := os.Getenv("RATE_LIMIT_ENABLED")
-	if enabled != "true" && enabled != "1" {
-		log.Printf("General API rate limiting disabled (set RATE_LIMIT_ENABLED=true to enable)")
-		log.Printf("Note: Auth rate limiting is always enabled for security")
+	if enabled == "false" || enabled == "0" {
+		log.Printf("General API rate limiting DISABLED via RATE_LIMIT_ENABLED=%s (auth rate limiting stays on)", enabled)
 		return
 	}
 
