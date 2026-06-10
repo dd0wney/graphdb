@@ -100,8 +100,8 @@ When writing benchmarks that mirror production paths (e.g., comparing a per-shar
 ## Known infra patterns
 
 - **Historical: CI Ubuntu matrix-test jobs (`test-verbose`, `test-race`) consistently exited 143 with `runner has received a shutdown signal`.** Closed 2026-05-13 by **PR #181** moving the matrix `test` job to macOS-only. Cause was external SIGTERM (NOT internal `go test -timeout`, NOT race-detector OOM — PR #159 ruled out OOM by capping `-p 2` with no observed change); likely account-level concurrent-job contention or runner-pool eviction. Non-matrix Linux jobs (`coverage`, `benchmarks`, `build`, `tagged-build-nng`) still run on `ubuntu-latest` and could theoretically hit the same pattern under heavy contention, but historically haven't because they're short-running and unparallel. Re-investigate if they start failing on those jobs.
-- **CI benchmark workflow consistently fails on the comment step.** Permission-scope issue, not a benchmark regression. Tolerated; post-#181 this is the only routine source of `UNSTABLE` state.
-- **`mergeStateStatus: UNSTABLE`** can still happen for green PRs in this repo because of the benchmark comment-step permissions issue (still open). The matrix-test Linux exit-143 SIGTERM cause is closed (PR #181). Verify the failure set matches the expected pattern before merging; net-new failures (or non-benchmark `UNSTABLE` on a non-matrix Linux job) need investigation.
+- **Historical: CI benchmark workflow consistently failed on the comment step.** Closed 2026-06-10 by **PR #368**: the workflow had no `permissions:` block, so the read-only default token 403'd on `createComment`. Fixed with `pull-requests: write` + a same-repo gate + `continue-on-error` on the comment step. **Green now means green** — `UNSTABLE` on any PR is a net-new failure needing investigation, no longer a tolerated normal state. (Fork PRs skip the comment step by design — read-only token.)
+- The matrix-test Linux exit-143 SIGTERM cause is also closed (PR #181). With both historical patterns fixed, there is no expected-failure set to classify against.
 
 ## Known pitfalls
 
@@ -153,7 +153,7 @@ Single-agent / session-lifecycle skills live in `.claude/skills/<name>/SKILL.md`
 |---|---|---|
 | `session-handoff` | At session-end with substantive multi-PR work, or "prepare a handoff." | `docs/internals/design/SESSION_HANDOFF_<...>.md` + PR. Stops before merge. |
 | `planning-doc-update` | After a tracked task closes, or "mark X done in the planning doc." | Targeted edits to `docs/NEXT_STEPS_<DATE>.md` + PR. Single-file diff. |
-| `ci-status-triage` | Before any merge (this repo's normal state is `UNSTABLE`-but-mergeable; manual classification required). | Categorised failure list + merge/hold/investigate recommendation. Doesn't modify anything. |
+| `ci-status-triage` | Before merging a PR with any failing check. (Since PR #368 fixed the benchmark comment-step 403, green-is-green — any failure is net-new and needs classification.) | Categorised failure list + merge/hold/investigate recommendation. Doesn't modify anything. |
 | `branch-cleanup` | After multi-PR work, or "clean up stale branches." | Local `git branch -D` of confirmed-merged branches. Asks user before bulk delete. |
 | `integration-checkpoint` | Long-running branch (>4h) before merging, after high-leverage main changes, when the user says "sync against main." | Clean rebase + re-run tests + advisor confirmation that original framing still holds. |
 
