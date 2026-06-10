@@ -296,10 +296,20 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Drop the tenant's server-owned search indexes. LSA must be unlinked
 	//    on disk too (else LoadAll resurrects it on restart); FTS is in-memory.
+	//    A failure to remove the on-disk LSA snapshot is NOT swallowed
+	//    (security audit M-2): that file holds the deleted tenant's full
+	//    indexed content, so leaving it orphaned is a data-remanence /
+	//    right-to-erasure gap. DeleteLSASnapshot already no-ops on a missing
+	//    file, so a non-nil error is a real FS failure — fail the request so
+	//    the operator retries. The delete is re-runnable: DeleteTenant
+	//    tolerates already-removed data and lsaIndexes.Delete is idempotent.
 	if s.lsaIndexes != nil {
 		s.lsaIndexes.Delete(tenantID)
 		if rmErr := search.DeleteLSASnapshot(filepath.Join(s.dataDir, "lsa"), tenantID); rmErr != nil {
 			log.Printf("tenant delete %q: LSA snapshot cleanup failed: %v", tenantID, rmErr)
+			s.respondError(w, http.StatusInternalServerError,
+				"tenant graph data deleted, but the on-disk search snapshot could not be removed; retry the delete to complete erasure")
+			return
 		}
 	}
 	if s.searchIndexes != nil {
