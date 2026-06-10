@@ -18,13 +18,29 @@ const (
 type AuthHandler struct {
 	userStore  *UserStore
 	jwtManager *JWTManager
+	// tokenValidator validates incoming access tokens. It defaults to
+	// jwtManager (JWT-only) but is swapped for the composite (JWT+OIDC)
+	// validator via SetTokenValidator so OIDC-provisioned admins can reach
+	// the protected endpoints here (security audit M-8 / AUTH-4). Token
+	// *generation* and refresh stay on jwtManager — those are JWT-specific.
+	tokenValidator TokenValidator
 }
 
 // NewAuthHandler creates a new authentication handler
 func NewAuthHandler(userStore *UserStore, jwtManager *JWTManager) *AuthHandler {
 	return &AuthHandler{
-		userStore:  userStore,
-		jwtManager: jwtManager,
+		userStore:      userStore,
+		jwtManager:     jwtManager,
+		tokenValidator: jwtManager,
+	}
+}
+
+// SetTokenValidator overrides the access-token validator (e.g. the
+// composite JWT+OIDC validator). A nil argument is ignored so the
+// jwtManager default is never accidentally cleared.
+func (h *AuthHandler) SetTokenValidator(v TokenValidator) {
+	if v != nil {
+		h.tokenValidator = v
 	}
 }
 
@@ -77,8 +93,8 @@ func (h *AuthHandler) extractAndValidateToken(r *http.Request) (*Claims, error) 
 
 	token := parts[1]
 
-	// Validate token
-	claims, err := h.jwtManager.ValidateToken(r.Context(), token)
+	// Validate via the configured validator (JWT-only or JWT+OIDC).
+	claims, err := h.tokenValidator.ValidateToken(r.Context(), token)
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: %w", err)
 	}

@@ -20,6 +20,7 @@ import (
 var (
 	ErrTokenMalformed   = errors.New("token is malformed")
 	ErrTokenExpired     = errors.New("token has expired")
+	ErrTokenNotYetValid = errors.New("token is not yet valid")
 	ErrInvalidSignature = errors.New("invalid token signature")
 	ErrInvalidIssuer    = errors.New("invalid token issuer")
 	ErrInvalidAudience  = errors.New("invalid token audience")
@@ -124,6 +125,13 @@ func (v *OIDCTokenValidator) ValidateToken(ctx context.Context, tokenString stri
 	// Validate expiration
 	if time.Now().Unix() > claims.ExpiresAt {
 		return nil, ErrTokenExpired
+	}
+
+	// Validate not-before (security audit M-8 / AUTH-5): a token whose nbf
+	// is in the future must be rejected until then, so a pre-issued token
+	// stolen before its activation window cannot be used early.
+	if claims.NotBefore != 0 && time.Now().Unix() < claims.NotBefore {
+		return nil, ErrTokenNotYetValid
 	}
 
 	// Validate signature
