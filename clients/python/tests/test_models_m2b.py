@@ -47,3 +47,14 @@ def test_created_api_key_carries_plaintext_key():
     })
     assert c.key == "gdb_live_secret" and c.id == "k1" and c.prefix == "gdb_live_"
     assert c.expires is None
+
+
+def test_created_api_key_repr_omits_plaintext_key():
+    # Security audit M-13: the one-time plaintext key must not appear in
+    # the dataclass repr, which lands in logs, tracebacks, and crash
+    # reporters. The field stays accessible; only its repr is suppressed.
+    c = CreatedAPIKey.from_dict({
+        "key": "gdb_live_secret", "id": "k1", "name": "ci", "prefix": "gdb_live_",
+    })
+    assert "gdb_live_secret" not in repr(c)
+    assert c.key == "gdb_live_secret"  # still readable by code
