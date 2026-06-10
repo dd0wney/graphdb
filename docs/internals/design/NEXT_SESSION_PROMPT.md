@@ -4,9 +4,9 @@
 > **Singleton file**: every `session-handoff` skill invocation overwrites this. The latest handoff is the source.
 > **Usage**: paste the block below to the next Claude Code session in this repo.
 
-`main` is clean at `39b4300`; the 2026-06-10 security audit is shipped through Wave 3's executable items — **all 11 Highs addressed**, L-tier dispositioned. Track S active (`NEXT_STEPS_2026-06-03.md`). Pick per the user:
+`main` is clean at `9937f6e`; the 2026-06-10 security audit is shipped through Wave 3's executable items — **all 11 Highs addressed**, L-tier dispositioned. Track S active (`NEXT_STEPS_2026-06-03.md`). Pick per the user:
 
 1. **Cut the versioned client release** (#379/#380) — decide semver (the TS M-11 retry change is arguably breaking at 1.x) + the PyPI-publish decision; OR
 2. **`/spike` a Wave 3 design item** (each is design-gated): M-1 WAL-remanence (concurrency-safe compaction — naive snapshot+truncate loses concurrent writes), M-7 revocation (gen-counter claim), H-3 WAL encryption, M-14 snapshot format-header, M-15 plugin verification (cross-repo).
 
-First: triage dependabot **PR #370** and merge **#388** (planning doc) if still open. The audit doc's "consolidated confirmed-clean" + "L-tier disposition" sections are the start points — don't re-derive them. End the session via the `session-handoff` skill.
+The audit doc's "consolidated confirmed-clean" + "L-tier disposition" sections are the start points — don't re-derive them. End the session via the `session-handoff` skill.

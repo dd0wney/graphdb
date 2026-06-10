@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-Commissioned a full-surface **security re-audit** (`AUDIT_security_2026-06-10.md` — no live cross-tenant exposure; 11 High / 16 Medium / 10 Low) and shipped **all of it that's executable without a design decision**: Wave 1 (server hardening), Wave 2 (client release), and Wave 3's no-decision items. **All 11 Highs are addressed.** What remains is 5 genuinely design-gated items (each needs a `/spike`, a snapshot-format bump, or cross-repo work) + cutting a versioned client release. Also cleared two long-standing CI gaps (benchmark 403, never-deployed docs site). `main` clean at `39b4300` (before this handoff + #388 planning update merge).
+Commissioned a full-surface **security re-audit** (`AUDIT_security_2026-06-10.md` — no live cross-tenant exposure; 11 High / 16 Medium / 10 Low) and shipped **all of it that's executable without a design decision**: Wave 1 (server hardening), Wave 2 (client release), and Wave 3's no-decision items. **All 11 Highs are addressed.** What remains is 5 genuinely design-gated items (each needs a `/spike`, a snapshot-format bump, or cross-repo work) + cutting a versioned client release. Also cleared two long-standing CI gaps (benchmark 403, never-deployed docs site). `main` clean at `9937f6e`.
 
 ## What's done this session
 
@@ -56,9 +56,9 @@ Every fix PR is RED-against-pre-fix pinned. Full `pkg/api` / `pkg/storage` / `pk
 
 ## Current state
 
-- `origin/main` HEAD: **`39b4300`** (#387). Plus **#388** (planning-doc Wave 3 update) in flight — should be green-mergeable.
-- **Open PRs:** #388 (planning doc, mergeable), **#370** (dependabot actions bump — auto-opened by the new config; review/merge or close — likely redundant with #368's manual bumps), and **this handoff PR**.
-- Open branches: `main` + the #388 and this-handoff branches.
+- `origin/main` HEAD: **`9937f6e`** (#370). #388 (planning-doc Wave 3 update) and #370 (dependabot) both merged after the audit work.
+- **Open PRs:** just **this handoff PR**. (#370 was the third-party-actions bump #368 deliberately left untouched — docker/*, golangci-lint-action, setup-uv, goreleaser, dockerhub-description — NOT redundant with #368; merged green. Its goreleaser/docker bumps are only exercised by an actual release, so the next release is their real test.)
+- Open branches: `main` + this-handoff branch.
 - Uncommitted changes: none (`.claude/scheduled_tasks.lock` is untracked session noise).
 - **CI normal-state: green-is-green now** (the benchmark 403 is fixed). Any PR failure is net-new. The benchmark *job* still runs ~26 min and comments on same-repo PRs.
 
@@ -79,7 +79,7 @@ Per `docs/NEXT_STEPS_2026-06-03.md` § Track S (updated by #388). Track S remain
 
 Already applied this session (so the next agent doesn't re-flag):
 - `CLAUDE.md` § Known infra patterns + ci-status-triage skill row — benchmark-`UNSTABLE` pattern struck (closed #368); green-is-green. Current.
-- `NEXT_STEPS_2026-06-03.md` — Track S added (#381) + Wave 3 progress (#388). Current after #388 merges.
+- `NEXT_STEPS_2026-06-03.md` — Track S added (#381) + Wave 3 progress (#388, merged). Current.
 - Memory `project_ci_red_state_tolerated`, `project_security_audit_2026_06_10`, `MEMORY.md` — all refreshed to current state.
 - `AUDIT_security_2026-06-10.md` — § L-tier disposition added (#386); the findings list itself is the as-audited record (not annotated per-PR — the planning doc carries done-state).
 
@@ -88,15 +88,14 @@ Nothing else known-stale.
 ## Open questions for the user
 
 1. **Cut the client release?** Needs the semver call (TS 1.x retry-behavior change) + the PyPI-publish decision. Prepared but not executed (version numbers are a public contract).
-2. **Dependabot PR #370** — review/merge or close? (Likely redundant with #368's manual action bumps.)
-3. **Which Wave 3 design item first?** M-1 (WAL remanence / GDPR, pairs with L-1/L-4) and M-7 (revocation) are the highest-value; each opens with a `/spike`.
+2. **Which Wave 3 design item first?** M-1 (WAL remanence / GDPR, pairs with L-1/L-4) and M-7 (revocation) are the highest-value; each opens with a `/spike`.
 
 ## Next-session prompt (paste-ready)
 
-`main` is clean at `39b4300`; the 2026-06-10 security audit is shipped through Wave 3's executable items — **all 11 Highs addressed**, L-tier dispositioned. Track S active (`NEXT_STEPS_2026-06-03.md`). Pick per the user:
+`main` is clean at `9937f6e`; the 2026-06-10 security audit is shipped through Wave 3's executable items — **all 11 Highs addressed**, L-tier dispositioned. Track S active (`NEXT_STEPS_2026-06-03.md`). Pick per the user:
 1. **Cut the versioned client release** (#379/#380) — decide semver (TS retry change is arguably breaking at 1.x) + PyPI publish; OR
 2. **`/spike` a Wave 3 design item** (each is design-gated): M-1 WAL-remanence (concurrency-safe compaction — naive snapshot+truncate loses concurrent writes), M-7 revocation (gen-counter claim), H-3 WAL encryption, M-14 snapshot format-header, M-15 plugin verification (cross-repo).
-First: triage dependabot **PR #370** and merge **#388** (planning doc) if still open. The audit doc's "consolidated confirmed-clean" + "L-tier disposition" sections are the start points — don't re-derive them. End the session via the `session-handoff` skill.
+The audit doc's "consolidated confirmed-clean" + "L-tier disposition" sections are the start points — don't re-derive them. End the session via the `session-handoff` skill.
 
 ## How to use this handoff
 
