@@ -25,6 +25,15 @@ export interface CacheConfig {
 
   /** Fraud detection TTL in seconds (default: 86400 = 24 hours) */
   fraudTTL?: number;
+
+  /**
+   * Identity namespace prefixed onto every cache key (security audit
+   * H-11). A KV namespace is Worker-global, so without an identity
+   * component two distinct users/tenants whose requests reach the same
+   * Worker instance share cached graph reads. Set this to the requesting
+   * tenant or user id; default "" preserves the legacy un-namespaced keys.
+   */
+  namespace?: string;
 }
 
 /**
@@ -71,6 +80,7 @@ export class GraphDBCache {
       nodeTTL: config.nodeTTL || 300,
       traversalTTL: config.traversalTTL || 600,
       fraudTTL: config.fraudTTL || 86400,
+      namespace: config.namespace || '',
     };
   }
 
@@ -206,7 +216,7 @@ export class GraphDBCache {
    * Generate cache key
    */
   generateKey(type: string, id: string): string {
-    return `${type}:${id}`;
+    return `${this.keyPrefix()}${type}:${id}`;
   }
 
   /**
@@ -219,7 +229,12 @@ export class GraphDBCache {
     direction: string
   ): string {
     const edgeTypesStr = edgeTypes.sort().join(',');
-    return `traversal:${startNodeId}:${edgeTypesStr}:${maxDepth}:${direction}`;
+    return `${this.keyPrefix()}traversal:${startNodeId}:${edgeTypesStr}:${maxDepth}:${direction}`;
+  }
+
+  /** Identity prefix for all cache keys (security audit H-11). */
+  private keyPrefix(): string {
+    return this.config.namespace ? `${this.config.namespace}:` : '';
   }
 
   /**

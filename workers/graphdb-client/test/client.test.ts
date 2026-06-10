@@ -15,7 +15,11 @@ describe('GraphDBClient', () => {
   const mockApiKey = 'test-api-key';
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    // resetAllMocks (not clearAllMocks) so queued mock*Once values from a
+    // prior test never leak into the next — retries that no longer fire on
+    // non-idempotent methods (M-11) leave fewer calls, which would
+    // otherwise desync the Once queue.
+    vi.resetAllMocks();
     client = new GraphDBClient({
       endpoint: mockEndpoint,
       apiKey: mockApiKey,
@@ -242,22 +246,25 @@ describe('GraphDBClient', () => {
   });
 
   describe('Retry logic', () => {
-    it('should retry on network error', async () => {
+    // Retries are exercised with GET (getNode) — an idempotent method.
+    // Non-idempotent methods (query/createNode use POST) are NOT retried
+    // (security audit M-11); see the dedicated pins below.
+    it('should retry idempotent (GET) requests on network error', async () => {
       (global.fetch as ReturnType<typeof vi.fn>)
         .mockRejectedValueOnce(new Error('Network error'))
         .mockRejectedValueOnce(new Error('Network error'))
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => ({ data: { success: true } }),
+          json: async () => ({ id: '123' }),
         });
 
-      const result = await client.query('{ ping }');
-      expect(result).toEqual({ success: true });
+      const result = await client.getNode('123');
+      expect(result).toBeDefined();
       expect(global.fetch).toHaveBeenCalledTimes(3);
     });
 
-    it('should retry on 5xx errors', async () => {
+    it('should retry idempotent (GET) requests on 5xx errors', async () => {
       (global.fetch as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce({
           ok: false,
@@ -267,12 +274,32 @@ describe('GraphDBClient', () => {
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => ({ data: { success: true } }),
+          json: async () => ({ id: '123' }),
         });
 
-      const result = await client.query('{ ping }');
-      expect(result).toEqual({ success: true });
+      const result = await client.getNode('123');
+      expect(result).toBeDefined();
       expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should NOT retry non-idempotent (POST) requests on 5xx (M-11)', async () => {
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: async () => ({ error: 'Service unavailable' }),
+      });
+
+      await expect(client.query('{ ping }')).rejects.toThrow(GraphDBError);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT retry non-idempotent (POST) requests on network error (M-11)', async () => {
+      (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error('Network error')
+      );
+
+      await expect(client.query('{ ping }')).rejects.toThrow(GraphDBError);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
     it('should not retry on 4xx errors', async () => {
@@ -286,12 +313,12 @@ describe('GraphDBClient', () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    it('should throw after max retries', async () => {
+    it('should throw after max retries (idempotent GET)', async () => {
       (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error('Network error')
       );
 
-      await expect(client.query('{ ping }')).rejects.toThrow(GraphDBError);
+      await expect(client.getNode('123')).rejects.toThrow(GraphDBError);
       expect(global.fetch).toHaveBeenCalledTimes(3); // Initial + 2 retries
     });
   });
@@ -305,17 +332,23 @@ describe('GraphDBClient', () => {
         retries: 0,
       });
 
+      // Honor the abort signal so the 100ms timeout actually rejects the
+      // in-flight request (the client's AbortController fires at timeout).
       (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            setTimeout(() => resolve({ ok: true, status: 200 }), 200); // Takes 200ms
+        (_url: string, opts: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            opts.signal?.addEventListener('abort', () => {
+              const err = new Error('aborted');
+              err.name = 'AbortError';
+              reject(err);
+            });
           })
       );
 
-      await expect(slowClient.query('{ slow }')).rejects.toThrow();
+      await expect(slowClient.getNode('123')).rejects.toThrow();
     }, 10000);
 
-    it('should retry on timeout errors', async () => {
+    it('should retry idempotent (GET) requests on timeout errors', async () => {
       const clientWithRetries = new GraphDBClient({
         endpoint: mockEndpoint,
         apiKey: mockApiKey,
@@ -340,13 +373,13 @@ describe('GraphDBClient', () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: async () => ({ data: { success: true } }),
+            json: async () => ({ id: '123' }),
           });
         }
       );
 
-      const result = await clientWithRetries.query('{ ping }');
-      expect(result).toEqual({ success: true });
+      const result = await clientWithRetries.getNode('123');
+      expect(result).toBeDefined();
       expect(callCount).toBe(3); // 2 timeouts + 1 success
     }, 10000);
   });

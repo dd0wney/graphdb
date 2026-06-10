@@ -384,6 +384,17 @@ export class GraphDBClient {
   }
 
   /**
+   * Whether a request may be safely retried (security audit M-11). POST
+   * and PATCH are non-idempotent — a retry after a partial failure can
+   * duplicate a mutation — so they are never retried.
+   */
+  private isIdempotentRequest(options: RequestInit): boolean {
+    const method = (options.method ?? 'GET').toUpperCase();
+    return method === 'GET' || method === 'HEAD' || method === 'PUT'
+      || method === 'DELETE' || method === 'OPTIONS';
+  }
+
+  /**
    * Fetch with retry logic and timeout (internal)
    */
   private async fetchWithRetry(
@@ -399,6 +410,11 @@ export class GraphDBClient {
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
+        // redirect: 'manual' (security audit L-9): never auto-follow a
+        // redirect — the default 'follow' forwards the Authorization
+        // header on same-origin redirects. A 3xx surfaces as a non-ok
+        // response and becomes a descriptive error below.
+        redirect: 'manual',
       });
 
       clearTimeout(timeoutId);
@@ -414,7 +430,9 @@ export class GraphDBClient {
 
       // Handle timeout
       if (error instanceof Error && error.name === 'AbortError') {
-        if (attempt < this.config.retries) {
+        // Only retry idempotent methods (security audit M-11): a timed-out
+        // non-idempotent request may have been applied server-side.
+        if (attempt < this.config.retries && this.isIdempotentRequest(options)) {
           return this.retryRequest(path, options, attempt);
         }
         throw new GraphDBError(
@@ -423,8 +441,8 @@ export class GraphDBClient {
         );
       }
 
-      // Handle network errors
-      if (attempt < this.config.retries) {
+      // Handle network errors — idempotent methods only (M-11).
+      if (attempt < this.config.retries && this.isIdempotentRequest(options)) {
         return this.retryRequest(path, options, attempt);
       }
 
@@ -448,8 +466,10 @@ export class GraphDBClient {
   ): Promise<Response> {
     const statusCode = response.status;
 
-    // Retry on 5xx errors
-    if (statusCode >= 500 && attempt < this.config.retries) {
+    // Retry on 5xx errors — idempotent methods only (security audit M-11):
+    // a 5xx on a write-POST may have committed before failing, so blindly
+    // retrying it risks duplicate mutations.
+    if (statusCode >= 500 && attempt < this.config.retries && this.isIdempotentRequest(options)) {
       return this.retryRequest(path, options, attempt);
     }
 
