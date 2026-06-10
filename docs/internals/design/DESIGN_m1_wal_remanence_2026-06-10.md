@@ -1,7 +1,15 @@
 # Design — M-1: purge deleted-tenant data from the WAL (remanence)
 
-**Status:** proposal, awaiting decision (Track S / `AUDIT_security_2026-06-10.md` M-1).
+**Status:** **Option C shipped (#393); Option A still the real fix, awaiting go-ahead.** (Track S / `AUDIT_security_2026-06-10.md` M-1.)
 **Companion:** M-2 (the LSA-snapshot half) shipped in #384. This is the WAL half.
+
+> **Update — Option C shipped (#393).** The honest interim is live: a GDPR
+> Article 17 (Right to Erasure) control now exists in `pkg/compliance`,
+> evaluated as `Partial` with a WAL-remanence note, and flips to `Compliant`
+> via the new `SystemInfo.ImmediateErasure` flag when **Option A** lands. No
+> WAL code was touched. **Option A below remains the real fix** — a multi-day
+> durability-layer change that needs an explicit go-ahead before implementation
+> (it gates H-3). When A ships, set `ImmediateErasure` and flip the control.
 
 ## Problem
 
