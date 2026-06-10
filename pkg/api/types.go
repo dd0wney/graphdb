@@ -73,6 +73,10 @@ type TraversalResponse struct {
 	Nodes []*NodeResponse `json:"nodes"`
 	Count int             `json:"count"`
 	Time  string          `json:"time"`
+	// Truncated is true when the traversal stopped at MaxTraversalNodes
+	// before exhausting the reachable set (security audit H-8). The same
+	// signal is mirrored in the X-Truncated response header.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // ShortestPathRequest represents a shortest path query

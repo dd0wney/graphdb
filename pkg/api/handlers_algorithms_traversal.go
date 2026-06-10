@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,11 @@ import (
 
 	"github.com/dd0wney/graphdb/pkg/algorithms"
 )
+
+// errTraversalTruncated unwinds the BFS recursion when the result set
+// reaches MaxTraversalNodes. It is not a failure — the handler maps it to
+// a 200 with partial results and an X-Truncated header (security audit H-8).
+var errTraversalTruncated = errors.New("traversal result truncated at node cap")
 
 func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -81,19 +87,29 @@ func (s *Server) handleTraversal(w http.ResponseWriter, r *http.Request) {
 	// Simple BFS traversal with context, scoped to caller's tenant.
 	visited := make(map[uint64]bool)
 	nodes := make([]*NodeResponse, 0)
+	truncated := false
 	if err := s.traverseFromWithContext(ctx, tenantID, req.StartNodeID, 0, opts, visited, &nodes); err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		switch {
+		case errors.Is(err, errTraversalTruncated):
+			// Hit the node cap — return what we have, flag it.
+			truncated = true
+		case ctx.Err() == context.DeadlineExceeded:
 			s.respondError(w, http.StatusRequestTimeout, "Traversal timed out")
 			return
+		default:
+			s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "graph traversal"))
+			return
 		}
-		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "graph traversal"))
-		return
 	}
 
+	if truncated {
+		w.Header().Set("X-Truncated", "true")
+	}
 	response := TraversalResponse{
-		Nodes: nodes,
-		Count: len(nodes),
-		Time:  time.Since(start).String(),
+		Nodes:     nodes,
+		Count:     len(nodes),
+		Time:      time.Since(start).String(),
+		Truncated: truncated,
 	}
 
 	s.respondJSON(w, http.StatusOK, response)
@@ -146,6 +162,13 @@ func (s *Server) traverseFromWithContext(ctx context.Context, tenantID string, n
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
+	}
+
+	// Stop before exceeding the output cap (security audit H-8). The
+	// sentinel unwinds the whole recursion; the handler reports a
+	// truncated 200 rather than a failure.
+	if len(*nodes) >= MaxTraversalNodes {
+		return errTraversalTruncated
 	}
 
 	if depth > opts.maxDepth || visited[nodeID] {
