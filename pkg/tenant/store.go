@@ -19,6 +19,24 @@ const (
 // tenantIDRegex validates tenant IDs (alphanumeric, hyphens, underscores)
 var tenantIDRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 
+// ValidateTenantID reports whether id is an acceptable tenant identifier:
+// 3-64 characters, starting alphanumeric, containing only alphanumerics,
+// hyphens, and underscores. It is the single source of truth for what a
+// tenant ID may contain — both creation (validateTenant) and the admin
+// X-Tenant-ID override path (security audit M-5) route through it, so a
+// value that can never be created can never be supplied as an override
+// either. Rejecting here also closes the log-injection vector: a value
+// that passes has no CR/LF or control characters to smuggle into logs.
+func ValidateTenantID(id string) error {
+	if len(id) < MinTenantIDLength || len(id) > MaxTenantIDLength {
+		return fmt.Errorf("%w: ID must be %d-%d characters", ErrInvalidTenantID, MinTenantIDLength, MaxTenantIDLength)
+	}
+	if !tenantIDRegex.MatchString(id) {
+		return fmt.Errorf("%w: ID must be alphanumeric with hyphens/underscores", ErrInvalidTenantID)
+	}
+	return nil
+}
+
 // TenantStore manages tenant storage and operations.
 //
 // Internal maps are keyed by tenantid.TenantID since audit task A1
@@ -433,13 +451,9 @@ func (s *TenantStore) validateTenant(tenant *Tenant) error {
 		return ErrInvalidTenantID
 	}
 
-	// Validate ID
-	if len(tenant.ID) < MinTenantIDLength || len(tenant.ID) > MaxTenantIDLength {
-		return fmt.Errorf("%w: ID must be %d-%d characters", ErrInvalidTenantID, MinTenantIDLength, MaxTenantIDLength)
-	}
-
-	if !tenantIDRegex.MatchString(tenant.ID) {
-		return fmt.Errorf("%w: ID must be alphanumeric with hyphens/underscores", ErrInvalidTenantID)
+	// Validate ID (single source of truth — see ValidateTenantID).
+	if err := ValidateTenantID(tenant.ID); err != nil {
+		return err
 	}
 
 	// Validate name
