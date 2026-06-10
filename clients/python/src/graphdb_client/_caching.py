@@ -1,21 +1,27 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Mapping, cast
 from urllib.parse import urlencode
 
 from ._transport import ApiResult, Transport
 from .cache import CacheBackend, CacheConfig
 
+_log = logging.getLogger("graphdb_client.cache")
+
 # Only unambiguous mutations invalidate. graphdb uses POST for reads
 # (/query, /search, /traverse, ...), so POST is deliberately excluded.
 _MUTATING = frozenset({"PUT", "PATCH", "DELETE"})
 
 
-def cache_key(method: str, path: str, params: Mapping[str, Any] | None) -> str:
+def cache_key(
+    method: str, path: str, params: Mapping[str, Any] | None, namespace: str = ""
+) -> str:
+    prefix = f"{namespace}:" if namespace else ""
     if params:
         query = urlencode(sorted((str(k), str(v)) for k, v in params.items()))
-        return f"{method.upper()}:{path}?{query}"
-    return f"{method.upper()}:{path}"
+        return f"{prefix}{method.upper()}:{path}?{query}"
+    return f"{prefix}{method.upper()}:{path}"
 
 
 class CachingTransport:
@@ -58,13 +64,17 @@ class CachingTransport:
                 try:
                     self._cache.clear()
                 except Exception:
-                    pass
+                    # Fail-open, but not silent (security audit L-10): a
+                    # broken backend degrades to stale reads and must be
+                    # observable rather than swallowed.
+                    _log.warning("cache clear failed; entries may be stale", exc_info=True)
             return res
 
-        key = cache_key(method, path, params)
+        key = cache_key(method, path, params, self._config.namespace)
         try:
             cached = self._cache.get(key)
         except Exception:
+            _log.warning("cache get failed; bypassing cache for this request", exc_info=True)
             cached = None
         if cached is not None:
             self._hits += 1
@@ -74,7 +84,7 @@ class CachingTransport:
         try:
             self._cache.set(key, res, ttl=self._ttl_for(path))
         except Exception:
-            pass
+            _log.warning("cache set failed; response not cached", exc_info=True)
         return res
 
     def close(self) -> None:

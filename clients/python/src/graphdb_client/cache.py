@@ -32,6 +32,12 @@ class CacheConfig:
     default_ttl: float = 300.0
     invalidate_on_write: bool = True
     ttl_overrides: Mapping[str, float] = field(default_factory=dict)  # path-prefix -> ttl
+    # namespace disambiguates cache entries when one external backend
+    # (Redis, etc.) is shared across clients configured with different
+    # tokens/tenants (security audit M-10). Without it, the key is just
+    # METHOD:path?params, so tenant A's cached GET could be served to
+    # tenant B. Set it to a per-auth-context value (e.g. the tenant id).
+    namespace: str = ""
 
 
 class InMemoryCache:
