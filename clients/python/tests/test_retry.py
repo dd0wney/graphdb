@@ -30,7 +30,10 @@ def test_is_retryable_transport_errors():
 
 def test_is_retryable_statuses():
     cfg = RetryConfig()
-    assert is_retryable("POST", 429, None, cfg) is True   # rate-limit: not processed, any method
+    # 429: the server processed the request (it had to, to rate-limit it),
+    # so a write-POST may have committed — idempotent methods only (M-11).
+    assert is_retryable("POST", 429, None, cfg) is False
+    assert is_retryable("GET", 429, None, cfg) is True
     assert is_retryable("GET", 503, None, cfg) is True
     assert is_retryable("POST", 503, None, cfg) is False  # 5xx idempotent-only
     assert is_retryable("GET", 500, None, cfg) is False   # 500 not in default retry_statuses

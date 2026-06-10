@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from .._path import quote_segment
 from .._transport import Transport
 from ..models import Tenant, TenantUsage
 
@@ -37,7 +38,7 @@ class TenantsResource:
 
     def get(self, tenant_id: str) -> Tenant:
         """Get one tenant (GET /api/v1/tenants/{id})."""
-        res = self._t.request("GET", f"/api/v1/tenants/{tenant_id}")
+        res = self._t.request("GET", f"/api/v1/tenants/{quote_segment(tenant_id)}")
         return Tenant.from_dict(res.data)
 
     def update(
@@ -59,22 +60,22 @@ class TenantsResource:
             body["quota"] = dict(quota)
         if metadata is not None:
             body["metadata"] = dict(metadata)
-        res = self._t.request("PUT", f"/api/v1/tenants/{tenant_id}", json=body)
+        res = self._t.request("PUT", f"/api/v1/tenants/{quote_segment(tenant_id)}", json=body)
         return Tenant.from_dict(res.data)
 
     def delete(self, tenant_id: str) -> None:
         """Delete a tenant (DELETE /api/v1/tenants/{id}). Admin-only."""
-        self._t.request("DELETE", f"/api/v1/tenants/{tenant_id}")
+        self._t.request("DELETE", f"/api/v1/tenants/{quote_segment(tenant_id)}")
 
     def usage(self, tenant_id: str) -> TenantUsage:
         """Tenant usage stats (GET /api/v1/tenants/{id}/usage)."""
-        res = self._t.request("GET", f"/api/v1/tenants/{tenant_id}/usage")
+        res = self._t.request("GET", f"/api/v1/tenants/{quote_segment(tenant_id)}/usage")
         return TenantUsage.from_dict(res.data)
 
     def suspend(self, tenant_id: str) -> None:
         """Suspend a tenant (POST /api/v1/tenants/{id}/suspend). Admin-only."""
-        self._t.request("POST", f"/api/v1/tenants/{tenant_id}/suspend")
+        self._t.request("POST", f"/api/v1/tenants/{quote_segment(tenant_id)}/suspend")
 
     def activate(self, tenant_id: str) -> None:
         """Activate a tenant (POST /api/v1/tenants/{id}/activate). Admin-only."""
-        self._t.request("POST", f"/api/v1/tenants/{tenant_id}/activate")
+        self._t.request("POST", f"/api/v1/tenants/{quote_segment(tenant_id)}/activate")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from ..._path import quote_segment
 from ..transport import AsyncTransport
 
 
@@ -48,7 +49,7 @@ class AsyncComplianceResource:
 
         The tenant is a path segment for reads (writes via set_masking_policy take
         the tenant from the caller's auth context — server asymmetry)."""
-        res = await self._t.request("GET", f"/v1/compliance/masking-policy/{tenant}")
+        res = await self._t.request("GET", f"/v1/compliance/masking-policy/{quote_segment(tenant)}")
         return _as_dict(res.data)
 
     async def set_masking_policy(

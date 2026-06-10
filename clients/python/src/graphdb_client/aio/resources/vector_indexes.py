@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..._path import quote_segment
 from ...models import VectorIndex
 from ..transport import AsyncTransport
 
@@ -38,9 +39,9 @@ class AsyncVectorIndexesResource:
 
     async def get(self, property_name: str) -> VectorIndex:
         """Get one vector index (GET /vector-indexes/{property_name})."""
-        res = await self._t.request("GET", f"/vector-indexes/{property_name}")
+        res = await self._t.request("GET", f"/vector-indexes/{quote_segment(property_name)}")
         return VectorIndex.from_dict(res.data)
 
     async def delete(self, property_name: str) -> None:
         """Drop a vector index (DELETE /vector-indexes/{property_name})."""
-        await self._t.request("DELETE", f"/vector-indexes/{property_name}")
+        await self._t.request("DELETE", f"/vector-indexes/{quote_segment(property_name)}")

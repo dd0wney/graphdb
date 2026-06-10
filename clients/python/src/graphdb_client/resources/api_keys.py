@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from .._path import quote_segment
 from .._transport import Transport
 from ..models import APIKey, CreatedAPIKey
 
@@ -42,4 +43,4 @@ class ApiKeysResource:
 
     def revoke(self, key_id: str) -> None:
         """Revoke an API key (DELETE /api/v1/apikeys/{id}). Admin-only."""
-        self._t.request("DELETE", f"/api/v1/apikeys/{key_id}")
+        self._t.request("DELETE", f"/api/v1/apikeys/{quote_segment(key_id)}")

@@ -44,7 +44,13 @@ def is_retryable(
     if status is None:
         return False
     if status == 429:
-        return True  # rate-limited: request not processed, safe on any method
+        # Rate-limited. The server received and processed the request far
+        # enough to identify the rate-limit condition, so for a
+        # non-idempotent method (POST/PATCH) it may have committed a write
+        # before returning 429 — only retry idempotent methods. (graphdb
+        # uses POST for some reads, but the SDK can't distinguish those
+        # from write-POSTs, so it errs safe.) Security audit M-11.
+        return method.upper() in config.retry_methods
     if status in config.retry_statuses:
         return method.upper() in config.retry_methods
     return False

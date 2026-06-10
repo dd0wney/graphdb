@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, cast
 
-from .._caching import _MUTATING, cache_key
+from .._caching import _MUTATING, _log, cache_key
 from .._transport import ApiResult
 from ..cache import AsyncCacheBackend, CacheConfig
 from .transport import AsyncTransport
@@ -50,13 +50,15 @@ class AsyncCachingTransport:
                 try:
                     await self._cache.aclear()
                 except Exception:
-                    pass
+                    # Fail-open but observable (security audit L-10).
+                    _log.warning("cache clear failed; entries may be stale", exc_info=True)
             return res
 
-        key = cache_key(method, path, params)
+        key = cache_key(method, path, params, self._config.namespace)
         try:
             cached = await self._cache.aget(key)
         except Exception:
+            _log.warning("cache get failed; bypassing cache for this request", exc_info=True)
             cached = None
         if cached is not None:
             self._hits += 1
@@ -66,7 +68,7 @@ class AsyncCachingTransport:
         try:
             await self._cache.aset(key, res, ttl=self._ttl_for(path))
         except Exception:
-            pass
+            _log.warning("cache set failed; response not cached", exc_info=True)
         return res
 
     async def aclose(self) -> None:

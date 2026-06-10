@@ -35,7 +35,16 @@ class AsyncTransport:
         self._username = username
         self._password = password
         self._refresh_token: str | None = None
-        self._http = httpx.AsyncClient(base_url=base_url.rstrip("/"), timeout=timeout)
+        # trust_env=False + follow_redirects=False — see the sync Transport
+        # for the rationale (security audit M-12 / L-9): don't honor env
+        # proxies that could exfiltrate the auth header, and never follow a
+        # redirect carrying that header.
+        self._http = httpx.AsyncClient(
+            base_url=base_url.rstrip("/"),
+            timeout=timeout,
+            trust_env=False,
+            follow_redirects=False,
+        )
         self._retries = retries if retries is not None else RetryConfig()
 
     def _has_credentials(self) -> bool:

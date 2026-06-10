@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from .._path import quote_segment
 from .._transport import Transport
 
 
@@ -47,7 +48,8 @@ class ComplianceResource:
 
         The tenant is a path segment for reads (writes via set_masking_policy take
         the tenant from the caller's auth context — server asymmetry)."""
-        return _as_dict(self._t.request("GET", f"/v1/compliance/masking-policy/{tenant}").data)
+        path = f"/v1/compliance/masking-policy/{quote_segment(tenant)}"
+        return _as_dict(self._t.request("GET", path).data)
 
     def set_masking_policy(
         self, properties: Mapping[str, str], *, auto_detect: bool = False

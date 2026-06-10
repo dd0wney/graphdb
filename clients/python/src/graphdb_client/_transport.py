@@ -37,7 +37,18 @@ class Transport:
         self._username = username
         self._password = password
         self._refresh_token: str | None = None
-        self._http = httpx.Client(base_url=base_url.rstrip("/"), timeout=timeout)
+        # trust_env=False (security audit M-12): httpx defaults to reading
+        # HTTPS_PROXY/ALL_PROXY from the environment, which lets an attacker
+        # who can set those vars (CI, serverless, multi-tenant hosts) route
+        # the request — Authorization header included — through a proxy they
+        # control. follow_redirects stays False (audit L-9) so the auth
+        # header is never forwarded to a redirect target.
+        self._http = httpx.Client(
+            base_url=base_url.rstrip("/"),
+            timeout=timeout,
+            trust_env=False,
+            follow_redirects=False,
+        )
         self._retries = retries if retries is not None else RetryConfig()
 
     def _auth_headers(self) -> dict[str, str]:

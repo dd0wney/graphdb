@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from ..._path import quote_segment
 from ...models import Tenant, TenantUsage
 from ..transport import AsyncTransport
 
@@ -37,7 +38,7 @@ class AsyncTenantsResource:
 
     async def get(self, tenant_id: str) -> Tenant:
         """Get one tenant (GET /api/v1/tenants/{id})."""
-        res = await self._t.request("GET", f"/api/v1/tenants/{tenant_id}")
+        res = await self._t.request("GET", f"/api/v1/tenants/{quote_segment(tenant_id)}")
         return Tenant.from_dict(res.data)
 
     async def update(
@@ -59,22 +60,22 @@ class AsyncTenantsResource:
             body["quota"] = dict(quota)
         if metadata is not None:
             body["metadata"] = dict(metadata)
-        res = await self._t.request("PUT", f"/api/v1/tenants/{tenant_id}", json=body)
+        res = await self._t.request("PUT", f"/api/v1/tenants/{quote_segment(tenant_id)}", json=body)
         return Tenant.from_dict(res.data)
 
     async def delete(self, tenant_id: str) -> None:
         """Delete a tenant (DELETE /api/v1/tenants/{id}). Admin-only."""
-        await self._t.request("DELETE", f"/api/v1/tenants/{tenant_id}")
+        await self._t.request("DELETE", f"/api/v1/tenants/{quote_segment(tenant_id)}")
 
     async def usage(self, tenant_id: str) -> TenantUsage:
         """Tenant usage stats (GET /api/v1/tenants/{id}/usage)."""
-        res = await self._t.request("GET", f"/api/v1/tenants/{tenant_id}/usage")
+        res = await self._t.request("GET", f"/api/v1/tenants/{quote_segment(tenant_id)}/usage")
         return TenantUsage.from_dict(res.data)
 
     async def suspend(self, tenant_id: str) -> None:
         """Suspend a tenant (POST /api/v1/tenants/{id}/suspend). Admin-only."""
-        await self._t.request("POST", f"/api/v1/tenants/{tenant_id}/suspend")
+        await self._t.request("POST", f"/api/v1/tenants/{quote_segment(tenant_id)}/suspend")
 
     async def activate(self, tenant_id: str) -> None:
         """Activate a tenant (POST /api/v1/tenants/{id}/activate). Admin-only."""
-        await self._t.request("POST", f"/api/v1/tenants/{tenant_id}/activate")
+        await self._t.request("POST", f"/api/v1/tenants/{quote_segment(tenant_id)}/activate")
