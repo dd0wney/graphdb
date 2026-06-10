@@ -295,7 +295,10 @@ class APIKey:
 
 @dataclass
 class CreatedAPIKey:
-    key: str
+    # repr=False keeps the one-time plaintext key out of the dataclass's
+    # auto-generated repr (security audit M-13): otherwise it lands in
+    # logs, tracebacks, and crash reporters as CreatedAPIKey(key='gdb_...').
+    key: str = field(repr=False)
     id: str
     name: str
     prefix: str
