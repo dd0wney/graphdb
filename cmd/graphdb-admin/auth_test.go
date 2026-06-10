@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,6 +40,48 @@ func TestMintToken_RoundTrips(t *testing.T) {
 	}
 	if claims.TenantID != "tenant-x" {
 		t.Errorf("tenant = %q, want tenant-x", claims.TenantID)
+	}
+}
+
+// TestMintTokenCommand_DefaultsToLeastPrivilege pins security audit
+// finding M-6: invoking mint-token without --role must NOT produce an
+// admin token. Before the fix the --role default was auth.RoleAdmin, so
+// any runbook copying the example minted admin credentials silently.
+//
+// RED against pre-fix code: the minted token decodes with role "admin".
+func TestMintTokenCommand_DefaultsToLeastPrivilege(t *testing.T) {
+	t.Setenv("JWT_SECRET", testSecret)
+
+	// Capture stdout (the command prints the bare token there).
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = w
+	handleMintTokenCommand([]string{"--username", "svc-account"}) // no --role
+	_ = w.Close()
+	os.Stdout = old
+
+	out, _ := io.ReadAll(r)
+	token := strings.TrimSpace(string(out))
+	if token == "" {
+		t.Fatal("mint-token produced no token on stdout")
+	}
+
+	mgr, err := auth.NewJWTManager(testSecret, time.Hour, auth.DefaultRefreshTokenDuration)
+	if err != nil {
+		t.Fatalf("NewJWTManager: %v", err)
+	}
+	claims, err := mgr.ValidateToken(context.Background(), token)
+	if err != nil {
+		t.Fatalf("ValidateToken: %v", err)
+	}
+	if claims.Role == auth.RoleAdmin {
+		t.Error("mint-token without --role minted an ADMIN token (M-6)")
+	}
+	if claims.Role != auth.RoleViewer {
+		t.Errorf("default minted role = %q, want %q", claims.Role, auth.RoleViewer)
 	}
 }
 

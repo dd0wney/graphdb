@@ -77,7 +77,10 @@ func handleMintTokenCommand(args []string) {
 	fs := flag.NewFlagSet("mint-token", flag.ExitOnError)
 	username := fs.String("username", "", "Username to embed in the token (required)")
 	userID := fs.String("user-id", "", "User ID to embed (defaults to --username)")
-	role := fs.String("role", auth.RoleAdmin, "Role: admin, editor, or viewer")
+	// Default to the least-privileged role (security audit M-6). Minting
+	// admin tokens must be a conscious choice — runbooks that copy the
+	// example without --role should not silently produce admin credentials.
+	role := fs.String("role", auth.RoleViewer, "Role: admin, editor, or viewer")
 	tenant := fs.String("tenant", "", "Tenant ID (empty = default tenant)")
 	ttl := fs.Duration("ttl", auth.DefaultTokenDuration, "Token lifetime (e.g. 15m, 24h)")
 	_ = fs.Parse(args)
@@ -100,6 +103,10 @@ func handleMintTokenCommand(args []string) {
 	fmt.Println(token)
 	fmt.Fprintf(os.Stderr, "Minted %s token for %q (user-id %q, tenant %q), valid %s\n",
 		*role, *username, id, tenantLabel(*tenant), *ttl)
+	if *role == auth.RoleAdmin {
+		fmt.Fprintln(os.Stderr,
+			"WARNING: minted an ADMIN token — use --role viewer or --role editor for service accounts and time-limited sessions.")
+	}
 }
 
 func tenantLabel(t string) string {
@@ -125,7 +132,7 @@ login flags:
 mint-token flags (requires JWT_SECRET in the environment):
   --username NAME    Username to embed (required)
   --user-id ID       User ID to embed (default: --username)
-  --role ROLE        admin | editor | viewer (default: admin)
+  --role ROLE        admin | editor | viewer (default: viewer)
   --tenant ID        Tenant ID (default: the default tenant)
   --ttl DURATION     Token lifetime, e.g. 15m, 24h (default: 15m)
 
@@ -133,8 +140,8 @@ Examples:
   # Log in and capture a token for subsequent admin calls
   export GRAPHDB_PASSWORD=...; TOKEN=$(graphdb-admin login --username admin)
 
-  # Mint an admin token offline (CI / ops)
-  export JWT_SECRET=...; graphdb-admin mint-token --username admin --ttl 24h
+  # Mint an admin token offline (CI / ops) — admin must be explicit
+  export JWT_SECRET=...; graphdb-admin mint-token --username admin --role admin --ttl 24h
 `
 	fmt.Print(usage)
 }
