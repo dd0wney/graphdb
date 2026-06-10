@@ -41,6 +41,13 @@ type Claims struct {
 	TenantID  string    `json:"tenant_id,omitempty"` // Multi-tenancy: empty defaults to "default" tenant
 	ExpiresAt time.Time `json:"expires_at"`
 	IssuedAt  time.Time `json:"issued_at"`
+	// TokenGeneration is the user's token-generation counter at issue time
+	// (security audit M-7). requireAuth rejects a token whose generation is
+	// older than the user's current counter, so bumping the counter (on
+	// password change, role change, or explicit revoke) invalidates every
+	// outstanding token without rotating the global JWT secret. Absent on
+	// legacy / offline-minted tokens → 0.
+	TokenGeneration int `json:"gen,omitempty"`
 }
 
 // RefreshClaims represents refresh token claims
@@ -79,7 +86,18 @@ func (m *JWTManager) GenerateToken(userID, username, role string) (string, error
 
 // GenerateTokenWithTenant generates a new JWT token with tenant context.
 // Empty tenantID defaults to "default" tenant for backward compatibility.
+// Equivalent to GenerateTokenWithGeneration with generation 0 — used by the
+// offline mint-token CLI, which has no UserStore to read the current
+// generation from (such tokens are correctly invalidated by a later
+// password/role change that bumps the user's counter past 0).
 func (m *JWTManager) GenerateTokenWithTenant(userID, username, role, tenantID string) (string, error) {
+	return m.GenerateTokenWithGeneration(userID, username, role, tenantID, 0)
+}
+
+// GenerateTokenWithGeneration generates a JWT carrying the user's token
+// generation (security audit M-7). Login/refresh paths pass the user's
+// current counter so the token can be revoked by bumping it.
+func (m *JWTManager) GenerateTokenWithGeneration(userID, username, role, tenantID string, tokenGen int) (string, error) {
 	// Validate inputs
 	if userID == "" {
 		return "", ErrEmptyUserID
@@ -111,6 +129,13 @@ func (m *JWTManager) GenerateTokenWithTenant(userID, username, role, tenantID st
 	// Only include tenant_id if explicitly set
 	if tenantID != "" {
 		claims["tenant_id"] = tenantID
+	}
+
+	// Carry the token generation when non-zero (M-7). Omitting it for the
+	// gen-0 case keeps legacy/offline token shape unchanged; absence parses
+	// back to 0.
+	if tokenGen != 0 {
+		claims["gen"] = tokenGen
 	}
 
 	// Create token with claims
@@ -195,13 +220,21 @@ func (m *JWTManager) ValidateToken(_ context.Context, tokenString string) (*Clai
 		tenantID = v
 	}
 
+	// Extract optional token generation (M-7); absent on legacy/offline
+	// tokens → 0. JSON numbers decode as float64.
+	tokenGen := 0
+	if v, ok := claimsMap["gen"].(float64); ok {
+		tokenGen = int(v)
+	}
+
 	return &Claims{
-		UserID:    userID,
-		Username:  username,
-		Role:      role,
-		TenantID:  tenantID,
-		ExpiresAt: expiresAt,
-		IssuedAt:  issuedAt,
+		UserID:          userID,
+		Username:        username,
+		Role:            role,
+		TenantID:        tenantID,
+		ExpiresAt:       expiresAt,
+		IssuedAt:        issuedAt,
+		TokenGeneration: tokenGen,
 	}, nil
 }
 

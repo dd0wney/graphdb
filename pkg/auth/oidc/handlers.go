@@ -202,7 +202,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Issue local JWT
-	accessToken, err := h.jwtManager.GenerateToken(user.ID, user.Username, user.Role)
+	accessToken, err := h.jwtManager.GenerateTokenWithGeneration(user.ID, user.Username, user.Role, "", user.TokenGeneration)
 	if err != nil {
 		log.Printf("OIDC: Failed to generate access token: %v", err)
 		h.respondError(w, http.StatusInternalServerError, "Failed to generate access token")
@@ -275,7 +275,7 @@ func (h *OIDCHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Issue local JWT
-	accessToken, err := h.jwtManager.GenerateToken(user.ID, user.Username, user.Role)
+	accessToken, err := h.jwtManager.GenerateTokenWithGeneration(user.ID, user.Username, user.Role, "", user.TokenGeneration)
 	if err != nil {
 		log.Printf("OIDC: Failed to generate access token: %v", err)
 		h.respondError(w, http.StatusInternalServerError, "Failed to generate access token")

@@ -91,10 +91,21 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 
-			// Verify user still exists
-			_, err = s.userStore.GetUserByID(claims.UserID)
+			// Verify user still exists and the token has not been revoked.
+			user, err := s.userStore.GetUserByID(claims.UserID)
 			if err != nil {
 				s.respondError(w, http.StatusUnauthorized, "User not found")
+				return
+			}
+
+			// Token-generation check (security audit M-7): reject a token
+			// whose generation is older than the user's current counter — the
+			// counter is bumped on password change, role change, or explicit
+			// revoke, so this invalidates outstanding sessions immediately.
+			// Legacy/offline tokens carry generation 0, which matches a fresh
+			// user (also 0) until the user's counter is first bumped.
+			if claims.TokenGeneration < user.TokenGeneration {
+				s.respondError(w, http.StatusUnauthorized, "Token has been revoked")
 				return
 			}
 

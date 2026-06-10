@@ -38,7 +38,7 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate access token
-	accessToken, err := h.jwtManager.GenerateToken(user.ID, user.Username, user.Role)
+	accessToken, err := h.jwtManager.GenerateTokenWithGeneration(user.ID, user.Username, user.Role, "", user.TokenGeneration)
 	if err != nil {
 		log.Printf("Failed to generate access token: %v", err)
 		h.respondError(w, http.StatusInternalServerError, "Failed to generate token")
@@ -94,7 +94,7 @@ func (h *AuthHandler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate new access token
-	accessToken, err := h.jwtManager.GenerateToken(user.ID, user.Username, user.Role)
+	accessToken, err := h.jwtManager.GenerateTokenWithGeneration(user.ID, user.Username, user.Role, "", user.TokenGeneration)
 	if err != nil {
 		log.Printf("Failed to generate access token: %v", err)
 		h.respondError(w, http.StatusInternalServerError, "Failed to generate token")

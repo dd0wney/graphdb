@@ -43,6 +43,13 @@ type User struct {
 	PasswordHash string `json:"-"` // Never serialize password hash
 	Role         string `json:"role"`
 	CreatedAt    int64  `json:"created_at"`
+	// TokenGeneration is the user's revocation counter (security audit
+	// M-7). It is embedded in every login-issued JWT; requireAuth rejects
+	// a token whose generation is older than this. Bumped on password
+	// change, role change, or explicit RevokeUserTokens — invalidating all
+	// outstanding tokens for the user without rotating the global JWT
+	// secret. Serializes with the user (persists wherever SaveUsers runs).
+	TokenGeneration int `json:"token_generation,omitempty"`
 
 	// OIDC-specific fields (populated for OIDC users)
 	AuthProvider  AuthProvider `json:"auth_provider,omitempty"`
@@ -208,8 +215,11 @@ func (s *UserStore) UpdateUserRole(userID, newRole string) error {
 		return fmt.Errorf("%w: %s", ErrUserNotFound, userID)
 	}
 
-	// Update role
+	// Update role and bump the generation counter (M-7 / closes AUTH-7):
+	// a role downgrade must take effect on outstanding tokens, not linger
+	// until they expire — bumping the counter forces re-auth at the new role.
 	user.Role = newRole
+	user.TokenGeneration++
 
 	return nil
 }
@@ -257,9 +267,27 @@ func (s *UserStore) ChangePassword(userID, newPassword string) error {
 		return fmt.Errorf("%w: %v", ErrPasswordHashFailed, err)
 	}
 
-	// Update password
+	// Update password and revoke all outstanding tokens (M-7): a password
+	// change must invalidate sessions issued under the old password.
 	user.PasswordHash = hashedPassword
+	user.TokenGeneration++
 
+	return nil
+}
+
+// RevokeUserTokens invalidates every outstanding token for the user by
+// bumping its generation counter (security audit M-7). The next
+// requireAuth on any pre-existing token sees a stale generation and 401s.
+// Use after a credential compromise or to force re-authentication.
+func (s *UserStore) RevokeUserTokens(userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	user, exists := s.users[userID]
+	if !exists {
+		return fmt.Errorf("%w: %s", ErrUserNotFound, userID)
+	}
+	user.TokenGeneration++
 	return nil
 }
 
