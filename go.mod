@@ -2,6 +2,12 @@ module github.com/dd0wney/graphdb
 
 go 1.26.0
 
+// Pin the build toolchain to 1.26.4: 1.26.3's crypto/x509 and
+// net/textproto carry govulncheck-reachable advisories (GO-2026-5037 +
+// the ListenAndServe ReadMIMEHeader vuln), fixed in 1.26.4. CI workflows
+// pin go-version: '1.26.4' to match (setup-go v6 sets GOTOOLCHAIN=local).
+toolchain go1.26.4
+
 require (
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10

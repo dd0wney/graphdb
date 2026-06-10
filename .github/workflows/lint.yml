@@ -21,7 +21,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.26'
+        go-version: '1.26.4'
         # setup-go's cache stays on: golangci-lint-action v5+ caches only
         # its own analysis data and delegates Go module/build caching here.
 
@@ -50,7 +50,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.26'
+        go-version: '1.26.4'
 
     - name: Check if go.mod is tidy
       run: |
