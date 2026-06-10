@@ -53,6 +53,23 @@ describe('GraphDBCache', () => {
       });
       expect(customCache).toBeInstanceOf(GraphDBCache);
     });
+
+    it('namespaces cache keys by identity (H-11)', () => {
+      // A KV namespace is Worker-global; without an identity prefix two
+      // tenants sharing a Worker would read each other's cached graph data.
+      const a = new GraphDBCache(mockClient, mockKV as unknown as KVNamespace, {
+        namespace: 'tenant-a',
+      });
+      const b = new GraphDBCache(mockClient, mockKV as unknown as KVNamespace, {
+        namespace: 'tenant-b',
+      });
+      const plain = new GraphDBCache(mockClient, mockKV as unknown as KVNamespace);
+
+      expect(a.generateKey('node', '1')).toBe('tenant-a:node:1');
+      expect(a.generateKey('node', '1')).not.toBe(b.generateKey('node', '1'));
+      // Default (no namespace) preserves the legacy un-prefixed key.
+      expect(plain.generateKey('node', '1')).toBe('node:1');
+    });
   });
 
   describe('getTrustScore with cache', () => {
