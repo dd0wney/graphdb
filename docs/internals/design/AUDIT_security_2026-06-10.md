@@ -92,6 +92,20 @@ Six parallel read-only specialist audits — (1) authn/authz machinery, (2) inpu
 - **L-9. SDK redirect behavior undocumented** — Python's `follow_redirects=False` is protective (keep + comment); TS `fetch` default follows same-origin redirects with the auth header — set `redirect: 'manual'`.
 - **L-10. Python SDK cache: POST mutations don't invalidate** + fail-open cache errors are fully silent — documented staleness, but a broken external backend degrades silently. Log-once on cache errors; consider invalidating known write-POST paths.
 
+### L-tier disposition (2026-06-10 follow-up)
+
+| # | Disposition |
+|---|---|
+| **L-5** | **Fixed** — SQL patterns removed from the Cypher sanitizer (this engine doesn't speak SQL; the patterns false-positived on legit string literals). Pinned by the two L-5 cases in `sanitizer_test.go`. |
+| **L-7** | **Fixed** — `ValueFromJSON` now only collapses a float to int within ±2^53 (the exact-integer range), so floats near MaxInt64 stay float instead of silently corrupting. Pinned by `TestValueFromJSON_LargeFloatStaysFloat`. |
+| **L-9, L-10** | **Fixed** in the client release (#379 Python `follow_redirects=False` + cache-error logging; #380 TS `redirect:'manual'`). |
+| **L-1** | **Accept-risk / deferred.** Edge `Update/DeleteEdgeForTenant` TOCTOU is benign without ID reuse (re-check yields 404); moving the check inside the write lock is a storage-concurrency change better done with the M-1 WAL-compaction spike than as a one-line cleanup. |
+| **L-2** | **Accept-risk.** `?from=<foreign-node>` adjacency-length timing channel: content is leak-free; the latency signal is low-value and the gate (`GetNodeForTenant` first) adds a lookup to the hot path. Revisit if a timing-oracle threat is in scope. |
+| **L-3** | **Accept-risk (by design).** Global sequential IDs already appear in create responses; opaque-cursor / per-tenant-ID fixes are a snapshot-format change disproportionate to the inference value. |
+| **L-4** | **Deferred** to the M-1/delete-path work. Zombie-tenant-on-partial-delete wants a pre-tombentone (status=DELETING) delete-ordering change — pairs naturally with the M-1 remanence spike. |
+| **L-6** | **By design (documented).** The 409 conflict body discloses a *same-tenant* node ID intentionally for coord callers; IDs already appear in create responses. No change. |
+| **L-8** | **Accept-risk (documented).** `GET …/usage`'s admin check lives in the handler, not the dispatcher; correct today (the handler's self-tenant comparison is sound), flagged drift-prone. A dispatcher-level move is a behavior-preserving refactor deferred to avoid churn here. |
+
 ## Tool-scan triage (gosec 400 issues, govulncheck)
 
 | Class | Count | Disposition |
