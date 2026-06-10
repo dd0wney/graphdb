@@ -149,6 +149,24 @@ func (c *ComplianceChecker) evaluateControl(control Control) Control {
 			control.Status = StatusPartial
 		}
 
+	// Right to erasure / right to be forgotten controls
+	case contains(control.ID, "ERASURE", "FORGET"):
+		if c.systemInfo.ImmediateErasure {
+			control.Status = StatusCompliant
+			control.Evidence = append(control.Evidence, Evidence{
+				Type:        "Configuration",
+				Description: "Delete purges the in-memory graph, the snapshot, and the WAL synchronously",
+				Source:      "WAL compaction (TruncateUpTo)",
+				Timestamp:   now,
+			})
+		} else {
+			// Honest interim posture (security audit M-1, Option C): the WAL
+			// retains deleted data until compaction. Erasure is real but not
+			// immediate in durable storage.
+			control.Status = StatusPartial
+			control.Notes = "Delete is immediate in the in-memory graph and the next snapshot, but the WAL retains the data until compaction (graceful shutdown or scheduled compaction). For prompt physical erasure, trigger a snapshot+compaction or restart gracefully after the delete. The synchronous WAL-purge fix (TruncateUpTo) is tracked as M-1 Option A."
+		}
+
 	default:
 		// Default to partial if we can't automatically determine
 		control.Status = StatusPartial

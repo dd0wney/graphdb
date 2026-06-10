@@ -40,6 +40,15 @@ func (c *ComplianceChecker) initializeGDPRControls() {
 			Description: "Implement privacy controls throughout the system",
 			Status:      StatusPartial,
 		},
+		{
+			ID:          "GDPR-ART17-ERASURE",
+			Framework:   FrameworkGDPR,
+			Title:       "Article 17: Right to Erasure",
+			Description: "Erase personal data on request. Deleting a tenant or its nodes/edges removes the data from the in-memory graph and the next snapshot immediately; the write-ahead log retains it until compaction (graceful shutdown or a scheduled compaction).",
+			// Status is evaluated honestly in evaluateControl based on
+			// SystemInfo.ImmediateErasure (security audit M-1 / DR-1).
+			Status: StatusPartial,
+		},
 	}
 }
 
