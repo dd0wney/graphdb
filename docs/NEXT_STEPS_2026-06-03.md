@@ -130,12 +130,14 @@ All six server-side Highs + all five targeted Mediums shipped, each TDD-pinned (
 
 **With H-5, all 11 Highs in the audit are addressed.**
 
-**Remaining — each needs a `/spike` or short spec first (NOT started):**
-- **H-3** encrypt WAL payloads (snapshot encryption leaves the WAL plaintext) — thread the encryption engine through the WAL layer.
-- **M-1** tenant-delete WAL remanence — snapshot+truncate after cascade is **not** safe naively (`Snapshot` takes only RLock + the WAL `Truncate` is a full clear → a mid-flight compaction loses concurrent tenants' writes). Needs a concurrency-safe compaction design. (M-2, its LSA sibling, shipped in #384.)
-- **M-7** token revocation (per-user generation counter as a JWT claim) — schema design.
-- **M-14** snapshot magic-header + version — snapshot-format version-bump discipline.
-- **M-15** enterprise `.so` plugin hash/signature verification — cross-repo with graphdb-enterprise.
+**M-7 ✅ shipped (#390)** — token revocation via a per-user generation counter embedded as a JWT `gen` claim; `requireAuth` rejects stale-generation tokens. Bumped on explicit revoke / password change / role change (the role-change bump also closes AUTH-7). Turned out to be the standard pattern with no real design fork, so it was implementable directly. (An explicit admin revoke HTTP endpoint is a small follow-up — the `RevokeUserTokens` method is in place.)
+
+**M-1 ⏳ spiked, awaiting decision (#391)** — design doc `DESIGN_m1_wal_remanence_2026-06-10.md`. The naive snapshot+truncate loses concurrent writes; the proper fix is **Option A: a `TruncateUpTo(lsn)` checkpoint** (capture boundary LSN under the snapshot RLock, truncate only ≤ N) across all 3 WAL backends, with **Option C** (document the window + defer to Close) as an interim. **Decision requested: A (durability-layer change) or C (interim).** Gates H-3 and pairs with L-1/L-4.
+
+**Remaining — each needs a decision/spike/cross-repo (NOT started):**
+- **H-3** encrypt WAL payloads — **entangled with M-1 + M-14** (enabling encryption mid-life orphans old plaintext WAL entries → needs clean-WAL-on-toggle (M-1) + an entry marker (M-14)). Sequence after the M-1 decision.
+- **M-14** snapshot magic-header + version — snapshot-format version-bump discipline (decision).
+- **M-15** enterprise `.so` plugin hash/signature verification — cross-repo with graphdb-enterprise (coordination).
 
 **Also ready (pending your call):** cut a versioned **client release** bundling #379/#380 (semver judgment — the TS retry change is arguably breaking at 1.x — + the PyPI-publish decision).
 
@@ -210,6 +212,6 @@ Both shipped on branch `perf/label-index-set-m3` (PR #294). The "decision-laden"
 3. **Inherited PRs #240/#241 are CLOSED** — board is clear (no longer a forcing function).
 4. **Don't** re-open the perf dimension or manufacture sub-tracks beyond what the consumers / invariant harness surface.
 5. If a follow-up turns out deep enough to need design, spike it (`/spike`) first — but most are bounded.
-6. **Current state (2026-06-10): Track S (security audit) is the active track — Waves 1 + 2 done, Wave 3's executable items done.** Read § Track S. The audit (`AUDIT_security_2026-06-10.md`) found no live cross-tenant exposure. Waves 1 (server, #372–378) + 2 (clients, #379/#380) shipped; Wave 3's no-decision items shipped (H-6 #385, H-5 #387, M-8 #383, M-2 #384 — **all 11 Highs now addressed**); the L-tier is dispositioned (L-5/L-7 #386, rest accept-risk). **Remaining: 5 design-gated items (H-3, M-1, M-7, M-14, M-15 — each needs a `/spike`/format-bump/cross-repo) + cut a versioned client release.** Don't re-commission a security audit without new evidence.
+6. **Current state (2026-06-10): Track S (security audit) is the active track — Waves 1 + 2 done, Wave 3's executable items done.** Read § Track S. The audit (`AUDIT_security_2026-06-10.md`) found no live cross-tenant exposure. Waves 1 (server, #372–378) + 2 (clients, #379/#380) shipped; Wave 3's no-decision items shipped (H-6 #385, H-5 #387, M-8 #383, M-2 #384, **M-7 #390** — **all 11 Highs addressed**); the L-tier is dispositioned (L-5/L-7 #386, rest accept-risk). **M-1 is spiked and awaiting an A/C decision (#391 design doc).** **Remaining: the M-1 decision, then H-3 (gated on M-1), M-14 (format bump), M-15 (cross-repo) + cut a versioned client release.** Don't re-commission a security audit without new evidence.
 
 The critical path is **earned, not TBD**: the testing harness exists because this session proved the silent bugs are a *parallel-invariant coverage* gap, not an edge-case gap; Track S then closed the long-deferred security dimension with measured findings.
