@@ -77,6 +77,14 @@ const (
 	defaultMetric         = "cosine"
 	maxK                  = 1000
 	maxDimensions         = 4096
+
+	// Upper bounds on caller-supplied HNSW parameters (security audit
+	// H-7). Without a ceiling, M=100000 makes every subsequent node
+	// insert an O(M*efConstruction) CPU+memory event holding the index
+	// write mutex. These caps match common production HNSW limits.
+	maxM              = 128
+	maxEfConstruction = 2048
+	maxEf             = 4096
 )
 
 // parseMetric converts string metric to vector.DistanceMetric
@@ -163,14 +171,23 @@ func (s *Server) createVectorIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply defaults
+	// Apply defaults, then enforce upper bounds (H-7). A zero/negative
+	// value takes the default; a positive over-cap value is a 400 rather
+	// than a silent clamp, so the caller knows the index they asked for
+	// is not the one they'd get.
 	m := req.M
 	if m <= 0 {
 		m = defaultM
+	} else if m > maxM {
+		s.respondError(w, http.StatusBadRequest, fmt.Sprintf("m must be <= %d", maxM))
+		return
 	}
 	efConstruction := req.EfConstruction
 	if efConstruction <= 0 {
 		efConstruction = defaultEfConstruction
+	} else if efConstruction > maxEfConstruction {
+		s.respondError(w, http.StatusBadRequest, fmt.Sprintf("ef_construction must be <= %d", maxEfConstruction))
+		return
 	}
 	metric := parseMetric(req.Metric)
 
@@ -300,13 +317,17 @@ func (s *Server) vectorSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set default ef
+	// Set default ef, then cap it (H-7). A caller-supplied ef larger than
+	// maxEf would force an unboundedly wide search-layer scan per query.
 	ef := req.Ef
 	if ef <= 0 {
 		ef = req.K * 2
 		if ef < 50 {
 			ef = 50
 		}
+	} else if ef > maxEf {
+		s.respondError(w, http.StatusBadRequest, fmt.Sprintf("ef must be <= %d", maxEf))
+		return
 	}
 
 	// Perform search scoped to the tenant. R1.2: tenant isolation is now
