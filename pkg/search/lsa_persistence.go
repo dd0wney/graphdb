@@ -150,11 +150,11 @@ func ReadLSASnapshot(r io.Reader) (*LSAIndex, error) {
 // rename). Same idiom as pkg/storage's snapshot to avoid leaving a
 // half-written file if the process is killed mid-write.
 func (i *LSAIndex) SaveToFile(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("mkdir snapshot dir: %w", err)
 	}
 	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("open tmp: %w", err)
 	}
@@ -218,7 +218,7 @@ func (tli *TenantLSAIndexes) SaveAll(dir string) error {
 	if len(snapshots) == 0 {
 		return nil
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
 

@@ -9,14 +9,14 @@ import (
 
 // NewCompressedWAL creates a new compressed Write-Ahead Log
 func NewCompressedWAL(dataDir string) (*CompressedWAL, error) {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, walDirPerm); err != nil {
 		return nil, fmt.Errorf("failed to create WAL directory: %w", err)
 	}
 
 	walPath := filepath.Join(dataDir, "wal_compressed.log")
 
 	// Open or create WAL file
-	file, err := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	file, err := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open WAL file: %w", err)
 	}
@@ -76,7 +76,7 @@ func (w *CompressedWAL) Truncate() error {
 	}
 
 	// Create the new file BEFORE closing the old one to ensure we have a valid handle
-	newFile, err := os.OpenFile(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	newFile, err := os.OpenFile(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)
 	if err != nil {
 		return fmt.Errorf("failed to create new WAL file: %w", err)
 	}
@@ -89,7 +89,7 @@ func (w *CompressedWAL) Truncate() error {
 		// Failed to rename - close new file and return error
 		newFile.Close()
 		// Try to reopen old file to maintain consistent state
-		if oldFile, reopenErr := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644); reopenErr == nil {
+		if oldFile, reopenErr := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm); reopenErr == nil {
 			w.file = oldFile
 			w.writer = bufio.NewWriter(oldFile)
 		}

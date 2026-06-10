@@ -22,8 +22,10 @@ func NewSSTable(path string, entries []*Entry) (*SSTable, error) {
 		bloom.Add(entry.Key)
 	}
 
-	// Create file
-	file, err := os.Create(path)
+	// Create file owner-only. os.Create would use 0666 pre-umask, which
+	// is world- or group-writable under a permissive umask (common in
+	// containers); SSTables hold customer graph data (security audit H-2).
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, err
 	}
