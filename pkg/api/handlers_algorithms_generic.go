@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -10,6 +11,18 @@ import (
 	"github.com/dd0wney/graphdb/pkg/algorithms"
 	"github.com/dd0wney/graphdb/pkg/tenant"
 )
+
+// respondAlgorithmError maps a heavy-algorithm error to a status code. A
+// context deadline/cancellation is a 408 (the algorithm now honors the
+// request deadline — security audit H-6 — so this is a real timeout, not
+// a server fault); everything else uses fallback.
+func (s *Server) respondAlgorithmError(w http.ResponseWriter, err error, fallback int) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		s.respondError(w, http.StatusRequestTimeout, "Algorithm computation timed out")
+		return
+	}
+	s.respondError(w, fallback, err.Error())
+}
 
 func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -43,7 +56,7 @@ func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
 		var err error
 		results, err = s.executeBetweenness(ctx)
 		if err != nil {
-			s.respondError(w, http.StatusInternalServerError, err.Error())
+			s.respondAlgorithmError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -51,7 +64,7 @@ func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
 		var err error
 		results, err = s.executeEdgeBetweenness(ctx)
 		if err != nil {
-			s.respondError(w, http.StatusInternalServerError, err.Error())
+			s.respondAlgorithmError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -75,7 +88,7 @@ func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
 		var err error
 		results, err = s.executeTriangles(ctx)
 		if err != nil {
-			s.respondError(w, http.StatusInternalServerError, err.Error())
+			s.respondAlgorithmError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -83,7 +96,7 @@ func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
 		var err error
 		results, err = s.executeSCC(ctx)
 		if err != nil {
-			s.respondError(w, http.StatusInternalServerError, err.Error())
+			s.respondAlgorithmError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -91,7 +104,7 @@ func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
 		var err error
 		results, err = s.executeNodeSimilarity(ctx, req.Parameters)
 		if err != nil {
-			s.respondError(w, http.StatusBadRequest, err.Error())
+			s.respondAlgorithmError(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -185,7 +198,7 @@ func (s *Server) executeBetweenness(ctx context.Context) (map[string]any, error)
 	}
 
 	// Audit A6c-algorithms: tenant-scoped betweenness.
-	centrality, err := algorithms.BetweennessCentralityForTenant(s.graph, tenant.MustFromContext(ctx))
+	centrality, err := algorithms.BetweennessCentralityForTenant(ctx, s.graph, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "betweenness centrality")
 	}
@@ -201,7 +214,7 @@ func (s *Server) executeEdgeBetweenness(ctx context.Context) (map[string]any, er
 	}
 
 	// Audit A6c-algorithms: tenant-scoped edge betweenness.
-	result, err := algorithms.EdgeBetweennessCentralityForTenant(s.graph, tenant.MustFromContext(ctx))
+	result, err := algorithms.EdgeBetweennessCentralityForTenant(ctx, s.graph, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "edge betweenness centrality")
 	}
@@ -312,7 +325,7 @@ func (s *Server) executeTriangles(ctx context.Context) (map[string]any, error) {
 	}
 
 	// Audit A6c-algorithms: tenant-scoped triangle counting.
-	result, err := algorithms.CountTrianglesForTenant(s.graph, tenant.MustFromContext(ctx))
+	result, err := algorithms.CountTrianglesForTenant(ctx, s.graph, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "triangle counting")
 	}
@@ -332,7 +345,7 @@ func (s *Server) executeSCC(ctx context.Context) (map[string]any, error) {
 	}
 
 	// Audit A6c-algorithms: tenant-scoped SCC.
-	result, err := algorithms.StronglyConnectedComponentsForTenant(s.graph, tenant.MustFromContext(ctx))
+	result, err := algorithms.StronglyConnectedComponentsForTenant(ctx, s.graph, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "SCC")
 	}
@@ -418,7 +431,7 @@ func (s *Server) executeNodeSimilarity(ctx context.Context, params map[string]an
 	}
 
 	// All-pairs mode (tenant-scoped).
-	results, err := algorithms.NodeSimilarityAllForTenant(s.graph, opts, tenant.MustFromContext(ctx))
+	results, err := algorithms.NodeSimilarityAllForTenant(ctx, s.graph, opts, tenant.MustFromContext(ctx))
 	if err != nil {
 		return nil, wrapForClient(err, "node similarity")
 	}
