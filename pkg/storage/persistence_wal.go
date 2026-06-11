@@ -32,6 +32,14 @@ func (gs *GraphStorage) writeToWALWithError(operation wal.OpType, data any) erro
 		if _, err := gs.batchedWAL.Append(operation, encoded); err != nil {
 			return fmt.Errorf("failed to append to batched WAL: %w", err)
 		}
+	} else if gs.useCompression && gs.compressedWAL != nil {
+		// This branch was MISSING until M-1's compact tests surfaced it:
+		// with EnableCompression every single-op write silently skipped
+		// the WAL (and replayWAL never read it back) — zero crash
+		// durability on the compressed backend.
+		if _, err := gs.compressedWAL.Append(operation, encoded); err != nil {
+			return fmt.Errorf("failed to append to compressed WAL: %w", err)
+		}
 	} else if gs.wal != nil {
 		if _, err := gs.wal.Append(operation, encoded); err != nil {
 			return fmt.Errorf("failed to append to WAL: %w", err)
@@ -66,6 +74,13 @@ func (gs *GraphStorage) enqueueWAL(operation wal.OpType, data any) *wal.Pending 
 
 	if gs.useBatching && gs.batchedWAL != nil {
 		return gs.batchedWAL.Enqueue(operation, encoded)
+	} else if gs.useCompression && gs.compressedWAL != nil {
+		// Synchronous like the plain path. This branch was MISSING (see
+		// writeToWALWithError) — single-op writes never reached the
+		// compressed WAL.
+		if _, err := gs.compressedWAL.Append(operation, encoded); err != nil {
+			fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
+		}
 	} else if gs.wal != nil {
 		if _, err := gs.wal.Append(operation, encoded); err != nil {
 			fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)

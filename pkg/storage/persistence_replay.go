@@ -15,6 +15,13 @@ func (gs *GraphStorage) replayWAL() error {
 		return gs.batchedWAL.Replay(func(entry *wal.Entry) error {
 			return gs.replayEntry(entry)
 		})
+	} else if gs.useCompression && gs.compressedWAL != nil {
+		// This branch was MISSING: even entries that did reach the
+		// compressed WAL (the batch executor's appendToWAL) were never
+		// replayed on recovery.
+		return gs.compressedWAL.Replay(func(entry *wal.Entry) error {
+			return gs.replayEntry(entry)
+		})
 	} else if gs.wal != nil {
 		return gs.wal.Replay(func(entry *wal.Entry) error {
 			return gs.replayEntry(entry)
