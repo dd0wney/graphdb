@@ -170,12 +170,20 @@ func (tx *Transaction) Commit() error {
 
 	tx.committed = true
 	tx.active = false
+	// Hold the commit barrier from before gs.mu is released until the WAL
+	// batch has been appended: a CompactWAL boundary captured in between
+	// would see this commit's state in the snapshot while its entries are
+	// still unappended (LSN > boundary), and the surviving WAL would
+	// re-apply them over the snapshot on recovery (M-1).
+	tx.gs.txWALBarrier.RLock()
 	tx.gs.mu.Unlock()
 
 	// (3) Atomic durability — one fsync for the whole batch. Propagate the
 	// error: a commit that did not become durable must fail loudly.
-	if err := tx.gs.appendWALBatch(walEntries); err != nil {
-		return fmt.Errorf("commit: WAL durability: %w", err)
+	walErr := tx.gs.appendWALBatch(walEntries)
+	tx.gs.txWALBarrier.RUnlock()
+	if walErr != nil {
+		return fmt.Errorf("commit: WAL durability: %w", walErr)
 	}
 
 	// (4) Off-lock: HNSW vector inserts, then observer dispatch.
