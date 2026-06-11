@@ -2,7 +2,9 @@ package plugins
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -38,10 +40,16 @@ func (l *PluginLoader) LoadPluginsFromDir(ctx context.Context, dir string) error
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// Check if directory exists
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		l.logger.Info("plugin directory does not exist, skipping plugin loading", "dir", dir)
-		return nil
+	// M-15: enforce directory preconditions (absolute path, owner-only)
+	// before existence handling so a CWD-relative default never silently
+	// "works". plugin.Open executes the .so's init(), so every check
+	// must happen before any open.
+	if err := verifyPluginDir(dir); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			l.logger.Info("plugin directory does not exist, skipping plugin loading", "dir", dir)
+			return nil
+		}
+		return err
 	}
 
 	l.logger.Info("loading Enterprise plugins", "dir", dir)
@@ -58,8 +66,24 @@ func (l *PluginLoader) LoadPluginsFromDir(ctx context.Context, dir string) error
 		return nil
 	}
 
+	var manifest pluginManifest
+	if allowUnverifiedPlugins() {
+		l.logger.Warn("plugin manifest verification DISABLED via " + allowUnverifiedEnv + "=true — any .so in the plugin directory will execute as the server")
+	} else {
+		manifest, err = loadPluginManifest(dir)
+		if err != nil {
+			return fmt.Errorf("plugin manifest required (fail-closed; set %s=true to bypass during transition): %w", allowUnverifiedEnv, err)
+		}
+	}
+
 	// Load each plugin
 	for _, path := range matches {
+		if manifest != nil {
+			if err := verifyPluginHash(path, manifest); err != nil {
+				l.logger.Error("plugin verification failed — NOT loaded", "path", path, "error", err)
+				continue
+			}
+		}
 		if err := l.loadPlugin(ctx, path); err != nil {
 			l.logger.Error("failed to load plugin", "path", path, "error", err)
 			// Continue loading other plugins

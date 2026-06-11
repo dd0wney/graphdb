@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -394,10 +395,18 @@ func main() {
 			"email", license.Email,
 		)
 
-		// Load Enterprise plugins
+		// Load Enterprise plugins. The loader requires an absolute path
+		// (M-15 — a CWD-relative plugin dir is a code-execution ambush);
+		// resolve the legacy "./plugins" default explicitly and warn.
 		pluginDir := os.Getenv("GRAPHDB_PLUGIN_DIR")
 		if pluginDir == "" {
-			pluginDir = "./plugins"
+			abs, err := filepath.Abs("./plugins")
+			if err != nil {
+				logger.Error("failed to resolve default plugin directory", "error", err)
+			} else {
+				pluginDir = abs
+				logger.Warn("GRAPHDB_PLUGIN_DIR not set — using CWD-derived default; set an absolute GRAPHDB_PLUGIN_DIR explicitly", "dir", pluginDir)
+			}
 		}
 
 		pluginLoader := plugins.NewPluginLoader(license, logger)
