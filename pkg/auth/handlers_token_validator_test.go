@@ -111,3 +111,49 @@ func TestSetTokenValidator_NilIgnored(t *testing.T) {
 		t.Fatalf("nil SetTokenValidator cleared the jwtManager default: %v", err)
 	}
 }
+
+// TestUserManagementHandler_RevokeTokensEndpoint pins the M-7 follow-up:
+// #390 added UserStore.RevokeUserTokens (per-user generation bump) but no
+// HTTP surface called it — an admin had no way to revoke a compromised
+// user's outstanding tokens without changing the password or role.
+// POST /api/users/{id}/revoke-tokens (admin-only, like every route on
+// this handler) bumps the generation; requireAuth's stale-generation
+// rejection is already pinned by the #390 tests.
+func TestUserManagementHandler_RevokeTokensEndpoint(t *testing.T) {
+	store := NewUserStore()
+	jwtManager, _ := NewJWTManager("test-secret-key-must-be-at-least-32-characters-long", DefaultTokenDuration, DefaultRefreshTokenDuration)
+	handler := NewUserManagementHandler(store, jwtManager)
+	handler.SetTokenValidator(&stubValidator{
+		accept: "admin-token",
+		claims: &Claims{Username: "root", Role: RoleAdmin},
+	})
+
+	user, err := store.CreateUser("revoke-target", "Str0ng!Passw0rd-42", RoleViewer)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	genBefore := user.TokenGeneration
+
+	post := func(path string) int {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		req.Header.Set("Authorization", "Bearer admin-token")
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		return rr.Code
+	}
+
+	if code := post("/api/users/" + user.ID + "/revoke-tokens"); code != http.StatusOK {
+		t.Fatalf("POST revoke-tokens = %d, want 200", code)
+	}
+	after, err := store.GetUserByID(user.ID)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if after.TokenGeneration != genBefore+1 {
+		t.Fatalf("TokenGeneration = %d, want %d (revoke must bump it)", after.TokenGeneration, genBefore+1)
+	}
+
+	if code := post("/api/users/missing-user/revoke-tokens"); code != http.StatusNotFound {
+		t.Fatalf("revoke for unknown user = %d, want 404", code)
+	}
+}
