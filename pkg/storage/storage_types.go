@@ -142,6 +142,14 @@ type StorageConfig struct {
 	UseDiskBackedEdges    bool // Enable disk-backed adjacency lists (Milestone 2)
 	EdgeCacheSize         int  // LRU cache size for hot edge lists (default: 10000)
 	BulkImportMode        bool // Disable WAL and use fast path for bulk loading
+
+	// EncryptionEngine/KeyManager wire at-rest encryption at CONSTRUCTION
+	// time, so the constructor's loadFromDisk can decrypt an encrypted
+	// snapshot. SetEncryption after construction is too late for that
+	// path — before M-14 an encrypted snapshot could never load at
+	// restart (the server exited with "encryption is not enabled").
+	EncryptionEngine encryption.EncryptDecrypter
+	KeyManager       encryption.KeyProvider
 }
 
 // Statistics tracks database statistics

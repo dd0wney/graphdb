@@ -14,16 +14,23 @@ import (
 
 // ErrNodeNotFound and ErrEdgeNotFound are defined in errors.go
 
-// NewGraphStorage creates a new graph storage engine with default config
-func NewGraphStorage(dataDir string) (*GraphStorage, error) {
-	return NewGraphStorageWithConfig(StorageConfig{
+// DefaultStorageConfig returns the config NewGraphStorage uses. Callers
+// that need to override a single field (e.g. wire EncryptionEngine at
+// construction time) start from this instead of duplicating defaults.
+func DefaultStorageConfig(dataDir string) StorageConfig {
+	return StorageConfig{
 		DataDir:               dataDir,
 		EnableBatching:        false,
 		EnableCompression:     false,
 		EnableEdgeCompression: true, // Enabled by default for 5.08x memory savings
 		BatchSize:             100,
 		FlushInterval:         10 * time.Millisecond,
-	})
+	}
+}
+
+// NewGraphStorage creates a new graph storage engine with default config
+func NewGraphStorage(dataDir string) (*GraphStorage, error) {
+	return NewGraphStorageWithConfig(DefaultStorageConfig(dataDir))
 }
 
 // NewGraphStorageWithConfig creates a new graph storage engine with custom config
@@ -52,6 +59,10 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		nextNodeID:         1,
 		nextEdgeID:         1,
 		metricsRegistry:    metrics.DefaultRegistry(),
+		// Set before loadFromDisk below so an encrypted snapshot can
+		// decrypt during construction (M-14).
+		encryptionEngine: config.EncryptionEngine,
+		keyManager:       config.KeyManager,
 	}
 
 	// Initialize shard locks for fine-grained concurrency

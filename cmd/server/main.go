@@ -339,20 +339,25 @@ func main() {
 		logger.Info("encryption disabled - set ENCRYPTION_ENABLED=true to enable")
 	}
 
-	// Create graph storage (will load from disk if snapshot exists)
+	// Create graph storage (will load from disk if snapshot exists).
+	// Encryption must be wired via the config, not SetEncryption after
+	// construction: the constructor loads the snapshot, so a post-hoc
+	// SetEncryption left an encrypted snapshot unloadable at restart
+	// (M-14). Gate on non-nil so a typed-nil pointer never lands in the
+	// interface fields.
 	logger.Info("initializing graph storage", "data_dir", *dataDir)
-	graph, err := storage.NewGraphStorage(*dataDir)
+	storageConfig := storage.DefaultStorageConfig(*dataDir)
+	if encryptionEngine != nil && keyManager != nil {
+		storageConfig.EncryptionEngine = encryptionEngine
+		storageConfig.KeyManager = keyManager
+		logger.Info("encryption connected to storage layer")
+	}
+	graph, err := storage.NewGraphStorageWithConfig(storageConfig)
 	if err != nil {
 		logger.Error("failed to create graph storage", "error", err)
 		os.Exit(1)
 	}
 	defer graph.Close()
-
-	// Connect encryption to storage layer for transparent encryption
-	if encryptionEngine != nil && keyManager != nil {
-		graph.SetEncryption(encryptionEngine, keyManager)
-		logger.Info("encryption connected to storage layer")
-	}
 
 	stats := graph.GetStatistics()
 	logger.Info("graph storage initialized",
