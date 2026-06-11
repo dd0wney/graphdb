@@ -34,6 +34,11 @@ func (gs *GraphStorage) Snapshot() error {
 
 	gs.mu.RLock()
 
+	// Capture the engine under the same RLock as the state it encrypts:
+	// SetEncryption writes this field under gs.mu.Lock, and the encrypt
+	// call + envelope flag below must agree on one value.
+	engine := gs.encryptionEngine
+
 	// Get statistics atomically before creating snapshot
 	stats := gs.GetStatistics()
 
@@ -88,13 +93,17 @@ func (gs *GraphStorage) Snapshot() error {
 	}
 
 	// Encrypt data if encryption is enabled
-	if gs.encryptionEngine != nil {
-		encrypted, err := gs.encryptionEngine.Encrypt(data)
+	if engine != nil {
+		encrypted, err := engine.Encrypt(data)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt snapshot: %w", err)
 		}
 		data = encrypted
 	}
+
+	// M-14: versioned magic-header envelope; the encrypted flag replaces
+	// the first-byte plaintext-vs-ciphertext heuristic on load.
+	data = encodeSnapshotEnvelope(data, engine != nil)
 
 	snapshotPath := filepath.Join(gs.dataDir, "snapshot.json")
 	tmpPath := snapshotPath + ".tmp"
@@ -124,11 +133,19 @@ func (gs *GraphStorage) loadFromDisk() error {
 		return err
 	}
 
-	// Try to detect if data is encrypted by checking if it's valid JSON
-	// Valid JSON starts with '{' or '[', encrypted data is binary
-	isEncrypted := len(data) > 0 && data[0] != '{' && data[0] != '['
+	payload, isEncrypted, legacy, err := decodeSnapshotEnvelope(data)
+	if err != nil {
+		return err
+	}
+	if legacy {
+		// Pre-M-14 headerless snapshot: keep the original first-byte
+		// heuristic for these files only (valid JSON starts with '{'
+		// or '[', ciphertext is binary). New writes always carry the
+		// envelope, so this branch ages out with the legacy files.
+		isEncrypted = len(payload) > 0 && payload[0] != '{' && payload[0] != '['
+	}
+	data = payload
 
-	// Decrypt data if it appears to be encrypted and we have an encryption engine
 	if isEncrypted && gs.encryptionEngine != nil {
 		decrypted, err := gs.encryptionEngine.Decrypt(data)
 		if err != nil {
