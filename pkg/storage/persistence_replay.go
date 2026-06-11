@@ -32,6 +32,18 @@ func (gs *GraphStorage) replayWAL() error {
 
 // replayEntry replays a single WAL entry
 func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
+	// H-3: unseal encrypted payloads before dispatch. A legacy plaintext
+	// entry (written before encryption was enabled) passes through; note
+	// it so the constructor can purge it from disk via CompactWAL.
+	payload, sealed, err := gs.openWALPayload(entry.Data)
+	if err != nil {
+		return err
+	}
+	if !sealed && gs.encryptionEngine != nil {
+		gs.walReplaySawPlaintext = true
+	}
+	entry.Data = payload
+
 	switch entry.OpType {
 	case wal.OpCreateNode:
 		return gs.replayCreateNode(entry)

@@ -40,6 +40,10 @@ func atomicDecrementWithUnderflowProtection(counter *uint64) {
 // It selects between batched WAL, compressed WAL, or standard WAL.
 // Returns nil if no WAL is configured.
 func (gs *GraphStorage) appendToWAL(opType wal.OpType, data []byte) error {
+	data, err := gs.sealWALPayload(data)
+	if err != nil {
+		return err
+	}
 	if gs.useBatching && gs.batchedWAL != nil {
 		_, err := gs.batchedWAL.Append(opType, data)
 		return err
