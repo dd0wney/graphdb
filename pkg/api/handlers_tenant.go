@@ -316,7 +316,22 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 		s.searchIndexes.Delete(tenantID)
 	}
 
-	// 3. Mark the tenant record deleted (authoritative soft-delete; idempotent).
+	// 3. Purge the tenant's WAL records (security audit M-1 / DR-1): the
+	//    cascade above appended OpDelete* entries, but the tenant's
+	//    original OpCreate* entries — its full property data — stay in
+	//    the WAL until the next snapshot+truncate, which on a long-
+	//    running server is hours away. CompactWAL checkpoints (snapshot
+	//    + TruncateUpTo the boundary) so erasure is immediate without
+	//    losing concurrent writers' entries. Loud-fail like the LSA file
+	//    above: the delete is re-runnable, so the operator retries.
+	if err := s.graph.CompactWAL(); err != nil {
+		log.Printf("tenant delete %q: WAL compaction failed: %v", tenantID, err)
+		s.respondError(w, http.StatusInternalServerError,
+			"tenant graph data deleted, but the write-ahead log could not be purged; retry the delete to complete erasure")
+		return
+	}
+
+	// 4. Mark the tenant record deleted (authoritative soft-delete; idempotent).
 	if err := s.tenantStore.Delete(tenantID); err != nil {
 		// Already guarded for default/missing above, so this is unexpected.
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete tenant record"))

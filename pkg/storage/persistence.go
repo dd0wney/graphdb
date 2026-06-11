@@ -22,6 +22,17 @@ type PropertyIndexSnapshot struct {
 
 // Snapshot saves the current state to disk
 func (gs *GraphStorage) Snapshot() error {
+	_, err := gs.snapshotWithBoundary()
+	return err
+}
+
+// snapshotWithBoundary saves the current state to disk and returns the WAL
+// boundary LSN captured under the same gs.mu.RLock as the serialized state:
+// every write visible in the snapshot has LSN ≤ boundary, every write that
+// lands after has LSN > boundary. CompactWAL pairs this with
+// TruncateUpTo(boundary) to checkpoint the WAL without losing concurrent
+// writers' entries (M-1).
+func (gs *GraphStorage) snapshotWithBoundary() (uint64, error) {
 	// Compress edge lists before snapshot if compression is enabled
 	if gs.useEdgeCompression {
 		gs.mu.Lock()
@@ -34,6 +45,18 @@ func (gs *GraphStorage) Snapshot() error {
 
 	gs.mu.RLock()
 
+	// Boundary capture. The barrier write-lock waits out any
+	// Transaction.Commit that applied its changes in-memory (visible to
+	// this snapshot) but hasn't appended its WAL batch yet — those
+	// appends happen after gs.mu is released, so the RLock alone doesn't
+	// exclude them. New commits can't reach that window while we hold
+	// gs.mu.RLock. Holding the barrier across the LSN read costs nothing
+	// here (no commit can contend for it) and keeps the critical section
+	// non-empty.
+	gs.txWALBarrier.Lock()
+	boundary := gs.walBoundaryLSNLocked()
+	gs.txWALBarrier.Unlock()
+
 	// Capture the engine under the same RLock as the state it encrypts:
 	// SetEncryption writes this field under gs.mu.Lock, and the encrypt
 	// call + envelope flag below must agree on one value.
@@ -42,14 +65,15 @@ func (gs *GraphStorage) Snapshot() error {
 	// Get statistics atomically before creating snapshot
 	stats := gs.GetStatistics()
 
-	// Serialize property indexes
+	// Serialize property indexes. Index is deep-copied (not referenced):
+	// see the isolation comment on the snapshot struct below.
 	propertyIndexSnapshots := make(map[string]PropertyIndexSnapshot)
 	for key, idx := range gs.propertyIndexes {
 		idx.mu.RLock()
 		propertyIndexSnapshots[key] = PropertyIndexSnapshot{
 			PropertyKey: idx.propertyKey,
 			IndexType:   idx.indexType,
-			Index:       idx.index,
+			Index:       cloneStringIDIndex(idx.index),
 		}
 		idx.mu.RUnlock()
 	}
@@ -67,12 +91,23 @@ func (gs *GraphStorage) Snapshot() error {
 		NextEdgeID      uint64
 		Stats           Statistics
 	}{
-		Nodes:           gs.flattenNodesForSnapshot(),
-		Edges:           gs.flattenEdgesForSnapshot(),
+		// ISOLATION: every field below must be a deep copy, never a
+		// reference to a live structure. json.Marshal runs after
+		// gs.mu.RUnlock (deliberately — writers shouldn't stall for the
+		// full reflection encode), so a writer mutating a referenced
+		// map/slice/node during the marshal is a data race and a
+		// mapEncoder index-out-of-range panic. Latent while Snapshot ran
+		// only at Close() (no writers); CompactWAL (M-1) snapshots under
+		// live traffic, where it bites. flattenLabelIndex already builds
+		// fresh maps+slices; nodes/edges are Clone()d (the flat maps were
+		// already fresh but shared the pointers); adjacency and the
+		// property indexes above are copied explicitly.
+		Nodes:           gs.cloneNodesForSnapshotLocked(),
+		Edges:           gs.cloneEdgesForSnapshotLocked(),
 		NodesByLabel:    flattenLabelIndex(gs.nodesByLabel),
 		EdgesByType:     flattenLabelIndex(gs.edgesByType),
-		OutgoingEdges:   gs.outgoingEdges,
-		IncomingEdges:   gs.incomingEdges,
+		OutgoingEdges:   cloneAdjacency(gs.outgoingEdges),
+		IncomingEdges:   cloneAdjacency(gs.incomingEdges),
 		PropertyIndexes: propertyIndexSnapshots,
 		// Vector index DEFINITIONS only — the HNSW graph is not serialized; it
 		// is rebuilt from the node set after WAL replay (rebuildVectorIndexes-
@@ -80,23 +115,27 @@ func (gs *GraphStorage) Snapshot() error {
 		// readable (absent field -> no indexes recreated -> the prior
 		// vectors-lost-on-restart behaviour, unchanged for old files).
 		VectorIndexes: gs.vectorIndex.IndexDefinitions(),
-		NextNodeID:    gs.nextNodeID,
-		NextEdgeID:    gs.nextEdgeID,
-		Stats:         stats,
+		// Atomic loads: Transaction ops allocate IDs via atomic.AddUint64
+		// WITHOUT gs.mu, so a plain read here races them (a high-water
+		// counter that runs slightly ahead of visible state is fine —
+		// recovery just starts IDs past it).
+		NextNodeID: atomic.LoadUint64(&gs.nextNodeID),
+		NextEdgeID: atomic.LoadUint64(&gs.nextEdgeID),
+		Stats:      stats,
 	}
 
 	gs.mu.RUnlock()
 
 	data, err := json.Marshal(snapshot)
 	if err != nil {
-		return fmt.Errorf("failed to marshal snapshot: %w", err)
+		return 0, fmt.Errorf("failed to marshal snapshot: %w", err)
 	}
 
 	// Encrypt data if encryption is enabled
 	if engine != nil {
 		encrypted, err := engine.Encrypt(data)
 		if err != nil {
-			return fmt.Errorf("failed to encrypt snapshot: %w", err)
+			return 0, fmt.Errorf("failed to encrypt snapshot: %w", err)
 		}
 		data = encrypted
 	}
@@ -110,18 +149,18 @@ func (gs *GraphStorage) Snapshot() error {
 
 	// Write to temporary file first
 	if err := os.WriteFile(tmpPath, data, filePermissions); err != nil {
-		return fmt.Errorf("failed to write snapshot: %w", err)
+		return 0, fmt.Errorf("failed to write snapshot: %w", err)
 	}
 
 	// Atomic rename
 	if err := os.Rename(tmpPath, snapshotPath); err != nil {
-		return fmt.Errorf("failed to rename snapshot: %w", err)
+		return 0, fmt.Errorf("failed to rename snapshot: %w", err)
 	}
 
 	// Update LastSnapshot timestamp (safe to modify after releasing lock)
 	gs.stats.LastSnapshot = time.Now()
 
-	return nil
+	return boundary, nil
 }
 
 // loadFromDisk loads the graph from disk

@@ -9,34 +9,41 @@ import (
 // writeEntry writes a single entry to the WAL
 // Format: [LSN:8][OpType:1][DataLen:4][Data:N][Checksum:4][Timestamp:8]
 func (w *WAL) writeEntry(entry *Entry) error {
+	return writeEntryTo(w.writer, entry)
+}
+
+// writeEntryTo encodes one entry in the plain-WAL record format to an
+// arbitrary writer — shared by the live append path and the TruncateUpTo
+// rewrite so the two encodings can't drift.
+func writeEntryTo(writer *bufio.Writer, entry *Entry) error {
 	// Write LSN
-	if err := binary.Write(w.writer, binary.LittleEndian, entry.LSN); err != nil {
+	if err := binary.Write(writer, binary.LittleEndian, entry.LSN); err != nil {
 		return err
 	}
 
 	// Write OpType
-	if err := w.writer.WriteByte(byte(entry.OpType)); err != nil {
+	if err := writer.WriteByte(byte(entry.OpType)); err != nil {
 		return err
 	}
 
 	// Write data length
 	dataLen := uint32(len(entry.Data))
-	if err := binary.Write(w.writer, binary.LittleEndian, dataLen); err != nil {
+	if err := binary.Write(writer, binary.LittleEndian, dataLen); err != nil {
 		return err
 	}
 
 	// Write data
-	if _, err := w.writer.Write(entry.Data); err != nil {
+	if _, err := writer.Write(entry.Data); err != nil {
 		return err
 	}
 
 	// Write checksum
-	if err := binary.Write(w.writer, binary.LittleEndian, entry.Checksum); err != nil {
+	if err := binary.Write(writer, binary.LittleEndian, entry.Checksum); err != nil {
 		return err
 	}
 
 	// Write timestamp
-	if err := binary.Write(w.writer, binary.LittleEndian, entry.Timestamp); err != nil {
+	if err := binary.Write(writer, binary.LittleEndian, entry.Timestamp); err != nil {
 		return err
 	}
 

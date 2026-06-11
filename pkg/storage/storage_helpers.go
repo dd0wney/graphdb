@@ -273,19 +273,10 @@ func (gs *GraphStorage) forEachNodeIDUnlocked(fn func(uint64) bool) {
 	}
 }
 
-// flattenNodesForSnapshot collects every node from every shard into a
-// single map for serialization. Used by the snapshot writer to preserve
-// the on-disk format (a flat map[uint64]*Node) across the partition
-// migration. Caller must hold gs.mu.RLock for the duration.
-func (gs *GraphStorage) flattenNodesForSnapshot() map[uint64]*Node {
-	out := make(map[uint64]*Node, gs.nodeCount())
-	for i := range gs.nodeShards {
-		for id, node := range gs.nodeShards[i] {
-			out[id] = node
-		}
-	}
-	return out
-}
+// The flatten*ForSnapshot helpers that used to live here were folded into
+// clone*ForSnapshotLocked (compact_wal.go): the snapshot writer now clones
+// during its single shard walk, since snapshot fields must not reference
+// live nodes/edges (see the ISOLATION comment in snapshotWithBoundary).
 
 // rebucketSnapshotNodes redistributes a flat snapshot map across the
 // partitioned shards. Used by the snapshot loader. Caller must hold
@@ -335,20 +326,6 @@ func (gs *GraphStorage) edgeCount() int {
 		total += len(gs.edgeShards[i])
 	}
 	return total
-}
-
-// flattenEdgesForSnapshot collects every edge from every shard into a
-// single map for serialization. Used by the snapshot writer to preserve
-// the on-disk format (a flat map[uint64]*Edge) across the partition
-// migration. Caller must hold gs.mu.RLock for the duration.
-func (gs *GraphStorage) flattenEdgesForSnapshot() map[uint64]*Edge {
-	out := make(map[uint64]*Edge, gs.edgeCount())
-	for i := range gs.edgeShards {
-		for id, edge := range gs.edgeShards[i] {
-			out[id] = edge
-		}
-	}
-	return out
 }
 
 // rebucketSnapshotEdges redistributes a flat snapshot map across the

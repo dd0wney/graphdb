@@ -108,6 +108,20 @@ type GraphStorage struct {
 	compressedWAL  *wal.CompressedWAL
 	useBatching    bool
 	useCompression bool
+	// compactMu serializes CompactWAL callers (one snapshot+truncate
+	// checkpoint at a time). Independent of gs.mu — the checkpoint takes
+	// gs.mu.RLock internally via snapshotWithBoundary.
+	compactMu sync.Mutex
+	// txWALBarrier closes the Transaction.Commit window where buffered
+	// changes are applied in-memory under gs.mu.Lock but the WAL batch is
+	// appended AFTER the unlock: Commit holds the read side from before
+	// its unlock until the append lands; snapshotWithBoundary takes the
+	// write side (under gs.mu.RLock) so a boundary LSN is never captured
+	// while a commit's entries are applied-but-unappended. Deadlock-free:
+	// read-holders never wait on gs.mu, and the two lock-orders
+	// (mu.Lock→barrier.RLock vs mu.RLock→barrier.Lock) cannot overlap
+	// because gs.mu already excludes them from each other.
+	txWALBarrier sync.RWMutex
 
 	// Statistics (using atomic operations for thread-safety)
 	stats Statistics

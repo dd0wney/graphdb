@@ -57,36 +57,44 @@ func (w *CompressedWAL) Append(opType OpType, data []byte) (uint64, error) {
 
 // writeEntry writes an entry to disk (same format as regular WAL)
 func (w *CompressedWAL) writeEntry(entry *Entry) error {
+	return writeCompressedEntryTo(w.writer, entry)
+}
+
+// writeCompressedEntryTo encodes one entry (whose Data is already
+// snappy-compressed) in the compressed-WAL record format to an arbitrary
+// writer — shared by the live append path and the TruncateUpTo rewrite.
+// Note the compressed WAL uses BigEndian, unlike the plain WAL.
+func writeCompressedEntryTo(writer *bufio.Writer, entry *Entry) error {
 	// Format: [LSN:8][OpType:1][DataLen:4][Data:N][Checksum:4][Timestamp:8]
 
 	// LSN
-	if err := binary.Write(w.writer, binary.BigEndian, entry.LSN); err != nil {
+	if err := binary.Write(writer, binary.BigEndian, entry.LSN); err != nil {
 		return err
 	}
 
 	// OpType
-	if err := w.writer.WriteByte(byte(entry.OpType)); err != nil {
+	if err := writer.WriteByte(byte(entry.OpType)); err != nil {
 		return err
 	}
 
 	// Data length
 	dataLen := uint32(len(entry.Data))
-	if err := binary.Write(w.writer, binary.BigEndian, dataLen); err != nil {
+	if err := binary.Write(writer, binary.BigEndian, dataLen); err != nil {
 		return err
 	}
 
 	// Data
-	if _, err := w.writer.Write(entry.Data); err != nil {
+	if _, err := writer.Write(entry.Data); err != nil {
 		return err
 	}
 
 	// Checksum
-	if err := binary.Write(w.writer, binary.BigEndian, entry.Checksum); err != nil {
+	if err := binary.Write(writer, binary.BigEndian, entry.Checksum); err != nil {
 		return err
 	}
 
 	// Timestamp
-	if err := binary.Write(w.writer, binary.BigEndian, entry.Timestamp); err != nil {
+	if err := binary.Write(writer, binary.BigEndian, entry.Timestamp); err != nil {
 		return err
 	}
 
@@ -97,7 +105,13 @@ func (w *CompressedWAL) writeEntry(entry *Entry) error {
 func (w *CompressedWAL) ReadAll() ([]*Entry, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	return w.readAllLocked()
+}
 
+// readAllLocked is ReadAll's body without the lock, for callers that
+// already hold w.mu (TruncateUpTo). It opens its own read handle, so the
+// live append handle's offset is undisturbed.
+func (w *CompressedWAL) readAllLocked() ([]*Entry, error) {
 	// Open file for reading
 	file, err := os.Open(filepath.Join(w.dataDir, "wal_compressed.log"))
 	if err != nil {
