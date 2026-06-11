@@ -64,9 +64,29 @@ func (h *UserManagementHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		h.handleDeleteUser(w, r)
 	case strings.HasSuffix(path, "/password") && r.Method == http.MethodPut:
 		h.handleChangePassword(w, r)
+	case strings.HasSuffix(path, "/revoke-tokens") && r.Method == http.MethodPost:
+		h.handleRevokeTokens(w, r)
 	default:
 		h.respondError(w, http.StatusNotFound, "Not found")
 	}
+}
+
+// handleRevokeTokens invalidates every outstanding token for a user by
+// bumping its revocation generation (M-7 follow-up — #390 shipped the
+// mechanism; this is the explicit admin surface for credential-compromise
+// response, without forcing a password or role change).
+func (h *UserManagementHandler) handleRevokeTokens(w http.ResponseWriter, r *http.Request) {
+	userID := extractUserID(r.URL.Path)
+	if userID == "" {
+		h.respondError(w, http.StatusBadRequest, "User ID is required")
+		return
+	}
+	if err := h.userStore.RevokeUserTokens(userID); err != nil {
+		h.respondError(w, http.StatusNotFound, "User not found")
+		return
+	}
+	log.Printf("admin revoked all tokens for user %s", userID)
+	h.respondJSON(w, http.StatusOK, map[string]string{"status": "tokens revoked"})
 }
 
 // extractUserID extracts user ID from URL path
