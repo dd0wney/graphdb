@@ -13,10 +13,16 @@ type BatchedWAL struct {
 	batchSize     int
 	flushInterval time.Duration
 	mu            sync.Mutex
-	stopCh        chan struct{}
-	flushCh       chan struct{}
-	wg            sync.WaitGroup
-	closeOnce     sync.Once
+	// flushMu serializes whole flush bodies (buffer handoff + AppendBatch
+	// + notify). bw.mu alone only guards the handoff: without flushMu a
+	// CheckpointLSN could observe an empty buffer while a concurrent
+	// flush's entries are still awaiting LSN assignment in AppendBatch,
+	// and return a boundary that misses them.
+	flushMu   sync.Mutex
+	stopCh    chan struct{}
+	flushCh   chan struct{}
+	wg        sync.WaitGroup
+	closeOnce sync.Once
 }
 
 // pendingEntry represents an entry waiting to be flushed
@@ -136,6 +142,13 @@ func (bw *BatchedWAL) backgroundFlusher() {
 
 // flush writes all buffered entries to WAL with a single fsync
 func (bw *BatchedWAL) flush() {
+	bw.flushMu.Lock()
+	defer bw.flushMu.Unlock()
+	bw.flushLocked()
+}
+
+// flushLocked is flush's body; callers must hold bw.flushMu.
+func (bw *BatchedWAL) flushLocked() {
 	bw.mu.Lock()
 	if len(bw.buffer) == 0 {
 		bw.mu.Unlock()
