@@ -102,8 +102,8 @@ func (gs *GraphStorage) snapshotWithBoundary() (uint64, error) {
 		// fresh maps+slices; nodes/edges are Clone()d (the flat maps were
 		// already fresh but shared the pointers); adjacency and the
 		// property indexes above are copied explicitly.
-		Nodes:           cloneNodesForSnapshot(gs.flattenNodesForSnapshot()),
-		Edges:           cloneEdgesForSnapshot(gs.flattenEdgesForSnapshot()),
+		Nodes:           gs.cloneNodesForSnapshotLocked(),
+		Edges:           gs.cloneEdgesForSnapshotLocked(),
 		NodesByLabel:    flattenLabelIndex(gs.nodesByLabel),
 		EdgesByType:     flattenLabelIndex(gs.edgesByType),
 		OutgoingEdges:   cloneAdjacency(gs.outgoingEdges),

@@ -6,18 +6,25 @@ import "fmt"
 // snapshotWithBoundary. Each runs under gs.mu.RLock; the copies are what
 // json.Marshal touches after the lock is released.
 
-func cloneNodesForSnapshot(flat map[uint64]*Node) map[uint64]*Node {
-	out := make(map[uint64]*Node, len(flat))
-	for id, node := range flat {
-		out[id] = node.Clone()
+// cloneNodesForSnapshotLocked walks the shards once, cloning directly —
+// flatten-then-clone would build the intermediate pointer map only to
+// throw it away, doubling allocations inside the RLock hold.
+func (gs *GraphStorage) cloneNodesForSnapshotLocked() map[uint64]*Node {
+	out := make(map[uint64]*Node, gs.nodeCount())
+	for i := range gs.nodeShards {
+		for id, node := range gs.nodeShards[i] {
+			out[id] = node.Clone()
+		}
 	}
 	return out
 }
 
-func cloneEdgesForSnapshot(flat map[uint64]*Edge) map[uint64]*Edge {
-	out := make(map[uint64]*Edge, len(flat))
-	for id, edge := range flat {
-		out[id] = edge.Clone()
+func (gs *GraphStorage) cloneEdgesForSnapshotLocked() map[uint64]*Edge {
+	out := make(map[uint64]*Edge, gs.edgeCount())
+	for i := range gs.edgeShards {
+		for id, edge := range gs.edgeShards[i] {
+			out[id] = edge.Clone()
+		}
 	}
 	return out
 }

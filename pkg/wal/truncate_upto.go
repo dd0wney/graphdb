@@ -77,6 +77,9 @@ func (w *WAL) TruncateUpTo(lsn uint64) error {
 // swapInRewrittenFile closes the live WAL file, renames path+".new" over
 // it, and repoints the handles — the shared tail of Truncate/TruncateUpTo.
 // On rename failure it reopens the original file so the WAL stays usable.
+// Note newFile was opened without O_APPEND: its offset sits at EOF after
+// the rewrite and persists through the rename (rename changes the name,
+// not the open descriptor), so subsequent appends land correctly.
 func (w *WAL) swapInRewrittenFile(walPath string, newFile *os.File) error {
 	closeErr := w.file.Close()
 
