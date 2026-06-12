@@ -120,8 +120,8 @@ Metadata: type=enterprise
             const { error } = await stripe.redirectToCheckout({
                 lineItems: [{price: 'price_xxxxxxxxxxxxx', quantity: 1}],
                 mode: 'subscription',
-                successUrl: 'https://cluso-graphdb.com/success',
-                cancelUrl: 'https://cluso-graphdb.com/pricing',
+                successUrl: 'https://your-domain.example/success',
+                cancelUrl: 'https://your-domain.example/pricing',
                 metadata: {type: 'professional'}
             });
         });
@@ -130,8 +130,8 @@ Metadata: type=enterprise
             const { error } = await stripe.redirectToCheckout({
                 lineItems: [{price: 'price_xxxxxxxxxxxxx', quantity: 1}],
                 mode: 'subscription',
-                successUrl: 'https://cluso-graphdb.com/success',
-                cancelUrl: 'https://cluso-graphdb.com/pricing',
+                successUrl: 'https://your-domain.example/success',
+                cancelUrl: 'https://your-domain.example/pricing',
                 metadata: {type: 'enterprise'}
             });
         });
@@ -360,5 +360,4 @@ Monitor key metrics:
 ## Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/darraghdowney/cluso-graphdb/issues
-- Email: support@cluso-graphdb.com
+- GitHub Issues: https://github.com/dd0wney/graphdb/issues

@@ -29,8 +29,8 @@ Complete guide for deploying GraphDB in production environments.
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/dd0wney/cluso-graphdb.git
-cd cluso-graphdb
+git clone https://github.com/dd0wney/graphdb.git
+cd graphdb
 
 # 2. Create environment file
 cp .env.example .env
@@ -597,7 +597,7 @@ docker system df -v | grep graphdb_community_data
 ### Getting Help
 
 - **Documentation:** https://docs.graphdb.dev
-- **GitHub Issues:** https://github.com/dd0wney/cluso-graphdb/issues
+- **GitHub Issues:** https://github.com/dd0wney/graphdb/issues
 - **Support Email:** support@graphdb.dev
 - **Community:** Discord / Slack (link in README)
 
