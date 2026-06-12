@@ -16,7 +16,7 @@ func main() {
 	edges := flag.Int("edges", 30000, "Number of edges")
 	flag.Parse()
 
-	fmt.Printf("🔥 Cluso GraphDB - Storage Backend Comparison\n")
+	fmt.Printf("🔥 GraphDB - Storage Backend Comparison\n")
 	fmt.Printf("============================================\n\n")
 	fmt.Printf("Configuration:\n")
 	fmt.Printf("  Nodes: %d\n", *nodes)

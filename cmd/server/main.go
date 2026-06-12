@@ -259,7 +259,7 @@ func main() {
 	licensing.InitGlobal(licenseKey, licenseServerURL)
 	currentLicense := licensing.Global().GetLicense()
 
-	logger.Info("Cluso GraphDB Server starting",
+	logger.Info("GraphDB Server starting",
 		"edition", editions.Current.String(),
 		"license_tier", currentLicense.Tier,
 		"license_valid", currentLicense.IsValid(),

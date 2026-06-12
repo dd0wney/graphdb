@@ -15,7 +15,7 @@ import (
 const baseURL = "http://localhost:8080"
 
 func main() {
-	fmt.Printf("🔥 Cluso GraphDB API Demo\n")
+	fmt.Printf("🔥 GraphDB API Demo\n")
 	fmt.Printf("=========================\n\n")
 
 	// Wait for server to be ready

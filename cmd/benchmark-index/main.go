@@ -16,7 +16,7 @@ func main() {
 	queries := flag.Int("queries", 1000, "Number of queries to test")
 	flag.Parse()
 
-	fmt.Printf("🔍 Cluso GraphDB Property Index Benchmark\n")
+	fmt.Printf("🔍 GraphDB Property Index Benchmark\n")
 	fmt.Printf("==========================================\n\n")
 	fmt.Printf("Configuration:\n")
 	fmt.Printf("  Nodes: %d\n", *nodes)

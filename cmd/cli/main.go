@@ -74,7 +74,7 @@ func printBanner() {
 
 func (cli *CLI) run() {
 	for {
-		fmt.Print("cluso> ")
+		fmt.Print("graphdb> ")
 
 		if !cli.scanner.Scan() {
 			break
