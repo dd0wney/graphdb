@@ -40,6 +40,13 @@ func (c *ComplianceChecker) initializeGDPRControls() {
 			Description: "Implement privacy controls throughout the system",
 			Status:      StatusPartial,
 		},
+		{
+			ID:          "GDPR-ART17-ERASURE",
+			Framework:   FrameworkGDPR,
+			Title:       "Article 17: Right to Erasure",
+			Description: "Erase personal data on request. Tenant deletion purges the in-memory graph, the snapshot, and the write-ahead log synchronously; node/edge-level deletes leave the WAL copy until the next compaction.",
+			Status:      StatusPartial,
+		},
 	}
 }
 

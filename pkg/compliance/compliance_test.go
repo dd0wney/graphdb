@@ -453,8 +453,8 @@ func TestGDPRControls(t *testing.T) {
 	checker := NewComplianceChecker(info)
 
 	count := checker.GetControlCount(FrameworkGDPR)
-	if count != 5 {
-		t.Errorf("GDPR control count = %d, want 5", count)
+	if count != 6 {
+		t.Errorf("GDPR control count = %d, want 6", count)
 	}
 
 	// Verify specific controls exist
@@ -470,6 +470,7 @@ func TestGDPRControls(t *testing.T) {
 		"GDPR-ART30-LOGS",
 		"GDPR-ART32-ACCESS",
 		"GDPR-ART25-PRIVACY",
+		"GDPR-ART17-ERASURE",
 	}
 
 	for _, id := range expectedControls {
