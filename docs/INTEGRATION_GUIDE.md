@@ -29,7 +29,7 @@ Cloudflare Edge (300+ locations)
 ### Build for Linux
 
 ```bash
-cd /Users/darraghdowney/Workspace/github.com/cluso-graphdb
+cd /Users/darraghdowney/Workspace/github.com/graphdb
 
 # Build for Linux AMD64
 GOOS=linux GOARCH=amd64 go build -o graphdb-linux ./cmd/graphdb
@@ -53,7 +53,7 @@ make build-linux
 
 ```bash
 # Create 8GB RAM droplet
-doctl compute droplet create cluso-graphdb \
+doctl compute droplet create graphdb \
   --size s-4vcpu-8gb \
   --image ubuntu-22-04-x64 \
   --region nyc3 \
@@ -63,7 +63,7 @@ doctl compute droplet create cluso-graphdb \
   --enable-backups
 
 # Get IP
-DROPLET_IP=$(doctl compute droplet get cluso-graphdb --format PublicIPv4 --no-header)
+DROPLET_IP=$(doctl compute droplet get graphdb --format PublicIPv4 --no-header)
 echo "Droplet IP: $DROPLET_IP"
 ```
 
@@ -371,7 +371,7 @@ package syntopica
 
 import (
     "time"
-    "github.com/dd0wney/cluso-graphdb/pkg/storage"
+    "github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // CreateUser creates a User node with all required properties
@@ -605,7 +605,7 @@ clusters, err := gs.Traverse(ctx, &storage.TraversalRequest{
 Enforce the "no supernodes" principle:
 
 ```go
-import "github.com/dd0wney/cluso-graphdb/pkg/constraints"
+import "github.com/dd0wney/graphdb/pkg/constraints"
 
 // User can teach at most 100 students
 teachingLimit := &constraints.CardinalityConstraint{

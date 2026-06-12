@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	fmt.Println("🚀 Cluso GraphDB - Starting...")
+	fmt.Println("🚀 GraphDB - Starting...")
 
 	// Create graph storage
 	graph, err := storage.NewGraphStorage("./data/graphdb")

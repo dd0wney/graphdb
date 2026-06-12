@@ -19,7 +19,7 @@ func main() {
 	flushInterval := flag.Duration("flush", 10*time.Millisecond, "Flush interval for batched WAL")
 	flag.Parse()
 
-	fmt.Printf("🔥 Cluso GraphDB WAL Optimization Benchmark\n")
+	fmt.Printf("🔥 GraphDB WAL Optimization Benchmark\n")
 	fmt.Printf("==========================================\n\n")
 	fmt.Printf("Configuration:\n")
 	fmt.Printf("  Nodes: %d\n", *nodes)

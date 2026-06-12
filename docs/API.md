@@ -890,9 +890,8 @@ HTTP/1.1 403 Forbidden
 
 ## Support
 
-- **Documentation**: https://docs.clusographdb.com
-- **GitHub Issues**: https://github.com/dd0wney/cluso-graphdb/issues
-- **Email**: support@clusographdb.com
+- **Documentation**: https://dd0wney.github.io/graphdb/
+- **GitHub Issues**: https://github.com/dd0wney/graphdb/issues
 
 ## Version History
 

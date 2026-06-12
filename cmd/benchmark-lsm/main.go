@@ -18,7 +18,7 @@ func main() {
 	valueSize := flag.Int("value-size", 1024, "Value size in bytes")
 	flag.Parse()
 
-	fmt.Printf("🔥 Cluso GraphDB - LSM Storage Benchmark\n")
+	fmt.Printf("🔥 GraphDB - LSM Storage Benchmark\n")
 	fmt.Printf("========================================\n\n")
 	fmt.Printf("Configuration:\n")
 	fmt.Printf("  Writes: %d\n", *writes)

@@ -21,7 +21,7 @@
 
 ```bash
 # On your build machine
-cd cluso-graphdb
+cd graphdb
 go build -o graphdb ./cmd/server
 ./graphdb --version
 ```
@@ -100,16 +100,23 @@ curl http://localhost:8080/health/ready
 curl http://localhost:8080/metrics
 
 # Authenticate (replace ADMIN_PASSWORD with your value)
-TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"ADMIN_PASSWORD"}' | jq -r '.token')
+  -d '{"username":"admin","password":"ADMIN_PASSWORD"}' | jq -r '.access_token')
 
 # Smoke-test a write
-curl -X POST http://localhost:8080/v1/nodes \
+curl -X POST http://localhost:8080/nodes \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"labels":["Doc"],"properties":{"title":"first node"}}'
 ```
+
+**Before serving production traffic: create your indexes.** Property indexes,
+vector indexes, and LSA/FTS indexes are built by admin operations after the
+schema is known — queries silently fall back to full scans until the index
+exists, so a service that goes live before its indexes will look healthy and
+perform badly. Create property/vector indexes via the API now, and set the
+`GRAPHDB_LSA_BOOTSTRAP_*` variables (Step 2) so text indexes rebuild at boot.
 
 ## Step 4: Monitoring
 

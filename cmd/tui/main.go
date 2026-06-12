@@ -360,7 +360,7 @@ func (m model) View() string {
 	var s strings.Builder
 
 	// Title
-	s.WriteString(titleStyle.Render("🔥 Cluso GraphDB - Interactive TUI"))
+	s.WriteString(titleStyle.Render("🔥 GraphDB - Interactive TUI"))
 	s.WriteString("\n\n")
 
 	// Tabs

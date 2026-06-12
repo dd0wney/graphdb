@@ -17,7 +17,7 @@ func main() {
 	edges := flag.Int("edges", 3000, "Number of edges to create")
 	flag.Parse()
 
-	fmt.Printf("🔥 Cluso GraphDB - Graph Algorithms Benchmark\n")
+	fmt.Printf("🔥 GraphDB - Graph Algorithms Benchmark\n")
 	fmt.Printf("============================================\n\n")
 	fmt.Printf("Configuration:\n")
 	fmt.Printf("  Nodes: %d\n", *nodes)

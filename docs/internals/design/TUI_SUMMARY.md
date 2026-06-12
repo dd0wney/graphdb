@@ -190,11 +190,11 @@ View Rendering:
 ### Before TUI:
 ```bash
 ./bin/cli
-cluso> stats
+graphdb> stats
 Nodes: 12
 Edges: 21
 
-cluso> query MATCH (p:Person) RETURN p
+graphdb> query MATCH (p:Person) RETURN p
 [plain text output]
 ```
 

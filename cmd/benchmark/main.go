@@ -18,7 +18,7 @@ func main() {
 	dataDir := flag.String("data", "./data/benchmark", "Data directory")
 	flag.Parse()
 
-	fmt.Printf("🔥 Cluso GraphDB Benchmark\n")
+	fmt.Printf("🔥 GraphDB Benchmark\n")
 	fmt.Printf("==========================\n\n")
 	fmt.Printf("Configuration:\n")
 	fmt.Printf("  Nodes: %d\n", *nodes)

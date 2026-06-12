@@ -36,7 +36,7 @@ graphdb:
   build:
     context: .
     dockerfile: Dockerfile
-  container_name: cluso-graphdb
+  container_name: graphdb
   environment:
     PORT: "8080"
     JWT_SECRET: "dev-only-secret-not-for-production"

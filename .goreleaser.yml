@@ -9,7 +9,7 @@ before:
 builds:
   - id: server
     main: ./cmd/server
-    binary: cluso-server
+    binary: graphdb-server
     env:
       - CGO_ENABLED=0
     goos:
@@ -27,7 +27,7 @@ builds:
 
   - id: cli
     main: ./cmd/cli
-    binary: cluso-cli
+    binary: graphdb-cli
     env:
       - CGO_ENABLED=0
     goos:
@@ -43,7 +43,7 @@ builds:
 
   - id: tui
     main: ./cmd/tui
-    binary: cluso-tui
+    binary: graphdb-tui
     env:
       - CGO_ENABLED=0
     goos:

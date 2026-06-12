@@ -109,8 +109,8 @@ package main
 
 import (
     "context"
-    "github.com/dd0wney/cluso-graphdb/pkg/licensing"
-    "github.com/dd0wney/cluso-graphdb/pkg/plugins"
+    "github.com/dd0wney/graphdb/pkg/licensing"
+    "github.com/dd0wney/graphdb/pkg/plugins"
 )
 
 type R2BackupPlugin struct {

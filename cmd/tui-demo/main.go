@@ -10,7 +10,7 @@ import (
 func main() {
 	dataDir := "./data/tui"
 
-	fmt.Println("🔥 Cluso GraphDB - TUI Demo Setup")
+	fmt.Println("🔥 GraphDB - TUI Demo Setup")
 	fmt.Println("==================================")
 
 	// Create graph storage
