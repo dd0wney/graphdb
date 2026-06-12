@@ -30,7 +30,7 @@ This caught the productization-gaps PR (#71) — corrected in `docs/CAPABILITIES
 ## Repo layout quick reference
 
 - `pkg/` — 37 packages. `storage` and `query` are the largest (~50/30 test files); see `CAPABILITIES_2026-05-10.md` for the per-package map.
-- `cmd/` — 29 binaries. `graphdb` is the main server; `cmd/benchmark*` are 13 separate exercisers (proliferation; consolidation might come later).
+- `cmd/` — 29 binaries. **`cmd/server` is the production REST server** (what the Dockerfile and goreleaser build); `cmd/graphdb` is a hardcoded trust-network *demo*, despite the flagship name — easy to trip on (also noted in `TRACK_R_AUTO_EMBED_DEPLOYMENT_VERIFICATION_2026-06-02.md`). `cmd/benchmark*` are 13 separate exercisers (proliferation; consolidation might come later).
 - `workers/graphdb-client/` — first-party TypeScript client for Cloudflare Workers. Only non-Go SDK that ships.
 - `docs/` — heavy on `AUDIT_*.md` and `NEXT_STEPS_*.md`; sparse on customer-facing onboarding (a productization-gap, see `CAPABILITIES_2026-05-10.md`).
 
@@ -41,7 +41,7 @@ This caught the productization-gaps PR (#71) — corrected in `docs/CAPABILITIES
 ```bash
 go build ./...
 go vet ./...
-go test ./pkg/<area>/ -short -timeout 90s -count=1
+go test ./pkg/<area>/ -short -timeout 90s -count=1     # pkg/storage needs -timeout 300s (suite runs ~120-170s as of 2026-06)
 go test -race ./pkg/storage/ -count=3 -timeout 300s   # for storage/concurrency changes
 golangci-lint run ./...                                # MUST pass before PR; CI cap is "same issue × 3"
 ```
