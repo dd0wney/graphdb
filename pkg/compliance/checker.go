@@ -151,21 +151,17 @@ func (c *ComplianceChecker) evaluateControl(control Control) Control {
 
 	// Right to erasure / right to be forgotten controls
 	case contains(control.ID, "ERASURE", "FORGET"):
-		if c.systemInfo.ImmediateErasure {
-			control.Status = StatusCompliant
-			control.Evidence = append(control.Evidence, Evidence{
-				Type:        "Configuration",
-				Description: "Delete purges the in-memory graph, the snapshot, and the WAL synchronously",
-				Source:      "WAL compaction (TruncateUpTo)",
-				Timestamp:   now,
-			})
-		} else {
-			// Honest interim posture (security audit M-1, Option C): the WAL
-			// retains deleted data until compaction. Erasure is real but not
-			// immediate in durable storage.
-			control.Status = StatusPartial
-			control.Notes = "Delete is immediate in the in-memory graph and the next snapshot, but the WAL retains the data until compaction (graceful shutdown or scheduled compaction). For prompt physical erasure, trigger a snapshot+compaction or restart gracefully after the delete. The synchronous WAL-purge fix (TruncateUpTo) is tracked as M-1 Option A."
-		}
+		// Structural since security audit M-1 Option A (#396): tenant deletion
+		// checkpoints and truncates the WAL synchronously (CompactWAL), so no
+		// SystemInfo flag gates this — the capability ships in every build.
+		control.Status = StatusCompliant
+		control.Evidence = append(control.Evidence, Evidence{
+			Type:        "Implementation",
+			Description: "Tenant deletion purges the in-memory graph, the snapshot, and the WAL synchronously",
+			Source:      "WAL checkpoint compaction (CompactWAL / TruncateUpTo)",
+			Timestamp:   now,
+		})
+		control.Notes = "Tenant-level erasure is synchronous in durable storage. Node/edge-level deletes are immediate in the in-memory graph and the next snapshot; the WAL retains them until the next compaction (graceful shutdown or checkpoint). For prompt physical erasure of sub-tenant deletes, trigger a compaction after the delete."
 
 	default:
 		// Default to partial if we can't automatically determine

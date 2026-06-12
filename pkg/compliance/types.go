@@ -76,12 +76,6 @@ type SystemInfo struct {
 	KeyRotationEnabled    bool
 	AuthenticationEnabled bool
 	AccessControlEnabled  bool
-	// ImmediateErasure reports whether a tenant/data delete is purged from
-	// durable storage synchronously — i.e. the WAL-purge fix (security audit
-	// M-1, Option A: TruncateUpTo) is active. While false, deletes are erased
-	// from the in-memory graph and the next snapshot but the WAL retains the
-	// data until compaction, so GDPR Art-17 erasure is only Partial.
-	ImmediateErasure bool
 }
 
 // GetFrameworks returns all supported frameworks
