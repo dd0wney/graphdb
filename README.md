@@ -245,25 +245,13 @@ The documentation covers:
 
 ### Using Docker (Easiest)
 
+Follow ["Try it in two minutes"](#try-it-in-two-minutes) at the top of this README — start the container with `ADMIN_PASSWORD`, log in at `/auth/login`, and call the API with the returned token. `/health` is the only unauthenticated check:
+
 ```bash
-# Run the server
-docker run -p 8080:8080 -e ADMIN_PASSWORD='choose-a-password' dd0wney/graphdb:latest
-
-# In another terminal, test it (no auth needed for /health)
 curl http://localhost:8080/health
-
-# Log in, then create a node
-TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "choose-a-password"}' | jq -r .access_token)
-
-curl -X POST http://localhost:8080/nodes \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"labels": ["Person"], "properties": {"name": "Alice", "age": 30}}'
 ```
 
-> **Deployment ordering**: create property and vector indexes *before* serving production traffic — index builds are admin operations that run after writes, and queries fall back to scans until the index exists.
+> **Deployment ordering**: create property and vector indexes *before* serving production traffic — index builds are admin operations that run after writes, and queries fall back to scans until the index exists. See [`docs/PRODUCTION_QUICKSTART.md`](docs/PRODUCTION_QUICKSTART.md) for the full production path.
 
 ### Using Pre-built Binaries
 
@@ -818,7 +806,7 @@ The Terminal UI (built with Bubble Tea, Bubbles, and Lipgloss) provides:
 
 ### Temporal Graphs
 
-Query edge state at specific points in time:
+Query which edges existed at a specific point in time:
 
 ```go
 tq := storage.NewTemporalQuery(graph)
