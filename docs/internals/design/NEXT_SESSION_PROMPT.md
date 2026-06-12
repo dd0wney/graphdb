@@ -6,9 +6,8 @@
 
 ```
 Read docs/internals/design/SESSION_HANDOFF_2026-06-11-2355Z.md first.
-1. Merge #399 (H-3) then #400 (planning doc) if CI is green — use ci-status-triage if anything is red.
-2. Resolve the handoff's Open Questions: disposition #393/#394 (M-1 Option-C interim, superseded by #396's Option A — recommend reworking #393's pkg/compliance control to the new immediate-erasure posture, closing #394) and #389 (old handoff PR).
-3. Run branch-cleanup (several stale local branches listed in the handoff).
-4. Then: no critical path is forced — recommend opening the productization/operability wave (onboarding docs + single-node framing), with the real-corpus coi-screen run scheduled early as the likeliest source of new evidence.
+1. Resolve the handoff's Open Questions: disposition #393/#394 (M-1 Option-C interim, superseded by #396's Option A — recommend reworking #393's pkg/compliance control to the new immediate-erasure posture, closing #394) and #389 (old handoff PR); then branch-cleanup.
+2. No critical path is forced — recommend opening the productization/operability wave (onboarding docs + single-node framing), with the real-corpus coi-screen run scheduled early as the likeliest source of new evidence.
+3. Track S tail when convenient: M-15 enterprise-side manifest tooling (cross-repo), PyPI-publish decision.
 End via the session-handoff skill.
 ```
