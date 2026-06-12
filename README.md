@@ -23,7 +23,7 @@ docker run -p 8080:8080 dd0wney/graphdb:latest
 # Or download pre-built binary
 wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Linux_x86_64.tar.gz
 tar -xzf graphdb_0.1.0_Linux_x86_64.tar.gz
-./cluso-server --port 8080
+./graphdb-server --port 8080
 ```
 
 **Available for:**
@@ -249,27 +249,27 @@ Download from [GitHub Releases](https://github.com/dd0wney/graphdb/releases/late
 # Linux (x86_64)
 wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Linux_x86_64.tar.gz
 tar -xzf graphdb_0.1.0_Linux_x86_64.tar.gz
-./cluso-server --port 8080
+./graphdb-server --port 8080
 
 # Linux (arm64)
 wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Linux_arm64.tar.gz
 tar -xzf graphdb_0.1.0_Linux_arm64.tar.gz
-./cluso-server --port 8080
+./graphdb-server --port 8080
 
 # macOS (Intel)
 wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Darwin_x86_64.tar.gz
 tar -xzf graphdb_0.1.0_Darwin_x86_64.tar.gz
-./cluso-server --port 8080
+./graphdb-server --port 8080
 
 # macOS (Apple Silicon)
 wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Darwin_arm64.tar.gz
 tar -xzf graphdb_0.1.0_Darwin_arm64.tar.gz
-./cluso-server --port 8080
+./graphdb-server --port 8080
 
 # Windows (PowerShell)
 Invoke-WebRequest -Uri "https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Windows_x86_64.zip" -OutFile "graphdb.zip"
 Expand-Archive graphdb.zip
-.\graphdb\cluso-server.exe --port 8080
+.\graphdb\graphdb-server.exe --port 8080
 ```
 
 ### Building from Source
