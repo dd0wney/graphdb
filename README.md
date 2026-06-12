@@ -8,23 +8,31 @@
 
 A high-performance, feature-rich graph database built from scratch in Go. GraphDB combines modern storage techniques with powerful graph algorithms and multiple query interfaces.
 
-## v0.2.0 Released! 🎉
+## Releases
 
-**New in v0.2.0:** Vector Search with HNSW indexes for semantic similarity queries.
+Latest server release: **[v0.4.1](https://github.com/dd0wney/graphdb/releases/latest)**. First-party clients: **[Python SDK v0.1.0](clients/python/)** and **[TypeScript client v1.0.0](workers/graphdb-client/)** (Cloudflare Workers).
 
-## What's New
+## Try it in two minutes
 
-**Try it in 30 seconds:**
+All data endpoints require authentication, so the quickstart includes getting a token:
 
 ```bash
-# Docker (recommended)
-docker run -p 8080:8080 dd0wney/graphdb:latest
+# 1. Start the server (Docker recommended)
+docker run -p 8080:8080 -e ADMIN_PASSWORD='choose-a-password' dd0wney/graphdb:latest
 
-# Or download pre-built binary
-wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Linux_x86_64.tar.gz
-tar -xzf graphdb_0.1.0_Linux_x86_64.tar.gz
-./graphdb-server --port 8080
+# 2. Log in and grab a token
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "choose-a-password"}' | jq -r .access_token)
+
+# 3. Create your first node
+curl -X POST http://localhost:8080/nodes \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"labels": ["Person"], "properties": {"name": "Alice", "age": 30}}'
 ```
+
+Without `ADMIN_PASSWORD`, a development-mode server generates a random admin password and writes it to `<data-dir>/.graphdb_admin_password`. Pre-built binaries for Linux/macOS/Windows are on the [releases page](https://github.com/dd0wney/graphdb/releases/latest).
 
 **Available for:**
 - **Docker**: Multi-arch images (amd64, arm64) on [Docker Hub](https://hub.docker.com/r/dd0wney/graphdb)
@@ -50,7 +58,7 @@ tar -xzf graphdb_0.1.0_Linux_x86_64.tar.gz
 - **Property Indexes** - Fast property-based lookups
 - **Batched Operations** - Efficient bulk data loading
 
-### Vector Search (New in v0.2.0!)
+### Vector Search
 
 - **HNSW Indexes** - Hierarchical Navigable Small World graphs for fast k-NN search
 - **Multiple Distance Metrics** - Cosine, Euclidean, and Dot Product similarity
@@ -89,10 +97,11 @@ RETURN p, f
 
 ```bash
 # Start the server
-docker run -p 8080:8080 dd0wney/graphdb:latest
+docker run -p 8080:8080 -e ADMIN_PASSWORD='choose-a-password' dd0wney/graphdb:latest
 
-# Query via HTTP
+# Query via HTTP (get $TOKEN from /auth/login — see "Try it in two minutes")
 curl -X POST http://localhost:8080/query \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "MATCH (n:Person) RETURN n"}'
 ```
@@ -102,9 +111,9 @@ curl -X POST http://localhost:8080/query \
 ```bash
 ./bin/cli
 
-cluso> stats
-cluso> query MATCH (p:Person) RETURN p
-cluso> pagerank
+graphdb> stats
+graphdb> query MATCH (p:Person) RETURN p
+graphdb> pagerank
 ```
 
 #### 4. Beautiful TUI (Terminal UI)
@@ -139,11 +148,19 @@ Interactive terminal interface with:
 
 See the [CLI Admin documentation](docs/CLI-ADMIN.md) for complete usage.
 
+## Client Libraries
+
+| Language | Package | Where |
+|---|---|---|
+| Go | `github.com/dd0wney/graphdb` | Import the `pkg/` packages directly (embedded) or call the REST/GraphQL API |
+| Python | `graphdb-client` (sync + async, retry/backoff, caching, LangChain adapters) | [`clients/python/`](clients/python/), tagged `python-sdk/v0.1.0` |
+| TypeScript | `@graphdb/client` for Cloudflare Workers | [`workers/graphdb-client/`](workers/graphdb-client/), tagged `ts-client/v1.0.0` |
+
 ## Scalability & Limitations
 
 GraphDB is designed for high performance on a single node. While it includes advanced multi-tenancy and high-throughput primitives, users should be aware of the following architectural trade-offs:
 
-- **Single-Node by Design**: The core engine is optimized for single-machine deployments. While it supports Primary/Replica replication for read scaling, write throughput is bounded by the resources of a single Go process.
+- **Single-Node by Design**: The core engine is optimized for single-machine deployments; throughput is bounded by the resources of a single Go process. The standalone replication binaries were retired in A8.1 (see the note under "Building from Source").
 - **In-Memory + LSM Architecture**: By default, GraphDB prioritizes low-latency access by keeping the graph topology in memory. Persistent storage (LSM/B+Tree) is used for durability and cold data tiering.
 - **LSA Scale Ceiling**: The built-in Latent Semantic Analysis (LSA) for vector embeddings is optimized for corpora of ~100K-500K documents (at 200 dimensions). For larger datasets, we recommend using dedicated embedding models (e.g., OpenAI, Anthropic, or BGE) via the standard `/v1/embeddings` interface.
 - **Horizontal Scaling**: Horizontal scaling (sharding, distributed consensus) is currently the responsibility of the operator (e.g., deploying per-tenant instances behind a load balancer).
@@ -175,11 +192,11 @@ The documentation covers:
 - Error handling and best practices
 - Rate limits and performance tips
 
-### Distributed Features
+### Additional Features
 
-- **ZeroMQ Replication** - Multiple replication patterns (PUB/SUB, PUSH/PULL, REQ/REP, DEALER/ROUTER)
-- **Graph Partitioning** - Horizontal scaling with hash-based partitioning
-- **Temporal Graphs** - Time-aware graph queries
+- **Graph Partitioning Primitives** - Hash- and range-based partitioning helpers (`pkg/partition`)
+- **Temporal Graphs** - Time-aware edge queries via `TemporalQuery`
+- **Multi-Tenancy** - Tenant-scoped storage, auth, and quotas throughout the API surface
 
 ### Performance Optimizations
 
@@ -218,9 +235,9 @@ The documentation covers:
 │  • Write-Ahead Logging (WAL)                     │
 ├─────────────────────────────────────────────────┤
 │  Advanced Features                               │
+│  • Vector Search (HNSW) + Hybrid Retrieval      │
 │  • Temporal Graphs (time-aware queries)         │
-│  • Graph Partitioning (horizontal scaling)      │
-│  • ZeroMQ Replication (4 patterns)              │
+│  • Multi-Tenancy (auth, quotas, isolation)      │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -230,47 +247,34 @@ The documentation covers:
 
 ```bash
 # Run the server
-docker run -p 8080:8080 dd0wney/graphdb:latest
+docker run -p 8080:8080 -e ADMIN_PASSWORD='choose-a-password' dd0wney/graphdb:latest
 
-# In another terminal, test it
+# In another terminal, test it (no auth needed for /health)
 curl http://localhost:8080/health
 
-# Create a node
+# Log in, then create a node
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "choose-a-password"}' | jq -r .access_token)
+
 curl -X POST http://localhost:8080/nodes \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"labels": ["Person"], "properties": {"name": "Alice", "age": 30}}'
 ```
 
+> **Deployment ordering**: create property and vector indexes *before* serving production traffic — index builds are admin operations that run after writes, and queries fall back to scans until the index exists.
+
 ### Using Pre-built Binaries
 
-Download from [GitHub Releases](https://github.com/dd0wney/graphdb/releases/latest):
+Download the archive for your platform (Linux/macOS/Windows, amd64/arm64) from [GitHub Releases](https://github.com/dd0wney/graphdb/releases/latest), then:
 
 ```bash
-# Linux (x86_64)
-wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Linux_x86_64.tar.gz
-tar -xzf graphdb_0.1.0_Linux_x86_64.tar.gz
-./graphdb-server --port 8080
-
-# Linux (arm64)
-wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Linux_arm64.tar.gz
-tar -xzf graphdb_0.1.0_Linux_arm64.tar.gz
-./graphdb-server --port 8080
-
-# macOS (Intel)
-wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Darwin_x86_64.tar.gz
-tar -xzf graphdb_0.1.0_Darwin_x86_64.tar.gz
-./graphdb-server --port 8080
-
-# macOS (Apple Silicon)
-wget https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Darwin_arm64.tar.gz
-tar -xzf graphdb_0.1.0_Darwin_arm64.tar.gz
-./graphdb-server --port 8080
-
-# Windows (PowerShell)
-Invoke-WebRequest -Uri "https://github.com/dd0wney/graphdb/releases/download/v0.1.0/graphdb_0.1.0_Windows_x86_64.zip" -OutFile "graphdb.zip"
-Expand-Archive graphdb.zip
-.\graphdb\graphdb-server.exe --port 8080
+tar -xzf graphdb_*_$(uname -s)_$(uname -m).tar.gz
+ADMIN_PASSWORD='choose-a-password' ./graphdb-server --port 8080
 ```
+
+> Releases up to and including v0.4.1 name the server binary `cluso-server`; from the next release it is `graphdb-server`.
 
 ### Building from Source
 
@@ -323,9 +327,12 @@ The TUI includes:
 package main
 
 import (
-    "github.com/dd0wney/cluso-graphdb/pkg/storage"
-    "github.com/dd0wney/cluso-graphdb/pkg/algorithms"
-    "github.com/dd0wney/cluso-graphdb/pkg/query"
+    "fmt"
+
+    "github.com/dd0wney/graphdb/pkg/algorithms"
+    "github.com/dd0wney/graphdb/pkg/constraints"
+    "github.com/dd0wney/graphdb/pkg/query"
+    "github.com/dd0wney/graphdb/pkg/storage"
 )
 
 func main() {
@@ -433,6 +440,7 @@ curl http://localhost:8080/metrics
 
 # Create node
 curl -X POST http://localhost:8080/nodes \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "labels": ["Person"],
@@ -441,6 +449,7 @@ curl -X POST http://localhost:8080/nodes \
 
 # Create edge
 curl -X POST http://localhost:8080/edges \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "from_node_id": 1,
@@ -451,11 +460,13 @@ curl -X POST http://localhost:8080/edges \
 
 # Execute query
 curl -X POST http://localhost:8080/query \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "MATCH (p:Person) RETURN p"}'
 
 # Find shortest path
 curl -X POST http://localhost:8080/shortest-path \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "start_node_id": 1,
@@ -465,6 +476,7 @@ curl -X POST http://localhost:8080/shortest-path \
 
 # Run PageRank
 curl -X POST http://localhost:8080/algorithms \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "algorithm": "pagerank",
@@ -476,6 +488,7 @@ curl -X POST http://localhost:8080/algorithms \
 
 # Detect cycles in the graph
 curl -X POST http://localhost:8080/algorithms \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "algorithm": "detect_cycles",
@@ -486,6 +499,7 @@ curl -X POST http://localhost:8080/algorithms \
 
 # Quick check if graph has any cycles
 curl -X POST http://localhost:8080/algorithms \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "algorithm": "has_cycle"
@@ -493,6 +507,7 @@ curl -X POST http://localhost:8080/algorithms \
 
 # Batch create nodes
 curl -X POST http://localhost:8080/nodes/batch \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "nodes": [
@@ -502,7 +517,7 @@ curl -X POST http://localhost:8080/nodes/batch \
   }'
 ```
 
-### Vector Search Examples (New in v0.2.0!)
+### Vector Search Examples
 
 Vector search enables semantic similarity queries using HNSW indexes - perfect for AI/ML applications, recommendation systems, and semantic search.
 
@@ -691,22 +706,23 @@ RUN_CAPACITY_TEST=1 go test -run Test5MNodeCapacity -v
 ```
 graphdb/
 ├── cmd/
-│   ├── server/          # REST API server
+│   ├── server/          # REST API server (the production binary)
 │   ├── cli/             # Interactive CLI
-│   ├── tui/             # Beautiful terminal UI
-│   ├── tui-demo/        # TUI demo data setup
-│   ├── api-demo/        # REST API demo client
+│   ├── tui/             # Terminal UI
+│   ├── graphdb-admin/   # Security/admin CLI (login, mint-token, keys, audit)
 │   ├── benchmark-*/     # Performance benchmarks
-├── pkg/
-│   ├── storage/         # LSM-tree storage engine
+├── pkg/                 # 37 packages; the largest:
+│   ├── storage/         # Graph storage engine (sharded in-memory + WAL + snapshots + LSM)
+│   ├── query/           # Cypher-like query language (lexer, parser, executor)
+│   ├── api/             # REST API server, auth, middleware
+│   ├── graphql/         # GraphQL API
 │   ├── algorithms/      # Graph algorithms
-│   ├── query/           # Query language (lexer, parser, executor)
-│   ├── api/             # REST API types and server
-│   ├── partitioning/    # Graph partitioning
-│   ├── replication/     # ZeroMQ replication
-│   └── parallel/        # Parallel query execution
-├── data/                # Database files (gitignored)
-└── bin/                 # Compiled binaries (gitignored)
+│   ├── vector/          # HNSW vector indexes
+│   ├── search/          # Full-text search
+│   └── retrieval/       # Graph-augmented retrieval (/v1/retrieve)
+├── clients/python/      # First-party Python SDK
+├── workers/graphdb-client/  # First-party TypeScript client (Cloudflare Workers)
+└── docs/                # Guides, API reference, design docs
 ```
 
 ## Configuration
@@ -802,40 +818,25 @@ The Terminal UI (built with Bubble Tea, Bubbles, and Lipgloss) provides:
 
 ### Temporal Graphs
 
-Query graph state at specific points in time:
+Query edge state at specific points in time:
 
 ```go
-// Get neighbors at timestamp
-neighbors := graph.GetNeighborsAtTime(nodeID, timestamp)
+tq := storage.NewTemporalQuery(graph)
 
-// Time-aware traversal
-visited := graph.TraverseAtTime(startID, maxDepth, direction, timestamp)
+// Edges attached to a node at a timestamp
+edges, _ := tq.GetEdgesAtTime(nodeID, timestamp)
+
+// Edges within a time range
+ranged, _ := tq.GetEdgesInTimeRange(nodeID, start, end)
 ```
 
-### Graph Partitioning
+### Graph Partitioning Primitives
 
-Horizontal scaling with hash-based partitioning:
-
-```go
-partitioner := partitioning.NewHashPartitioner(numPartitions)
-partition := partitioner.GetPartition(nodeID)
-```
-
-### ZeroMQ Replication
-
-Four replication patterns:
-
-1. **PUB/SUB** - Broadcast replication
-2. **PUSH/PULL** - Work distribution
-3. **REQ/REP** - Synchronous replication
-4. **DEALER/ROUTER** - Load-balanced replication
+Hash- and range-based partitioning helpers for operator-managed sharding:
 
 ```go
-// Leader setup
-leader := replication.NewLeader("tcp://*:5555", replication.PatternPubSub)
-
-// Follower setup
-follower := replication.NewFollower("tcp://localhost:5555", replication.PatternPubSub)
+p := partition.NewHashPartition(partitionCount)
+idx := p.GetPartition(nodeID)
 ```
 
 ## Contributing
@@ -878,7 +879,7 @@ GraphDB is released under the [MIT License](LICENSE).
 - Early access to distributed features
 - Custom SLA available
 
-For commercial licensing details, contact: [your-email]
+For commercial licensing details, open an [issue on GitHub](https://github.com/dd0wney/graphdb/issues).
 
 ## Acknowledgments
 
@@ -887,29 +888,25 @@ Built with:
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
 - [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
 - [Lipgloss](https://github.com/charmbracelet/lipgloss) - Terminal styling
-- [Mangos](https://go.nanomsg.org/mangos) - Pure-Go nanomsg/NNG implementation for replication transport
 
 ## Roadmap
 
 - [x] Core graph storage (nodes, edges, properties)
 - [x] LSM-tree persistent storage
-- [x] Write-ahead logging
+- [x] Write-ahead logging (with payload encryption)
 - [x] Property indexes
 - [x] Graph algorithms (PageRank, centrality, community)
 - [x] Cypher-like query language
-- [x] REST API server
-- [x] Interactive CLI
-- [x] Beautiful TUI
-- [x] Parallel query execution
+- [x] REST + GraphQL API servers
+- [x] Interactive CLI + TUI
+- [x] Vector search (HNSW) + hybrid retrieval (`/v1/retrieve`)
+- [x] Full-text search
+- [x] Multi-tenancy (auth, quotas, isolation)
 - [x] Temporal graphs
-- [x] Graph partitioning
-- [x] ZeroMQ replication
-- [x] v0.1.0 Release with multi-platform binaries
-- [x] Docker Hub images
-- [ ] Distributed consensus (Raft)
+- [x] Multi-platform release binaries + Docker Hub images
+- [x] First-party Python SDK and TypeScript (Workers) client
+- [ ] Distributed consensus / sharded writes (multi-quarter; single-node by design today)
 - [ ] Query optimizer
-- [ ] Schema validation
-- [ ] Full-text search
 - [ ] Geospatial queries
 - [ ] Web-based dashboard
 
