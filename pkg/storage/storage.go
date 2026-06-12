@@ -147,6 +147,16 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 	// recovered above are indexed too.
 	gs.rebuildVectorIndexesFromNodes()
 
+	// H-3 toggle hygiene: encryption is on but the replay saw pre-toggle
+	// plaintext entries. Checkpoint once (the snapshot is encrypted; WAL
+	// entries ≤ boundary are dropped) so the plaintext leaves the disk
+	// instead of lingering next to new ciphertext.
+	if gs.encryptionEngine != nil && gs.walReplaySawPlaintext {
+		if err := gs.CompactWAL(); err != nil {
+			return nil, fmt.Errorf("failed to purge plaintext WAL entries after enabling encryption: %w", err)
+		}
+	}
+
 	return gs, nil
 }
 

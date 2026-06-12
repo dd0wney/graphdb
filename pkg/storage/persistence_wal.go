@@ -27,6 +27,9 @@ func (gs *GraphStorage) writeToWALWithError(operation wal.OpType, data any) erro
 	if err != nil {
 		return fmt.Errorf("failed to marshal WAL data: %w", err)
 	}
+	if encoded, err = gs.sealWALPayload(encoded); err != nil {
+		return err
+	}
 
 	if gs.useBatching && gs.batchedWAL != nil {
 		if _, err := gs.batchedWAL.Append(operation, encoded); err != nil {
@@ -68,6 +71,10 @@ func (gs *GraphStorage) writeToWALWithError(operation wal.OpType, data any) erro
 func (gs *GraphStorage) enqueueWAL(operation wal.OpType, data any) *wal.Pending {
 	encoded, err := json.Marshal(data)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
+		return nil
+	}
+	if encoded, err = gs.sealWALPayload(encoded); err != nil {
 		fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
 		return nil
 	}
@@ -120,6 +127,19 @@ func (gs *GraphStorage) waitWALPending(operation wal.OpType, pending *wal.Pendin
 func (gs *GraphStorage) appendWALBatch(entries []wal.BatchEntry) error {
 	if len(entries) == 0 {
 		return nil
+	}
+	// Seal each payload (H-3). The slice is rebuilt rather than mutated:
+	// callers may retain their entries.
+	if gs.encryptionEngine != nil {
+		sealed := make([]wal.BatchEntry, len(entries))
+		for i, e := range entries {
+			data, err := gs.sealWALPayload(e.Data)
+			if err != nil {
+				return err
+			}
+			sealed[i] = wal.BatchEntry{OpType: e.OpType, Data: data}
+		}
+		entries = sealed
 	}
 	switch {
 	case gs.useBatching && gs.batchedWAL != nil:

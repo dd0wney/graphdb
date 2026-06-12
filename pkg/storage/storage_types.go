@@ -137,6 +137,11 @@ type GraphStorage struct {
 	// Encryption (using typed interfaces for compile-time safety)
 	encryptionEngine encryption.EncryptDecrypter // Handles data encryption/decryption
 	keyManager       encryption.KeyProvider      // Manages encryption keys
+	// walReplaySawPlaintext is set during constructor-time WAL replay
+	// when encryption is enabled but a legacy plaintext entry was
+	// replayed — the constructor then runs CompactWAL once so pre-toggle
+	// plaintext leaves the disk (H-3). Constructor-only; no locking.
+	walReplaySawPlaintext bool
 
 	// observers is the registered NodeObserver slice. Mutated by
 	// AddObserver under gs.mu.Lock; snapshot-copied for dispatch under
