@@ -125,6 +125,49 @@ defer `map[string]Value` construction until a property is read.
    currently *not* serialized), per-tenant indexes (H4.3), label/type membership — so
    they are loaded/mmapped rather than recomputed; or build them lazily on first use.
 
+## Stage 1 prototype: mmap + lazy materialization — VALIDATED (2026-06-16)
+
+A self-contained prototype (`mmap_proto_*.go`, exercised by `TestMmapReopen_Synthetic`)
+writes the real `Node`/`Edge`/`Value` graph to a binary, mmap-able file with a dense
+ID→offset directory, opens it by mapping the file + reading only the header, and
+materializes nodes/edges lazily on access (property `Value.Data` aliases the mapping —
+no copy, no JSON parse). Head-to-head at 936,908 nodes / 1,316,003 edges:
+
+| Variant | Wall | Alloc | Mallocs |
+|---|---|---|---|
+| JSON `ReadFile`+`Unmarshal` (baseline) | 10.45s | 1.07 GB | 25.3M |
+| **mmap open** | **~0 (sub-ms)** | **0** | **7** |
+| mmap touch-all (every node+edge) | 0.63s | 0.70 GB | 14.6M |
+| mmap random-10k reads | 7ms | 0.01 GB | 100k |
+
+Snapshot size: **191.6 MB binary vs 455.9 MB JSON** (2.4× smaller — no base64/JSON
+overhead). 1000 sampled nodes decoded via mmap matched a fresh JSON reopen exactly.
+
+**Findings:**
+- **Cold open is effectively free** — sub-millisecond, 7 allocations vs 25.3M. The graph
+  is not built until touched. This is the result the spike predicted.
+- **Even eager full materialization is ~16.5× faster** than JSON decode (0.63s vs 10.45s):
+  binary records + aliased property bytes avoid the parse and the per-`Value` `[]byte`
+  copies.
+- **Lazy reads are ~free** — open + 10k random reads in 7ms.
+
+**Scope / what this does NOT yet show (the productionization gap):**
+- This is the **blob-decode 75% solved**. The derived-index rebuild (Stage 2, ~25% /
+  ~3.7s) is *not* addressed and is still O(N) allocation. A production reopen that needs
+  indexes would land at ≈3.7s + ~0 (lazy nodes) ≈ **0.24× rebuild** — clearing the bar,
+  matching the prediction — and lower once indexes are persisted/lazy too.
+- **Writes after reopen** need a copy-on-write overlay (mmap is read-only). Not built.
+- **At-rest encryption** is incompatible with mapping the file as-is. Prototype is plaintext.
+- **Dense-ID directory** assumes IDs dense from `minID` (true for a freshly built store; a
+  `-1` sentinel handles gaps, but heavy deletion would want a sorted directory).
+- `Value.Data` aliases the mapping → valid only while open; production must copy or pin.
+- Platform: `syscall.Mmap` (unix; CI is Linux/macOS). `golang.org/x/exp/mmap` is the
+  portable copying fallback.
+
+**Conclusion:** the recommended direction is validated. Stage-1 productionization =
+wire an mmap-backed read provider into reopen behind a CoW overlay for writes; Stage 2 =
+persist/lazy the derived indexes.
+
 ## Invariants any new format MUST preserve
 
 - Stable node/edge IDs across reopen.
