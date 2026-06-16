@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 // TestMmapSnapshotFile_RoundTrip exercises the writer + mmap reader end-to-end on a
@@ -181,6 +182,72 @@ func TestMmapReopen_Synthetic(t *testing.T) {
 		}
 	}
 	fmt.Fprintf(os.Stderr, "  correctness: 1000 sampled nodes match the JSON reopen ✓\n")
+}
+
+// TestMmapReopen_EndToEnd drives the REAL NewGraphStorage reopen in both modes at scale
+// and asserts the mmap reopen is materially faster than the JSON reopen (the acceptance
+// criterion) plus public-interface parity. Heavy; SKIPPED unless GRAPHDB_REOPEN_BENCH=1.
+func TestMmapReopen_EndToEnd(t *testing.T) {
+	if os.Getenv("GRAPHDB_REOPEN_BENCH") == "" {
+		t.Skip("set GRAPHDB_REOPEN_BENCH=1 to run the end-to-end reopen comparison (heavy)")
+	}
+	nNodes := envInt("GRAPHDB_REOPEN_NODES", 936908)
+	nEdges := envInt("GRAPHDB_REOPEN_EDGES", 1316003)
+	const tenant = "bench-tenant"
+
+	jsonDir, mmapDir := t.TempDir(), t.TempDir()
+
+	jgs, jsonBuild := buildSyntheticStore(t, jsonDir, nNodes, nEdges)
+	if err := jgs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	mgs, _ := buildSyntheticStoreWithConfig(t, mmapConfig(mmapDir), nNodes, nEdges)
+	if err := mgs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	t0 := time.Now()
+	jr, err := NewGraphStorage(jsonDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonReopen := time.Since(t0)
+	defer jr.Close()
+
+	t1 := time.Now()
+	mr, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mmapReopen := time.Since(t1)
+	defer mr.Close()
+
+	fmt.Fprintf(os.Stderr, "\n=== End-to-end reopen (%d nodes / %d edges) ===\n", nNodes, nEdges)
+	fmt.Fprintf(os.Stderr, "  cold build (JSON)        %8s\n", jsonBuild.Round(time.Millisecond))
+	fmt.Fprintf(os.Stderr, "  JSON reopen              %8s  (reopen/rebuild %.2f)\n", jsonReopen.Round(time.Millisecond), float64(jsonReopen)/float64(jsonBuild))
+	fmt.Fprintf(os.Stderr, "  mmap reopen              %8s  (reopen/rebuild %.2f)\n", mmapReopen.Round(time.Millisecond), float64(mmapReopen)/float64(jsonBuild))
+	fmt.Fprintf(os.Stderr, "  speedup vs JSON reopen   %8.1fx\n", float64(jsonReopen)/float64(mmapReopen))
+
+	// Acceptance: mmap reopen materially faster than the cold build that produced it.
+	if mmapReopen >= jsonBuild {
+		t.Errorf("mmap reopen (%s) not materially faster than cold build (%s)", mmapReopen, jsonBuild)
+	}
+
+	// Interface parity: counts + a sampled by-label and adjacency read must match.
+	if jr.CountNodesForTenant(tenant) != mr.CountNodesForTenant(tenant) ||
+		jr.CountEdgesForTenant(tenant) != mr.CountEdgesForTenant(tenant) {
+		t.Errorf("count mismatch: json %d/%d mmap %d/%d",
+			jr.CountNodesForTenant(tenant), jr.CountEdgesForTenant(tenant),
+			mr.CountNodesForTenant(tenant), mr.CountEdgesForTenant(tenant))
+	}
+	if len(jr.GetNodesByLabelForTenant(tenant, "Entity")) != len(mr.GetNodesByLabelForTenant(tenant, "Entity")) {
+		t.Errorf("by-label count mismatch")
+	}
+	jOut, _ := jr.GetOutgoingEdgesForTenant(1, tenant)
+	mOut, _ := mr.GetOutgoingEdgesForTenant(1, tenant)
+	if len(jOut) != len(mOut) {
+		t.Errorf("adjacency mismatch for node 1: json %d mmap %d", len(jOut), len(mOut))
+	}
 }
 
 func fileSize(t *testing.T, path string) int64 {

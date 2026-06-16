@@ -75,8 +75,8 @@ func (gs *GraphStorage) replayCreateNode(entry *wal.Entry) error {
 		return err
 	}
 
-	// Skip if node already exists (already in snapshot)
-	if _, exists := gs.lookupNodeShard(node.ID); exists {
+	// Skip if node already exists (already in snapshot — overlay or mmap base)
+	if _, exists := gs.resolveNodeRefLocked(node.ID); exists {
 		return nil
 	}
 
@@ -123,8 +123,8 @@ func (gs *GraphStorage) replayUpdateNode(entry *wal.Entry) error {
 		return err
 	}
 
-	// Skip if node doesn't exist
-	node, exists := gs.lookupNodeShard(updateInfo.NodeID)
+	// Skip if node doesn't exist; promote a base-resident node into the overlay.
+	node, exists := gs.materializeNodeLocked(updateInfo.NodeID)
 	if !exists {
 		return nil
 	}
@@ -155,8 +155,9 @@ func (gs *GraphStorage) replayUpdateEdge(entry *wal.Entry) error {
 		return err
 	}
 
-	// Skip if the edge doesn't exist (e.g. deleted later in the WAL).
-	existing, exists := gs.lookupEdgeShard(edge.ID)
+	// Skip if the edge doesn't exist (e.g. deleted later in the WAL); promote a
+	// base-resident edge into the overlay before mutating.
+	existing, exists := gs.materializeEdgeLocked(edge.ID)
 	if !exists {
 		return nil
 	}
@@ -172,8 +173,8 @@ func (gs *GraphStorage) replayCreateEdge(entry *wal.Entry) error {
 		return err
 	}
 
-	// Skip if edge already exists (already in snapshot)
-	if _, exists := gs.lookupEdgeShard(edge.ID); exists {
+	// Skip if edge already exists (already in snapshot — overlay or mmap base)
+	if _, exists := gs.resolveEdgeRefLocked(edge.ID); exists {
 		return nil
 	}
 
@@ -214,12 +215,13 @@ func (gs *GraphStorage) replayDeleteEdge(entry *wal.Entry) error {
 	}
 
 	// Skip if edge doesn't exist (already deleted or never existed)
-	if _, exists := gs.lookupEdgeShard(edge.ID); !exists {
+	if _, exists := gs.resolveEdgeRefLocked(edge.ID); !exists {
 		return nil
 	}
 
 	// Replay edge deletion
 	gs.deleteEdgeShardEntry(edge.ID)
+	gs.markEdgeDeletedLocked(edge.ID) // mmap mode: mask the base-resident edge
 
 	// Remove from type index
 	gs.removeEdgeFromTypeIndex(edge.Type, edge.ID)
@@ -253,7 +255,7 @@ func (gs *GraphStorage) replayDeleteNode(entry *wal.Entry) error {
 	}
 
 	// Skip if node doesn't exist (already deleted or never existed)
-	if _, exists := gs.lookupNodeShard(node.ID); !exists {
+	if _, exists := gs.resolveNodeRefLocked(node.ID); !exists {
 		return nil
 	}
 
@@ -309,6 +311,7 @@ func (gs *GraphStorage) replayDeleteNode(entry *wal.Entry) error {
 
 	// Delete node
 	gs.deleteNodeShardEntry(node.ID)
+	gs.markNodeDeletedLocked(node.ID) // mmap mode: mask the base-resident node
 
 	// Delete adjacency lists (disk-backed or in-memory)
 	if err := gs.clearNodeAdjacency(node.ID); err != nil {

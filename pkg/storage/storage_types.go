@@ -88,6 +88,20 @@ type GraphStorage struct {
 	edgeStore          *EdgeStore // LSM-backed edge storage with LRU cache
 	useDiskBackedEdges bool       // If true, use EdgeStore instead of in-memory maps
 
+	// mmap-backed lazy reopen (graphdb ask #1, Stage 1). When mmapSnap != nil
+	// the snapshot is memory-mapped and nodes/edges materialize lazily on read
+	// (mmapSnap is the read-only base). The nodeShards/edgeShards maps act as a
+	// copy-on-write OVERLAY: writes promote the entry into its shard and mutate
+	// there; reads resolve overlay → mmap base. deletedNodes/deletedEdges
+	// tombstone mmap-resident entries removed since open, sharded and guarded by
+	// shardLocks exactly like nodeShards (read under rlockShard, write under
+	// lockShard). All nil/empty when mmap mode is off, so the JSON path is
+	// unchanged. See mmap_snapshot_loader.go.
+	useMmapSnapshot bool // write snapshot.mmap (set from mmapEligible at construction)
+	mmapSnap        *mmapSnapshot
+	deletedNodes    [256]map[uint64]struct{}
+	deletedEdges    [256]map[uint64]struct{}
+
 	// ID generators
 	nextNodeID uint64
 	nextEdgeID uint64
@@ -161,6 +175,13 @@ type StorageConfig struct {
 	UseDiskBackedEdges    bool // Enable disk-backed adjacency lists (Milestone 2)
 	EdgeCacheSize         int  // LRU cache size for hot edge lists (default: 10000)
 	BulkImportMode        bool // Disable WAL and use fast path for bulk loading
+
+	// UseMmapSnapshot opts into the mmap-backed lazy-reopen path (graphdb ask
+	// #1, Stage 1): the snapshot is written/read as snapshot.mmap and
+	// nodes/edges materialize lazily on access instead of being allocated up
+	// front. Falls back to the JSON path when ineligible (encryption enabled,
+	// disk-backed edges, or no snapshot.mmap present). Off by default.
+	UseMmapSnapshot bool
 
 	// EncryptionEngine/KeyManager wire at-rest encryption at CONSTRUCTION
 	// time, so the constructor's loadFromDisk can decrypt an encrypted

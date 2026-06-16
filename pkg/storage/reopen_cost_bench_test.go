@@ -15,13 +15,19 @@ import (
 // Returns the open store and the build (cold-rebuild) duration; the caller owns
 // Close(). Shared by the reopen-cost and parse-vs-alloc reproductions.
 func buildSyntheticStore(tb testing.TB, dir string, nNodes, nEdges int) (*GraphStorage, time.Duration) {
+	return buildSyntheticStoreWithConfig(tb, DefaultStorageConfig(dir), nNodes, nEdges)
+}
+
+// buildSyntheticStoreWithConfig is buildSyntheticStore parameterized by config, so the
+// end-to-end reopen benchmark can build in mmap mode.
+func buildSyntheticStoreWithConfig(tb testing.TB, cfg StorageConfig, nNodes, nEdges int) (*GraphStorage, time.Duration) {
 	tb.Helper()
 	const tenant = "bench-tenant"
 	edgeTypes := []string{"LINKS", "MENTIONS", "OWNS", "NEAR"}
 	rng := rand.New(rand.NewSource(42)) // deterministic shape across runs
 
 	build := time.Now()
-	gs, err := NewGraphStorage(dir)
+	gs, err := NewGraphStorageWithConfig(cfg)
 	if err != nil {
 		tb.Fatalf("NewGraphStorage(build): %v", err)
 	}

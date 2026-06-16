@@ -164,7 +164,10 @@ func (b *Batch) executeCreateEdge(op batchOp) error {
 }
 
 func (b *Batch) executeUpdateNode(op batchOp) error {
-	node, exists := b.graph.lookupNodeShard(op.nodeID)
+	// mmap mode: promote a base-resident node into the overlay (CoW) before mutating.
+	b.graph.lockShard(op.nodeID)
+	node, exists := b.graph.materializeNodeLocked(op.nodeID)
+	b.graph.unlockShard(op.nodeID)
 	if !exists {
 		return fmt.Errorf("node %d not found", op.nodeID)
 	}
@@ -234,7 +237,7 @@ func (b *Batch) executeUpdateNode(op batchOp) error {
 }
 
 func (b *Batch) executeDeleteNode(op batchOp) error {
-	node, exists := b.graph.lookupNodeShard(op.nodeID)
+	node, exists := b.graph.resolveNodeRefLocked(op.nodeID)
 	if !exists {
 		return nil // Skip non-existent nodes
 	}
@@ -272,25 +275,27 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 	// OpDeleteNode below drives replay's cascade). G3.
 	outgoing := b.graph.outgoingEdges[op.nodeID]
 	for _, edgeID := range outgoing {
-		if edge, ok := b.graph.lookupEdgeShard(edgeID); ok {
+		if edge, ok := b.graph.resolveEdgeRefLocked(edgeID); ok {
 			b.graph.removeEdgeFromTenantIndex(edge)
 			removeFromLabelIndexKeepEmpty(b.graph.edgesByType, edge.Type, edgeID)
 			// a->X: drop the edge from X's incoming adjacency.
 			b.graph.incomingEdges[edge.ToNodeID] = removeEdgeFromList(b.graph.incomingEdges[edge.ToNodeID], edgeID)
 		}
 		b.graph.deleteEdgeShardEntry(edgeID)
+		b.graph.markEdgeDeletedLocked(edgeID) // mmap mode: mask the base-resident edge
 		atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
 	}
 
 	incoming := b.graph.incomingEdges[op.nodeID]
 	for _, edgeID := range incoming {
-		if edge, ok := b.graph.lookupEdgeShard(edgeID); ok {
+		if edge, ok := b.graph.resolveEdgeRefLocked(edgeID); ok {
 			b.graph.removeEdgeFromTenantIndex(edge)
 			removeFromLabelIndexKeepEmpty(b.graph.edgesByType, edge.Type, edgeID)
 			// Y->a: drop the edge from Y's outgoing adjacency.
 			b.graph.outgoingEdges[edge.FromNodeID] = removeEdgeFromList(b.graph.outgoingEdges[edge.FromNodeID], edgeID)
 		}
 		b.graph.deleteEdgeShardEntry(edgeID)
+		b.graph.markEdgeDeletedLocked(edgeID) // mmap mode: mask the base-resident edge
 		atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
 	}
 
@@ -299,6 +304,7 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 
 	// Delete node with atomic decrement
 	b.graph.deleteNodeShardEntry(op.nodeID)
+	b.graph.markNodeDeletedLocked(op.nodeID) // mmap mode: mask the base-resident node
 	atomicDecrementWithUnderflowProtection(&b.graph.stats.NodeCount)
 
 	// Drop the node's vectors from the HNSW index off-lock in Commit (parity
@@ -329,7 +335,7 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 }
 
 func (b *Batch) executeDeleteEdge(op batchOp) error {
-	edge, exists := b.graph.lookupEdgeShard(op.edgeID)
+	edge, exists := b.graph.resolveEdgeRefLocked(op.edgeID)
 	if !exists {
 		return nil // Skip non-existent edges
 	}
@@ -362,6 +368,7 @@ func (b *Batch) executeDeleteEdge(op batchOp) error {
 
 	// Delete edge with atomic decrement
 	b.graph.deleteEdgeShardEntry(op.edgeID)
+	b.graph.markEdgeDeletedLocked(op.edgeID) // mmap mode: mask the base-resident edge
 	atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
 
 	// Write to WAL for durability

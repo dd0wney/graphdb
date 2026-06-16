@@ -127,11 +127,21 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		gs.useDiskBackedEdges = true
 	}
 
-	// Try to load from disk
-	if err := gs.loadFromDisk(); err != nil {
+	// Try to load from disk. When the mmap reopen mode is eligible and a
+	// snapshot.mmap exists, take the lazy mmap path; otherwise the JSON path.
+	// (A store opened in mmap mode with only a legacy snapshot.json loads JSON
+	// here and writes snapshot.mmap on its next Snapshot.)
+	gs.useMmapSnapshot = mmapEligible(config)
+	loadErr := error(nil)
+	if gs.useMmapSnapshot && fileExists(mmapSnapshotPath(config.DataDir)) {
+		loadErr = gs.loadFromDiskMmap()
+	} else {
+		loadErr = gs.loadFromDisk()
+	}
+	if loadErr != nil {
 		// If no snapshot exists, that's OK (fresh database)
-		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("failed to load from disk: %w", err)
+		if !os.IsNotExist(loadErr) {
+			return nil, fmt.Errorf("failed to load from disk: %w", loadErr)
 		}
 	}
 

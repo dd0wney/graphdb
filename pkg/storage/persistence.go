@@ -57,6 +57,12 @@ func (gs *GraphStorage) snapshotWithBoundary() (uint64, error) {
 	boundary := gs.walBoundaryLSNLocked()
 	gs.txWALBarrier.Unlock()
 
+	// mmap reopen mode: write snapshot.mmap (merged overlay ∪ base − tombstones)
+	// instead of the JSON snapshot. snapshotMmapLocked releases gs.mu.RLock.
+	if gs.useMmapSnapshot {
+		return gs.snapshotMmapLocked(boundary)
+	}
+
 	// Capture the engine under the same RLock as the state it encrypts:
 	// SetEncryption writes this field under gs.mu.Lock, and the encrypt
 	// call + envelope flag below must agree on one value.
@@ -360,6 +366,16 @@ func (gs *GraphStorage) Close() error {
 	// Save snapshot on close (without holding the lock to avoid deadlock)
 	if err := gs.Snapshot(); err != nil {
 		return err
+	}
+
+	// Unmap the mmap snapshot base. Safe because reads are copy-on-read: any
+	// node/edge already returned to a caller owns its bytes (no alias into the
+	// mapping). The snapshot above captured the merged live state to the new file.
+	if gs.mmapSnap != nil {
+		if err := gs.mmapSnap.close(); err != nil {
+			return fmt.Errorf("failed to unmap snapshot: %w", err)
+		}
+		gs.mmapSnap = nil
 	}
 
 	// Close EdgeStore if enabled

@@ -149,7 +149,7 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 	tid := effectiveTenantID(tenantID)
 	if labelMap := gs.tenantNodesByLabel[tid]; labelMap != nil {
 		for existingID := range labelMap[uniqueLabel] {
-			existing, exists := gs.lookupNodeShard(existingID)
+			existing, exists := gs.resolveNodeRefLocked(existingID)
 			if !exists {
 				continue
 			}
@@ -329,7 +329,7 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 	gs.rlockShard(nodeID)
 	defer gs.runlockShard(nodeID)
 
-	node, exists := gs.lookupNodeShard(nodeID)
+	node, exists := gs.resolveNodeRefLocked(nodeID)
 	if !exists {
 		gs.recordOperation("get_node", "error", start)
 		return nil, ErrNodeNotFound
@@ -402,7 +402,7 @@ func (gs *GraphStorage) WithNodeRefForTenant(nodeID uint64, tenantID string, fn 
 // Returns ErrNodeNotFound on missing or cross-tenant. See
 // GetNodeForTenant for the rationale on the unified error response.
 func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*Node, error) {
-	node, exists := gs.lookupNodeShard(nodeID)
+	node, exists := gs.resolveNodeRefLocked(nodeID)
 	if !exists {
 		return nil, ErrNodeNotFound
 	}
@@ -444,7 +444,11 @@ func (gs *GraphStorage) UpdateNodeForTenant(nodeID uint64, properties map[string
 func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) error {
 	gs.mu.Lock()
 
-	node, exists := gs.lookupNodeShard(nodeID)
+	// mmap mode: promote a base-resident node into the shard overlay (copy-on-write)
+	// before the in-place mutation below. No-op (plain lookup) when mmap is off.
+	gs.lockShard(nodeID)
+	node, exists := gs.materializeNodeLocked(nodeID)
+	gs.unlockShard(nodeID)
 	if !exists {
 		gs.mu.Unlock()
 		return ErrNodeNotFound
@@ -521,7 +525,10 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error {
 	gs.mu.Lock()
 
-	node, exists := gs.lookupNodeShard(nodeID)
+	// mmap mode: promote a base-resident node into the overlay before mutation.
+	gs.lockShard(nodeID)
+	node, exists := gs.materializeNodeLocked(nodeID)
+	gs.unlockShard(nodeID)
 	if !exists {
 		gs.mu.Unlock()
 		return ErrNodeNotFound
@@ -667,7 +674,8 @@ func (gs *GraphStorage) DeleteNodeForTenant(nodeID uint64, tenantID string) erro
 func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	gs.mu.Lock()
 
-	node, exists := gs.lookupNodeShard(nodeID)
+	// resolve overlay → base; the node's fields drive index removal below.
+	node, exists := gs.resolveNodeRefLocked(nodeID)
 	if !exists {
 		gs.mu.Unlock()
 		return ErrNodeNotFound
@@ -741,6 +749,7 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	// this function.
 	gs.lockShard(nodeID)
 	gs.deleteNodeShardEntry(nodeID)
+	gs.markNodeDeletedLocked(nodeID) // mmap mode: mask the base-resident node
 	gs.unlockShard(nodeID)
 
 	// Delete adjacency lists (disk-backed or in-memory)

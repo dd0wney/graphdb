@@ -79,7 +79,7 @@ func (gs *GraphStorage) checkClosed() error {
 // tenant-blind callers (CreateEdge, UpsertEdge). New tenant-aware
 // callers should prefer verifyNodeExistsForTenant.
 func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
-	if _, exists := gs.lookupNodeShard(nodeID); !exists {
+	if _, exists := gs.resolveNodeRefLocked(nodeID); !exists {
 		return fmt.Errorf("%s node %d not found", nodeType, nodeID)
 	}
 	return nil
@@ -97,7 +97,7 @@ func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
 // tenant, enabling tenant-A to write a tenant-A-stamped edge against
 // tenant-B's nodes.
 func (gs *GraphStorage) verifyNodeExistsForTenant(nodeID uint64, nodeType string, tenantID string) error {
-	node, exists := gs.lookupNodeShard(nodeID)
+	node, exists := gs.resolveNodeRefLocked(nodeID)
 	if !exists {
 		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound)
 	}
@@ -262,6 +262,23 @@ func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
 			}
 		}
 	}
+	// mmap reopen: also visit base nodes not shadowed by the overlay or
+	// tombstoned, materializing each lazily. No-op when mmap mode is off.
+	if gs.mmapSnap == nil {
+		return
+	}
+	stopped := false
+	gs.mmapSnap.forEachNodeID(func(id uint64, off int64) {
+		if stopped {
+			return
+		}
+		if _, shadowed := gs.lookupNodeShard(id); shadowed || gs.isNodeDeletedLocked(id) {
+			return
+		}
+		if !fn(decodeNodeRecordAt(gs.mmapSnap.data, off)) {
+			stopped = true
+		}
+	})
 }
 
 // forEachNodeIDUnlocked invokes fn for every node ID across all shards.
@@ -275,6 +292,21 @@ func (gs *GraphStorage) forEachNodeIDUnlocked(fn func(uint64) bool) {
 			}
 		}
 	}
+	if gs.mmapSnap == nil {
+		return
+	}
+	stopped := false
+	gs.mmapSnap.forEachNodeID(func(id uint64, off int64) {
+		if stopped {
+			return
+		}
+		if _, shadowed := gs.lookupNodeShard(id); shadowed || gs.isNodeDeletedLocked(id) {
+			return
+		}
+		if !fn(id) {
+			stopped = true
+		}
+	})
 }
 
 // The flatten*ForSnapshot helpers that used to live here were folded into
