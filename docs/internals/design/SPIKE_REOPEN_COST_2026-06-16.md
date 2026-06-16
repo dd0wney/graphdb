@@ -77,11 +77,49 @@ experiment — splitting the 10.5s into *parse* vs *allocation* — decides betw
 mmap + lazy materialization is the safe bet that wins under either outcome, at the
 cost of a larger change to the in-memory model.
 
+### Follow-up experiment result: it is allocation-bound (2026-06-16)
+
+`TestReopenParseVsAlloc_Synthetic` ran four decodes over the same 455.9 MB payload
+at 936,908 nodes / 1,316,003 edges:
+
+| Variant | Wall | Alloc | Mallocs | NumGC | GC pause |
+|---|---|---|---|---|---|
+| 1. `json.Valid` (scan only) | 2.33s | ~0 | 9 | 0 | 0 |
+| 2. Unmarshal, props=`RawMessage` | 7.82s | 0.65 GB | 12.2M | 1 | 0 |
+| 3. Unmarshal full (real types) | 10.76s | 1.07 GB | 25.3M | 1 | 0 |
+| 4. Unmarshal full, **GC disabled** | 10.59s | 1.07 GB | 25.3M | 0 | 0 |
+
+Decomposition of the 10.76s full decode:
+
+- **Scan floor (1): 2.33s = 22%** — pure JSON lexing.
+- **Allocation + tree-building (3−1): 8.43s = 78%** — everything beyond scanning.
+- **Property-bag cost (3−2): 2.94s = 27%** — the `map[string]Value` + `Value` boxing.
+- **Structs + flat maps (2−1): 5.49s = 51%** — node/edge structs, flat maps, slices.
+- **GC overhead (3−4): 0.17s = 1.6% — negligible.**
+
+**Conclusion: allocation-bound, not parse-bound, and not GC-bound.** 78% of the
+decode is allocating the 25.3M heap objects that make up the graph (~11 allocations
+per entity: the struct, `Labels` slice, the property `map`, and a `[]byte` per
+`Value`). GC barely runs (one cycle) because those allocations are nearly all *live*
+— the result graph — so there is little garbage to collect; the cost is `mallocgc`
+itself (size-class, zeroing, pointer write-barriers). The GC-off run confirms it
+(same wall time).
+
+**Implication:** a faster *decoder* (binary/streaming/codegen) into the **same**
+`map[uint64]*Node` + `map[string]Value` structures can only attack the 22% scan — it
+cannot avoid the 25.3M allocations, so it yields a modest win at best. Reaching
+reopen ≪ rebuild on the decode side requires **not allocating the graph up front**:
+mmap the snapshot and materialize nodes/properties lazily on access, so a cold reopen
+is O(pages touched), not O(N). The property-bag share (27%) is itself a clean lever —
+defer `map[string]Value` construction until a property is read.
+
 ## Recommended staging
 
-1. **Stage 1 — attack the 74% blob decode (clears acceptance).** Replace the JSON
-   snapshot with a binary layout (and/or mmap + lazy materialization, pending the
-   parse-vs-alloc result). Biggest single win; gets reopen to ~0.22× rebuild.
+1. **Stage 1 — attack the 74% blob decode (clears acceptance).** The follow-up
+   experiment shows this must be **mmap + lazy materialization**, not merely a binary
+   decoder: 78% of the decode is allocation, which an eager decode into the same
+   structures cannot avoid. Gets reopen toward ~0.22× rebuild (and lower as fewer
+   nodes are touched on a given reopen).
 2. **Stage 2 — eliminate the 25% O(N) index rebuild (reaches the ~0.1s dream).**
    Persist the derived indexes — compressed adjacency (`compressedOutgoing/Incoming`,
    currently *not* serialized), per-tenant indexes (H4.3), label/type membership — so

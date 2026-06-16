@@ -9,41 +9,23 @@ import (
 	"time"
 )
 
-// TestReopenCost_Synthetic reproduces graphdb ask #1: reopen of a large
-// persisted store should cost far less than rebuilding it from scratch. It
-// builds a synthetic store of the consumer's reported shape (~940k nodes /
-// ~1.3M edges, one tenant, edge compression at its default), snapshots it,
-// drops the process state, and times NewGraphStorage on the populated dir.
-//
-// It is heavy (tens of seconds, ~500MB snapshot) so it is SKIPPED unless
-// GRAPHDB_REOPEN_BENCH is set — it must never run in normal CI. Run it with:
-//
-//	GRAPHDB_REOPEN_BENCH=1 GRAPHDB_LOAD_PROFILE=1 \
-//	  go test ./pkg/storage/ -run TestReopenCost_Synthetic -count=1 -timeout 600s -v
-//
-// Size is tunable for quick iteration: GRAPHDB_REOPEN_NODES / GRAPHDB_REOPEN_EDGES.
-func TestReopenCost_Synthetic(t *testing.T) {
-	if os.Getenv("GRAPHDB_REOPEN_BENCH") == "" {
-		t.Skip("set GRAPHDB_REOPEN_BENCH=1 to run the reopen-cost reproduction (heavy)")
-	}
-
-	nNodes := envInt("GRAPHDB_REOPEN_NODES", 936908)
-	nEdges := envInt("GRAPHDB_REOPEN_EDGES", 1316003)
+// buildSyntheticStore builds a store of the consumer's reported shape in dir:
+// nNodes nodes (label + two packed int locations + a short string), nEdges edges
+// across 4 types, one tenant, edge compression at its NewGraphStorage default.
+// Returns the open store and the build (cold-rebuild) duration; the caller owns
+// Close(). Shared by the reopen-cost and parse-vs-alloc reproductions.
+func buildSyntheticStore(tb testing.TB, dir string, nNodes, nEdges int) (*GraphStorage, time.Duration) {
+	tb.Helper()
 	const tenant = "bench-tenant"
 	edgeTypes := []string{"LINKS", "MENTIONS", "OWNS", "NEAR"}
-
-	dir := t.TempDir()
 	rng := rand.New(rand.NewSource(42)) // deterministic shape across runs
 
-	// ---- Cold build (from scratch) ----
 	build := time.Now()
 	gs, err := NewGraphStorage(dir)
 	if err != nil {
-		t.Fatalf("NewGraphStorage(build): %v", err)
+		tb.Fatalf("NewGraphStorage(build): %v", err)
 	}
 
-	// Nodes: a label + two packed int "locations" + a short string — the
-	// small property bag the consumer described.
 	nodeIDs := make([]uint64, 0, nNodes)
 	const chunk = 50000
 	for start := 0; start < nNodes; start += chunk {
@@ -65,12 +47,11 @@ func TestReopenCost_Synthetic(t *testing.T) {
 		}
 		ids, err := gs.CreateNodesWithTenant(tenant, specs)
 		if err != nil {
-			t.Fatalf("CreateNodesWithTenant: %v", err)
+			tb.Fatalf("CreateNodesWithTenant: %v", err)
 		}
 		nodeIDs = append(nodeIDs, ids...)
 	}
 
-	// Edges: a handful of types, endpoints drawn uniformly from the node set.
 	for start := 0; start < nEdges; start += chunk {
 		end := start + chunk
 		if end > nEdges {
@@ -86,10 +67,34 @@ func TestReopenCost_Synthetic(t *testing.T) {
 			})
 		}
 		if _, err := gs.CreateEdgesWithTenant(tenant, specs); err != nil {
-			t.Fatalf("CreateEdgesWithTenant: %v", err)
+			tb.Fatalf("CreateEdgesWithTenant: %v", err)
 		}
 	}
-	buildDur := time.Since(build)
+	return gs, time.Since(build)
+}
+
+// TestReopenCost_Synthetic reproduces graphdb ask #1: reopen of a large
+// persisted store should cost far less than rebuilding it from scratch. It
+// builds the synthetic store, snapshots it, drops the process state, and times
+// NewGraphStorage on the populated dir.
+//
+// Heavy (tens of seconds, ~450MB snapshot) so SKIPPED unless GRAPHDB_REOPEN_BENCH
+// is set — must never run in normal CI. Run it with:
+//
+//	GRAPHDB_REOPEN_BENCH=1 GRAPHDB_LOAD_PROFILE=1 \
+//	  go test ./pkg/storage/ -run TestReopenCost_Synthetic -count=1 -timeout 600s -v
+//
+// Size is tunable for quick iteration: GRAPHDB_REOPEN_NODES / GRAPHDB_REOPEN_EDGES.
+func TestReopenCost_Synthetic(t *testing.T) {
+	if os.Getenv("GRAPHDB_REOPEN_BENCH") == "" {
+		t.Skip("set GRAPHDB_REOPEN_BENCH=1 to run the reopen-cost reproduction (heavy)")
+	}
+
+	nNodes := envInt("GRAPHDB_REOPEN_NODES", 936908)
+	nEdges := envInt("GRAPHDB_REOPEN_EDGES", 1316003)
+	dir := t.TempDir()
+
+	gs, buildDur := buildSyntheticStore(t, dir, nNodes, nEdges)
 
 	// ---- Close() -> snapshot to disk ----
 	snap := time.Now()
@@ -115,12 +120,10 @@ func TestReopenCost_Synthetic(t *testing.T) {
 	t.Cleanup(func() { _ = gs2.Close() })
 
 	// Cheap correctness floor: counts survived the round-trip.
-	gotNodes := gs2.nodeCount()
-	gotEdges := gs2.edgeCount()
-	if gotNodes != nNodes {
+	if gotNodes := gs2.nodeCount(); gotNodes != nNodes {
 		t.Errorf("node count after reopen = %d, want %d", gotNodes, nNodes)
 	}
-	if gotEdges != nEdges {
+	if gotEdges := gs2.edgeCount(); gotEdges != nEdges {
 		t.Errorf("edge count after reopen = %d, want %d", gotEdges, nEdges)
 	}
 
