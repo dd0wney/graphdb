@@ -353,6 +353,13 @@ func main() {
 		storageConfig.KeyManager = keyManager
 		logger.Info("encryption connected to storage layer")
 	}
+	// Opt into the mmap-backed lazy reopen path (graphdb ask #1, Stage 1). Falls
+	// back to the JSON path automatically when ineligible (encryption enabled,
+	// disk-backed edges, or no snapshot.mmap present).
+	if os.Getenv("GRAPHDB_STORAGE_MODE") == "mmap" {
+		storageConfig.UseMmapSnapshot = true
+		logger.Info("mmap-backed lazy reopen enabled (GRAPHDB_STORAGE_MODE=mmap)")
+	}
 	graph, err := storage.NewGraphStorageWithConfig(storageConfig)
 	if err != nil {
 		logger.Error("failed to create graph storage", "error", err)

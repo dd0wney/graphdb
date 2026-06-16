@@ -168,6 +168,35 @@ overhead). 1000 sampled nodes decoded via mmap matched a fresh JSON reopen exact
 wire an mmap-backed read provider into reopen behind a CoW overlay for writes; Stage 2 =
 persist/lazy the derived indexes.
 
+## Stage 1 productionized — RESULT (2026-06-17)
+
+The flag-gated mmap reopen mode (`StorageConfig.UseMmapSnapshot` /
+`GRAPHDB_STORAGE_MODE=mmap`) is wired through the full `storage.Storage` interface:
+`loadFromDiskMmap` maps `snapshot.mmap` and builds only the in-memory indexes via a
+field-scan; reads resolve overlay → mmap base; writes promote into the shard overlay
+(copy-on-write) or tombstone; `Snapshot`/`Close` write the merged `.mmap`. Encrypted
+and disk-backed-edge stores fall back to the JSON path. Off by default.
+
+**End-to-end reopen via the real `NewGraphStorage`, 936,908 nodes / 1,316,003 edges:**
+
+| | wall | reopen/rebuild |
+|---|---|---|
+| cold build (JSON) | 16.41s | — |
+| JSON reopen (baseline) | 14.42s | 0.88 |
+| **mmap reopen** | **2.91s** | **0.18** |
+
+**5.0× faster than the JSON reopen, 0.18× of the cold build** — clearing the acceptance
+criterion (reopen ≪ rebuild), and matching the spike's ~0.24× prediction. The residual
+2.9s is the eager index field-scan — exactly Stage 2's target (persist/lazy the indexes
+→ approach ~0).
+
+Correctness is gated by public-interface PARITY against JSON mode (the internal
+invariant checker assumes shards hold every node, which the lazy representation breaks):
+round-trip, build-vs-mmap parity, writes-after-reopen (node + edge update/delete/cascade/
+create), batch parity, and crash-recovery (WAL replay) all assert identical results live
+AND after a second reopen; cross-tenant isolation preserved; race-clean. Full
+`pkg/storage` suite green in the default mode (every helper no-ops when `mmapSnap == nil`).
+
 ## Invariants any new format MUST preserve
 
 - Stable node/edge IDs across reopen.

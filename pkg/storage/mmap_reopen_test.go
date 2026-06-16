@@ -276,6 +276,45 @@ func TestMmapReopen_BatchParity(t *testing.T) {
 	}
 }
 
+// TestMmapReopen_CrashRecovery: Snapshot() (no truncate) then post-snapshot mutations
+// land in the WAL; reopening WITHOUT a clean Close must replay them via the mmap-aware
+// replay mutators. JSON and mmap recoveries must converge to identical state.
+func TestMmapReopen_CrashRecovery(t *testing.T) {
+	// crashBuild seeds, checkpoints, mutates, then abandons the store (no Close) so
+	// the WAL retains post-snapshot entries — a crash before the next checkpoint.
+	crashBuild := func(cfg StorageConfig) {
+		gs, err := NewGraphStorageWithConfig(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		buildReopenFixture(t, gs)
+		if err := gs.Snapshot(); err != nil { // checkpoint; WAL intact (no truncate)
+			t.Fatal(err)
+		}
+		applyMutations(t, gs) // post-snapshot writes -> WAL only
+		// no Close: simulate crash
+	}
+
+	jsonDir, mmapDir := t.TempDir(), t.TempDir()
+	crashBuild(DefaultStorageConfig(jsonDir))
+	crashBuild(mmapConfig(mmapDir))
+
+	jr, err := NewGraphStorage(jsonDir)
+	if err != nil {
+		t.Fatalf("json recovery: %v", err)
+	}
+	defer jr.Close()
+	mr, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	if err != nil {
+		t.Fatalf("mmap recovery: %v", err)
+	}
+	defer mr.Close()
+
+	for _, tenant := range []string{rtTenantA, rtTenantB} {
+		assertFingerprintEqual(t, fingerprintTenant(t, jr, tenant), fingerprintTenant(t, mr, tenant), "crash-recovery "+tenant)
+	}
+}
+
 // TestMmapReopen_RoundTrip: build in mmap mode, snapshot, reopen in mmap mode, and
 // assert the public-interface fingerprint survives (Phase 1b load + 1d snapshot).
 func TestMmapReopen_RoundTrip(t *testing.T) {
