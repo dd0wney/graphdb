@@ -149,7 +149,7 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 	tid := effectiveTenantID(tenantID)
 	if labelMap := gs.tenantNodesByLabel[tid]; labelMap != nil {
 		for existingID := range labelMap[uniqueLabel] {
-			existing, exists := gs.lookupNodeShard(existingID)
+			existing, exists := gs.resolveNodeRefLocked(existingID)
 			if !exists {
 				continue
 			}

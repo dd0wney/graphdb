@@ -2,6 +2,7 @@ package storage
 
 import (
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -59,21 +60,23 @@ func itoa(i int) string {
 
 // fingerprint captures the public-interface view of a tenant for equality comparison.
 type fingerprint struct {
-	nodeCount uint64
-	edgeCount uint64
-	personIDs []uint64
-	orgIDs    []uint64
-	nameByID  map[uint64]string
-	outDegree map[uint64]int
+	nodeCount  uint64
+	edgeCount  uint64
+	personIDs  []uint64
+	orgIDs     []uint64
+	nameByID   map[uint64]string
+	outDegree  map[uint64]int
+	outEdgeSig map[uint64]string // node -> sorted "to:weight" of its outgoing edges
 }
 
 func fingerprintTenant(t *testing.T, gs *GraphStorage, tenant string) fingerprint {
 	t.Helper()
 	fp := fingerprint{
-		nodeCount: gs.CountNodesForTenant(tenant),
-		edgeCount: gs.CountEdgesForTenant(tenant),
-		nameByID:  map[uint64]string{},
-		outDegree: map[uint64]int{},
+		nodeCount:  gs.CountNodesForTenant(tenant),
+		edgeCount:  gs.CountEdgesForTenant(tenant),
+		nameByID:   map[uint64]string{},
+		outDegree:  map[uint64]int{},
+		outEdgeSig: map[uint64]string{},
 	}
 	for _, n := range gs.GetNodesByLabelForTenant(tenant, "Person") {
 		fp.personIDs = append(fp.personIDs, n.ID)
@@ -95,6 +98,12 @@ func fingerprintTenant(t *testing.T, gs *GraphStorage, tenant string) fingerprin
 			t.Fatalf("GetOutgoingEdgesForTenant(%d): %v", n.ID, err)
 		}
 		fp.outDegree[n.ID] = len(out)
+		sigs := make([]string, 0, len(out))
+		for _, e := range out {
+			sigs = append(sigs, itoa(int(e.ToNodeID))+":"+itoa(int(e.Weight)))
+		}
+		sort.Strings(sigs)
+		fp.outEdgeSig[n.ID] = strings.Join(sigs, "|")
 	}
 	return fp
 }
@@ -116,6 +125,9 @@ func assertFingerprintEqual(t *testing.T, want, got fingerprint, ctx string) {
 		}
 		if got.outDegree[id] != want.outDegree[id] {
 			t.Errorf("%s: node %d out-degree: want %d got %d", ctx, id, want.outDegree[id], got.outDegree[id])
+		}
+		if got.outEdgeSig[id] != want.outEdgeSig[id] {
+			t.Errorf("%s: node %d out-edges: want %q got %q", ctx, id, want.outEdgeSig[id], got.outEdgeSig[id])
 		}
 	}
 }
@@ -157,6 +169,15 @@ func applyMutations(t *testing.T, gs *GraphStorage) {
 	}
 	if _, err := gs.CreateEdgeWithTenant(rtTenantA, 1, n.ID, "NEXT", nil, 1); err != nil {
 		t.Fatalf("CreateEdgeWithTenant: %v", err)
+	}
+	// Update a base-resident edge's weight (CoW promote): edge 5 is node5->node6.
+	w := 99.0
+	if err := gs.UpdateEdgeForTenant(5, nil, &w, rtTenantA); err != nil {
+		t.Fatalf("UpdateEdgeForTenant(5): %v", err)
+	}
+	// Delete a base-resident edge (tombstone): edge 7 is node7->node8.
+	if err := gs.DeleteEdgeForTenant(7, rtTenantA); err != nil {
+		t.Fatalf("DeleteEdgeForTenant(7): %v", err)
 	}
 }
 
@@ -206,6 +227,52 @@ func TestMmapReopen_WritesAfterReopen(t *testing.T) {
 	defer mr2.Close()
 	for _, tenant := range []string{rtTenantA, rtTenantB} {
 		assertFingerprintEqual(t, fingerprintTenant(t, jr2, tenant), fingerprintTenant(t, mr2, tenant), "reopen-after-mutate "+tenant)
+	}
+}
+
+// applyBatch exercises the batch executor's overlay/tombstone paths against
+// base-resident entities (tenant-blind by ID; all chosen IDs are tenant-a).
+func applyBatch(t *testing.T, gs *GraphStorage) {
+	t.Helper()
+	b := gs.BeginBatch()
+	b.UpdateNode(9, map[string]Value{"name": StringValue("batch-updated-9")})
+	b.DeleteNode(11) // cascades node 11's edges
+	b.DeleteEdge(13) // node13->node14
+	if err := b.Commit(); err != nil {
+		t.Fatalf("batch commit: %v", err)
+	}
+}
+
+// TestMmapReopen_BatchParity: identical batch mutations after reopen must yield
+// identical fingerprints in JSON and mmap mode, live and after a second reopen.
+func TestMmapReopen_BatchParity(t *testing.T) {
+	jsonDir, mmapDir := t.TempDir(), t.TempDir()
+	jgs, _ := NewGraphStorage(jsonDir)
+	buildReopenFixture(t, jgs)
+	jgs.Close()
+	mgs, _ := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	buildReopenFixture(t, mgs)
+	mgs.Close()
+
+	jr, _ := NewGraphStorage(jsonDir)
+	mr, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyBatch(t, jr)
+	applyBatch(t, mr)
+	for _, tenant := range []string{rtTenantA, rtTenantB} {
+		assertFingerprintEqual(t, fingerprintTenant(t, jr, tenant), fingerprintTenant(t, mr, tenant), "batch-live "+tenant)
+	}
+	jr.Close()
+	mr.Close()
+
+	jr2, _ := NewGraphStorage(jsonDir)
+	defer jr2.Close()
+	mr2, _ := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	defer mr2.Close()
+	for _, tenant := range []string{rtTenantA, rtTenantB} {
+		assertFingerprintEqual(t, fingerprintTenant(t, jr2, tenant), fingerprintTenant(t, mr2, tenant), "batch-reopen "+tenant)
 	}
 }
 

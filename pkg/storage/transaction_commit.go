@@ -119,7 +119,11 @@ func (tx *Transaction) Commit() error {
 	// node updates.)
 	for _, nodeID := range sortedTxIDs(tx.updatedNodes) {
 		props := tx.updatedNodes[nodeID]
-		node, exists := tx.gs.lookupNodeShard(nodeID)
+		// mmap mode: promote a base-resident node into the overlay (CoW) before
+		// the property-index update + in-place mutation below.
+		tx.gs.lockShard(nodeID)
+		node, exists := tx.gs.materializeNodeLocked(nodeID)
+		tx.gs.unlockShard(nodeID)
 		if !exists {
 			// validateLocked guaranteed existence + ownership; defensive only.
 			tx.gs.mu.Unlock()
