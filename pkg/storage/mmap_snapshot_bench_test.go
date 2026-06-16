@@ -10,9 +10,9 @@ import (
 	"testing"
 )
 
-// TestMmapProtoFile_RoundTrip exercises the writer + mmap reader end-to-end on a
+// TestMmapSnapshotFile_RoundTrip exercises the writer + mmap reader end-to-end on a
 // small store, so CI (unix) covers the file format and lazy decode. Not gated.
-func TestMmapProtoFile_RoundTrip(t *testing.T) {
+func TestMmapSnapshotFile_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	gs, _ := buildSyntheticStore(t, dir, 500, 800)
 

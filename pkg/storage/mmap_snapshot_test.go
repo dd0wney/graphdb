@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// TestMmapProtoCodec_RoundTrip verifies the in-memory record codec (no file/mmap),
+// TestMmapSnapshotCodec_RoundTrip verifies the in-memory record codec (no file/mmap),
 // so it runs everywhere in CI and pins the format's correctness independent of the
 // platform-specific mmap reader.
-func TestMmapProtoCodec_RoundTrip(t *testing.T) {
+func TestMmapSnapshotCodec_RoundTrip(t *testing.T) {
 	node := &Node{
 		ID:       7,
 		TenantID: "acme",
@@ -36,13 +36,13 @@ func TestMmapProtoCodec_RoundTrip(t *testing.T) {
 		ToNodeID:   8,
 		Type:       "KNOWS",
 		Properties: map[string]Value{"since": IntValue(2021)},
-		Weight:     0, // Weight is not part of the prototype record; expect zero value back.
+		Weight:     2.5, // v2 records carry Weight (the prototype dropped it)
 		CreatedAt:  3000,
 	}
 	gotEdge := decodeEdgeRecordAt(encodeEdgeRecord(edge), 0)
 	if gotEdge.ID != edge.ID || gotEdge.TenantID != edge.TenantID ||
 		gotEdge.FromNodeID != edge.FromNodeID || gotEdge.ToNodeID != edge.ToNodeID ||
-		gotEdge.Type != edge.Type ||
+		gotEdge.Type != edge.Type || gotEdge.Weight != edge.Weight ||
 		!reflect.DeepEqual(gotEdge.Properties, edge.Properties) ||
 		gotEdge.CreatedAt != edge.CreatedAt {
 		t.Fatalf("edge round-trip mismatch:\n got %+v\nwant %+v", gotEdge, edge)
