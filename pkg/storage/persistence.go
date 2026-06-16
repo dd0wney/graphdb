@@ -165,12 +165,14 @@ func (gs *GraphStorage) snapshotWithBoundary() (uint64, error) {
 
 // loadFromDisk loads the graph from disk
 func (gs *GraphStorage) loadFromDisk() error {
+	prof := newLoadProfiler()
 	snapshotPath := filepath.Join(gs.dataDir, "snapshot.json")
 
 	data, err := os.ReadFile(snapshotPath)
 	if err != nil {
 		return err
 	}
+	prof.mark("os.ReadFile")
 
 	payload, isEncrypted, legacy, err := decodeSnapshotEnvelope(data)
 	if err != nil {
@@ -220,12 +222,16 @@ func (gs *GraphStorage) loadFromDisk() error {
 		Stats           Statistics
 	}
 
+	prof.mark("decode/decrypt envelope")
+
 	if err := json.Unmarshal(data, &snapshot); err != nil {
 		return fmt.Errorf("failed to unmarshal snapshot: %w", err)
 	}
+	prof.mark("json.Unmarshal")
 
 	gs.rebucketSnapshotNodes(snapshot.Nodes)
 	gs.rebucketSnapshotEdges(snapshot.Edges)
+	prof.mark("rebucket nodes+edges")
 	// The global label/type indexes are DERIVED indexes: their MEMBERSHIP is
 	// rebuilt below from the authoritative flat node/edge set (mirroring how the
 	// per-tenant indexes and edge adjacency are rebuilt — see below + the
@@ -265,6 +271,7 @@ func (gs *GraphStorage) loadFromDisk() error {
 	// format-free (no snapshot schema bump). Disk-backed adjacency persists in
 	// edgeStore on its own, so skip the rebuild there to avoid double-counting.
 	gs.rebuildEdgeAdjacencyFromSnapshot(snapshot.Edges)
+	prof.mark("edge adjacency rebuild")
 	gs.nextNodeID = snapshot.NextNodeID
 	gs.nextEdgeID = snapshot.NextEdgeID
 	gs.stats = snapshot.Stats
@@ -306,12 +313,15 @@ func (gs *GraphStorage) loadFromDisk() error {
 	// type "Query"` until the tenant's next write reseeds the index.
 	// Sibling fix to the WAL-replay fix in persistence_replay.go's
 	// replayCreateNode (H4.3).
+	prof.mark("property+vector index defs")
+
 	for _, node := range snapshot.Nodes {
 		for _, label := range node.Labels {
 			addToLabelIndex(gs.nodesByLabel, label, node.ID)
 		}
 		gs.addNodeToTenantIndex(node)
 	}
+	prof.mark("node label+tenant index loop")
 
 	// Edge sibling of the node rebuild above: the snapshot persists only
 	// the global edgesByType, so without this loop tenantEdgesByType stays
@@ -323,7 +333,9 @@ func (gs *GraphStorage) loadFromDisk() error {
 		addToLabelIndex(gs.edgesByType, edge.Type, edge.ID)
 		gs.addEdgeToTenantIndex(edge)
 	}
+	prof.mark("edge type+tenant index loop")
 
+	prof.report()
 	return nil
 }
 
