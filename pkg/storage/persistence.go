@@ -176,24 +176,34 @@ func (gs *GraphStorage) loadFromDisk() error {
 	if err != nil {
 		return err
 	}
-	if legacy {
-		// Pre-M-14 headerless snapshot: keep the original first-byte
-		// heuristic for these files only (valid JSON starts with '{'
-		// or '[', ciphertext is binary). New writes always carry the
-		// envelope, so this branch ages out with the legacy files.
-		isEncrypted = len(payload) > 0 && payload[0] != '{' && payload[0] != '['
-	}
 	data = payload
 
-	if isEncrypted && gs.encryptionEngine != nil {
+	if legacy {
+		// Pre-M-14 headerless snapshot: no envelope flag to consult. The old
+		// first-byte heuristic ("ciphertext isn't '{' or '['") mis-fired ~0.8%
+		// of the time, because the stored payload begins with a random GCM
+		// nonce that can collide with a JSON opener — a CI flake and a real
+		// load-failure risk on genuine legacy encrypted snapshots. Instead,
+		// let AES-GCM's authentication tag decide: a successful authenticated
+		// decrypt means it was ciphertext; an auth failure means it was always
+		// plaintext. This branch ages out as legacy files are rewritten with
+		// the envelope.
+		if gs.encryptionEngine != nil {
+			if decrypted, derr := gs.encryptionEngine.Decrypt(data); derr == nil {
+				data = decrypted
+			}
+			// derr != nil → not our ciphertext → genuine legacy plaintext; keep data.
+		}
+	} else if isEncrypted {
+		// New-format envelope carries an explicit encrypted flag.
+		if gs.encryptionEngine == nil {
+			return fmt.Errorf("snapshot is encrypted but encryption is not enabled (set ENCRYPTION_ENABLED=true)")
+		}
 		decrypted, err := gs.encryptionEngine.Decrypt(data)
 		if err != nil {
 			return fmt.Errorf("failed to decrypt snapshot: %w", err)
 		}
 		data = decrypted
-	} else if isEncrypted && gs.encryptionEngine == nil {
-		// Data is encrypted but no decryption engine available
-		return fmt.Errorf("snapshot is encrypted but encryption is not enabled (set ENCRYPTION_ENABLED=true)")
 	}
 
 	var snapshot struct {

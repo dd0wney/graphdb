@@ -153,6 +153,41 @@ func TestSnapshotLoad_LegacyHeaderlessEncrypted(t *testing.T) {
 	reopenAndAssertMarker(t, legacyDir, engine)
 }
 
+// Regression: loading a legacy headerless encrypted snapshot must not depend
+// on the ciphertext's first byte. The stored payload begins with the random
+// GCM nonce, so ~0.8% of the time its first byte is '{' or '[' — which the old
+// first-byte heuristic (persistence.go) mis-read as plaintext JSON, skipping
+// decryption and failing json.Unmarshal on ciphertext. That surfaced as a CI
+// flake (~1/128 loads). Here we synthesize that exact adversarial input
+// deterministically so the regression cannot hide behind randomness.
+func TestSnapshotLoad_LegacyHeaderlessEncrypted_CiphertextStartsLikeJSON(t *testing.T) {
+	engine := testEncryptionEngine(t)
+	plain := writeSnapshotToDir(t, t.TempDir(), nil)[snapshotHeaderSize:]
+
+	// Encrypt until the ciphertext's first byte collides with a JSON opener.
+	// Expected ~128 tries (2/256); the cap is a safety valve, not a real bound.
+	var encrypted []byte
+	for i := 0; i < 100000; i++ {
+		enc, err := engine.Encrypt(plain)
+		if err != nil {
+			t.Fatalf("encrypt legacy payload: %v", err)
+		}
+		if enc[0] == '{' || enc[0] == '[' {
+			encrypted = enc
+			break
+		}
+	}
+	if encrypted == nil {
+		t.Fatal("could not synthesize ciphertext starting with '{' or '[' — encryption format changed?")
+	}
+
+	legacyDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(legacyDir, "snapshot.json"), encrypted, 0o600); err != nil {
+		t.Fatalf("write legacy snapshot: %v", err)
+	}
+	reopenAndAssertMarker(t, legacyDir, engine)
+}
+
 func TestSnapshotLoad_EncryptedEnvelopeWithoutEngineFails(t *testing.T) {
 	dir := t.TempDir()
 	writeSnapshotToDir(t, dir, testEncryptionEngine(t))
