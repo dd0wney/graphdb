@@ -68,6 +68,65 @@ func (gs *GraphStorage) CreateEdgeWithTenant(tenantID string, fromID, toID uint6
 	return edge, err
 }
 
+// EdgeSpec describes one edge for bulk creation.
+type EdgeSpec struct {
+	FromID, ToID uint64
+	Type         string
+	Properties   map[string]Value
+	Weight       float64
+}
+
+// CreateEdgesWithTenant creates many edges under one acquisition of gs.mu,
+// mirroring CreateEdgeWithTenant (verify endpoints, then
+// createEdgeWithTenantNoVerify) but amortizing the lock. WAL waits run once
+// after unlock. Returns the new edge IDs in input order.
+//
+// On error mid-batch the lock is released, the WAL waits for already-created
+// edges still run, and the IDs created so far are returned with the error —
+// matching the single-create contract (a successful createEdgeWithTenantNoVerify
+// is durable and not rolled back).
+func (gs *GraphStorage) CreateEdgesWithTenant(tenantID string, specs []EdgeSpec) ([]uint64, error) {
+	ids := make([]uint64, 0, len(specs))
+	var pendings []*wal.Pending
+
+	gs.mu.Lock()
+	for _, s := range specs {
+		if err := gs.verifyNodeExistsForTenant(s.FromID, "source", tenantID); err != nil {
+			gs.mu.Unlock()
+			gs.flushEdgeBatchWAL(pendings)
+			return ids, err
+		}
+		if err := gs.verifyNodeExistsForTenant(s.ToID, "target", tenantID); err != nil {
+			gs.mu.Unlock()
+			gs.flushEdgeBatchWAL(pendings)
+			return ids, err
+		}
+		edge, p, err := gs.createEdgeWithTenantNoVerify(tenantID, s.FromID, s.ToID, s.Type, s.Properties, s.Weight)
+		if err != nil {
+			gs.mu.Unlock()
+			gs.flushEdgeBatchWAL(pendings)
+			return ids, err
+		}
+		ids = append(ids, edge.ID)
+		if p != nil {
+			pendings = append(pendings, p)
+		}
+	}
+	gs.mu.Unlock()
+
+	gs.flushEdgeBatchWAL(pendings)
+	return ids, nil
+}
+
+// flushEdgeBatchWAL waits on every WAL durability handle from an edge batch
+// once, after the lock is released (group commit, Track P item 1). Caller must
+// NOT hold gs.mu.
+func (gs *GraphStorage) flushEdgeBatchWAL(pendings []*wal.Pending) {
+	for _, p := range pendings {
+		gs.waitWALPending(wal.OpCreateEdge, p)
+	}
+}
+
 // createEdgeWithTenantNoVerify is the shared edge-creation core. It
 // assumes the caller has already taken gs.mu.Lock and (when relevant)
 // validated tenant ownership of the source/target nodes.

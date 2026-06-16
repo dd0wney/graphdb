@@ -44,6 +44,63 @@ func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, p
 	return node, err
 }
 
+// NodeSpec describes one node for bulk creation.
+type NodeSpec struct {
+	Labels     []string
+	Properties map[string]Value
+}
+
+// CreateNodesWithTenant creates many nodes under one acquisition of gs.mu,
+// mirroring CreateNodeWithTenant's per-node logic (createNodeLocked) but
+// amortizing the global write lock across the whole batch. Post-lock steps
+// (vector inserts, WAL durability wait, observer notify) run once after unlock,
+// exactly as the single-node path does. Returns the new IDs in input order.
+//
+// On error mid-batch the lock is released and the IDs created so far are
+// returned alongside the error — the nodes already published before the failure
+// stay durable (their WAL entries were enqueued under the lock), matching the
+// single-create contract where a successful createNodeLocked is not rolled back.
+func (gs *GraphStorage) CreateNodesWithTenant(tenantID string, specs []NodeSpec) ([]uint64, error) {
+	ids := make([]uint64, 0, len(specs))
+	created := make([]*Node, 0, len(specs))
+	var pendings []*wal.Pending
+	var plans []vectorInsertPlan
+
+	gs.mu.Lock()
+	for _, s := range specs {
+		node, wp, vps, err := gs.createNodeLocked(tenantID, s.Labels, s.Properties)
+		if err != nil {
+			gs.mu.Unlock()
+			gs.flushNodeBatchEffects(plans, pendings, created)
+			return ids, err
+		}
+		ids = append(ids, node.ID)
+		created = append(created, node)
+		if wp != nil {
+			pendings = append(pendings, wp)
+		}
+		plans = append(plans, vps...)
+	}
+	gs.mu.Unlock()
+
+	gs.flushNodeBatchEffects(plans, pendings, created)
+	return ids, nil
+}
+
+// flushNodeBatchEffects runs the post-lock side effects of a node batch once,
+// in the same order as the single-node path (CreateNodeWithTenant): vector
+// inserts first (so a node's vector is searchable before observers act), then
+// WAL durability waits, then observer notifications. Caller must NOT hold gs.mu.
+func (gs *GraphStorage) flushNodeBatchEffects(plans []vectorInsertPlan, pendings []*wal.Pending, created []*Node) {
+	gs.applyNodeVectorInserts(plans)
+	for _, wp := range pendings {
+		gs.waitWALPending(wal.OpCreateNode, wp)
+	}
+	for _, node := range created {
+		gs.notifyNodeCreated(context.Background(), node)
+	}
+}
+
 // CreateNodeWithUniquePropertyForTenant creates a node only if no other
 // node in the same tenant already has the same value for
 // (uniqueLabel, uniquePropertyKey). The check + create runs under a

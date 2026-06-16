@@ -23,8 +23,8 @@ func DefaultInputValidationConfig() *InputValidationConfig {
 			"/auth/login",
 			"/auth/register",
 			"/auth/refresh",
-			"/nodes",   // bulk graph data may contain ".." in wiki page content
-			"/edges",   // same
+			"/nodes",      // bulk graph data may contain ".." in wiki page content
+			"/edges",      // same
 			"/algorithms", // algorithm payloads contain node properties
 		},
 		MaxBodySize: 10 * 1024 * 1024, // 10MB
