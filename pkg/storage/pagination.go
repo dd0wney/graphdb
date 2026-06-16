@@ -81,7 +81,7 @@ func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limi
 
 	cloneAt := func(id uint64) (*Node, bool) {
 		gs.rlockShard(id)
-		n, ok := gs.lookupNodeShard(id)
+		n, ok := gs.resolveNodeRefLocked(id)
 		if ok {
 			n = n.Clone()
 		}
@@ -119,7 +119,7 @@ func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterI
 
 	cloneAt := func(id uint64) (*Node, bool) {
 		gs.rlockShard(id)
-		n, ok := gs.lookupNodeShard(id)
+		n, ok := gs.resolveNodeRefLocked(id)
 		if ok {
 			n = n.Clone()
 		}
@@ -151,7 +151,7 @@ func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limi
 
 	cloneAt := func(id uint64) (*Edge, bool) {
 		gs.rlockShard(id)
-		e, ok := gs.lookupEdgeShard(id)
+		e, ok := gs.resolveEdgeRefLocked(id)
 		if ok {
 			e = e.Clone()
 		}
@@ -189,7 +189,7 @@ func (gs *GraphStorage) EdgesByTypePageForTenant(tenantID, edgeType string, afte
 
 	cloneAt := func(id uint64) (*Edge, bool) {
 		gs.rlockShard(id)
-		e, ok := gs.lookupEdgeShard(id)
+		e, ok := gs.resolveEdgeRefLocked(id)
 		if ok {
 			e = e.Clone()
 		}

@@ -131,8 +131,9 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 	// snapshot.mmap exists, take the lazy mmap path; otherwise the JSON path.
 	// (A store opened in mmap mode with only a legacy snapshot.json loads JSON
 	// here and writes snapshot.mmap on its next Snapshot.)
+	gs.useMmapSnapshot = mmapEligible(config)
 	loadErr := error(nil)
-	if mmapEligible(config) && fileExists(mmapSnapshotPath(config.DataDir)) {
+	if gs.useMmapSnapshot && fileExists(mmapSnapshotPath(config.DataDir)) {
 		loadErr = gs.loadFromDiskMmap()
 	} else {
 		loadErr = gs.loadFromDisk()

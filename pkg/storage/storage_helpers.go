@@ -79,7 +79,7 @@ func (gs *GraphStorage) checkClosed() error {
 // tenant-blind callers (CreateEdge, UpsertEdge). New tenant-aware
 // callers should prefer verifyNodeExistsForTenant.
 func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
-	if _, exists := gs.lookupNodeShard(nodeID); !exists {
+	if _, exists := gs.resolveNodeRefLocked(nodeID); !exists {
 		return fmt.Errorf("%s node %d not found", nodeType, nodeID)
 	}
 	return nil
@@ -97,7 +97,7 @@ func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
 // tenant, enabling tenant-A to write a tenant-A-stamped edge against
 // tenant-B's nodes.
 func (gs *GraphStorage) verifyNodeExistsForTenant(nodeID uint64, nodeType string, tenantID string) error {
-	node, exists := gs.lookupNodeShard(nodeID)
+	node, exists := gs.resolveNodeRefLocked(nodeID)
 	if !exists {
 		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound)
 	}

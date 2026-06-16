@@ -165,7 +165,7 @@ func (gs *GraphStorage) GetNodesByLabelForTenant(tenantID, label string) []*Node
 	nodeIDs := sortedBucketIDs(bucket)
 	nodes := make([]*Node, 0, len(nodeIDs))
 	for _, id := range nodeIDs {
-		if node, exists := gs.lookupNodeShard(id); exists {
+		if node, exists := gs.resolveNodeRefLocked(id); exists {
 			nodes = append(nodes, node.Clone())
 		}
 	}
@@ -212,7 +212,7 @@ func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Ed
 	edgeIDs := sortedBucketIDs(bucket)
 	edges := make([]*Edge, 0, len(edgeIDs))
 	for _, id := range edgeIDs {
-		if edge, exists := gs.lookupEdgeShard(id); exists {
+		if edge, exists := gs.resolveEdgeRefLocked(id); exists {
 			edges = append(edges, edge.Clone())
 		}
 	}
@@ -249,7 +249,7 @@ func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
 	nodes := make([]*Node, 0, len(ids))
 	for _, id := range ids {
 		gs.rlockShard(id)
-		node, exists := gs.lookupNodeShard(id)
+		node, exists := gs.resolveNodeRefLocked(id)
 		if exists {
 			node = node.Clone()
 		}
@@ -288,7 +288,7 @@ func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) []*Edge {
 	edges := make([]*Edge, 0, len(ids))
 	for _, id := range ids {
 		gs.rlockShard(id)
-		edge, exists := gs.lookupEdgeShard(id)
+		edge, exists := gs.resolveEdgeRefLocked(id)
 		if exists {
 			edge = edge.Clone()
 		}

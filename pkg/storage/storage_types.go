@@ -97,9 +97,10 @@ type GraphStorage struct {
 	// shardLocks exactly like nodeShards (read under rlockShard, write under
 	// lockShard). All nil/empty when mmap mode is off, so the JSON path is
 	// unchanged. See mmap_snapshot_loader.go.
-	mmapSnap     *mmapSnapshot
-	deletedNodes [256]map[uint64]struct{}
-	deletedEdges [256]map[uint64]struct{}
+	useMmapSnapshot bool // write snapshot.mmap (set from mmapEligible at construction)
+	mmapSnap        *mmapSnapshot
+	deletedNodes    [256]map[uint64]struct{}
+	deletedEdges    [256]map[uint64]struct{}
 
 	// ID generators
 	nextNodeID uint64
