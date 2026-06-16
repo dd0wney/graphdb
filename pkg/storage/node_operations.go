@@ -329,7 +329,7 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 	gs.rlockShard(nodeID)
 	defer gs.runlockShard(nodeID)
 
-	node, exists := gs.lookupNodeShard(nodeID)
+	node, exists := gs.resolveNodeRefLocked(nodeID)
 	if !exists {
 		gs.recordOperation("get_node", "error", start)
 		return nil, ErrNodeNotFound
@@ -402,7 +402,7 @@ func (gs *GraphStorage) WithNodeRefForTenant(nodeID uint64, tenantID string, fn 
 // Returns ErrNodeNotFound on missing or cross-tenant. See
 // GetNodeForTenant for the rationale on the unified error response.
 func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*Node, error) {
-	node, exists := gs.lookupNodeShard(nodeID)
+	node, exists := gs.resolveNodeRefLocked(nodeID)
 	if !exists {
 		return nil, ErrNodeNotFound
 	}

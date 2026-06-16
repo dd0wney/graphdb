@@ -169,7 +169,7 @@ func (gs *GraphStorage) DeleteEdgeForTenant(edgeID uint64, tenantID string) erro
 // Internal use only — package-private. Mirrors getNodeRefForTenant in
 // node_operations.go.
 func (gs *GraphStorage) getEdgeRefForTenant(edgeID uint64, tenantID string) (*Edge, error) {
-	edge, exists := gs.lookupEdgeShard(edgeID)
+	edge, exists := gs.resolveEdgeRefLocked(edgeID)
 	if !exists {
 		return nil, ErrEdgeNotFound
 	}
@@ -258,7 +258,7 @@ func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 	gs.rlockShard(edgeID)
 	defer gs.runlockShard(edgeID)
 
-	edge, exists := gs.lookupEdgeShard(edgeID)
+	edge, exists := gs.resolveEdgeRefLocked(edgeID)
 	if !exists {
 		return nil, ErrEdgeNotFound
 	}

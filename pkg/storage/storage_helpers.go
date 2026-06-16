@@ -262,6 +262,23 @@ func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
 			}
 		}
 	}
+	// mmap reopen: also visit base nodes not shadowed by the overlay or
+	// tombstoned, materializing each lazily. No-op when mmap mode is off.
+	if gs.mmapSnap == nil {
+		return
+	}
+	stopped := false
+	gs.mmapSnap.forEachNodeID(func(id uint64, off int64) {
+		if stopped {
+			return
+		}
+		if _, shadowed := gs.lookupNodeShard(id); shadowed || gs.isNodeDeletedLocked(id) {
+			return
+		}
+		if !fn(decodeNodeRecordAt(gs.mmapSnap.data, off)) {
+			stopped = true
+		}
+	})
 }
 
 // forEachNodeIDUnlocked invokes fn for every node ID across all shards.
@@ -275,6 +292,21 @@ func (gs *GraphStorage) forEachNodeIDUnlocked(fn func(uint64) bool) {
 			}
 		}
 	}
+	if gs.mmapSnap == nil {
+		return
+	}
+	stopped := false
+	gs.mmapSnap.forEachNodeID(func(id uint64, off int64) {
+		if stopped {
+			return
+		}
+		if _, shadowed := gs.lookupNodeShard(id); shadowed || gs.isNodeDeletedLocked(id) {
+			return
+		}
+		if !fn(id) {
+			stopped = true
+		}
+	})
 }
 
 // The flatten*ForSnapshot helpers that used to live here were folded into
