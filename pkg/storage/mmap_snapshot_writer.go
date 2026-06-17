@@ -13,7 +13,7 @@ import (
 )
 
 // writeMmapSnapshotData writes nodes (sorted ascending by ID), edges, and metadata to
-// path in the mmap-able v3 format with a CRC over the structural sections.
+// path in the mmap-able v4 format with a CRC over the structural sections.
 func writeMmapSnapshotData(path string, nodes []*Node, edges []*Edge, meta *mmapMetadata) error {
 	metaBytes, err := meta.marshal()
 	if err != nil {
@@ -123,13 +123,45 @@ func writeMmapSnapshotData(path string, nodes []*Node, edges []*Edge, meta *mmap
 		offset += int64(len(adjDirBytes))
 	}
 
+	// Membership inverted indexes (Stage 2b): per-tenant node/edge enumeration +
+	// by-label/by-type. IDs are appended in the (already ascending) node/edge
+	// iteration order, so each run is sorted without an extra sort.
+	var membRunData, membDirBytes []byte
+	{
+		mb := newMembershipBuilder()
+		for _, n := range nodes {
+			tn := string(effectiveTenantID(n.TenantID))
+			mb.add(membKindNodeTenant, tn, "", n.ID)
+			for _, label := range n.Labels {
+				mb.add(membKindNodeLabel, tn, label, n.ID)
+			}
+		}
+		for _, e := range edges {
+			te := string(effectiveTenantID(e.TenantID))
+			mb.add(membKindEdgeTenant, te, "", e.ID)
+			mb.add(membKindEdgeType, te, e.Type, e.ID)
+		}
+		membRunData, membDirBytes = mb.encode(offset)
+	}
+	hdr.membDataOffset = uint64(offset)
+	if _, err := w.Write(membRunData); err != nil {
+		return err
+	}
+	offset += int64(len(membRunData))
+	hdr.membDirOffset = uint64(offset)
+	hdr.membDirLen = uint64(len(membDirBytes))
+	if _, err := w.Write(membDirBytes); err != nil {
+		return err
+	}
+	offset += int64(len(membDirBytes))
+
 	hdr.metaOffset = uint64(offset)
 	hdr.metaLen = uint64(len(metaBytes))
 	if _, err := w.Write(metaBytes); err != nil {
 		return err
 	}
 
-	hdr.crc = computeCRC(hdr.marshal()[:hCRC], nodeDirBytes, edgeDirBytes, adjDirBytes, metaBytes)
+	hdr.crc = computeCRC(hdr.marshal()[:hCRC], nodeDirBytes, edgeDirBytes, adjDirBytes, membDirBytes, metaBytes)
 
 	if err := w.Flush(); err != nil {
 		return err

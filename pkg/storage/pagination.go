@@ -67,18 +67,11 @@ func pageFromSortedIDs[T any](ids []uint64, afterID uint64, limit int,
 // collection and clone is skipped — but the global lock is not held across the
 // clone loop, so writers are not stalled.
 func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limit int) ([]*Node, uint64) {
-	gs.ensureMembershipBuilt()
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
-	idSet := gs.tenantNodeIDs[tid]
-	ids := make([]uint64, 0, len(idSet))
-	for id := range idSet {
-		ids = append(ids, id)
-	}
+	ids := gs.membershipNodeIDsForTenantLocked(tid)
 	gs.mu.RUnlock()
-
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 	cloneAt := func(id uint64) (*Node, bool) {
 		gs.rlockShard(id)
@@ -102,22 +95,15 @@ func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limi
 // release, then clone each node under its per-shard RLock. Same non-atomic-
 // snapshot tradeoff as NodesPageForTenant and GetAllNodesForTenant.
 func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterID uint64, limit int) ([]*Node, uint64) {
-	gs.ensureMembershipBuilt()
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
-	labelMap := gs.tenantNodesByLabel[tid]
-	if labelMap == nil {
-		gs.mu.RUnlock()
-		return nil, 0
-	}
-	bucket := labelMap[label]
-	if len(bucket) == 0 {
-		gs.mu.RUnlock()
-		return nil, 0
-	}
-	ids := sortedBucketIDs(bucket) // sortedBucketIDs allocates a new slice
+	ids := gs.membershipNodeIDsByLabelLocked(tid, label)
 	gs.mu.RUnlock()
+
+	if len(ids) == 0 {
+		return nil, 0
+	}
 
 	cloneAt := func(id uint64) (*Node, bool) {
 		gs.rlockShard(id)
@@ -139,18 +125,11 @@ func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterI
 // Lock pattern mirrors GetAllEdgesForTenant and NodesPageForTenant: collect
 // sorted IDs under gs.mu.RLock, release, then clone under per-shard RLocks.
 func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limit int) ([]*Edge, uint64) {
-	gs.ensureMembershipBuilt()
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
-	idSet := gs.tenantEdgeIDs[tid]
-	ids := make([]uint64, 0, len(idSet))
-	for id := range idSet {
-		ids = append(ids, id)
-	}
+	ids := gs.membershipEdgeIDsForTenantLocked(tid)
 	gs.mu.RUnlock()
-
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 	cloneAt := func(id uint64) (*Edge, bool) {
 		gs.rlockShard(id)
@@ -174,22 +153,15 @@ func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limi
 // release, then clone each edge under its per-shard RLock. Same non-atomic-
 // snapshot tradeoff as EdgesPageForTenant and GetAllEdgesForTenant.
 func (gs *GraphStorage) EdgesByTypePageForTenant(tenantID, edgeType string, afterID uint64, limit int) ([]*Edge, uint64) {
-	gs.ensureMembershipBuilt()
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
-	typeMap := gs.tenantEdgesByType[tid]
-	if typeMap == nil {
-		gs.mu.RUnlock()
-		return nil, 0
-	}
-	bucket := typeMap[edgeType]
-	if len(bucket) == 0 {
-		gs.mu.RUnlock()
-		return nil, 0
-	}
-	ids := sortedBucketIDs(bucket)
+	ids := gs.membershipEdgeIDsByTypeLocked(tid, edgeType)
 	gs.mu.RUnlock()
+
+	if len(ids) == 0 {
+		return nil, 0
+	}
 
 	cloneAt := func(id uint64) (*Edge, bool) {
 		gs.rlockShard(id)

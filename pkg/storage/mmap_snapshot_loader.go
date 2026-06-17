@@ -74,9 +74,9 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 	}
 	prof.mark("sticky keys")
 
-	// Membership indexes (nodesByLabel/edgesByType + per-tenant) are built lazily
-	// on first enumeration (Stage 2a) — see membership_lazy.go. Only sticky keys
-	// (registered above) are materialized at open.
+	// Membership indexes are served directly from the persisted membership section
+	// via the membership*Locked accessors (Stage 2b) — nothing is built at open.
+	// Sticky label/type keys (registered above) back GetAllLabels/GetAllEdgeTypes.
 
 	// Property indexes (restored verbatim, like loadFromDisk).
 	gs.propertyIndexes = make(map[string]*PropertyIndex, len(meta.PropertyIndexes))
@@ -109,13 +109,12 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 	atomic.StoreUint64(&gs.avgQueryTimeBits, math.Float64bits(meta.Stats.AvgQueryTime))
 
 	// Per-tenant counts: restored from metadata and intentionally decoupled from
-	// the lazy membership build (see membership_lazy.go) so CountNodesForTenant is
-	// correct at open without forcing the build.
+	// the membership accessors so CountNodesForTenant is correct at open.
 	for tid, st := range meta.TenantStats {
 		s := st
 		gs.tenantStats[tenantid.TenantID(tid)] = &s
 	}
-	// membershipBuilt stays false: built on first enumeration.
+	// Membership is served directly from the persisted section via the accessors.
 	prof.mark("nextIDs+stats+tenantStats")
 	prof.report()
 	return nil

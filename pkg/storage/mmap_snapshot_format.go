@@ -17,6 +17,8 @@ package storage
 //	[outgoing CSR runs]       one length-prefixed []uint64 run per node (count 0 = no edges), ascending node order
 //	[incoming CSR runs]       same shape
 //	[adjacency directory]     dense []entry of 32 bytes (outOff,outLen,inOff,inLen int64), indexed by id-minNodeID
+//	[membership run data]     sorted []uint64 runs, length-prefixed (CSR codec)
+//	[membership directory]    sorted full-key entries: keyLen(2)|key(incl. leading kind byte)|runOffset(8)|idCount(8)
 //	[metadata blob]           JSON: property/vector indexes, stats, nextIDs, sticky label/type keys
 //
 // Integrity: a CRC32 over the header (excluding the CRC field) + all three directories
@@ -30,12 +32,14 @@ import (
 	"fmt"
 	"hash/crc32"
 	"math"
+	"sort"
+	"strings"
 )
 
 var mmapSnapshotMagic = [4]byte{'G', 'M', 'N', 'P'}
 
 const (
-	mmapSnapshotVersion uint32 = 3 // v3 adds CSR adjacency sections + TenantStats
+	mmapSnapshotVersion uint32 = 4 // v4 adds the membership section
 	dirAbsent           int64  = -1
 
 	// Header field byte offsets.
@@ -55,26 +59,32 @@ const (
 	hOutCSR        = 92  // outgoing CSR data section offset
 	hInCSR         = 100 // incoming CSR data section offset
 	hAdjDir        = 108 // combined adjacency directory offset
-	hCRC           = 116
-	mmapHeaderSize = 124 // hCRC(4) + pad(4) -> 124
+	hMembData      = 116 // membership run-data section offset
+	hMembDir       = 124 // membership directory offset
+	hMembDirLen    = 132 // membership directory length in bytes
+	hCRC           = 140
+	mmapHeaderSize = 148 // hCRC(4) + pad(4) -> 148
 )
 
 type mmapSnapshotHeader struct {
-	flags         uint32
-	nodeCount     uint64
-	edgeCount     uint64
-	minNodeID     uint64
-	maxNodeID     uint64
-	minEdgeID     uint64
-	maxEdgeID     uint64
-	nodeDirOffset uint64
-	edgeDirOffset uint64
-	metaOffset    uint64
-	metaLen       uint64
-	outCSROffset  uint64
-	inCSROffset   uint64
-	adjDirOffset  uint64
-	crc           uint32
+	flags          uint32
+	nodeCount      uint64
+	edgeCount      uint64
+	minNodeID      uint64
+	maxNodeID      uint64
+	minEdgeID      uint64
+	maxEdgeID      uint64
+	nodeDirOffset  uint64
+	edgeDirOffset  uint64
+	metaOffset     uint64
+	metaLen        uint64
+	outCSROffset   uint64
+	inCSROffset    uint64
+	adjDirOffset   uint64
+	membDataOffset uint64
+	membDirOffset  uint64
+	membDirLen     uint64
+	crc            uint32
 }
 
 // mmapMetadata is the small, eagerly-loaded tail: everything the JSON snapshot struct
@@ -110,6 +120,9 @@ func (h *mmapSnapshotHeader) marshal() []byte {
 	binary.LittleEndian.PutUint64(b[hOutCSR:], h.outCSROffset)
 	binary.LittleEndian.PutUint64(b[hInCSR:], h.inCSROffset)
 	binary.LittleEndian.PutUint64(b[hAdjDir:], h.adjDirOffset)
+	binary.LittleEndian.PutUint64(b[hMembData:], h.membDataOffset)
+	binary.LittleEndian.PutUint64(b[hMembDir:], h.membDirOffset)
+	binary.LittleEndian.PutUint64(b[hMembDirLen:], h.membDirLen)
 	binary.LittleEndian.PutUint32(b[hCRC:], h.crc)
 	return b
 }
@@ -125,21 +138,24 @@ func unmarshalMmapHeader(b []byte) (*mmapSnapshotHeader, error) {
 		return nil, fmt.Errorf("mmap snapshot version %d unsupported (want %d)", v, mmapSnapshotVersion)
 	}
 	return &mmapSnapshotHeader{
-		flags:         binary.LittleEndian.Uint32(b[hFlags:]),
-		nodeCount:     binary.LittleEndian.Uint64(b[hNodeCount:]),
-		edgeCount:     binary.LittleEndian.Uint64(b[hEdgeCount:]),
-		minNodeID:     binary.LittleEndian.Uint64(b[hMinNodeID:]),
-		maxNodeID:     binary.LittleEndian.Uint64(b[hMaxNodeID:]),
-		minEdgeID:     binary.LittleEndian.Uint64(b[hMinEdgeID:]),
-		maxEdgeID:     binary.LittleEndian.Uint64(b[hMaxEdgeID:]),
-		nodeDirOffset: binary.LittleEndian.Uint64(b[hNodeDir:]),
-		edgeDirOffset: binary.LittleEndian.Uint64(b[hEdgeDir:]),
-		metaOffset:    binary.LittleEndian.Uint64(b[hMetaOff:]),
-		metaLen:       binary.LittleEndian.Uint64(b[hMetaLen:]),
-		outCSROffset:  binary.LittleEndian.Uint64(b[hOutCSR:]),
-		inCSROffset:   binary.LittleEndian.Uint64(b[hInCSR:]),
-		adjDirOffset:  binary.LittleEndian.Uint64(b[hAdjDir:]),
-		crc:           binary.LittleEndian.Uint32(b[hCRC:]),
+		flags:          binary.LittleEndian.Uint32(b[hFlags:]),
+		nodeCount:      binary.LittleEndian.Uint64(b[hNodeCount:]),
+		edgeCount:      binary.LittleEndian.Uint64(b[hEdgeCount:]),
+		minNodeID:      binary.LittleEndian.Uint64(b[hMinNodeID:]),
+		maxNodeID:      binary.LittleEndian.Uint64(b[hMaxNodeID:]),
+		minEdgeID:      binary.LittleEndian.Uint64(b[hMinEdgeID:]),
+		maxEdgeID:      binary.LittleEndian.Uint64(b[hMaxEdgeID:]),
+		nodeDirOffset:  binary.LittleEndian.Uint64(b[hNodeDir:]),
+		edgeDirOffset:  binary.LittleEndian.Uint64(b[hEdgeDir:]),
+		metaOffset:     binary.LittleEndian.Uint64(b[hMetaOff:]),
+		metaLen:        binary.LittleEndian.Uint64(b[hMetaLen:]),
+		outCSROffset:   binary.LittleEndian.Uint64(b[hOutCSR:]),
+		inCSROffset:    binary.LittleEndian.Uint64(b[hInCSR:]),
+		adjDirOffset:   binary.LittleEndian.Uint64(b[hAdjDir:]),
+		membDataOffset: binary.LittleEndian.Uint64(b[hMembData:]),
+		membDirOffset:  binary.LittleEndian.Uint64(b[hMembDir:]),
+		membDirLen:     binary.LittleEndian.Uint64(b[hMembDirLen:]),
+		crc:            binary.LittleEndian.Uint32(b[hCRC:]),
 	}, nil
 }
 
@@ -160,16 +176,17 @@ func (h *mmapSnapshotHeader) edgeDirLen() uint64 {
 
 const adjDirEntrySize = 32 // 4 * int64: outOff, outLen, inOff, inLen
 
-// computeCRC hashes the header (excluding the CRC field) + both directories +
-// the adjacency directory + the metadata blob — the structural sections read at
-// open. Records are excluded so open need not page in the whole file to verify
-// integrity.
-func computeCRC(headerNoCRC, nodeDir, edgeDir, adjDir, meta []byte) uint32 {
+// computeCRC hashes the header (excluding the CRC field) + the node, edge,
+// adjacency, and membership directories + the metadata blob — the structural
+// sections read at open. Record and run bytes are excluded so open need not page
+// in the whole file to verify integrity.
+func computeCRC(headerNoCRC, nodeDir, edgeDir, adjDir, membDir, meta []byte) uint32 {
 	h := crc32.NewIEEE()
 	h.Write(headerNoCRC)
 	h.Write(nodeDir)
 	h.Write(edgeDir)
 	h.Write(adjDir)
+	h.Write(membDir)
 	h.Write(meta)
 	return h.Sum32()
 }
@@ -211,6 +228,146 @@ func readCSRRun(buf []byte, p int) ([]uint64, int) {
 		p += 8
 	}
 	return ids, p
+}
+
+// --- membership directory codec -------------------------------------------
+//
+// Membership index kinds (graphdb ask #1, Stage 2b). Each kind maps a composite
+// (tenant[,name]) key to a sorted []uint64 run.
+const (
+	membKindNodeTenant byte = 0 // key: tenant        -> all node IDs in tenant
+	membKindNodeLabel  byte = 1 // key: tenant,label   -> node IDs with label
+	membKindEdgeTenant byte = 2 // key: tenant         -> all edge IDs in tenant
+	membKindEdgeType   byte = 3 // key: tenant,type    -> edge IDs of type
+)
+
+// membFullKey encodes a directory key as kind ++ tenant ++ 0x00 ++ name. name is
+// empty for the tenant-enumeration kinds (0, 2). The 0x00 separator prevents a
+// tenant whose name prefixes another (e.g. "t" vs "t2") from colliding on lookup.
+func membFullKey(kind byte, tenant, name string) []byte {
+	k := make([]byte, 0, 1+len(tenant)+1+len(name))
+	k = append(k, kind)
+	k = append(k, tenant...)
+	k = append(k, 0x00)
+	k = append(k, name...)
+	return k
+}
+
+// membershipBuilder accumulates (kind,key)->[]uint64 buckets in insertion order
+// (callers append IDs in ascending order, yielding sorted runs).
+type membershipBuilder struct {
+	order []string            // full-key string, in insertion order
+	runs  map[string][]uint64 // full-key string -> IDs
+}
+
+func newMembershipBuilder() *membershipBuilder {
+	return &membershipBuilder{runs: make(map[string][]uint64)}
+}
+
+func (b *membershipBuilder) add(kind byte, tenant, name string, ids ...uint64) {
+	key := string(membFullKey(kind, tenant, name))
+	if _, ok := b.runs[key]; !ok {
+		b.order = append(b.order, key)
+	}
+	b.runs[key] = append(b.runs[key], ids...)
+}
+
+// encode returns (runData, directory). Run offsets in the directory are absolute:
+// baseOffset is the file offset where runData will be written. The directory is
+// sorted by full-key bytes for binary search at read.
+func (b *membershipBuilder) encode(baseOffset int64) (runData, directory []byte) {
+	// Sort the accumulated keys so the directory is binary-search-ready. The
+	// builder is single-use (build then encode once), so the in-place sort is fine.
+	sort.Strings(b.order)
+	type ent struct {
+		key     string
+		off     int64
+		idCount int64
+	}
+	ents := make([]ent, 0, len(b.order))
+	offset := baseOffset
+	for _, key := range b.order {
+		ids := b.runs[key]
+		rec := appendCSRRun(nil, ids)
+		ents = append(ents, ent{key: key, off: offset, idCount: int64(len(ids))})
+		runData = append(runData, rec...)
+		offset += int64(len(rec))
+	}
+	directory = binary.LittleEndian.AppendUint32(directory, uint32(len(ents)))
+	for _, e := range ents {
+		directory = binary.LittleEndian.AppendUint16(directory, uint16(len(e.key)))
+		directory = append(directory, e.key...)
+		directory = binary.LittleEndian.AppendUint64(directory, uint64(e.off))
+		directory = binary.LittleEndian.AppendUint64(directory, uint64(e.idCount))
+	}
+	return runData, directory
+}
+
+// membershipDir is the parsed, lookup-ready directory (sorted full-keys).
+type membershipDir struct {
+	keys   []string
+	offs   []int64
+	counts []int64
+}
+
+func parseMembershipDir(b []byte) (*membershipDir, error) {
+	if len(b) == 0 {
+		return &membershipDir{}, nil
+	}
+	if len(b) < 4 {
+		return nil, fmt.Errorf("membership directory truncated")
+	}
+	n := int(binary.LittleEndian.Uint32(b))
+	if maxEntries := (len(b) - 4) / 19; n > maxEntries {
+		return nil, fmt.Errorf("membership directory entry count %d exceeds buffer capacity (%d max)", n, maxEntries)
+	}
+	p := 4
+	d := &membershipDir{keys: make([]string, n), offs: make([]int64, n), counts: make([]int64, n)}
+	for i := 0; i < n; i++ {
+		if p+2 > len(b) {
+			return nil, fmt.Errorf("membership directory truncated at entry %d", i)
+		}
+		kl := int(binary.LittleEndian.Uint16(b[p:]))
+		p += 2
+		if p+kl+16 > len(b) {
+			return nil, fmt.Errorf("membership directory truncated at entry %d", i)
+		}
+		d.keys[i] = string(b[p : p+kl])
+		p += kl
+		d.offs[i] = int64(binary.LittleEndian.Uint64(b[p:]))
+		p += 8
+		d.counts[i] = int64(binary.LittleEndian.Uint64(b[p:]))
+		p += 8
+	}
+	return d, nil
+}
+
+// lookup binary-searches for (kind,tenant,name); returns (runByteOffset, idCount, ok).
+// idCount==0 means an empty/absent run.
+func (d *membershipDir) lookup(kind byte, tenant, name string) (int64, int64, bool) {
+	target := string(membFullKey(kind, tenant, name))
+	i := sort.SearchStrings(d.keys, target)
+	if i < len(d.keys) && d.keys[i] == target {
+		return d.offs[i], d.counts[i], true
+	}
+	return 0, 0, false
+}
+
+// keysForKindTenant returns the `name` component of every directory key matching
+// (kind, tenant) — used by the label/type-key readers.
+// Intended for the label/type kinds (1, 3); for tenant-only kinds (0, 2) the name
+// component is empty and this returns a single "" entry.
+func (d *membershipDir) keysForKindTenant(kind byte, tenant string) []string {
+	prefix := string(membFullKey(kind, tenant, "")) // kind ++ tenant ++ 0x00
+	var out []string
+	i := sort.SearchStrings(d.keys, prefix)
+	for ; i < len(d.keys); i++ {
+		if !strings.HasPrefix(d.keys[i], prefix) {
+			break
+		}
+		out = append(out, d.keys[i][len(prefix):])
+	}
+	return out
 }
 
 // --- record codec ---------------------------------------------------------

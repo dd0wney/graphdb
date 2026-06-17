@@ -222,6 +222,24 @@ func TestMmapReopen_EndToEnd(t *testing.T) {
 	mmapReopen := time.Since(t1)
 	defer mr.Close()
 
+	// Isolate the membership-index lookup (sorted ID list, no node materialization)
+	// from the full enumeration (which also decodes + clones every returned node).
+	tidBench := effectiveTenantID(tenant)
+	tl := time.Now()
+	mr.mu.RLock()
+	idList := mr.membershipNodeIDsForTenantLocked(tidBench)
+	mr.mu.RUnlock()
+	idListDur := time.Since(tl)
+	fmt.Fprintf(os.Stderr, "  mmap membership ID-list (no materialize)  %8s  (%d ids)\n", idListDur.Round(time.Millisecond), len(idList))
+
+	// First enumeration on the freshly-reopened mmap store — must be the FIRST
+	// GetAll* call on mr so it measures the Stage-2b persisted-membership path
+	// (Stage 2a: ~2s lazy build; Stage 2b: served from persisted section → ~0).
+	te := time.Now()
+	_ = mr.GetAllNodesForTenant(tenant)
+	firstEnum := time.Since(te)
+	fmt.Fprintf(os.Stderr, "  mmap first GetAllNodesForTenant           %8s\n", firstEnum.Round(time.Millisecond))
+
 	fmt.Fprintf(os.Stderr, "\n=== End-to-end reopen (%d nodes / %d edges) ===\n", nNodes, nEdges)
 	fmt.Fprintf(os.Stderr, "  cold build (JSON)        %8s\n", jsonBuild.Round(time.Millisecond))
 	fmt.Fprintf(os.Stderr, "  JSON reopen              %8s  (reopen/rebuild %.2f)\n", jsonReopen.Round(time.Millisecond), float64(jsonReopen)/float64(jsonBuild))

@@ -437,7 +437,7 @@ func TestMmapStage2_LazyMembershipParity(t *testing.T) {
 	if got := mr.CountNodesForTenant(tenant); got != 10 {
 		t.Errorf("CountNodesForTenant=%d want 10 (must not need membership build)", got)
 	}
-	// First enumeration triggers the lazy build; results match.
+	// Enumeration is served from the persisted membership section; results match.
 	if got := len(mr.GetNodesByLabelForTenant(tenant, "Alpha")); got != 5 {
 		t.Errorf("Alpha=%d want 5", got)
 	}
@@ -451,10 +451,10 @@ func TestMmapStage2_LazyMembershipParity(t *testing.T) {
 	if got := len(mr.GetNodesByLabelForTenant(tenant, "Alpha")); got != 6 {
 		t.Errorf("Alpha after create=%d want 6", got)
 	}
-	// Edge type-membership after lazy build: the 2 LINK edges written before close
-	// must be visible via GetEdgesByTypeForTenant (triggers ensureMembershipBuilt).
+	// Edge type-membership: the 2 LINK edges written before close must be visible
+	// via GetEdgesByTypeForTenant (served from the persisted membership section).
 	if got := len(mr.GetEdgesByTypeForTenant(tenant, "LINK")); got != 2 {
-		t.Errorf("LINK edges=%d want 2 (edge membership after lazy build)", got)
+		t.Errorf("LINK edges=%d want 2 (edge membership from persisted section)", got)
 	}
 }
 
@@ -597,9 +597,131 @@ func TestMmapStage2_UpdatedBaseNodeStillEnumerated(t *testing.T) {
 	if err := mr.UpdateNode(n.ID, map[string]Value{"k": {Type: TypeString, Data: []byte("v")}}); err != nil {
 		t.Fatal(err)
 	}
-	// First enumeration triggers the lazy build; the updated base node must still
-	// be indexed under its (immutable) label.
+	// Enumeration (served from the persisted section + overlay) must still
+	// index the updated base node under its (immutable) label.
 	if got := len(mr.GetNodesByLabelForTenant(tenant, "Widget")); got != 1 {
 		t.Errorf("Widget=%d want 1 (updated base node dropped from membership)", got)
+	}
+}
+
+func TestMmapStage2b_MembershipAccessors(t *testing.T) {
+	dir := t.TempDir()
+	const tenant = "t"
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk := func(label string) uint64 {
+		n, err := gs.CreateNodeWithTenant(tenant, []string{label}, map[string]Value{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n.ID
+	}
+	a1, a2 := mk("Alpha"), mk("Alpha")
+	mk("Beta")
+	if _, err := gs.CreateEdgeWithTenant(tenant, a1, a2, "LINK", map[string]Value{}, 1.0); err != nil {
+		t.Fatal(err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mr, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	tid := effectiveTenantID(tenant)
+	read := func(fn func() []uint64) []uint64 {
+		mr.mu.RLock()
+		defer mr.mu.RUnlock()
+		return fn()
+	}
+	if got := read(func() []uint64 { return mr.membershipNodeIDsByLabelLocked(tid, "Alpha") }); len(got) != 2 {
+		t.Errorf("Alpha base=%d want 2", len(got))
+	}
+	if got := read(func() []uint64 { return mr.membershipNodeIDsForTenantLocked(tid) }); len(got) != 3 {
+		t.Errorf("tenant-all base=%d want 3", len(got))
+	}
+	a3, err := mr.CreateNodeWithTenant(tenant, []string{"Alpha"}, map[string]Value{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := read(func() []uint64 { return mr.membershipNodeIDsByLabelLocked(tid, "Alpha") }); len(got) != 3 {
+		t.Errorf("Alpha after add=%d want 3", len(got))
+	}
+	if got := read(func() []uint64 { return mr.membershipEdgeIDsForTenantLocked(tid) }); len(got) != 1 {
+		t.Errorf("edge tenant-all base=%d want 1", len(got))
+	}
+	if got := read(func() []uint64 { return mr.membershipEdgeIDsByTypeLocked(tid, "LINK") }); len(got) != 1 {
+		t.Errorf("LINK edges base=%d want 1", len(got))
+	}
+	if err := mr.DeleteNode(a1); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(func() []uint64 { return mr.membershipNodeIDsByLabelLocked(tid, "Alpha") }); len(got) != 2 {
+		t.Errorf("Alpha after delete=%d want 2", len(got))
+	}
+	_ = a2
+	_ = a3
+}
+
+func TestMmapStage2b_EnumerationAtOpenNoBuild(t *testing.T) {
+	dir := t.TempDir()
+	const tenant = "t"
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 3 Alpha (i=0,2,4), 3 Beta (i=1,3,5); 6 total.
+	for i := 0; i < 6; i++ {
+		lbl := "Alpha"
+		if i%2 == 1 {
+			lbl = "Beta"
+		}
+		if _, err := gs.CreateNodeWithTenant(tenant, []string{lbl}, map[string]Value{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, err := gs.CreateNodeWithTenant(tenant, []string{"Gamma"}, map[string]Value{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := gs.CreateNodeWithTenant(tenant, []string{"Gamma"}, map[string]Value{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := gs.CreateEdgeWithTenant(tenant, a.ID, b.ID, "LINK", map[string]Value{}, 1.0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mr, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	// Enumerate with NO prior call — results come from the persisted section.
+	if got := len(mr.GetNodesByLabelForTenant(tenant, "Alpha")); got != 3 {
+		t.Errorf("Alpha=%d want 3", got)
+	}
+	if got := len(mr.GetNodesByLabelForTenant(tenant, "Beta")); got != 3 {
+		t.Errorf("Beta=%d want 3", got)
+	}
+	if got := len(mr.GetAllNodesForTenant(tenant)); got != 8 {
+		t.Errorf("all-nodes=%d want 8", got)
+	}
+	if got := len(mr.GetEdgesByTypeForTenant(tenant, "LINK")); got != 2 {
+		t.Errorf("LINK edges=%d want 2", got)
+	}
+	if got := len(mr.GetAllEdgesForTenant(tenant)); got != 2 {
+		t.Errorf("all-edges=%d want 2", got)
 	}
 }

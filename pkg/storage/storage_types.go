@@ -88,13 +88,6 @@ type GraphStorage struct {
 	edgeStore          *EdgeStore // LSM-backed edge storage with LRU cache
 	useDiskBackedEdges bool       // If true, use EdgeStore instead of in-memory maps
 
-	// membershipBuilt is false after an mmap reopen until the first enumeration
-	// query triggers ensureMembershipBuilt. Guarded by gs.mu. Irrelevant in JSON
-	// mode: mmapSnap == nil makes ensureMembershipBuilt no-op immediately (the
-	// flag is never set true there). See membership_lazy.go for the lock rule
-	// (ensureMembershipBuilt must not be called while already holding gs.mu).
-	membershipBuilt bool
-
 	// mmap-backed lazy reopen (graphdb ask #1, Stage 1). When mmapSnap != nil
 	// the snapshot is memory-mapped and nodes/edges materialize lazily on read
 	// (mmapSnap is the read-only base). The nodeShards/edgeShards maps act as a

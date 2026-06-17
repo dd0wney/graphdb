@@ -199,6 +199,9 @@ func TestMmapSnapshot_Empty(t *testing.T) {
 	if _, ok := m.getNode(1); ok {
 		t.Fatal("empty store should have no nodes")
 	}
+	if got := m.membershipRun(membKindNodeTenant, "t", ""); got != nil {
+		t.Errorf("empty store membershipRun = %v want nil", got)
+	}
 }
 
 func TestCSRRunCodec_RoundTrip(t *testing.T) {
@@ -311,5 +314,115 @@ func TestMmapMetadata_TenantStatsRoundTrip(t *testing.T) {
 	want := TenantStats{NodeCount: 5, EdgeCount: 9, StorageBytes: 100, LastUpdated: 42}
 	if !reflect.DeepEqual(got.TenantStats["acme"], want) {
 		t.Errorf("TenantStats[\"acme\"] = %+v, want %+v", got.TenantStats["acme"], want)
+	}
+}
+
+func TestMembershipDirectory_RoundTrip(t *testing.T) {
+	b := newMembershipBuilder()
+	b.add(membKindNodeTenant, "t1", "", 1, 2, 3)
+	b.add(membKindNodeLabel, "t1", "Alpha", 1, 3)
+	b.add(membKindNodeLabel, "t1", "Beta", 2)
+	b.add(membKindEdgeType, "t1", "LINK", 10)
+
+	data, dir := b.encode(0) // base offset 0 for the run-data section
+	d, err := parseMembershipDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	get := func(kind byte, tenant, name string) []uint64 {
+		off, idCount, ok := d.lookup(kind, tenant, name)
+		if !ok {
+			return nil
+		}
+		ids, _ := readCSRRun(data, int(off))
+		_ = idCount
+		return ids
+	}
+	eq := func(name string, got, want []uint64) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("%s: got %v want %v", name, got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s: got %v want %v", name, got, want)
+			}
+		}
+	}
+	eq("nodeTenant", get(membKindNodeTenant, "t1", ""), []uint64{1, 2, 3})
+	eq("nodeLabel", get(membKindNodeLabel, "t1", "Alpha"), []uint64{1, 3})
+	eq("edgeType", get(membKindEdgeType, "t1", "LINK"), []uint64{10})
+	if _, _, ok := d.lookup(membKindNodeLabel, "t1", "Missing"); ok {
+		t.Error("missing key should not be found")
+	}
+
+	labels := d.keysForKindTenant(membKindNodeLabel, "t1")
+	if len(labels) != 2 || labels[0] != "Alpha" || labels[1] != "Beta" {
+		t.Errorf("keysForKindTenant = %v want [Alpha Beta]", labels)
+	}
+
+	// Non-zero baseOffset: directory offsets are absolute into a larger buffer.
+	b2 := newMembershipBuilder()
+	b2.add(membKindNodeTenant, "z", "", 5, 6)
+	const base = 1000
+	data2, dir2 := b2.encode(base)
+	// Simulate the file: `base` bytes of padding, then the run data.
+	buf := make([]byte, base)
+	buf = append(buf, data2...)
+	d2, err := parseMembershipDir(dir2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	off, _, ok := d2.lookup(membKindNodeTenant, "z", "")
+	if !ok {
+		t.Fatal("z not found")
+	}
+	ids, _ := readCSRRun(buf, int(off))
+	if len(ids) != 2 || ids[0] != 5 || ids[1] != 6 {
+		t.Errorf("non-zero-base run = %v want [5 6]", ids)
+	}
+}
+
+func TestMmapSnapshot_MembershipRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "snapshot.mmap")
+	nodes := []*Node{
+		{ID: 1, TenantID: "t", Labels: []string{"Alpha"}},
+		{ID: 2, TenantID: "t", Labels: []string{"Beta"}},
+		{ID: 3, TenantID: "t", Labels: []string{"Alpha"}},
+	}
+	edges := []*Edge{
+		{ID: 10, TenantID: "t", FromNodeID: 1, ToNodeID: 2, Type: "LINK"},
+		{ID: 11, TenantID: "t", FromNodeID: 2, ToNodeID: 3, Type: "REF"},
+	}
+	if err := writeMmapSnapshotData(path, nodes, edges, &mmapMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := openMmapSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snap.close()
+
+	eq := func(name string, got, want []uint64) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("%s: got %v want %v", name, got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s: got %v want %v", name, got, want)
+			}
+		}
+	}
+	eq("nodeTenant", snap.membershipRun(membKindNodeTenant, "t", ""), []uint64{1, 2, 3})
+	eq("alpha", snap.membershipRun(membKindNodeLabel, "t", "Alpha"), []uint64{1, 3})
+	eq("beta", snap.membershipRun(membKindNodeLabel, "t", "Beta"), []uint64{2})
+	eq("edgeTenant", snap.membershipRun(membKindEdgeTenant, "t", ""), []uint64{10, 11})
+	eq("link", snap.membershipRun(membKindEdgeType, "t", "LINK"), []uint64{10})
+	eq("ref", snap.membershipRun(membKindEdgeType, "t", "REF"), []uint64{11})
+	if got := snap.membershipRun(membKindNodeLabel, "t", "Missing"); got != nil {
+		t.Errorf("missing label run = %v want nil", got)
 	}
 }

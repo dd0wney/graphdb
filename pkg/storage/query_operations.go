@@ -124,7 +124,6 @@ func (gs *GraphStorage) GetIncomingEdgesForTenant(nodeID uint64, tenantID string
 
 // GetAllLabels returns all unique node labels in the graph
 func (gs *GraphStorage) GetAllLabels() []string {
-	gs.ensureMembershipBuilt()
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
@@ -143,16 +142,11 @@ func (gs *GraphStorage) GetAllLabels() []string {
 func (gs *GraphStorage) FindNodesByLabelAcrossTenants(label string) ([]*Node, error) {
 	defer gs.startQueryTiming()()
 
-	gs.ensureMembershipBuilt()
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	bucket, exists := gs.nodesByLabel[label]
-	if !exists {
-		return []*Node{}, nil
-	}
-
-	return gs.buildNodeListFromIDs(sortedBucketIDs(bucket)), nil
+	nodeIDs := gs.membershipNodeIDsByLabelGlobalLocked(label)
+	return gs.buildNodeListFromIDs(nodeIDs), nil
 }
 
 // FindNodesByProperty finds nodes with a specific property value.
@@ -217,14 +211,9 @@ func (gs *GraphStorage) FindNodesByPropertyForTenant(key string, value Value, te
 func (gs *GraphStorage) FindEdgesByTypeAcrossTenants(edgeType string) ([]*Edge, error) {
 	defer gs.startQueryTiming()()
 
-	gs.ensureMembershipBuilt()
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	bucket, exists := gs.edgesByType[edgeType]
-	if !exists {
-		return []*Edge{}, nil
-	}
-
-	return gs.buildEdgeListFromIDs(sortedBucketIDs(bucket)), nil
+	edgeIDs := gs.membershipEdgeIDsByTypeGlobalLocked(edgeType)
+	return gs.buildEdgeListFromIDs(edgeIDs), nil
 }
