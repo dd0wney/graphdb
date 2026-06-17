@@ -75,8 +75,8 @@ func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limi
 
 	cloneAt := func(id uint64) (*Node, bool) {
 		gs.rlockShard(id)
-		n, ok := gs.resolveNodeRefLocked(id)
-		if ok {
+		n, owned, ok := gs.resolveNodeRefOwnedLocked(id)
+		if ok && !owned {
 			n = n.Clone()
 		}
 		gs.runlockShard(id)
@@ -107,8 +107,8 @@ func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterI
 
 	cloneAt := func(id uint64) (*Node, bool) {
 		gs.rlockShard(id)
-		n, ok := gs.resolveNodeRefLocked(id)
-		if ok {
+		n, owned, ok := gs.resolveNodeRefOwnedLocked(id)
+		if ok && !owned {
 			n = n.Clone()
 		}
 		gs.runlockShard(id)
@@ -133,8 +133,8 @@ func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limi
 
 	cloneAt := func(id uint64) (*Edge, bool) {
 		gs.rlockShard(id)
-		e, ok := gs.resolveEdgeRefLocked(id)
-		if ok {
+		e, owned, ok := gs.resolveEdgeRefOwnedLocked(id)
+		if ok && !owned {
 			e = e.Clone()
 		}
 		gs.runlockShard(id)
@@ -165,8 +165,8 @@ func (gs *GraphStorage) EdgesByTypePageForTenant(tenantID, edgeType string, afte
 
 	cloneAt := func(id uint64) (*Edge, bool) {
 		gs.rlockShard(id)
-		e, ok := gs.resolveEdgeRefLocked(id)
-		if ok {
+		e, owned, ok := gs.resolveEdgeRefOwnedLocked(id)
+		if ok && !owned {
 			e = e.Clone()
 		}
 		gs.runlockShard(id)

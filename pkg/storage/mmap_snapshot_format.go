@@ -433,7 +433,7 @@ func decodeNodeRecordAt(buf []byte, off int64) *Node {
 	p += 8
 	tl := int(binary.LittleEndian.Uint16(buf[p:]))
 	p += 2
-	n.TenantID = string(buf[p : p+tl])
+	n.TenantID = string(buf[p : p+tl]) // string() copies — no alias into the mmap region
 	p += tl
 	nl := int(binary.LittleEndian.Uint16(buf[p:]))
 	p += 2
@@ -442,7 +442,7 @@ func decodeNodeRecordAt(buf []byte, off int64) *Node {
 		for i := 0; i < nl; i++ {
 			ll := int(binary.LittleEndian.Uint16(buf[p:]))
 			p += 2
-			n.Labels[i] = string(buf[p : p+ll])
+			n.Labels[i] = string(buf[p : p+ll]) // string() copies — heap-owned
 			p += ll
 		}
 	}
@@ -499,7 +499,7 @@ func decodeEdgeRecordAt(buf []byte, off int64) *Edge {
 	p += 8
 	tl := int(binary.LittleEndian.Uint16(buf[p:]))
 	p += 2
-	e.TenantID = string(buf[p : p+tl])
+	e.TenantID = string(buf[p : p+tl]) // string() copies — no alias into the mmap region
 	p += tl
 	e.FromNodeID = binary.LittleEndian.Uint64(buf[p:])
 	p += 8
@@ -507,7 +507,7 @@ func decodeEdgeRecordAt(buf []byte, off int64) *Edge {
 	p += 8
 	tyl := int(binary.LittleEndian.Uint16(buf[p:]))
 	p += 2
-	e.Type = string(buf[p : p+tyl])
+	e.Type = string(buf[p : p+tyl]) // string() copies — no alias into the mmap region
 	p += tyl
 	e.Properties, p = readProps(buf, p)
 	e.Weight = math.Float64frombits(binary.LittleEndian.Uint64(buf[p:]))

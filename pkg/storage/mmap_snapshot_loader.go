@@ -164,6 +164,40 @@ func (gs *GraphStorage) resolveEdgeRefLocked(id uint64) (*Edge, bool) {
 	return gs.mmapSnap.getEdge(id)
 }
 
+// resolveNodeRefOwnedLocked is resolveNodeRefLocked with an ownership flag:
+// owned==true means the returned *Node is a fresh, caller-owned copy
+// (materialized from the mmap base) that may be returned directly without
+// cloning; owned==false means it is a live overlay shard pointer that the
+// caller MUST Clone before handing out to external callers.
+//
+// When mmapSnap==nil only the overlay branch is reachable, so owned is always
+// false and the behaviour is identical to resolveNodeRefLocked.
+func (gs *GraphStorage) resolveNodeRefOwnedLocked(id uint64) (n *Node, owned bool, ok bool) {
+	if sh, hit := gs.lookupNodeShard(id); hit {
+		return sh, false, true // live overlay pointer — caller must Clone
+	}
+	if gs.mmapSnap == nil || gs.isNodeDeletedLocked(id) {
+		return nil, false, false
+	}
+	fresh, hit := gs.mmapSnap.getNode(id) // fresh decode — already owned
+	return fresh, hit, hit
+}
+
+// resolveEdgeRefOwnedLocked is resolveEdgeRefLocked plus an `owned` flag: owned==true
+// means the returned *Edge is a fresh, caller-owned copy (mmap-base decode) returnable
+// directly; owned==false means a live overlay pointer the caller MUST Clone. owned is
+// always false when mmapSnap == nil.
+func (gs *GraphStorage) resolveEdgeRefOwnedLocked(id uint64) (e *Edge, owned bool, ok bool) {
+	if sh, hit := gs.lookupEdgeShard(id); hit {
+		return sh, false, true
+	}
+	if gs.mmapSnap == nil || gs.isEdgeDeletedLocked(id) {
+		return nil, false, false
+	}
+	fresh, hit := gs.mmapSnap.getEdge(id)
+	return fresh, hit, hit
+}
+
 // materializeNodeLocked returns the node's shard-resident pointer, promoting it
 // from the mmap base into the shard overlay first if needed (copy-on-write).
 // Used by the write path before in-place mutation. Caller holds gs.mu.Lock AND

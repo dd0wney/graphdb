@@ -168,6 +168,11 @@ func (gs *GraphStorage) DeleteEdgeForTenant(edgeID uint64, tenantID string) erro
 //
 // Internal use only — package-private. Mirrors getNodeRefForTenant in
 // node_operations.go.
+//
+// Note: GetEdgeForTenant no longer delegates here — it calls resolveEdgeRefOwnedLocked
+// directly to obtain the `owned` flag and skip the redundant Clone on mmap-base edges
+// (Stage 2c). This helper remains for internal inspection callers (e.g. DeleteEdgeForTenant,
+// UpdateEdgeForTenant).
 func (gs *GraphStorage) getEdgeRefForTenant(edgeID uint64, tenantID string) (*Edge, error) {
 	edge, exists := gs.resolveEdgeRefLocked(edgeID)
 	if !exists {
@@ -235,11 +240,18 @@ func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
 func (gs *GraphStorage) GetEdgeForTenant(edgeID uint64, tenantID string) (*Edge, error) {
 	gs.rlockShard(edgeID)
 	defer gs.runlockShard(edgeID)
-	edge, err := gs.getEdgeRefForTenant(edgeID, tenantID)
-	if err != nil {
-		return nil, err
+	edge, owned, exists := gs.resolveEdgeRefOwnedLocked(edgeID)
+	if !exists {
+		return nil, ErrEdgeNotFound
 	}
-	return edge.Clone(), nil
+	if edge.TenantID != effectiveTenantID(tenantID).String() {
+		// Cross-tenant: same error as missing to avoid existence-leak side channel.
+		return nil, ErrEdgeNotFound
+	}
+	if !owned {
+		edge = edge.Clone()
+	}
+	return edge, nil
 }
 
 // GetEdge retrieves an edge by ID.
@@ -259,12 +271,14 @@ func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 	gs.rlockShard(edgeID)
 	defer gs.runlockShard(edgeID)
 
-	edge, exists := gs.resolveEdgeRefLocked(edgeID)
+	edge, owned, exists := gs.resolveEdgeRefOwnedLocked(edgeID)
 	if !exists {
 		return nil, ErrEdgeNotFound
 	}
-
-	return edge.Clone(), nil
+	if !owned {
+		edge = edge.Clone()
+	}
+	return edge, nil
 }
 
 // UpdateEdgeForTenant updates an edge's properties and/or weight, scoped

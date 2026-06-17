@@ -151,8 +151,11 @@ func (gs *GraphStorage) GetNodesByLabelForTenant(tenantID, label string) []*Node
 	nodeIDs := gs.membershipNodeIDsByLabelLocked(tid, label)
 	nodes := make([]*Node, 0, len(nodeIDs))
 	for _, id := range nodeIDs {
-		if node, exists := gs.resolveNodeRefLocked(id); exists {
-			nodes = append(nodes, node.Clone())
+		if node, owned, exists := gs.resolveNodeRefOwnedLocked(id); exists {
+			if !owned {
+				node = node.Clone()
+			}
+			nodes = append(nodes, node)
 		}
 	}
 
@@ -182,8 +185,11 @@ func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Ed
 	edgeIDs := gs.membershipEdgeIDsByTypeLocked(tid, edgeType)
 	edges := make([]*Edge, 0, len(edgeIDs))
 	for _, id := range edgeIDs {
-		if edge, exists := gs.resolveEdgeRefLocked(id); exists {
-			edges = append(edges, edge.Clone())
+		if edge, owned, exists := gs.resolveEdgeRefOwnedLocked(id); exists {
+			if !owned {
+				edge = edge.Clone()
+			}
+			edges = append(edges, edge)
 		}
 	}
 
@@ -213,8 +219,9 @@ func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
 	nodes := make([]*Node, 0, len(ids))
 	for _, id := range ids {
 		gs.rlockShard(id)
-		node, exists := gs.resolveNodeRefLocked(id)
-		if exists {
+		node, owned, exists := gs.resolveNodeRefOwnedLocked(id)
+		// owned (mmap-base) nodes are already heap-safe — no Clone and safe to keep after unlock.
+		if exists && !owned {
 			node = node.Clone()
 		}
 		gs.runlockShard(id)
@@ -246,8 +253,9 @@ func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) []*Edge {
 	edges := make([]*Edge, 0, len(ids))
 	for _, id := range ids {
 		gs.rlockShard(id)
-		edge, exists := gs.resolveEdgeRefLocked(id)
-		if exists {
+		edge, owned, exists := gs.resolveEdgeRefOwnedLocked(id)
+		// owned (mmap-base) edges are already heap-safe — no Clone and safe to keep after unlock.
+		if exists && !owned {
 			edge = edge.Clone()
 		}
 		gs.runlockShard(id)
