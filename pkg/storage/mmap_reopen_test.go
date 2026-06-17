@@ -391,3 +391,79 @@ func TestMmapReopen_ParityWithJSON(t *testing.T) {
 		assertFingerprintEqual(t, fingerprintTenant(t, jr, tenant), fingerprintTenant(t, mr, tenant), "json-vs-mmap "+tenant)
 	}
 }
+
+func TestMmapStage2_AdjacencyFromCSR(t *testing.T) {
+	dir := t.TempDir()
+	const tenant = "t"
+
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustNode := func(g *GraphStorage) uint64 {
+		n, err := g.CreateNodeWithTenant(tenant, []string{"N"}, map[string]Value{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n.ID
+	}
+	n1, n2, n3 := mustNode(gs), mustNode(gs), mustNode(gs)
+	mkEdge := func(from, to uint64) uint64 {
+		e, err := gs.CreateEdgeWithTenant(tenant, from, to, "E", map[string]Value{}, 1.0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e.ID
+	}
+	e1 := mkEdge(n1, n2) // n1 -> n2
+	mkEdge(n1, n3)       // n1 -> n3
+	mkEdge(n2, n3)       // n2 -> n3
+	if err := gs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mr, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	outLen := func(n uint64) int {
+		e, _ := mr.GetOutgoingEdgesForTenant(n, tenant)
+		return len(e)
+	}
+	inLen := func(n uint64) int {
+		e, _ := mr.GetIncomingEdgesForTenant(n, tenant)
+		return len(e)
+	}
+	if inLen(n2) != 1 { // base CSR incoming from n1
+		t.Errorf("base in(n2)=%d want 1", inLen(n2))
+	}
+	if outLen(n1) != 2 { // base CSR read
+		t.Errorf("base out(n1)=%d want 2", outLen(n1))
+	}
+	if err := mr.DeleteEdgeForTenant(e1, tenant); err != nil { // tombstone filter
+		t.Fatal(err)
+	}
+	if outLen(n1) != 1 {
+		t.Errorf("after delete out(n1)=%d want 1", outLen(n1))
+	}
+	if _, err := mr.CreateEdgeWithTenant(tenant, n1, n3, "E", map[string]Value{}, 1.0); err != nil { // overlay append
+		t.Fatal(err)
+	}
+	if outLen(n1) != 2 {
+		t.Errorf("after overlay add out(n1)=%d want 2", outLen(n1))
+	}
+	if err := mr.Close(); err != nil { // survives second reopen
+		t.Fatal(err)
+	}
+	mr2, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr2.Close()
+	e, _ := mr2.GetOutgoingEdgesForTenant(n1, tenant)
+	if len(e) != 2 {
+		t.Errorf("after 2nd reopen out(n1)=%d want 2", len(e))
+	}
+}

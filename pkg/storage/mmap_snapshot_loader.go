@@ -80,15 +80,14 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 		gs.addNodeToTenantIndex(stub)
 	})
 
-	// Edge indexes (global type + per-tenant) and adjacency (mirrors
-	// rebuildEdgeAdjacencyFromSnapshot; mmap mode requires in-memory adjacency).
+	// Edge indexes (global type + per-tenant); adjacency now served from CSR
+	// base in getEdgeIDsForNode (Stage 2a) — no eager rebuild needed.
 	snap.forEachEdgeID(func(id uint64, off int64) {
-		eid, from, to, tenant, etype := scanEdgeFields(snap.data, off)
-		stub := &Edge{ID: eid, TenantID: tenant, Type: etype, FromNodeID: from, ToNodeID: to}
+		eid, _, _, tenant, etype := scanEdgeFields(snap.data, off)
+		stub := &Edge{ID: eid, TenantID: tenant, Type: etype}
 		addToLabelIndex(gs.edgesByType, etype, eid)
 		gs.addEdgeToTenantIndex(stub)
-		gs.outgoingEdges[from] = append(gs.outgoingEdges[from], eid)
-		gs.incomingEdges[to] = append(gs.incomingEdges[to], eid)
+		// adjacency now served from CSR base in getEdgeIDsForNode (Stage 2a)
 	})
 
 	// Property indexes (restored verbatim, like loadFromDisk).

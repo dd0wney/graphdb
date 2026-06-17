@@ -700,8 +700,11 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 			return fmt.Errorf("failed to get incoming edges for node %d: %w", nodeID, err)
 		}
 	} else {
-		outgoingEdgeIDs = gs.outgoingEdges[nodeID]
-		incomingEdgeIDs = gs.incomingEdges[nodeID]
+		// Use getEdgeIDsForNode so that mmap mode picks up CSR-base edges
+		// (not just the post-open overlay). In JSON mode mmapSnap == nil and
+		// the helper falls back to the plain maps, so behaviour is unchanged.
+		outgoingEdgeIDs = gs.getEdgeIDsForNode(nodeID, true)
+		incomingEdgeIDs = gs.getEdgeIDsForNode(nodeID, false)
 	}
 
 	// Cascade delete all outgoing edges
