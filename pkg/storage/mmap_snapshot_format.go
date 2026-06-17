@@ -30,6 +30,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"math"
+	"sort"
+	"strings"
 )
 
 var mmapSnapshotMagic = [4]byte{'G', 'M', 'N', 'P'}
@@ -211,6 +213,146 @@ func readCSRRun(buf []byte, p int) ([]uint64, int) {
 		p += 8
 	}
 	return ids, p
+}
+
+// --- membership directory codec -------------------------------------------
+//
+// Membership index kinds (graphdb ask #1, Stage 2b). Each kind maps a composite
+// (tenant[,name]) key to a sorted []uint64 run.
+const (
+	membKindNodeTenant byte = 0 // key: tenant        -> all node IDs in tenant
+	membKindNodeLabel  byte = 1 // key: tenant,label   -> node IDs with label
+	membKindEdgeTenant byte = 2 // key: tenant         -> all edge IDs in tenant
+	membKindEdgeType   byte = 3 // key: tenant,type    -> edge IDs of type
+)
+
+// membFullKey encodes a directory key as kind ++ tenant ++ 0x00 ++ name. name is
+// empty for the tenant-enumeration kinds (0, 2). The 0x00 separator prevents a
+// tenant whose name prefixes another (e.g. "t" vs "t2") from colliding on lookup.
+func membFullKey(kind byte, tenant, name string) []byte {
+	k := make([]byte, 0, 1+len(tenant)+1+len(name))
+	k = append(k, kind)
+	k = append(k, tenant...)
+	k = append(k, 0x00)
+	k = append(k, name...)
+	return k
+}
+
+// membershipBuilder accumulates (kind,key)->[]uint64 buckets in insertion order
+// (callers append IDs in ascending order, yielding sorted runs).
+type membershipBuilder struct {
+	order []string            // full-key string, in insertion order
+	runs  map[string][]uint64 // full-key string -> IDs
+}
+
+func newMembershipBuilder() *membershipBuilder {
+	return &membershipBuilder{runs: make(map[string][]uint64)}
+}
+
+func (b *membershipBuilder) add(kind byte, tenant, name string, ids ...uint64) {
+	key := string(membFullKey(kind, tenant, name))
+	if _, ok := b.runs[key]; !ok {
+		b.order = append(b.order, key)
+	}
+	b.runs[key] = append(b.runs[key], ids...)
+}
+
+// encode returns (runData, directory). Run offsets in the directory are absolute:
+// baseOffset is the file offset where runData will be written. The directory is
+// sorted by full-key bytes for binary search at read.
+func (b *membershipBuilder) encode(baseOffset int64) (runData, directory []byte) {
+	// Sort the accumulated keys so the directory is binary-search-ready. The
+	// builder is single-use (build then encode once), so the in-place sort is fine.
+	sort.Strings(b.order)
+	type ent struct {
+		key     string
+		off     int64
+		idCount int64
+	}
+	ents := make([]ent, 0, len(b.order))
+	offset := baseOffset
+	for _, key := range b.order {
+		ids := b.runs[key]
+		rec := appendCSRRun(nil, ids)
+		ents = append(ents, ent{key: key, off: offset, idCount: int64(len(ids))})
+		runData = append(runData, rec...)
+		offset += int64(len(rec))
+	}
+	directory = binary.LittleEndian.AppendUint32(directory, uint32(len(ents)))
+	for _, e := range ents {
+		directory = binary.LittleEndian.AppendUint16(directory, uint16(len(e.key)))
+		directory = append(directory, e.key...)
+		directory = binary.LittleEndian.AppendUint64(directory, uint64(e.off))
+		directory = binary.LittleEndian.AppendUint64(directory, uint64(e.idCount))
+	}
+	return runData, directory
+}
+
+// membershipDir is the parsed, lookup-ready directory (sorted full-keys).
+type membershipDir struct {
+	keys   []string
+	offs   []int64
+	counts []int64
+}
+
+func parseMembershipDir(b []byte) (*membershipDir, error) {
+	if len(b) == 0 {
+		return &membershipDir{}, nil
+	}
+	if len(b) < 4 {
+		return nil, fmt.Errorf("membership directory truncated")
+	}
+	n := int(binary.LittleEndian.Uint32(b))
+	if maxEntries := (len(b) - 4) / 19; n > maxEntries {
+		return nil, fmt.Errorf("membership directory entry count %d exceeds buffer capacity (%d max)", n, maxEntries)
+	}
+	p := 4
+	d := &membershipDir{keys: make([]string, n), offs: make([]int64, n), counts: make([]int64, n)}
+	for i := 0; i < n; i++ {
+		if p+2 > len(b) {
+			return nil, fmt.Errorf("membership directory truncated at entry %d", i)
+		}
+		kl := int(binary.LittleEndian.Uint16(b[p:]))
+		p += 2
+		if p+kl+16 > len(b) {
+			return nil, fmt.Errorf("membership directory truncated at entry %d", i)
+		}
+		d.keys[i] = string(b[p : p+kl])
+		p += kl
+		d.offs[i] = int64(binary.LittleEndian.Uint64(b[p:]))
+		p += 8
+		d.counts[i] = int64(binary.LittleEndian.Uint64(b[p:]))
+		p += 8
+	}
+	return d, nil
+}
+
+// lookup binary-searches for (kind,tenant,name); returns (runByteOffset, idCount, ok).
+// idCount==0 means an empty/absent run.
+func (d *membershipDir) lookup(kind byte, tenant, name string) (int64, int64, bool) {
+	target := string(membFullKey(kind, tenant, name))
+	i := sort.SearchStrings(d.keys, target)
+	if i < len(d.keys) && d.keys[i] == target {
+		return d.offs[i], d.counts[i], true
+	}
+	return 0, 0, false
+}
+
+// keysForKindTenant returns the `name` component of every directory key matching
+// (kind, tenant) — used by the label/type-key readers.
+// Intended for the label/type kinds (1, 3); for tenant-only kinds (0, 2) the name
+// component is empty and this returns a single "" entry.
+func (d *membershipDir) keysForKindTenant(kind byte, tenant string) []string {
+	prefix := string(membFullKey(kind, tenant, "")) // kind ++ tenant ++ 0x00
+	var out []string
+	i := sort.SearchStrings(d.keys, prefix)
+	for ; i < len(d.keys); i++ {
+		if !strings.HasPrefix(d.keys[i], prefix) {
+			break
+		}
+		out = append(out, d.keys[i][len(prefix):])
+	}
+	return out
 }
 
 // --- record codec ---------------------------------------------------------

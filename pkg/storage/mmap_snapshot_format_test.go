@@ -313,3 +313,70 @@ func TestMmapMetadata_TenantStatsRoundTrip(t *testing.T) {
 		t.Errorf("TenantStats[\"acme\"] = %+v, want %+v", got.TenantStats["acme"], want)
 	}
 }
+
+func TestMembershipDirectory_RoundTrip(t *testing.T) {
+	b := newMembershipBuilder()
+	b.add(membKindNodeTenant, "t1", "", 1, 2, 3)
+	b.add(membKindNodeLabel, "t1", "Alpha", 1, 3)
+	b.add(membKindNodeLabel, "t1", "Beta", 2)
+	b.add(membKindEdgeType, "t1", "LINK", 10)
+
+	data, dir := b.encode(0) // base offset 0 for the run-data section
+	d, err := parseMembershipDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	get := func(kind byte, tenant, name string) []uint64 {
+		off, idCount, ok := d.lookup(kind, tenant, name)
+		if !ok {
+			return nil
+		}
+		ids, _ := readCSRRun(data, int(off))
+		_ = idCount
+		return ids
+	}
+	eq := func(name string, got, want []uint64) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("%s: got %v want %v", name, got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s: got %v want %v", name, got, want)
+			}
+		}
+	}
+	eq("nodeTenant", get(membKindNodeTenant, "t1", ""), []uint64{1, 2, 3})
+	eq("nodeLabel", get(membKindNodeLabel, "t1", "Alpha"), []uint64{1, 3})
+	eq("edgeType", get(membKindEdgeType, "t1", "LINK"), []uint64{10})
+	if _, _, ok := d.lookup(membKindNodeLabel, "t1", "Missing"); ok {
+		t.Error("missing key should not be found")
+	}
+
+	labels := d.keysForKindTenant(membKindNodeLabel, "t1")
+	if len(labels) != 2 || labels[0] != "Alpha" || labels[1] != "Beta" {
+		t.Errorf("keysForKindTenant = %v want [Alpha Beta]", labels)
+	}
+
+	// Non-zero baseOffset: directory offsets are absolute into a larger buffer.
+	b2 := newMembershipBuilder()
+	b2.add(membKindNodeTenant, "z", "", 5, 6)
+	const base = 1000
+	data2, dir2 := b2.encode(base)
+	// Simulate the file: `base` bytes of padding, then the run data.
+	buf := make([]byte, base)
+	buf = append(buf, data2...)
+	d2, err := parseMembershipDir(dir2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	off, _, ok := d2.lookup(membKindNodeTenant, "z", "")
+	if !ok {
+		t.Fatal("z not found")
+	}
+	ids, _ := readCSRRun(buf, int(off))
+	if len(ids) != 2 || ids[0] != 5 || ids[1] != 6 {
+		t.Errorf("non-zero-base run = %v want [5 6]", ids)
+	}
+}

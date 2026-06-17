@@ -42,8 +42,9 @@ A new section in `snapshot.mmap`, written after the CSR adjacency sections. Four
 
 (`␀` = a 0x00 separator byte; tenant/label/type are the raw strings.)
 
-**Membership directory:** `count(4)`, then per entry `kindByte(1) │ keyLen(2) │ keyBytes │
-runOffset(8) │ runLen(8)`, sorted by `(kind, keyBytes)` for binary search at read. The
+**Membership directory:** `count(4)`, then per entry `keyLen(2) │ keyBytes(incl. leading kind byte) │
+runOffset(8) │ runCount(8)`, sorted by full keyBytes (kind is the first byte of the key, not a
+separate field) for binary search at read. The
 header gains `membDirOffset(8)` and `membDataOffset(8)`; `computeCRC` extends to cover the
 membership directory (the runs, like node/edge records and CSR runs, are paged in lazily
 and excluded from the CRC). Version bump `mmapSnapshotVersion` 3 → 4.
