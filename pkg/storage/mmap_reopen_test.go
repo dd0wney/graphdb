@@ -603,3 +603,67 @@ func TestMmapStage2_UpdatedBaseNodeStillEnumerated(t *testing.T) {
 		t.Errorf("Widget=%d want 1 (updated base node dropped from membership)", got)
 	}
 }
+
+func TestMmapStage2b_MembershipAccessors(t *testing.T) {
+	dir := t.TempDir()
+	const tenant = "t"
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk := func(label string) uint64 {
+		n, err := gs.CreateNodeWithTenant(tenant, []string{label}, map[string]Value{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n.ID
+	}
+	a1, a2 := mk("Alpha"), mk("Alpha")
+	mk("Beta")
+	if _, err := gs.CreateEdgeWithTenant(tenant, a1, a2, "LINK", map[string]Value{}, 1.0); err != nil {
+		t.Fatal(err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mr, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	tid := effectiveTenantID(tenant)
+	read := func(fn func() []uint64) []uint64 {
+		mr.mu.RLock()
+		defer mr.mu.RUnlock()
+		return fn()
+	}
+	if got := read(func() []uint64 { return mr.membershipNodeIDsByLabelLocked(tid, "Alpha") }); len(got) != 2 {
+		t.Errorf("Alpha base=%d want 2", len(got))
+	}
+	if got := read(func() []uint64 { return mr.membershipNodeIDsForTenantLocked(tid) }); len(got) != 3 {
+		t.Errorf("tenant-all base=%d want 3", len(got))
+	}
+	a3, err := mr.CreateNodeWithTenant(tenant, []string{"Alpha"}, map[string]Value{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := read(func() []uint64 { return mr.membershipNodeIDsByLabelLocked(tid, "Alpha") }); len(got) != 3 {
+		t.Errorf("Alpha after add=%d want 3", len(got))
+	}
+	if got := read(func() []uint64 { return mr.membershipEdgeIDsForTenantLocked(tid) }); len(got) != 1 {
+		t.Errorf("edge tenant-all base=%d want 1", len(got))
+	}
+	if got := read(func() []uint64 { return mr.membershipEdgeIDsByTypeLocked(tid, "LINK") }); len(got) != 1 {
+		t.Errorf("LINK edges base=%d want 1", len(got))
+	}
+	if err := mr.DeleteNode(a1); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(func() []uint64 { return mr.membershipNodeIDsByLabelLocked(tid, "Alpha") }); len(got) != 2 {
+		t.Errorf("Alpha after delete=%d want 2", len(got))
+	}
+	_ = a2
+	_ = a3
+}
