@@ -17,6 +17,8 @@ package storage
 //	[outgoing CSR runs]       one length-prefixed []uint64 run per node (count 0 = no edges), ascending node order
 //	[incoming CSR runs]       same shape
 //	[adjacency directory]     dense []entry of 32 bytes (outOff,outLen,inOff,inLen int64), indexed by id-minNodeID
+//	[membership run data]     sorted []uint64 runs, length-prefixed (CSR codec)
+//	[membership directory]    sorted full-key entries: keyLen(2)|key(incl. leading kind byte)|runOffset(8)|idCount(8)
 //	[metadata blob]           JSON: property/vector indexes, stats, nextIDs, sticky label/type keys
 //
 // Integrity: a CRC32 over the header (excluding the CRC field) + all three directories
@@ -37,7 +39,7 @@ import (
 var mmapSnapshotMagic = [4]byte{'G', 'M', 'N', 'P'}
 
 const (
-	mmapSnapshotVersion uint32 = 3 // v3 adds CSR adjacency sections + TenantStats
+	mmapSnapshotVersion uint32 = 4 // v4 adds the membership section
 	dirAbsent           int64  = -1
 
 	// Header field byte offsets.
@@ -57,26 +59,32 @@ const (
 	hOutCSR        = 92  // outgoing CSR data section offset
 	hInCSR         = 100 // incoming CSR data section offset
 	hAdjDir        = 108 // combined adjacency directory offset
-	hCRC           = 116
-	mmapHeaderSize = 124 // hCRC(4) + pad(4) -> 124
+	hMembData      = 116 // membership run-data section offset
+	hMembDir       = 124 // membership directory offset
+	hMembDirLen    = 132 // membership directory length in bytes
+	hCRC           = 140
+	mmapHeaderSize = 148 // hCRC(4) + pad(4) -> 148
 )
 
 type mmapSnapshotHeader struct {
-	flags         uint32
-	nodeCount     uint64
-	edgeCount     uint64
-	minNodeID     uint64
-	maxNodeID     uint64
-	minEdgeID     uint64
-	maxEdgeID     uint64
-	nodeDirOffset uint64
-	edgeDirOffset uint64
-	metaOffset    uint64
-	metaLen       uint64
-	outCSROffset  uint64
-	inCSROffset   uint64
-	adjDirOffset  uint64
-	crc           uint32
+	flags          uint32
+	nodeCount      uint64
+	edgeCount      uint64
+	minNodeID      uint64
+	maxNodeID      uint64
+	minEdgeID      uint64
+	maxEdgeID      uint64
+	nodeDirOffset  uint64
+	edgeDirOffset  uint64
+	metaOffset     uint64
+	metaLen        uint64
+	outCSROffset   uint64
+	inCSROffset    uint64
+	adjDirOffset   uint64
+	membDataOffset uint64
+	membDirOffset  uint64
+	membDirLen     uint64
+	crc            uint32
 }
 
 // mmapMetadata is the small, eagerly-loaded tail: everything the JSON snapshot struct
@@ -112,6 +120,9 @@ func (h *mmapSnapshotHeader) marshal() []byte {
 	binary.LittleEndian.PutUint64(b[hOutCSR:], h.outCSROffset)
 	binary.LittleEndian.PutUint64(b[hInCSR:], h.inCSROffset)
 	binary.LittleEndian.PutUint64(b[hAdjDir:], h.adjDirOffset)
+	binary.LittleEndian.PutUint64(b[hMembData:], h.membDataOffset)
+	binary.LittleEndian.PutUint64(b[hMembDir:], h.membDirOffset)
+	binary.LittleEndian.PutUint64(b[hMembDirLen:], h.membDirLen)
 	binary.LittleEndian.PutUint32(b[hCRC:], h.crc)
 	return b
 }
@@ -127,21 +138,24 @@ func unmarshalMmapHeader(b []byte) (*mmapSnapshotHeader, error) {
 		return nil, fmt.Errorf("mmap snapshot version %d unsupported (want %d)", v, mmapSnapshotVersion)
 	}
 	return &mmapSnapshotHeader{
-		flags:         binary.LittleEndian.Uint32(b[hFlags:]),
-		nodeCount:     binary.LittleEndian.Uint64(b[hNodeCount:]),
-		edgeCount:     binary.LittleEndian.Uint64(b[hEdgeCount:]),
-		minNodeID:     binary.LittleEndian.Uint64(b[hMinNodeID:]),
-		maxNodeID:     binary.LittleEndian.Uint64(b[hMaxNodeID:]),
-		minEdgeID:     binary.LittleEndian.Uint64(b[hMinEdgeID:]),
-		maxEdgeID:     binary.LittleEndian.Uint64(b[hMaxEdgeID:]),
-		nodeDirOffset: binary.LittleEndian.Uint64(b[hNodeDir:]),
-		edgeDirOffset: binary.LittleEndian.Uint64(b[hEdgeDir:]),
-		metaOffset:    binary.LittleEndian.Uint64(b[hMetaOff:]),
-		metaLen:       binary.LittleEndian.Uint64(b[hMetaLen:]),
-		outCSROffset:  binary.LittleEndian.Uint64(b[hOutCSR:]),
-		inCSROffset:   binary.LittleEndian.Uint64(b[hInCSR:]),
-		adjDirOffset:  binary.LittleEndian.Uint64(b[hAdjDir:]),
-		crc:           binary.LittleEndian.Uint32(b[hCRC:]),
+		flags:          binary.LittleEndian.Uint32(b[hFlags:]),
+		nodeCount:      binary.LittleEndian.Uint64(b[hNodeCount:]),
+		edgeCount:      binary.LittleEndian.Uint64(b[hEdgeCount:]),
+		minNodeID:      binary.LittleEndian.Uint64(b[hMinNodeID:]),
+		maxNodeID:      binary.LittleEndian.Uint64(b[hMaxNodeID:]),
+		minEdgeID:      binary.LittleEndian.Uint64(b[hMinEdgeID:]),
+		maxEdgeID:      binary.LittleEndian.Uint64(b[hMaxEdgeID:]),
+		nodeDirOffset:  binary.LittleEndian.Uint64(b[hNodeDir:]),
+		edgeDirOffset:  binary.LittleEndian.Uint64(b[hEdgeDir:]),
+		metaOffset:     binary.LittleEndian.Uint64(b[hMetaOff:]),
+		metaLen:        binary.LittleEndian.Uint64(b[hMetaLen:]),
+		outCSROffset:   binary.LittleEndian.Uint64(b[hOutCSR:]),
+		inCSROffset:    binary.LittleEndian.Uint64(b[hInCSR:]),
+		adjDirOffset:   binary.LittleEndian.Uint64(b[hAdjDir:]),
+		membDataOffset: binary.LittleEndian.Uint64(b[hMembData:]),
+		membDirOffset:  binary.LittleEndian.Uint64(b[hMembDir:]),
+		membDirLen:     binary.LittleEndian.Uint64(b[hMembDirLen:]),
+		crc:            binary.LittleEndian.Uint32(b[hCRC:]),
 	}, nil
 }
 
@@ -166,12 +180,13 @@ const adjDirEntrySize = 32 // 4 * int64: outOff, outLen, inOff, inLen
 // the adjacency directory + the metadata blob — the structural sections read at
 // open. Records are excluded so open need not page in the whole file to verify
 // integrity.
-func computeCRC(headerNoCRC, nodeDir, edgeDir, adjDir, meta []byte) uint32 {
+func computeCRC(headerNoCRC, nodeDir, edgeDir, adjDir, membDir, meta []byte) uint32 {
 	h := crc32.NewIEEE()
 	h.Write(headerNoCRC)
 	h.Write(nodeDir)
 	h.Write(edgeDir)
 	h.Write(adjDir)
+	h.Write(membDir)
 	h.Write(meta)
 	return h.Sum32()
 }

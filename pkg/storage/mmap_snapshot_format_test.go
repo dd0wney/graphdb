@@ -199,6 +199,9 @@ func TestMmapSnapshot_Empty(t *testing.T) {
 	if _, ok := m.getNode(1); ok {
 		t.Fatal("empty store should have no nodes")
 	}
+	if got := m.membershipRun(membKindNodeTenant, "t", ""); got != nil {
+		t.Errorf("empty store membershipRun = %v want nil", got)
+	}
 }
 
 func TestCSRRunCodec_RoundTrip(t *testing.T) {
@@ -378,5 +381,48 @@ func TestMembershipDirectory_RoundTrip(t *testing.T) {
 	ids, _ := readCSRRun(buf, int(off))
 	if len(ids) != 2 || ids[0] != 5 || ids[1] != 6 {
 		t.Errorf("non-zero-base run = %v want [5 6]", ids)
+	}
+}
+
+func TestMmapSnapshot_MembershipRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "snapshot.mmap")
+	nodes := []*Node{
+		{ID: 1, TenantID: "t", Labels: []string{"Alpha"}},
+		{ID: 2, TenantID: "t", Labels: []string{"Beta"}},
+		{ID: 3, TenantID: "t", Labels: []string{"Alpha"}},
+	}
+	edges := []*Edge{
+		{ID: 10, TenantID: "t", FromNodeID: 1, ToNodeID: 2, Type: "LINK"},
+		{ID: 11, TenantID: "t", FromNodeID: 2, ToNodeID: 3, Type: "REF"},
+	}
+	if err := writeMmapSnapshotData(path, nodes, edges, &mmapMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := openMmapSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snap.close()
+
+	eq := func(name string, got, want []uint64) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("%s: got %v want %v", name, got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s: got %v want %v", name, got, want)
+			}
+		}
+	}
+	eq("nodeTenant", snap.membershipRun(membKindNodeTenant, "t", ""), []uint64{1, 2, 3})
+	eq("alpha", snap.membershipRun(membKindNodeLabel, "t", "Alpha"), []uint64{1, 3})
+	eq("beta", snap.membershipRun(membKindNodeLabel, "t", "Beta"), []uint64{2})
+	eq("edgeTenant", snap.membershipRun(membKindEdgeTenant, "t", ""), []uint64{10, 11})
+	eq("link", snap.membershipRun(membKindEdgeType, "t", "LINK"), []uint64{10})
+	eq("ref", snap.membershipRun(membKindEdgeType, "t", "REF"), []uint64{11})
+	if got := snap.membershipRun(membKindNodeLabel, "t", "Missing"); got != nil {
+		t.Errorf("missing label run = %v want nil", got)
 	}
 }
