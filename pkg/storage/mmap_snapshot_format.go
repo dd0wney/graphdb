@@ -77,6 +77,9 @@ type mmapMetadata struct {
 	NextEdgeID       uint64
 	StickyNodeLabels []string // label keys that must survive even with no members
 	StickyEdgeTypes  []string
+	// TenantStats persists per-tenant counts so reopen restores them without the
+	// (now-lazy) membership build. Keyed by tenant ID string.
+	TenantStats map[string]TenantStats
 }
 
 func (h *mmapSnapshotHeader) marshal() []byte {
@@ -159,6 +162,35 @@ func unmarshalMmapMetadata(b []byte) (*mmapMetadata, error) {
 		return nil, fmt.Errorf("mmap snapshot metadata: %w", err)
 	}
 	return &m, nil
+}
+
+// --- CSR adjacency run codec ----------------------------------------------
+//
+// A run is count(4) then count little-endian uint64 edge IDs. Empty runs encode
+// as a bare zero count (4 bytes) and decode to nil.
+
+func appendCSRRun(buf []byte, ids []uint64) []byte {
+	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(ids)))
+	for _, id := range ids {
+		buf = binary.LittleEndian.AppendUint64(buf, id)
+	}
+	return buf
+}
+
+// readCSRRun decodes a run at buf[p:], COPYING the IDs into a fresh slice so the
+// result is safe to retain after the mapping is closed. Returns nil for an empty run.
+func readCSRRun(buf []byte, p int) ([]uint64, int) {
+	n := int(binary.LittleEndian.Uint32(buf[p:]))
+	p += 4
+	if n == 0 {
+		return nil, p
+	}
+	ids := make([]uint64, n)
+	for i := 0; i < n; i++ {
+		ids[i] = binary.LittleEndian.Uint64(buf[p:])
+		p += 8
+	}
+	return ids, p
 }
 
 // --- record codec ---------------------------------------------------------

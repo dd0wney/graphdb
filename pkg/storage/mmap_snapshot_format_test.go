@@ -200,3 +200,59 @@ func TestMmapSnapshot_Empty(t *testing.T) {
 		t.Fatal("empty store should have no nodes")
 	}
 }
+
+func TestCSRRunCodec_RoundTrip(t *testing.T) {
+	// A CSR run is a length-prefixed []uint64: count(4) then count*uint64.
+	in := []uint64{7, 11, 13, 9000000001}
+	buf := appendCSRRun(nil, in)
+
+	got, n := readCSRRun(buf, 0)
+	if n != len(buf) {
+		t.Fatalf("readCSRRun consumed %d, want %d", n, len(buf))
+	}
+	if len(got) != len(in) {
+		t.Fatalf("len got %d want %d", len(got), len(in))
+	}
+	for i := range in {
+		if got[i] != in[i] {
+			t.Errorf("got[%d]=%d want %d", i, got[i], in[i])
+		}
+	}
+
+	// Empty run encodes to a 4-byte zero count and decodes to nil.
+	empty := appendCSRRun(nil, nil)
+	if len(empty) != 4 {
+		t.Fatalf("empty run len %d want 4", len(empty))
+	}
+	if got, _ := readCSRRun(empty, 0); got != nil {
+		t.Errorf("empty run decoded to %v want nil", got)
+	}
+
+	// Non-zero start offset: two runs back-to-back, decode the second via the
+	// offset returned from the first.
+	buf2 := appendCSRRun(nil, []uint64{1, 2})
+	buf2 = appendCSRRun(buf2, []uint64{3})
+	_, after := readCSRRun(buf2, 0)
+	second, _ := readCSRRun(buf2, after)
+	if len(second) != 1 || second[0] != 3 {
+		t.Errorf("second run = %v, want [3]", second)
+	}
+}
+
+func TestMmapMetadata_TenantStatsRoundTrip(t *testing.T) {
+	m := &mmapMetadata{TenantStats: map[string]TenantStats{
+		"acme": {NodeCount: 5, EdgeCount: 9, StorageBytes: 100, LastUpdated: 42},
+	}}
+	b, err := m.marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := unmarshalMmapMetadata(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := TenantStats{NodeCount: 5, EdgeCount: 9, StorageBytes: 100, LastUpdated: 42}
+	if !reflect.DeepEqual(got.TenantStats["acme"], want) {
+		t.Errorf("TenantStats[\"acme\"] = %+v, want %+v", got.TenantStats["acme"], want)
+	}
+}
