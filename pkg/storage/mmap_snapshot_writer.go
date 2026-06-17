@@ -132,7 +132,16 @@ func writeMmapSnapshotData(path string, nodes []*Node, edges []*Edge, meta *mmap
 		for _, n := range nodes {
 			tn := string(effectiveTenantID(n.TenantID))
 			mb.add(membKindNodeTenant, tn, "", n.ID)
+			// Use a seen set to deduplicate labels: a node with repeated labels
+			// (e.g. ["Person","Person"]) must only contribute one membership entry
+			// per label, matching the in-memory map[uint64]struct{} index which
+			// deduplicates naturally.
+			seen := make(map[string]struct{}, len(n.Labels))
 			for _, label := range n.Labels {
+				if _, dup := seen[label]; dup {
+					continue
+				}
+				seen[label] = struct{}{}
 				mb.add(membKindNodeLabel, tn, label, n.ID)
 			}
 		}

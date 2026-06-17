@@ -2,6 +2,8 @@ package storage
 
 import (
 	"errors"
+	"fmt"
+	"math/rand"
 	"sort"
 	"strings"
 	"testing"
@@ -59,15 +61,58 @@ func itoa(i int) string {
 	return string(b)
 }
 
-// fingerprint captures the public-interface view of a tenant for equality comparison.
+// renderValue renders a Value to a deterministic string in the form "type:canonical".
+// Used to build stable property-bag signatures for fingerprinting.
+func renderValue(v Value) string {
+	return fmt.Sprintf("%d:%s", v.Type, v.String())
+}
+
+// renderProps returns a deterministic string for a property map: keys sorted,
+// each rendered as "key=type:canonical", joined by ";".
+func renderProps(props map[string]Value) string {
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+renderValue(props[k]))
+	}
+	return strings.Join(parts, ";")
+}
+
+// renderEdgeSig builds a per-edge token: "peerID:type:weight:{sorted props}".
+// peerID is ToNodeID for outgoing edges and FromNodeID for incoming edges.
+func renderEdgeSig(peerID uint64, edgeType string, weight float64, props map[string]Value) string {
+	return fmt.Sprintf("%d:%s:%g:{%s}", peerID, edgeType, weight, renderProps(props))
+}
+
+// fingerprint captures the full public-interface view of a tenant for equality
+// comparison between JSON-mode and mmap-mode stores.
+//
+// Legacy fields (personIDs, orgIDs, nameByID, outDegree) are preserved so that
+// every existing call site compiles and passes without change.  The new fields
+// (nodeSig, outEdgeSig, inEdgeSig) sign the complete per-node state and replace
+// the coarse "to:weight"-only edge token with a richer "to:type:weight:{props}" form.
 type fingerprint struct {
-	nodeCount  uint64
-	edgeCount  uint64
-	personIDs  []uint64
-	orgIDs     []uint64
-	nameByID   map[uint64]string
-	outDegree  map[uint64]int
-	outEdgeSig map[uint64]string // node -> sorted "to:weight" of its outgoing edges
+	nodeCount uint64
+	edgeCount uint64
+	// Legacy label-bucket fields — still populated for compatibility.
+	personIDs []uint64
+	orgIDs    []uint64
+	// Legacy per-node property field — still populated for compatibility.
+	nameByID map[uint64]string
+	// Legacy out-degree — still populated for compatibility.
+	outDegree map[uint64]int
+	// outEdgeSig: node ID -> sorted "toID:type:weight:{props}" of its outgoing edges.
+	// This supersedes the old "to:weight"-only token.
+	outEdgeSig map[uint64]string
+	// nodeSig: node ID -> "sortedLabels|{sorted props}" covering all labels and
+	// all properties generically (not just "name").
+	nodeSig map[uint64]string
+	// inEdgeSig: node ID -> sorted "fromID:type:weight:{props}" of its incoming edges.
+	inEdgeSig map[uint64]string
 }
 
 func fingerprintTenant(t *testing.T, gs *GraphStorage, tenant string) fingerprint {
@@ -78,7 +123,10 @@ func fingerprintTenant(t *testing.T, gs *GraphStorage, tenant string) fingerprin
 		nameByID:   map[uint64]string{},
 		outDegree:  map[uint64]int{},
 		outEdgeSig: map[uint64]string{},
+		nodeSig:    map[uint64]string{},
+		inEdgeSig:  map[uint64]string{},
 	}
+	// Populate legacy label-bucket IDs for backward-compat assertions.
 	for _, n := range gs.GetNodesByLabelForTenant(tenant, "Person") {
 		fp.personIDs = append(fp.personIDs, n.ID)
 	}
@@ -87,24 +135,59 @@ func fingerprintTenant(t *testing.T, gs *GraphStorage, tenant string) fingerprin
 	}
 	sort.Slice(fp.personIDs, func(i, j int) bool { return fp.personIDs[i] < fp.personIDs[j] })
 	sort.Slice(fp.orgIDs, func(i, j int) bool { return fp.orgIDs[i] < fp.orgIDs[j] })
+
 	for _, n := range gs.GetAllNodesForTenant(tenant) {
 		got, err := gs.GetNodeForTenant(n.ID, tenant)
 		if err != nil {
 			t.Fatalf("GetNodeForTenant(%d): %v", n.ID, err)
 		}
+
+		// Legacy name field (from the single-getter path for backward compat).
 		s, _ := got.Properties["name"].AsString()
 		fp.nameByID[n.ID] = s
+
+		// Full label+property signature built from the enumerated node n (not got),
+		// so a bug specific to GetAllNodesForTenant (e.g. stale labels there) is not
+		// masked by falling back to the single-getter path.
+		lbls := make([]string, len(n.Labels))
+		copy(lbls, n.Labels)
+		sort.Strings(lbls)
+		fp.nodeSig[n.ID] = strings.Join(lbls, ",") + "|" + renderProps(n.Properties)
+
+		// Cross-check: the two read paths must agree on labels and properties.
+		gotLbls := make([]string, len(got.Labels))
+		copy(gotLbls, got.Labels)
+		sort.Strings(gotLbls)
+		gotSig := strings.Join(gotLbls, ",") + "|" + renderProps(got.Properties)
+		if fp.nodeSig[n.ID] != gotSig {
+			t.Errorf("node %d: GetAllNodesForTenant and GetNodeForTenant disagree:\n  enumerated: %q\n  single-get: %q",
+				n.ID, fp.nodeSig[n.ID], gotSig)
+		}
+
+		// Outgoing edges: richer token includes type and full property bag.
 		out, err := gs.GetOutgoingEdgesForTenant(n.ID, tenant)
 		if err != nil {
 			t.Fatalf("GetOutgoingEdgesForTenant(%d): %v", n.ID, err)
 		}
 		fp.outDegree[n.ID] = len(out)
-		sigs := make([]string, 0, len(out))
+		outSigs := make([]string, 0, len(out))
 		for _, e := range out {
-			sigs = append(sigs, itoa(int(e.ToNodeID))+":"+itoa(int(e.Weight)))
+			outSigs = append(outSigs, renderEdgeSig(e.ToNodeID, e.Type, e.Weight, e.Properties))
 		}
-		sort.Strings(sigs)
-		fp.outEdgeSig[n.ID] = strings.Join(sigs, "|")
+		sort.Strings(outSigs)
+		fp.outEdgeSig[n.ID] = strings.Join(outSigs, "|")
+
+		// Incoming edges.
+		in, err := gs.GetIncomingEdgesForTenant(n.ID, tenant)
+		if err != nil {
+			t.Fatalf("GetIncomingEdgesForTenant(%d): %v", n.ID, err)
+		}
+		inSigs := make([]string, 0, len(in))
+		for _, e := range in {
+			inSigs = append(inSigs, renderEdgeSig(e.FromNodeID, e.Type, e.Weight, e.Properties))
+		}
+		sort.Strings(inSigs)
+		fp.inEdgeSig[n.ID] = strings.Join(inSigs, "|")
 	}
 	return fp
 }
@@ -120,6 +203,35 @@ func assertFingerprintEqual(t *testing.T, want, got fingerprint, ctx string) {
 	if !equalU64(want.orgIDs, got.orgIDs) {
 		t.Errorf("%s: Org IDs differ", ctx)
 	}
+
+	// Assert the node key sets match in both directions (catches nodes present in
+	// one but not the other, with per-node detail for extra nodes in got).
+	wantIDs := make([]uint64, 0, len(want.nodeSig))
+	for id := range want.nodeSig {
+		wantIDs = append(wantIDs, id)
+	}
+	gotIDs := make([]uint64, 0, len(got.nodeSig))
+	for id := range got.nodeSig {
+		gotIDs = append(gotIDs, id)
+	}
+	sort.Slice(wantIDs, func(i, j int) bool { return wantIDs[i] < wantIDs[j] })
+	sort.Slice(gotIDs, func(i, j int) bool { return gotIDs[i] < gotIDs[j] })
+	if !equalU64(wantIDs, gotIDs) {
+		t.Errorf("%s: node ID sets differ:\n want %v\n  got %v", ctx, wantIDs, gotIDs)
+	}
+	// want→got: report nodes missing from got.
+	for id := range want.nodeSig {
+		if _, ok := got.nodeSig[id]; !ok {
+			t.Errorf("%s: node %d present in want but missing from got", ctx, id)
+		}
+	}
+	// got→want: report extra nodes present only in got (e.g. mmap-mode phantom nodes).
+	for id, sig := range got.nodeSig {
+		if _, ok := want.nodeSig[id]; !ok {
+			t.Errorf("%s: node %d present in got but not in want (sig=%q)", ctx, id, sig)
+		}
+	}
+
 	for id, name := range want.nameByID {
 		if got.nameByID[id] != name {
 			t.Errorf("%s: node %d name: want %q got %q", ctx, id, name, got.nameByID[id])
@@ -127,8 +239,18 @@ func assertFingerprintEqual(t *testing.T, want, got fingerprint, ctx string) {
 		if got.outDegree[id] != want.outDegree[id] {
 			t.Errorf("%s: node %d out-degree: want %d got %d", ctx, id, want.outDegree[id], got.outDegree[id])
 		}
+	}
+
+	// Per-node full-signature comparisons (labels + props + incoming edges).
+	for id, sig := range want.nodeSig {
+		if got.nodeSig[id] != sig {
+			t.Errorf("%s: node %d labels/props: want %q got %q", ctx, id, sig, got.nodeSig[id])
+		}
+		if got.inEdgeSig[id] != want.inEdgeSig[id] {
+			t.Errorf("%s: node %d in-edges: want %q got %q", ctx, id, want.inEdgeSig[id], got.inEdgeSig[id])
+		}
 		if got.outEdgeSig[id] != want.outEdgeSig[id] {
-			t.Errorf("%s: node %d out-edges: want %q got %q", ctx, id, want.outEdgeSig[id], got.outEdgeSig[id])
+			t.Errorf("%s: node %d out-edges (full): want %q got %q", ctx, id, want.outEdgeSig[id], got.outEdgeSig[id])
 		}
 	}
 }
@@ -782,4 +904,302 @@ func TestMmapStage2c_ReturnedNodeIsOwnedCopy(t *testing.T) {
 	if len(again) != 1 || string(again[0].Properties["k"].Data) != "orig" {
 		t.Errorf("second enumeration corrupted")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Randomized parity test
+// ---------------------------------------------------------------------------
+
+// nodeSpec and edgeSpec are pre-generated from a fixed-seed PRNG so that
+// BOTH the JSON-mode and mmap-mode stores receive IDENTICAL inputs — no PRNG
+// ordering hazards because the sequences are materialised before the first
+// store call.
+type nodeSpec struct {
+	labels []string
+	props  map[string]Value
+}
+
+type edgeSpec struct {
+	fromIdx int // index into the nodeIDs slice
+	toIdx   int
+	typ     string
+	weight  float64
+	props   map[string]Value
+}
+
+// mutSpec describes a single mutation to apply to a store after the first reopen.
+type mutSpec struct {
+	kind    string // "updateNode", "deleteNode", "createEdge", "deleteEdge", "updateEdge"
+	nodeIdx int    // index into nodeIDs (for node ops)
+	edgeIdx int    // index into edgeIDs (for edge ops)
+	props   map[string]Value
+	weight  float64
+}
+
+const (
+	rpSeed      = 1337
+	rpNodeCount = 400
+	rpEdgeCount = 600
+	rpMutCount  = 20
+	rpTenant    = "rp-tenant"
+)
+
+var (
+	rpNodeLabels = []string{"Person", "Org", "Widget", "Gadget", "Thing"}
+	rpEdgeTypes  = []string{"NEXT", "REF", "OWNS", "LINK"}
+	rpPropKeys   = []string{"alpha", "beta", "gamma", "delta"}
+)
+
+// rpRandomProps returns a map of 0–2 random properties drawn from rpPropKeys.
+// Half of the values are strings, half are ints.
+func rpRandomProps(rng *rand.Rand, count int) map[string]Value {
+	if count == 0 {
+		return map[string]Value{}
+	}
+	m := make(map[string]Value, count)
+	for i := 0; i < count; i++ {
+		k := rpPropKeys[rng.Intn(len(rpPropKeys))]
+		if rng.Intn(2) == 0 {
+			m[k] = StringValue(fmt.Sprintf("sv%d", rng.Intn(1000)))
+		} else {
+			m[k] = IntValue(int64(rng.Intn(10000)))
+		}
+	}
+	return m
+}
+
+// buildRandomSpecs uses a deterministic PRNG to produce node and edge specs.
+// Both stores will be fed from the same slices, so they are guaranteed identical.
+func buildRandomSpecs(rng *rand.Rand) ([]nodeSpec, []edgeSpec) {
+	nodes := make([]nodeSpec, rpNodeCount)
+	for i := range nodes {
+		numLabels := 1 + rng.Intn(2) // 1 or 2 labels
+		lbls := make([]string, numLabels)
+		for j := range lbls {
+			lbls[j] = rpNodeLabels[rng.Intn(len(rpNodeLabels))]
+		}
+		nodes[i] = nodeSpec{
+			labels: lbls,
+			props:  rpRandomProps(rng, 1+rng.Intn(4)), // 1–4 props
+		}
+	}
+
+	edges := make([]edgeSpec, rpEdgeCount)
+	for i := range edges {
+		from := rng.Intn(rpNodeCount)
+		to := rng.Intn(rpNodeCount)
+		edges[i] = edgeSpec{
+			fromIdx: from,
+			toIdx:   to,
+			typ:     rpEdgeTypes[rng.Intn(len(rpEdgeTypes))],
+			weight:  float64(rng.Intn(100)) + rng.Float64(),
+			props:   rpRandomProps(rng, rng.Intn(3)), // 0–2 props
+		}
+	}
+	return nodes, edges
+}
+
+// buildMutSpecs generates mutation specs from the PRNG. nodeCount and edgeCount
+// are the actual counts returned after building, so the indices are valid.
+func buildMutSpecs(rng *rand.Rand, nodeCount, edgeCount int) []mutSpec {
+	kinds := []string{"updateNode", "deleteNode", "createEdge", "deleteEdge", "updateEdge"}
+	muts := make([]mutSpec, rpMutCount)
+	for i := range muts {
+		muts[i] = mutSpec{
+			kind:    kinds[rng.Intn(len(kinds))],
+			nodeIdx: rng.Intn(nodeCount),
+			edgeIdx: rng.Intn(edgeCount),
+			props:   rpRandomProps(rng, 1+rng.Intn(3)),
+			weight:  float64(rng.Intn(100)) + rng.Float64(),
+		}
+	}
+	return muts
+}
+
+// populateStore applies nodeSpecs and edgeSpecs to gs, returning slices of
+// created IDs in the same order.
+func populateStore(t *testing.T, gs *GraphStorage, nodes []nodeSpec, edges []edgeSpec) (nodeIDs []uint64, edgeIDs []uint64) {
+	t.Helper()
+	nodeIDs = make([]uint64, len(nodes))
+	for i, spec := range nodes {
+		n, err := gs.CreateNodeWithTenant(rpTenant, spec.labels, spec.props)
+		if err != nil {
+			t.Fatalf("populateStore CreateNode[%d]: %v", i, err)
+		}
+		nodeIDs[i] = n.ID
+	}
+	edgeIDs = make([]uint64, 0, len(edges))
+	for i, spec := range edges {
+		e, err := gs.CreateEdgeWithTenant(rpTenant, nodeIDs[spec.fromIdx], nodeIDs[spec.toIdx],
+			spec.typ, spec.props, spec.weight)
+		if err != nil {
+			// Self-loops or duplicate edges may be rejected — skip rather than fatal.
+			edgeIDs = append(edgeIDs, 0)
+			_ = i
+			continue
+		}
+		edgeIDs = append(edgeIDs, e.ID)
+	}
+	return nodeIDs, edgeIDs
+}
+
+// applyMutSpecs drives the mutation sequence against gs, skipping any
+// operation on a zero/deleted ID (tombstoned by an earlier deleteNode/deleteEdge).
+func applyMutSpecs(t *testing.T, gs *GraphStorage, muts []mutSpec, nodeIDs, edgeIDs []uint64) {
+	t.Helper()
+	deletedNodes := map[uint64]bool{}
+	deletedEdges := map[uint64]bool{}
+	for _, m := range muts {
+		switch m.kind {
+		case "updateNode":
+			id := nodeIDs[m.nodeIdx]
+			if id == 0 || deletedNodes[id] {
+				continue
+			}
+			_ = gs.UpdateNodeForTenant(id, m.props, rpTenant)
+		case "deleteNode":
+			id := nodeIDs[m.nodeIdx]
+			if id == 0 || deletedNodes[id] {
+				continue
+			}
+			if err := gs.DeleteNodeForTenant(id, rpTenant); err == nil {
+				deletedNodes[id] = true
+			}
+		case "createEdge":
+			fromID := nodeIDs[m.nodeIdx%len(nodeIDs)]
+			toID := nodeIDs[(m.nodeIdx+1)%len(nodeIDs)]
+			if deletedNodes[fromID] || deletedNodes[toID] {
+				continue
+			}
+			_, _ = gs.CreateEdgeWithTenant(rpTenant, fromID, toID, "LINK", m.props, m.weight)
+		case "deleteEdge":
+			if m.edgeIdx >= len(edgeIDs) {
+				continue
+			}
+			id := edgeIDs[m.edgeIdx]
+			if id == 0 || deletedEdges[id] {
+				continue
+			}
+			if err := gs.DeleteEdgeForTenant(id, rpTenant); err == nil {
+				deletedEdges[id] = true
+			}
+		case "updateEdge":
+			if m.edgeIdx >= len(edgeIDs) {
+				continue
+			}
+			id := edgeIDs[m.edgeIdx]
+			if id == 0 || deletedEdges[id] {
+				continue
+			}
+			w := m.weight
+			_ = gs.UpdateEdgeForTenant(id, m.props, &w, rpTenant)
+		}
+	}
+}
+
+// TestMmapReopen_RandomizedParity builds identical ~400-node / ~600-edge graphs in
+// both a JSON-mode store and an mmap-mode store from a fixed PRNG seed (1337) so
+// the test is deterministic and reproducible. It then:
+//  1. Asserts full-fingerprint parity after first reopen.
+//  2. Applies a round of random mutations to both (same sequence).
+//  3. Asserts parity live after mutations.
+//  4. Closes and reopens both; asserts parity after second reopen.
+//
+// If this test FAILS, that is a genuine mmap≠JSON divergence — do NOT weaken
+// the test; report it as BLOCKED with the diff output.
+func TestMmapReopen_RandomizedParity(t *testing.T) {
+	rng := rand.New(rand.NewSource(rpSeed))
+
+	// Build specs once from the PRNG so both stores get identical inputs.
+	nodeSpecs, edgeSpecs := buildRandomSpecs(rng)
+
+	// Phase 1: populate both stores from the same specs, close.
+	jsonDir, mmapDir := t.TempDir(), t.TempDir()
+
+	jgs, err := NewGraphStorage(jsonDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jNodeIDs, jEdgeIDs := populateStore(t, jgs, nodeSpecs, edgeSpecs)
+	if err := jgs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mgs, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mNodeIDs, mEdgeIDs := populateStore(t, mgs, nodeSpecs, edgeSpecs)
+	if err := mgs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sanity-guard: counts must be non-trivial.
+	if len(jNodeIDs) == 0 {
+		t.Fatal("randomized parity: no nodes created — test is vacuous")
+	}
+	if len(jEdgeIDs) == 0 {
+		t.Fatal("randomized parity: no edges created — test is vacuous")
+	}
+
+	// Phase 2: reopen both, assert full parity.
+	jr, err := NewGraphStorage(jsonDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jr.Close()
+	mr, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+	if mr.mmapSnap == nil {
+		t.Fatal("mmap reopen did not take the mmap path")
+	}
+
+	jFP1 := fingerprintTenant(t, jr, rpTenant)
+	mFP1 := fingerprintTenant(t, mr, rpTenant)
+	t.Logf("randomized parity: nodes=%d edges=%d", jFP1.nodeCount, jFP1.edgeCount)
+	if jFP1.nodeCount == 0 || jFP1.edgeCount == 0 {
+		t.Fatal("randomized parity: fingerprint shows zero counts — test is vacuous")
+	}
+	assertFingerprintEqual(t, jFP1, mFP1, "after-first-reopen")
+
+	// Phase 3: apply the same mutation sequence to both reopened stores.
+	// Mutation specs are drawn from the same rng (continued), so the sequence
+	// is deterministic and applied identically to both.
+	mutSpecs := buildMutSpecs(rng, len(jNodeIDs), len(jEdgeIDs))
+	applyMutSpecs(t, jr, mutSpecs, jNodeIDs, jEdgeIDs)
+	applyMutSpecs(t, mr, mutSpecs, mNodeIDs, mEdgeIDs)
+
+	assertFingerprintEqual(t,
+		fingerprintTenant(t, jr, rpTenant),
+		fingerprintTenant(t, mr, rpTenant),
+		"live-after-mutations",
+	)
+
+	// Phase 4: close and reopen both; assert parity survives persistence.
+	if err := jr.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := mr.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	jr2, err := NewGraphStorage(jsonDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jr2.Close()
+	mr2, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr2.Close()
+
+	assertFingerprintEqual(t,
+		fingerprintTenant(t, jr2, rpTenant),
+		fingerprintTenant(t, mr2, rpTenant),
+		"after-second-reopen",
+	)
 }
