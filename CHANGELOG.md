@@ -30,6 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Goroutine leaks in crash simulation tests (LSM worker cleanup)
 - Go vet errors in benchmark and example code
 
+## [0.6.0] - 2026-06-17
+
+graphdb ask #1 — **cheap reopen of a large persisted store**. A flag-gated,
+mmap-backed lazy-reopen storage mode (`GRAPHDB_STORAGE_MODE=mmap` /
+`StorageConfig.UseMmapSnapshot`, **off by default**; the JSON path is unchanged)
+takes reopen of a ~937k-node / 1.3M-edge store from ~14.4s to near-instant.
+
+### Added
+- mmap-backed lazy-reopen storage mode: binary `snapshot.mmap` format (magic `GMNP`, version 4) mapped at open with nodes/edges/indexes served lazily. Reopen ~14.4s → ~7ms; membership-index first-enumeration ~2s → ~11ms; full-graph first enumeration 1.165s → 479ms. Off by default; plaintext-only and in-memory-adjacency-only (encrypted stores and disk-backed edges fall back to the JSON path). (#408–#410, #412–#414)
+- Persisted CSR adjacency + per-tenant membership inverted indexes in the mmap format, served via copy-on-read accessors merging the immutable base with the post-open overlay minus tombstones.
+- Standing JSON↔mmap public-interface equivalence oracle (`fingerprintTenant`): an mmap-reopened store must enumerate byte-identically to the same store via JSON, across reopen / writes / batch / WAL-replay / second-reopen, with a randomized-fixture parity test. (#417)
+
+### Fixed
+- mmap membership writer double-counted a node with duplicate labels (e.g. `["Person","Person"]`) — its ID was written into a label run once per occurrence, while the in-memory index dedups, so `GetNodesByLabelForTenant` returned the node twice in mmap vs once in JSON. Found by the hardened equivalence oracle. (#417)
+
 ## [0.3.0] - 2025-02-18
 
 ### Added
