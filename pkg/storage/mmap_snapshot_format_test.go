@@ -200,3 +200,116 @@ func TestMmapSnapshot_Empty(t *testing.T) {
 		t.Fatal("empty store should have no nodes")
 	}
 }
+
+func TestCSRRunCodec_RoundTrip(t *testing.T) {
+	// A CSR run is a length-prefixed []uint64: count(4) then count*uint64.
+	in := []uint64{7, 11, 13, 9000000001}
+	buf := appendCSRRun(nil, in)
+
+	got, n := readCSRRun(buf, 0)
+	if n != len(buf) {
+		t.Fatalf("readCSRRun consumed %d, want %d", n, len(buf))
+	}
+	if len(got) != len(in) {
+		t.Fatalf("len got %d want %d", len(got), len(in))
+	}
+	for i := range in {
+		if got[i] != in[i] {
+			t.Errorf("got[%d]=%d want %d", i, got[i], in[i])
+		}
+	}
+
+	// Empty run encodes to a 4-byte zero count and decodes to nil.
+	empty := appendCSRRun(nil, nil)
+	if len(empty) != 4 {
+		t.Fatalf("empty run len %d want 4", len(empty))
+	}
+	if got, _ := readCSRRun(empty, 0); got != nil {
+		t.Errorf("empty run decoded to %v want nil", got)
+	}
+
+	// Non-zero start offset: two runs back-to-back, decode the second via the
+	// offset returned from the first.
+	buf2 := appendCSRRun(nil, []uint64{1, 2})
+	buf2 = appendCSRRun(buf2, []uint64{3})
+	_, after := readCSRRun(buf2, 0)
+	second, _ := readCSRRun(buf2, after)
+	if len(second) != 1 || second[0] != 3 {
+		t.Errorf("second run = %v, want [3]", second)
+	}
+}
+
+func TestMmapSnapshot_CSRRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "snapshot.mmap")
+
+	nodes := []*Node{{ID: 1, TenantID: "t"}, {ID: 2, TenantID: "t"}, {ID: 3, TenantID: "t"}}
+	// edges: 1->2 (id10), 1->3 (id11), 2->3 (id12)
+	edges := []*Edge{
+		{ID: 10, TenantID: "t", FromNodeID: 1, ToNodeID: 2, Type: "E"},
+		{ID: 11, TenantID: "t", FromNodeID: 1, ToNodeID: 3, Type: "E"},
+		{ID: 12, TenantID: "t", FromNodeID: 2, ToNodeID: 3, Type: "E"},
+	}
+	if err := writeMmapSnapshotData(path, nodes, edges, &mmapMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := openMmapSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snap.close()
+
+	assertU64Set := func(name string, got, want []uint64) {
+		t.Helper()
+		gm := map[uint64]bool{}
+		for _, x := range got {
+			gm[x] = true
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%s len got %d want %d (%v)", name, len(got), len(want), got)
+		}
+		for _, w := range want {
+			if !gm[w] {
+				t.Errorf("%s missing %d (got %v)", name, w, got)
+			}
+		}
+	}
+	assertU64Set("out(1)", snap.outgoingCSR(1), []uint64{10, 11})
+	assertU64Set("out(2)", snap.outgoingCSR(2), []uint64{12})
+	assertU64Set("out(3)", snap.outgoingCSR(3), nil)
+	assertU64Set("in(3)", snap.incomingCSR(3), []uint64{11, 12})
+	assertU64Set("in(2)", snap.incomingCSR(2), []uint64{10})
+	assertU64Set("in(1)", snap.incomingCSR(1), nil)
+
+	// Empty graph: no CSR sections; accessors return nil for any ID.
+	emptyPath := filepath.Join(dir, "empty.mmap")
+	if err := writeMmapSnapshotData(emptyPath, nil, nil, &mmapMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+	esnap, err := openMmapSnapshot(emptyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer esnap.close()
+	if esnap.outgoingCSR(1) != nil || esnap.incomingCSR(1) != nil {
+		t.Errorf("empty graph CSR should be nil")
+	}
+}
+
+func TestMmapMetadata_TenantStatsRoundTrip(t *testing.T) {
+	m := &mmapMetadata{TenantStats: map[string]TenantStats{
+		"acme": {NodeCount: 5, EdgeCount: 9, StorageBytes: 100, LastUpdated: 42},
+	}}
+	b, err := m.marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := unmarshalMmapMetadata(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := TenantStats{NodeCount: 5, EdgeCount: 9, StorageBytes: 100, LastUpdated: 42}
+	if !reflect.DeepEqual(got.TenantStats["acme"], want) {
+		t.Errorf("TenantStats[\"acme\"] = %+v, want %+v", got.TenantStats["acme"], want)
+	}
+}

@@ -168,16 +168,50 @@ func (gs *GraphStorage) getEdgeIDsForNode(nodeID uint64, outgoing bool) []uint64
 			}
 		}
 
-		// Fall back to uncompressed storage
-		var uncompressed []uint64
-		var exists bool
+		// Overlay: edges created since open live in the uncompressed map.
+		var overlay []uint64
 		if outgoing {
-			uncompressed, exists = gs.outgoingEdges[nodeID]
+			overlay = gs.outgoingEdges[nodeID]
 		} else {
-			uncompressed, exists = gs.incomingEdges[nodeID]
+			overlay = gs.incomingEdges[nodeID]
 		}
-		if exists {
-			return uncompressed
+
+		// mmap base: immutable CSR run, minus tombstoned edges, unioned with the
+		// post-open overlay. The overlay never holds a tombstoned edge — DeleteEdge
+		// removes an edge from the overlay map AND tombstones it under the same
+		// gs.mu.Lock (the same invariant the JSON path relies on to return the
+		// overlay unfiltered), and base edges are never in the overlay — so the
+		// overlay needs no tombstone filter. New overlay IDs are disjoint from base
+		// IDs (post-open IDs > snapshot's NextEdgeID), so the union needs no dedup.
+		if gs.mmapSnap != nil {
+			var base []uint64
+			if outgoing {
+				base = gs.mmapSnap.outgoingCSR(nodeID)
+			} else {
+				base = gs.mmapSnap.incomingCSR(nodeID)
+			}
+			// Fast path: no CSR base for this node — return the (clean) overlay directly.
+			if base == nil {
+				if len(overlay) == 0 {
+					return nil
+				}
+				return overlay
+			}
+			result := make([]uint64, 0, len(base)+len(overlay))
+			for _, eid := range base {
+				if !gs.isEdgeDeletedLocked(eid) {
+					result = append(result, eid)
+				}
+			}
+			result = append(result, overlay...)
+			if len(result) == 0 {
+				return nil
+			}
+			return result
+		}
+
+		if len(overlay) > 0 {
+			return overlay
 		}
 	}
 

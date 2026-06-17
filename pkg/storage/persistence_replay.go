@@ -272,8 +272,11 @@ func (gs *GraphStorage) replayDeleteNode(entry *wal.Entry) error {
 			return fmt.Errorf("failed to get incoming edges for node %d during replay: %w", node.ID, err)
 		}
 	} else {
-		outgoingEdgeIDs = gs.outgoingEdges[node.ID]
-		incomingEdgeIDs = gs.incomingEdges[node.ID]
+		// Use getEdgeIDsForNode so that mmap mode picks up CSR-base edges
+		// (not just the post-open overlay). In JSON mode mmapSnap == nil and
+		// the helper falls back to the plain maps, so behaviour is unchanged.
+		outgoingEdgeIDs = gs.getEdgeIDsForNode(node.ID, true)
+		incomingEdgeIDs = gs.getEdgeIDsForNode(node.ID, false)
 	}
 
 	// Cascade delete all outgoing edges during replay

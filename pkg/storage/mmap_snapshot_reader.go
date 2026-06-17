@@ -44,12 +44,12 @@ func openMmapSnapshot(path string) (*mmapSnapshot, error) {
 		return nil, err
 	}
 
-	nodeDir, edgeDir, metaBytes, err := sections(data, hdr)
+	nodeDir, edgeDir, adjDir, metaBytes, err := sections(data, hdr)
 	if err != nil {
 		_ = syscall.Munmap(data)
 		return nil, err
 	}
-	if got := computeCRC(data[:hCRC], nodeDir, edgeDir, metaBytes); got != hdr.crc {
+	if got := computeCRC(data[:hCRC], nodeDir, edgeDir, adjDir, metaBytes); got != hdr.crc {
 		_ = syscall.Munmap(data)
 		return nil, fmt.Errorf("mmap snapshot %q CRC mismatch: got %08x want %08x", path, got, hdr.crc)
 	}
@@ -63,24 +63,38 @@ func openMmapSnapshot(path string) (*mmapSnapshot, error) {
 }
 
 // sections returns the directory and metadata byte ranges, bounds-checked.
-func sections(data []byte, hdr *mmapSnapshotHeader) (nodeDir, edgeDir, meta []byte, err error) {
+func sections(data []byte, hdr *mmapSnapshotHeader) (nodeDir, edgeDir, adjDir, meta []byte, err error) {
 	size := uint64(len(data))
 	nodeDirEnd := hdr.nodeDirOffset + hdr.nodeDirLen()*8
 	edgeDirEnd := hdr.edgeDirOffset + hdr.edgeDirLen()*8
+	adjDirEnd := hdr.adjDirOffset + hdr.nodeDirLen()*adjDirEntrySize
 	metaEnd := hdr.metaOffset + hdr.metaLen
-	if hdr.nodeCount > 0 && nodeDirEnd > size ||
+	if hdr.nodeCount > 0 && (nodeDirEnd > size || adjDirEnd > size) ||
 		hdr.edgeCount > 0 && edgeDirEnd > size ||
 		metaEnd > size {
-		return nil, nil, nil, fmt.Errorf("mmap snapshot section out of bounds (size %d)", size)
+		return nil, nil, nil, nil, fmt.Errorf("mmap snapshot section out of bounds (size %d)", size)
+	}
+	// CSR section offsets must be ordered: header < outCSR <= inCSR <= adjDir < meta.
+	// The adjacency directory entries hold absolute run offsets; this cheap ordering
+	// check guards against a malformed header before those offsets are trusted.
+	if hdr.nodeCount > 0 {
+		if hdr.outCSROffset < uint64(mmapHeaderSize) ||
+			hdr.inCSROffset < hdr.outCSROffset ||
+			hdr.adjDirOffset < hdr.inCSROffset ||
+			hdr.adjDirOffset >= hdr.metaOffset {
+			return nil, nil, nil, nil, fmt.Errorf("mmap snapshot CSR sections out of order (out=%d in=%d adj=%d meta=%d)",
+				hdr.outCSROffset, hdr.inCSROffset, hdr.adjDirOffset, hdr.metaOffset)
+		}
 	}
 	if hdr.nodeCount > 0 {
 		nodeDir = data[hdr.nodeDirOffset:nodeDirEnd]
+		adjDir = data[hdr.adjDirOffset:adjDirEnd]
 	}
 	if hdr.edgeCount > 0 {
 		edgeDir = data[hdr.edgeDirOffset:edgeDirEnd]
 	}
 	meta = data[hdr.metaOffset:metaEnd]
-	return nodeDir, edgeDir, meta, nil
+	return nodeDir, edgeDir, adjDir, meta, nil
 }
 
 func (m *mmapSnapshot) close() error            { return syscall.Munmap(m.data) }
@@ -144,4 +158,38 @@ func (m *mmapSnapshot) forEachEdgeID(fn func(id uint64, off int64)) {
 			fn(id, off)
 		}
 	}
+}
+
+// adjDirEntry returns (outOff, outLen, inOff, inLen) for a node, or false if the
+// node is outside the directory range.
+func (m *mmapSnapshot) adjDirEntry(id uint64) (outOff, outLen, inOff, inLen int64, ok bool) {
+	if m.hdr.nodeCount == 0 || id < m.hdr.minNodeID || id > m.hdr.maxNodeID {
+		return 0, 0, 0, 0, false
+	}
+	p := m.hdr.adjDirOffset + (id-m.hdr.minNodeID)*adjDirEntrySize
+	b := m.data[p:]
+	return int64(binary.LittleEndian.Uint64(b[0:])),
+		int64(binary.LittleEndian.Uint64(b[8:])),
+		int64(binary.LittleEndian.Uint64(b[16:])),
+		int64(binary.LittleEndian.Uint64(b[24:])), true
+}
+
+// outgoingCSR / incomingCSR return a freshly-decoded copy of the node's base
+// adjacency run (nil if none). Safe to retain after close.
+func (m *mmapSnapshot) outgoingCSR(id uint64) []uint64 {
+	outOff, outLen, _, _, ok := m.adjDirEntry(id)
+	if !ok || outLen == 0 {
+		return nil
+	}
+	ids, _ := readCSRRun(m.data, int(outOff))
+	return ids
+}
+
+func (m *mmapSnapshot) incomingCSR(id uint64) []uint64 {
+	_, _, inOff, inLen, ok := m.adjDirEntry(id)
+	if !ok || inLen == 0 {
+		return nil
+	}
+	ids, _ := readCSRRun(m.data, int(inOff))
+	return ids
 }

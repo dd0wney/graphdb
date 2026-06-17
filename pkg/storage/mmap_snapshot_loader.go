@@ -45,6 +45,8 @@ func mmapEligible(config StorageConfig) bool {
 // loadFromDisk (persistence.go) but sources fields from a field-scan of the
 // mapped records instead of a JSON unmarshal.
 func (gs *GraphStorage) loadFromDiskMmap() error {
+	prof := newLoadProfiler()
+
 	snap, err := openMmapSnapshot(mmapSnapshotPath(gs.dataDir))
 	if err != nil {
 		return err
@@ -54,6 +56,7 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 		gs.deletedNodes[i] = make(map[uint64]struct{})
 		gs.deletedEdges[i] = make(map[uint64]struct{})
 	}
+	prof.mark("mmap open+CRC")
 
 	meta := snap.metadata()
 
@@ -69,27 +72,11 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 			gs.edgesByType[etype] = make(map[uint64]struct{})
 		}
 	}
+	prof.mark("sticky keys")
 
-	// Node indexes (global label + per-tenant), via field-scan (no property bags).
-	snap.forEachNodeID(func(id uint64, off int64) {
-		nid, tenant, labels := scanNodeFields(snap.data, off)
-		stub := &Node{ID: nid, TenantID: tenant, Labels: labels}
-		for _, label := range labels {
-			addToLabelIndex(gs.nodesByLabel, label, nid)
-		}
-		gs.addNodeToTenantIndex(stub)
-	})
-
-	// Edge indexes (global type + per-tenant) and adjacency (mirrors
-	// rebuildEdgeAdjacencyFromSnapshot; mmap mode requires in-memory adjacency).
-	snap.forEachEdgeID(func(id uint64, off int64) {
-		eid, from, to, tenant, etype := scanEdgeFields(snap.data, off)
-		stub := &Edge{ID: eid, TenantID: tenant, Type: etype, FromNodeID: from, ToNodeID: to}
-		addToLabelIndex(gs.edgesByType, etype, eid)
-		gs.addEdgeToTenantIndex(stub)
-		gs.outgoingEdges[from] = append(gs.outgoingEdges[from], eid)
-		gs.incomingEdges[to] = append(gs.incomingEdges[to], eid)
-	})
+	// Membership indexes (nodesByLabel/edgesByType + per-tenant) are built lazily
+	// on first enumeration (Stage 2a) — see membership_lazy.go. Only sticky keys
+	// (registered above) are materialized at open.
 
 	// Property indexes (restored verbatim, like loadFromDisk).
 	gs.propertyIndexes = make(map[string]*PropertyIndex, len(meta.PropertyIndexes))
@@ -114,11 +101,23 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 			return err
 		}
 	}
+	prof.mark("property+vector defs")
 
 	gs.nextNodeID = meta.NextNodeID
 	gs.nextEdgeID = meta.NextEdgeID
 	gs.stats = meta.Stats
 	atomic.StoreUint64(&gs.avgQueryTimeBits, math.Float64bits(meta.Stats.AvgQueryTime))
+
+	// Per-tenant counts: restored from metadata and intentionally decoupled from
+	// the lazy membership build (see membership_lazy.go) so CountNodesForTenant is
+	// correct at open without forcing the build.
+	for tid, st := range meta.TenantStats {
+		s := st
+		gs.tenantStats[tenantid.TenantID(tid)] = &s
+	}
+	// membershipBuilt stays false: built on first enumeration.
+	prof.mark("nextIDs+stats+tenantStats")
+	prof.report()
 	return nil
 }
 

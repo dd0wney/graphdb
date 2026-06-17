@@ -14,11 +14,15 @@ package storage
 //	[node directory]          dense []int64 absolute offsets, indexed by id-minNodeID (-1 = absent)
 //	[edge records]
 //	[edge directory]          dense []int64 offsets, indexed by id-minEdgeID
+//	[outgoing CSR runs]       one length-prefixed []uint64 run per node (count 0 = no edges), ascending node order
+//	[incoming CSR runs]       same shape
+//	[adjacency directory]     dense []entry of 32 bytes (outOff,outLen,inOff,inLen int64), indexed by id-minNodeID
 //	[metadata blob]           JSON: property/vector indexes, stats, nextIDs, sticky label/type keys
 //
-// Integrity: a CRC32 over the header (excluding the CRC field) + both directories +
-// the metadata blob protects the structural index — the parts read at open. Record
-// bytes are paged in lazily and bounds-checked at decode. All integers little-endian.
+// Integrity: a CRC32 over the header (excluding the CRC field) + all three directories
+// (node, edge, adjacency) + the metadata blob protects the structural index — the parts
+// read at open. Record bytes are paged in lazily and bounds-checked at decode. All
+// integers little-endian.
 
 import (
 	"encoding/binary"
@@ -31,7 +35,7 @@ import (
 var mmapSnapshotMagic = [4]byte{'G', 'M', 'N', 'P'}
 
 const (
-	mmapSnapshotVersion uint32 = 2 // v1 was the prototype (no CRC/metadata)
+	mmapSnapshotVersion uint32 = 3 // v3 adds CSR adjacency sections + TenantStats
 	dirAbsent           int64  = -1
 
 	// Header field byte offsets.
@@ -48,8 +52,11 @@ const (
 	hEdgeDir       = 68
 	hMetaOff       = 76
 	hMetaLen       = 84
-	hCRC           = 92
-	mmapHeaderSize = 100 // hCRC(4) + pad(4) -> 100
+	hOutCSR        = 92  // outgoing CSR data section offset
+	hInCSR         = 100 // incoming CSR data section offset
+	hAdjDir        = 108 // combined adjacency directory offset
+	hCRC           = 116
+	mmapHeaderSize = 124 // hCRC(4) + pad(4) -> 124
 )
 
 type mmapSnapshotHeader struct {
@@ -64,6 +71,9 @@ type mmapSnapshotHeader struct {
 	edgeDirOffset uint64
 	metaOffset    uint64
 	metaLen       uint64
+	outCSROffset  uint64
+	inCSROffset   uint64
+	adjDirOffset  uint64
 	crc           uint32
 }
 
@@ -77,6 +87,9 @@ type mmapMetadata struct {
 	NextEdgeID       uint64
 	StickyNodeLabels []string // label keys that must survive even with no members
 	StickyEdgeTypes  []string
+	// TenantStats persists per-tenant counts so reopen restores them without the
+	// (now-lazy) membership build. Keyed by tenant ID string.
+	TenantStats map[string]TenantStats
 }
 
 func (h *mmapSnapshotHeader) marshal() []byte {
@@ -94,6 +107,9 @@ func (h *mmapSnapshotHeader) marshal() []byte {
 	binary.LittleEndian.PutUint64(b[hEdgeDir:], h.edgeDirOffset)
 	binary.LittleEndian.PutUint64(b[hMetaOff:], h.metaOffset)
 	binary.LittleEndian.PutUint64(b[hMetaLen:], h.metaLen)
+	binary.LittleEndian.PutUint64(b[hOutCSR:], h.outCSROffset)
+	binary.LittleEndian.PutUint64(b[hInCSR:], h.inCSROffset)
+	binary.LittleEndian.PutUint64(b[hAdjDir:], h.adjDirOffset)
 	binary.LittleEndian.PutUint32(b[hCRC:], h.crc)
 	return b
 }
@@ -120,6 +136,9 @@ func unmarshalMmapHeader(b []byte) (*mmapSnapshotHeader, error) {
 		edgeDirOffset: binary.LittleEndian.Uint64(b[hEdgeDir:]),
 		metaOffset:    binary.LittleEndian.Uint64(b[hMetaOff:]),
 		metaLen:       binary.LittleEndian.Uint64(b[hMetaLen:]),
+		outCSROffset:  binary.LittleEndian.Uint64(b[hOutCSR:]),
+		inCSROffset:   binary.LittleEndian.Uint64(b[hInCSR:]),
+		adjDirOffset:  binary.LittleEndian.Uint64(b[hAdjDir:]),
 		crc:           binary.LittleEndian.Uint32(b[hCRC:]),
 	}, nil
 }
@@ -139,14 +158,18 @@ func (h *mmapSnapshotHeader) edgeDirLen() uint64 {
 	return h.maxEdgeID - h.minEdgeID + 1
 }
 
-// computeCRC hashes the header (excluding the CRC field) + both directories + the
-// metadata blob — the structural sections read at open. Records are excluded so open
-// need not page in the whole file to verify integrity.
-func computeCRC(headerNoCRC, nodeDir, edgeDir, meta []byte) uint32 {
+const adjDirEntrySize = 32 // 4 * int64: outOff, outLen, inOff, inLen
+
+// computeCRC hashes the header (excluding the CRC field) + both directories +
+// the adjacency directory + the metadata blob — the structural sections read at
+// open. Records are excluded so open need not page in the whole file to verify
+// integrity.
+func computeCRC(headerNoCRC, nodeDir, edgeDir, adjDir, meta []byte) uint32 {
 	h := crc32.NewIEEE()
 	h.Write(headerNoCRC)
 	h.Write(nodeDir)
 	h.Write(edgeDir)
+	h.Write(adjDir)
 	h.Write(meta)
 	return h.Sum32()
 }
@@ -159,6 +182,35 @@ func unmarshalMmapMetadata(b []byte) (*mmapMetadata, error) {
 		return nil, fmt.Errorf("mmap snapshot metadata: %w", err)
 	}
 	return &m, nil
+}
+
+// --- CSR adjacency run codec ----------------------------------------------
+//
+// A run is count(4) then count little-endian uint64 edge IDs. Empty runs encode
+// as a bare zero count (4 bytes) and decode to nil.
+
+func appendCSRRun(buf []byte, ids []uint64) []byte {
+	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(ids)))
+	for _, id := range ids {
+		buf = binary.LittleEndian.AppendUint64(buf, id)
+	}
+	return buf
+}
+
+// readCSRRun decodes a run at buf[p:], COPYING the IDs into a fresh slice so the
+// result is safe to retain after the mapping is closed. Returns nil for an empty run.
+func readCSRRun(buf []byte, p int) ([]uint64, int) {
+	n := int(binary.LittleEndian.Uint32(buf[p:]))
+	p += 4
+	if n == 0 {
+		return nil, p
+	}
+	ids := make([]uint64, n)
+	for i := 0; i < n; i++ {
+		ids[i] = binary.LittleEndian.Uint64(buf[p:])
+		p += 8
+	}
+	return ids, p
 }
 
 // --- record codec ---------------------------------------------------------

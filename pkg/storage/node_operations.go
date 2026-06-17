@@ -139,6 +139,12 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 		return nil, fmt.Errorf("property %q is required for uniqueness check", uniquePropertyKey)
 	}
 
+	// mmap mode: the uniqueness scan reads the per-tenant label membership index,
+	// which is built lazily after reopen. Force the build before the scan so a
+	// post-reopen unique-create cannot miss a base node and create a duplicate.
+	// No-op when mmap is off or already built.
+	gs.ensureMembershipBuilt()
+
 	gs.mu.Lock()
 
 	if err := gs.checkClosed(); err != nil {
@@ -700,8 +706,11 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 			return fmt.Errorf("failed to get incoming edges for node %d: %w", nodeID, err)
 		}
 	} else {
-		outgoingEdgeIDs = gs.outgoingEdges[nodeID]
-		incomingEdgeIDs = gs.incomingEdges[nodeID]
+		// Use getEdgeIDsForNode so that mmap mode picks up CSR-base edges
+		// (not just the post-open overlay). In JSON mode mmapSnap == nil and
+		// the helper falls back to the plain maps, so behaviour is unchanged.
+		outgoingEdgeIDs = gs.getEdgeIDsForNode(nodeID, true)
+		incomingEdgeIDs = gs.getEdgeIDsForNode(nodeID, false)
 	}
 
 	// Cascade delete all outgoing edges

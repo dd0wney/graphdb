@@ -273,12 +273,15 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 	// Look the edge up before deleting its shard entry so its Type/endpoints are
 	// still available. Pure index maintenance: no per-edge WAL (the single
 	// OpDeleteNode below drives replay's cascade). G3.
-	outgoing := b.graph.outgoingEdges[op.nodeID]
+	// Use getEdgeIDsForNode so mmap mode picks up CSR-base edges (not just
+	// the post-open overlay). JSON mode: mmapSnap == nil → falls back to
+	// plain maps, behaviour unchanged.
+	outgoing := b.graph.getEdgeIDsForNode(op.nodeID, true)
 	for _, edgeID := range outgoing {
 		if edge, ok := b.graph.resolveEdgeRefLocked(edgeID); ok {
 			b.graph.removeEdgeFromTenantIndex(edge)
 			removeFromLabelIndexKeepEmpty(b.graph.edgesByType, edge.Type, edgeID)
-			// a->X: drop the edge from X's incoming adjacency.
+			// a->X: drop the edge from X's incoming adjacency overlay.
 			b.graph.incomingEdges[edge.ToNodeID] = removeEdgeFromList(b.graph.incomingEdges[edge.ToNodeID], edgeID)
 		}
 		b.graph.deleteEdgeShardEntry(edgeID)
@@ -286,7 +289,7 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 		atomicDecrementWithUnderflowProtection(&b.graph.stats.EdgeCount)
 	}
 
-	incoming := b.graph.incomingEdges[op.nodeID]
+	incoming := b.graph.getEdgeIDsForNode(op.nodeID, false)
 	for _, edgeID := range incoming {
 		if edge, ok := b.graph.resolveEdgeRefLocked(edgeID); ok {
 			b.graph.removeEdgeFromTenantIndex(edge)
