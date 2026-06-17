@@ -47,7 +47,12 @@ path that `GetAllNodesForTenant` executes. `runtime.MemStats` for allocation, wa
 ## Levers (cost/benefit order)
 
 1. **Skip the redundant Clone on the mmap-base read path (Stage 2c — DONE on this branch).**
-   ~2× materialization (640 → ~335ms), no format/API change. `resolveNodeRefLocked` returns either
+   ~2× materialization (640 → ~335ms standalone), no format/API change.
+   **Measured end-to-end:** first `GetAllNodesForTenant`-after-reopen dropped **1.165s → 479ms
+   (2.4×)** at 936,908 nodes (membership ID-list stays ~10ms; mmap reopen ~7ms). The residual
+   479ms is the single decode of 937k `*Node` objects (no longer doubled by `Clone`) — the
+   irreducible "materialize the whole graph as Go objects" cost that Lever 2 (lazy property bag)
+   would further attack. `resolveNodeRefLocked` returns either
    a live overlay pointer (must Clone) or a fresh mmap copy (already owned); an `…OwnedLocked`
    variant reports which, so enumeration callers Clone only the shared pointer. Low risk; correctness
    hinges on the owned/shared distinction (overlay pointer must never be handed out uncloned).
