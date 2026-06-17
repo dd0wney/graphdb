@@ -225,6 +225,42 @@ GRAPHDB_REOPEN_BENCH=1 GRAPHDB_REOPEN_NODES=50000 GRAPHDB_REOPEN_EDGES=70000 \
 (the test sets it automatically for the reopen leg); it is a zero-overhead env-gated
 profiler safe to use against a real slow restart in production.
 
+## Stage 2a — RESULT (2026-06-17)
+
+Stage 2a persists adjacency as an immutable CSR section in `snapshot.mmap` (served via
+`getEdgeIDsForNode`: base CSR minus tombstones, unioned with the post-open overlay — no
+copy-on-write) and builds the membership indexes (label/type + per-tenant) lazily on the
+first enumeration query instead of at open. Per-tenant counts move into the persisted
+metadata so `CountNodesForTenant` is correct at open without forcing the build.
+
+**End-to-end reopen, 936,908 nodes / 1,316,003 edges:**
+
+| | wall | reopen/rebuild |
+|---|---|---|
+| cold build (JSON) | 16.33s | — |
+| JSON reopen (baseline) | 14.36s | 0.88 |
+| Stage-1 mmap reopen (membership+adjacency eager) | ~2.91s | ~0.18 |
+| **Stage-2a mmap reopen** | **7ms** | **0.00** |
+
+`loadFromDiskMmap` phase breakdown (`GRAPHDB_LOAD_PROFILE=1`), showing the eager
+membership (was 74%) and adjacency (was 26%) builds are gone from open:
+
+```
+[GRAPHDB_LOAD_PROFILE] loadFromDisk phase breakdown:
+  mmap open+CRC                             6ms   99.9%
+  sticky keys                                0s    0.0%
+  property+vector defs                       0s    0.0%
+  nextIDs+stats+tenantStats                  0s    0.0%
+  TOTAL loadFromDisk                        6ms
+```
+
+The residual open cost is now dominated entirely by `mmap open+CRC` (6ms — the
+`syscall.Mmap` call + CRC verification of the file header). Membership and adjacency
+cost at open is effectively zero: both are either persisted (CSR adjacency) or deferred
+(membership indexes). The 74% membership cost is deferred to the first enumeration query
+(paid once); Stage 2b (persist membership as mmap-native sections) would remove that too
+— it remains the open follow-up for workloads that enumerate immediately on reopen.
+
 ## Related, lower-priority asks (context, not blockers)
 
 - **#3 Incremental durability:** `Close()` calls `Snapshot()` (full ~456MB rewrite)

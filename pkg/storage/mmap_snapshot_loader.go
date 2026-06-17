@@ -45,6 +45,8 @@ func mmapEligible(config StorageConfig) bool {
 // loadFromDisk (persistence.go) but sources fields from a field-scan of the
 // mapped records instead of a JSON unmarshal.
 func (gs *GraphStorage) loadFromDiskMmap() error {
+	prof := newLoadProfiler()
+
 	snap, err := openMmapSnapshot(mmapSnapshotPath(gs.dataDir))
 	if err != nil {
 		return err
@@ -54,6 +56,7 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 		gs.deletedNodes[i] = make(map[uint64]struct{})
 		gs.deletedEdges[i] = make(map[uint64]struct{})
 	}
+	prof.mark("mmap open+CRC")
 
 	meta := snap.metadata()
 
@@ -69,6 +72,7 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 			gs.edgesByType[etype] = make(map[uint64]struct{})
 		}
 	}
+	prof.mark("sticky keys")
 
 	// Membership indexes (nodesByLabel/edgesByType + per-tenant) are built lazily
 	// on first enumeration (Stage 2a) — see membership_lazy.go. Only sticky keys
@@ -97,6 +101,7 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 			return err
 		}
 	}
+	prof.mark("property+vector defs")
 
 	gs.nextNodeID = meta.NextNodeID
 	gs.nextEdgeID = meta.NextEdgeID
@@ -111,6 +116,8 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 		gs.tenantStats[tenantid.TenantID(tid)] = &s
 	}
 	// membershipBuilt stays false: built on first enumeration.
+	prof.mark("nextIDs+stats+tenantStats")
+	prof.report()
 	return nil
 }
 
