@@ -112,15 +112,24 @@ Register sticky label/type keys only (as today). Do **not** scan for membership.
 Guarded, runs at most once, called at the top of each enumeration entry point:
 `GetNodesByLabel*`, `GetAllNodes*`, `GetAllLabels`, the four `pagination.go` readers, and
 the `tenant_operations.go` enumerators. It field-scans the base and, for each base
-node/edge ID, **skips any that is shadowed (present in the shard overlay) or tombstoned**,
-folding the rest into the membership maps.
+node/edge ID, **skips only those that are tombstoned**, folding the rest into the
+membership maps.
 
-**Why skip-shadowed-or-tombstoned is correct against post-open writes:** a base node
-relabeled by `UpdateNode` is already in the overlay shard *and* already re-indexed under
-its new labels (write-time maintenance, unchanged from Stage 1). The build skips it, so
-it is not re-added under stale base labels. New nodes (`CreateNode`) got fresh IDs
-disjoint from base and were indexed at write time. So overlay entities are handled at
-write; the build only fills in untouched base entities — no double-count, no stale labels.
+**Why skip-only-tombstoned is correct (design correction, validated in implementation):**
+the original draft proposed *also* skipping shadowed (overlay-resident) base entities, on
+the assumption that an `UpdateNode` would have re-indexed them at write time. That premise
+is false: **labels and edge types are immutable after creation** — there is no
+label-mutation API, and `UpdateNode` mutates only properties (it never touches the label
+index). So a base node promoted into the overlay via `UpdateNode` keeps its base labels and
+is *not* indexed at write time; skipping it would drop it from membership entirely.
+Therefore the build must index every live base entity, including shadowed (CoW-promoted)
+ones, from the base scan — its labels/type from the base record are still current. Post-open
+**creates** get fresh IDs beyond the base ID range, so `forEachNodeID`/`forEachEdgeID`
+(base-only) never revisit them — no double-index. Tombstoned base entities are the only
+ones skipped. (Counts are not touched by the build at all — see Stats decoupling — so
+double-counting is impossible regardless.) A future label/type-mutation API would need to
+either skip shadowed entities here or rebuild-before-mutate; this is flagged in
+`membership_lazy.go`.
 
 ### Stats decoupling
 
