@@ -261,6 +261,47 @@ cost at open is effectively zero: both are either persisted (CSR adjacency) or d
 (paid once); Stage 2b (persist membership as mmap-native sections) would remove that too
 — it remains the open follow-up for workloads that enumerate immediately on reopen.
 
+## Stage 2b — RESULT (2026-06-17)
+
+Stage 2b persists the membership inverted indexes (per-tenant node/edge enumeration +
+by-label/by-type) as mmap-native sorted-ID runs in `snapshot.mmap` (format v4), served by
+accessors that merge the base run (minus tombstones) with the post-open overlay — replacing
+the Stage-2a lazy membership build (now deleted). The first enumeration query after reopen no
+longer triggers an O(N) build from scratch.
+
+**End-to-end split, 936,908 nodes / 1,316,003 edges:**
+
+| Operation | Wall | Notes |
+|---|---|---|
+| mmap reopen (open) | 8ms | `syscall.Mmap` + CRC; effectively zero |
+| membership ID-list only (`membershipNodeIDsForTenantLocked`) | 11ms | 936,908 IDs served from the persisted section; this is the Stage-2b membership-index cost |
+| `GetAllNodesForTenant` (full enumeration) | 1.127s | ID-list (11ms) + **~1.116s decoding and cloning ~937k Node objects** |
+
+The key distinction the original measurement (1.165s first-enum) obscured: the membership-index
+cost in Stage 2b is **11ms**, not ~1s. The remaining ~1.116s in a full
+`GetAllNodesForTenant` call is **node materialization** — decoding and heap-allocating ~937k
+`Node` structs from the binary mmap region. That cost is inherent to any API that returns
+every node as concrete Go objects; the JSON reopen path pays the same cost (it front-loads it
+at startup rather than deferring it). It has nothing to do with the membership index.
+
+In other words:
+
+- **Stage 2b delivered what it promised:** the O(N) membership-rebuild on first enumeration
+  (Stage 2a: ~2s) is gone. `membershipNodeIDsForTenantLocked` now costs 11ms for 937k IDs,
+  served directly from the persisted section.
+- **Bounded-result queries** (e.g. `GetNodesByLabelForTenant` for a specific label) pay only
+  the ID-list cost for that label — a small fraction of 11ms — without materializing the full
+  node set.
+- **The residual 1.116s in `GetAllNodesForTenant`** is the cost of materializing the whole
+  tenant's graph into `[]*Node`. This is orthogonal to ask #1 (cheap reopen) and unavoidable
+  when the caller demands every node as a Go object. A workload that reopens and then
+  immediately enumerates every node pays 8ms (open) + 11ms (ID-list) + 1.116s (materialize) =
+  ~1.135s vs. Stage 2a's 8ms + ~2s (lazy build + materialize). Stage 2b is ~1.8× faster
+  for that workload, and orders-of-magnitude faster for workloads that only enumerate a
+  subset (bounded queries, random lookups).
+- The snapshot grows by the membership section (~+30 MB at this scale, still far under the
+  456 MB JSON snapshot).
+
 ## Related, lower-priority asks (context, not blockers)
 
 - **#3 Incremental durability:** `Close()` calls `Snapshot()` (full ~456MB rewrite)
