@@ -176,10 +176,10 @@ func (h *mmapSnapshotHeader) edgeDirLen() uint64 {
 
 const adjDirEntrySize = 32 // 4 * int64: outOff, outLen, inOff, inLen
 
-// computeCRC hashes the header (excluding the CRC field) + both directories +
-// the adjacency directory + the metadata blob — the structural sections read at
-// open. Records are excluded so open need not page in the whole file to verify
-// integrity.
+// computeCRC hashes the header (excluding the CRC field) + the node, edge,
+// adjacency, and membership directories + the metadata blob — the structural
+// sections read at open. Record and run bytes are excluded so open need not page
+// in the whole file to verify integrity.
 func computeCRC(headerNoCRC, nodeDir, edgeDir, adjDir, membDir, meta []byte) uint32 {
 	h := crc32.NewIEEE()
 	h.Write(headerNoCRC)
