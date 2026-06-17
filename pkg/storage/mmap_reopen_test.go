@@ -725,3 +725,61 @@ func TestMmapStage2b_EnumerationAtOpenNoBuild(t *testing.T) {
 		t.Errorf("all-edges=%d want 2", got)
 	}
 }
+
+// TestMmapStage2c_ReturnedNodeIsOwnedCopy verifies that a node returned from
+// enumeration in mmap reopen mode is a fully owned, independently mutable copy:
+// mutating the returned node must not corrupt the store's view of that node.
+// This is the safety guard for the Stage 2c Clone-skip optimisation: the
+// mmap-base decode path must return a fresh heap-owned copy; the overlay shard
+// path must still be cloned (that remains correct for both modes).
+func TestMmapStage2c_ReturnedNodeIsOwnedCopy(t *testing.T) {
+	dir := t.TempDir()
+	const tenant = "t"
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := gs.CreateNodeWithTenant(tenant, []string{"Widget"}, map[string]Value{"k": {Type: TypeString, Data: []byte("orig")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mr, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	// Enumerate (mmap-base node, served without Clone after this change).
+	nodes := mr.GetNodesByLabelForTenant(tenant, "Widget")
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes want 1", len(nodes))
+	}
+	// Mutate the returned node aggressively.
+	nodes[0].Properties["k"] = Value{Type: TypeString, Data: []byte("MUTATED")}
+	nodes[0].Properties["injected"] = Value{Type: TypeString, Data: []byte("x")}
+	nodes[0].Labels = append(nodes[0].Labels, "Injected")
+
+	// Re-read via the single getter: the store must be UNTOUCHED.
+	got, err := mr.GetNodeForTenant(n.ID, tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got.Properties["k"].Data) != "orig" {
+		t.Errorf("store property corrupted: k=%q want orig", string(got.Properties["k"].Data))
+	}
+	if _, bad := got.Properties["injected"]; bad {
+		t.Error("store gained an injected property — returned node aliased storage")
+	}
+	if len(got.Labels) != 1 {
+		t.Errorf("store labels corrupted: %v", got.Labels)
+	}
+	// And a fresh enumeration still sees the original.
+	again := mr.GetNodesByLabelForTenant(tenant, "Widget")
+	if len(again) != 1 || string(again[0].Properties["k"].Data) != "orig" {
+		t.Errorf("second enumeration corrupted")
+	}
+}

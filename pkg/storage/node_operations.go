@@ -327,14 +327,17 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 	gs.rlockShard(nodeID)
 	defer gs.runlockShard(nodeID)
 
-	node, exists := gs.resolveNodeRefLocked(nodeID)
+	node, owned, exists := gs.resolveNodeRefOwnedLocked(nodeID)
 	if !exists {
 		gs.recordOperation("get_node", "error", start)
 		return nil, ErrNodeNotFound
 	}
+	if !owned {
+		node = node.Clone()
+	}
 
 	gs.recordOperation("get_node", "success", start)
-	return node.Clone(), nil
+	return node, nil
 }
 
 // GetNodeForTenant retrieves a node by ID, scoped to the given tenant.
@@ -353,11 +356,18 @@ func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node,
 	// Per-shard read lock (A4) — see GetNode for the rationale.
 	gs.rlockShard(nodeID)
 	defer gs.runlockShard(nodeID)
-	node, err := gs.getNodeRefForTenant(nodeID, tenantID)
-	if err != nil {
-		return nil, err
+	node, owned, exists := gs.resolveNodeRefOwnedLocked(nodeID)
+	if !exists {
+		return nil, ErrNodeNotFound
 	}
-	return node.Clone(), nil
+	if node.TenantID != effectiveTenantID(tenantID).String() {
+		// Cross-tenant: same error as missing to avoid existence-leak side channel.
+		return nil, ErrNodeNotFound
+	}
+	if !owned {
+		node = node.Clone()
+	}
+	return node, nil
 }
 
 // WithNodeRefForTenant invokes fn with the live node pointer for the
@@ -399,6 +409,10 @@ func (gs *GraphStorage) WithNodeRefForTenant(nodeID uint64, tenantID string, fn 
 //
 // Returns ErrNodeNotFound on missing or cross-tenant. See
 // GetNodeForTenant for the rationale on the unified error response.
+//
+// Note: GetNodeForTenant no longer delegates here — it calls resolveNodeRefOwnedLocked
+// directly to obtain the `owned` flag and skip the redundant Clone on mmap-base nodes
+// (Stage 2c). This helper remains for internal inspection callers (e.g. WithNodeRefForTenant).
 func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*Node, error) {
 	node, exists := gs.resolveNodeRefLocked(nodeID)
 	if !exists {
