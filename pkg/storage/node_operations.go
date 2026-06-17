@@ -139,6 +139,12 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 		return nil, fmt.Errorf("property %q is required for uniqueness check", uniquePropertyKey)
 	}
 
+	// mmap mode: the uniqueness scan reads the per-tenant label membership index,
+	// which is built lazily after reopen. Force the build before the scan so a
+	// post-reopen unique-create cannot miss a base node and create a duplicate.
+	// No-op when mmap is off or already built.
+	gs.ensureMembershipBuilt()
+
 	gs.mu.Lock()
 
 	if err := gs.checkClosed(); err != nil {

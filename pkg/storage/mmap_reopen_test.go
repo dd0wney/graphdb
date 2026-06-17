@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"sort"
 	"strings"
 	"testing"
@@ -392,6 +393,71 @@ func TestMmapReopen_ParityWithJSON(t *testing.T) {
 	}
 }
 
+func TestMmapStage2_LazyMembershipParity(t *testing.T) {
+	dir := t.TempDir()
+	const tenant = "t"
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if _, err := gs.CreateNodeWithTenant(tenant, []string{"Alpha"}, map[string]Value{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := gs.CreateNodeWithTenant(tenant, []string{"Beta"}, map[string]Value{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, err := gs.CreateNodeWithTenant(tenant, []string{"Gamma"}, map[string]Value{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := gs.CreateNodeWithTenant(tenant, []string{"Gamma"}, map[string]Value{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := gs.CreateEdgeWithTenant(tenant, a.ID, b.ID, "LINK", map[string]Value{}, 1.0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mr, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	// Counts correct WITHOUT triggering an enumeration (stats decoupled from the build).
+	if got := mr.CountNodesForTenant(tenant); got != 10 {
+		t.Errorf("CountNodesForTenant=%d want 10 (must not need membership build)", got)
+	}
+	// First enumeration triggers the lazy build; results match.
+	if got := len(mr.GetNodesByLabelForTenant(tenant, "Alpha")); got != 5 {
+		t.Errorf("Alpha=%d want 5", got)
+	}
+	if got := len(mr.GetNodesByLabelForTenant(tenant, "Beta")); got != 3 {
+		t.Errorf("Beta=%d want 3", got)
+	}
+	// A post-open create is reflected (overlay indexed at write time).
+	if _, err := mr.CreateNodeWithTenant(tenant, []string{"Alpha"}, map[string]Value{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(mr.GetNodesByLabelForTenant(tenant, "Alpha")); got != 6 {
+		t.Errorf("Alpha after create=%d want 6", got)
+	}
+	// Edge type-membership after lazy build: the 2 LINK edges written before close
+	// must be visible via GetEdgesByTypeForTenant (triggers ensureMembershipBuilt).
+	if got := len(mr.GetEdgesByTypeForTenant(tenant, "LINK")); got != 2 {
+		t.Errorf("LINK edges=%d want 2 (edge membership after lazy build)", got)
+	}
+}
+
 func TestMmapStage2_AdjacencyFromCSR(t *testing.T) {
 	dir := t.TempDir()
 	const tenant = "t"
@@ -465,5 +531,75 @@ func TestMmapStage2_AdjacencyFromCSR(t *testing.T) {
 	e, _ := mr2.GetOutgoingEdgesForTenant(n1, tenant)
 	if len(e) != 2 {
 		t.Errorf("after 2nd reopen out(n1)=%d want 2", len(e))
+	}
+}
+
+// CONSUMER CONTRACT: coord's claim semantics rely on
+// CreateNodeWithUniquePropertyForTenant rejecting duplicates. After an mmap
+// reopen the per-tenant membership index is built lazily; the unique-create must
+// still see base nodes WITHOUT a prior enumeration call, or a reopened store
+// would silently allow duplicate claims.
+func TestMmapStage2_UniqueConstraintSurvivesReopen(t *testing.T) {
+	dir := t.TempDir()
+	const tenant = "t"
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	props := map[string]Value{"for_task": {Type: TypeString, Data: []byte("task-42")}}
+	if _, err := gs.CreateNodeWithUniquePropertyForTenant(tenant, []string{"Claim"}, props, "Claim", "for_task"); err != nil {
+		t.Fatalf("first unique create: %v", err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mr, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	// No enumeration call first — the unique-create itself must trigger the build.
+	dup := map[string]Value{"for_task": {Type: TypeString, Data: []byte("task-42")}}
+	_, err = mr.CreateNodeWithUniquePropertyForTenant(tenant, []string{"Claim"}, dup, "Claim", "for_task")
+	if err == nil {
+		t.Fatal("duplicate unique-property create succeeded after reopen — uniqueness lost")
+	}
+	var ucErr *UniqueConstraintError
+	if !errors.As(err, &ucErr) {
+		t.Fatalf("want *UniqueConstraintError, got %T: %v", err, err)
+	}
+}
+
+func TestMmapStage2_UpdatedBaseNodeStillEnumerated(t *testing.T) {
+	dir := t.TempDir()
+	const tenant = "t"
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := gs.CreateNodeWithTenant(tenant, []string{"Widget"}, map[string]Value{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mr, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	// Promote the base node into the overlay via a property update (labels unchanged).
+	if err := mr.UpdateNode(n.ID, map[string]Value{"k": {Type: TypeString, Data: []byte("v")}}); err != nil {
+		t.Fatal(err)
+	}
+	// First enumeration triggers the lazy build; the updated base node must still
+	// be indexed under its (immutable) label.
+	if got := len(mr.GetNodesByLabelForTenant(tenant, "Widget")); got != 1 {
+		t.Errorf("Widget=%d want 1 (updated base node dropped from membership)", got)
 	}
 }

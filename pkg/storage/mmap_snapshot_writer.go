@@ -175,6 +175,12 @@ func buildMmapMetadata(gs *GraphStorage) *mmapMetadata {
 		}
 		idx.mu.RUnlock()
 	}
+	tenantStats := make(map[string]TenantStats, len(gs.tenantStats))
+	for tid, st := range gs.tenantStats {
+		if st != nil {
+			tenantStats[string(tid)] = *st
+		}
+	}
 	return &mmapMetadata{
 		PropertyIndexes:  propIdx,
 		VectorIndexes:    gs.vectorIndex.IndexDefinitions(),
@@ -183,6 +189,7 @@ func buildMmapMetadata(gs *GraphStorage) *mmapMetadata {
 		NextEdgeID:       atomic.LoadUint64(&gs.nextEdgeID),
 		StickyNodeLabels: labelIndexKeys(gs.nodesByLabel),
 		StickyEdgeTypes:  labelIndexKeys(gs.edgesByType),
+		TenantStats:      tenantStats,
 	}
 }
 

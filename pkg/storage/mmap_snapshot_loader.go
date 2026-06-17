@@ -70,25 +70,9 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 		}
 	}
 
-	// Node indexes (global label + per-tenant), via field-scan (no property bags).
-	snap.forEachNodeID(func(id uint64, off int64) {
-		nid, tenant, labels := scanNodeFields(snap.data, off)
-		stub := &Node{ID: nid, TenantID: tenant, Labels: labels}
-		for _, label := range labels {
-			addToLabelIndex(gs.nodesByLabel, label, nid)
-		}
-		gs.addNodeToTenantIndex(stub)
-	})
-
-	// Edge indexes (global type + per-tenant); adjacency now served from CSR
-	// base in getEdgeIDsForNode (Stage 2a) — no eager rebuild needed.
-	snap.forEachEdgeID(func(id uint64, off int64) {
-		eid, _, _, tenant, etype := scanEdgeFields(snap.data, off)
-		stub := &Edge{ID: eid, TenantID: tenant, Type: etype}
-		addToLabelIndex(gs.edgesByType, etype, eid)
-		gs.addEdgeToTenantIndex(stub)
-		// adjacency now served from CSR base in getEdgeIDsForNode (Stage 2a)
-	})
+	// Membership indexes (nodesByLabel/edgesByType + per-tenant) are built lazily
+	// on first enumeration (Stage 2a) — see membership_lazy.go. Only sticky keys
+	// (registered above) are materialized at open.
 
 	// Property indexes (restored verbatim, like loadFromDisk).
 	gs.propertyIndexes = make(map[string]*PropertyIndex, len(meta.PropertyIndexes))
@@ -118,6 +102,15 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 	gs.nextEdgeID = meta.NextEdgeID
 	gs.stats = meta.Stats
 	atomic.StoreUint64(&gs.avgQueryTimeBits, math.Float64bits(meta.Stats.AvgQueryTime))
+
+	// Per-tenant counts: restored from metadata and intentionally decoupled from
+	// the lazy membership build (see membership_lazy.go) so CountNodesForTenant is
+	// correct at open without forcing the build.
+	for tid, st := range meta.TenantStats {
+		s := st
+		gs.tenantStats[tenantid.TenantID(tid)] = &s
+	}
+	// membershipBuilt stays false: built on first enumeration.
 	return nil
 }
 

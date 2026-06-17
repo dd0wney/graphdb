@@ -67,6 +67,7 @@ func pageFromSortedIDs[T any](ids []uint64, afterID uint64, limit int,
 // collection and clone is skipped — but the global lock is not held across the
 // clone loop, so writers are not stalled.
 func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limit int) ([]*Node, uint64) {
+	gs.ensureMembershipBuilt()
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
@@ -101,6 +102,7 @@ func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limi
 // release, then clone each node under its per-shard RLock. Same non-atomic-
 // snapshot tradeoff as NodesPageForTenant and GetAllNodesForTenant.
 func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterID uint64, limit int) ([]*Node, uint64) {
+	gs.ensureMembershipBuilt()
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
@@ -137,6 +139,7 @@ func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterI
 // Lock pattern mirrors GetAllEdgesForTenant and NodesPageForTenant: collect
 // sorted IDs under gs.mu.RLock, release, then clone under per-shard RLocks.
 func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limit int) ([]*Edge, uint64) {
+	gs.ensureMembershipBuilt()
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
@@ -171,6 +174,7 @@ func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limi
 // release, then clone each edge under its per-shard RLock. Same non-atomic-
 // snapshot tradeoff as EdgesPageForTenant and GetAllEdgesForTenant.
 func (gs *GraphStorage) EdgesByTypePageForTenant(tenantID, edgeType string, afterID uint64, limit int) ([]*Edge, uint64) {
+	gs.ensureMembershipBuilt()
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
