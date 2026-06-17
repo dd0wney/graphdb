@@ -239,6 +239,63 @@ func TestCSRRunCodec_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestMmapSnapshot_CSRRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "snapshot.mmap")
+
+	nodes := []*Node{{ID: 1, TenantID: "t"}, {ID: 2, TenantID: "t"}, {ID: 3, TenantID: "t"}}
+	// edges: 1->2 (id10), 1->3 (id11), 2->3 (id12)
+	edges := []*Edge{
+		{ID: 10, TenantID: "t", FromNodeID: 1, ToNodeID: 2, Type: "E"},
+		{ID: 11, TenantID: "t", FromNodeID: 1, ToNodeID: 3, Type: "E"},
+		{ID: 12, TenantID: "t", FromNodeID: 2, ToNodeID: 3, Type: "E"},
+	}
+	if err := writeMmapSnapshotData(path, nodes, edges, &mmapMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := openMmapSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snap.close()
+
+	assertU64Set := func(name string, got, want []uint64) {
+		t.Helper()
+		gm := map[uint64]bool{}
+		for _, x := range got {
+			gm[x] = true
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%s len got %d want %d (%v)", name, len(got), len(want), got)
+		}
+		for _, w := range want {
+			if !gm[w] {
+				t.Errorf("%s missing %d (got %v)", name, w, got)
+			}
+		}
+	}
+	assertU64Set("out(1)", snap.outgoingCSR(1), []uint64{10, 11})
+	assertU64Set("out(2)", snap.outgoingCSR(2), []uint64{12})
+	assertU64Set("out(3)", snap.outgoingCSR(3), nil)
+	assertU64Set("in(3)", snap.incomingCSR(3), []uint64{11, 12})
+	assertU64Set("in(2)", snap.incomingCSR(2), []uint64{10})
+	assertU64Set("in(1)", snap.incomingCSR(1), nil)
+
+	// Empty graph: no CSR sections; accessors return nil for any ID.
+	emptyPath := filepath.Join(dir, "empty.mmap")
+	if err := writeMmapSnapshotData(emptyPath, nil, nil, &mmapMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+	esnap, err := openMmapSnapshot(emptyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer esnap.close()
+	if esnap.outgoingCSR(1) != nil || esnap.incomingCSR(1) != nil {
+		t.Errorf("empty graph CSR should be nil")
+	}
+}
+
 func TestMmapMetadata_TenantStatsRoundTrip(t *testing.T) {
 	m := &mmapMetadata{TenantStats: map[string]TenantStats{
 		"acme": {NodeCount: 5, EdgeCount: 9, StorageBytes: 100, LastUpdated: 42},

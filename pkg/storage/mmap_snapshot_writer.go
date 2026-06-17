@@ -13,7 +13,7 @@ import (
 )
 
 // writeMmapSnapshotData writes nodes (sorted ascending by ID), edges, and metadata to
-// path in the mmap-able v2 format with a CRC over the structural sections.
+// path in the mmap-able v3 format with a CRC over the structural sections.
 func writeMmapSnapshotData(path string, nodes []*Node, edges []*Edge, meta *mmapMetadata) error {
 	metaBytes, err := meta.marshal()
 	if err != nil {
@@ -73,13 +73,63 @@ func writeMmapSnapshotData(path string, nodes []*Node, edges []*Edge, meta *mmap
 		offset += int64(len(edgeDirBytes))
 	}
 
+	// CSR adjacency: bucket edge IDs per endpoint, then emit outgoing data,
+	// incoming data, and a dense combined directory indexed by nodeID-minNodeID.
+	var adjDirBytes []byte
+	if len(nodes) > 0 {
+		out := make(map[uint64][]uint64, len(nodes))
+		in := make(map[uint64][]uint64, len(nodes))
+		for _, e := range edges {
+			out[e.FromNodeID] = append(out[e.FromNodeID], e.ID)
+			in[e.ToNodeID] = append(in[e.ToNodeID], e.ID)
+		}
+		type adjEntry struct{ outOff, outLen, inOff, inLen int64 }
+		entries := make([]adjEntry, hdr.maxNodeID-hdr.minNodeID+1)
+
+		hdr.outCSROffset = uint64(offset)
+		for _, n := range nodes {
+			ids := out[n.ID]
+			entries[n.ID-hdr.minNodeID].outOff = offset
+			entries[n.ID-hdr.minNodeID].outLen = int64(len(ids))
+			rec := appendCSRRun(nil, ids)
+			if _, err := w.Write(rec); err != nil {
+				return err
+			}
+			offset += int64(len(rec))
+		}
+		hdr.inCSROffset = uint64(offset)
+		for _, n := range nodes {
+			ids := in[n.ID]
+			entries[n.ID-hdr.minNodeID].inOff = offset
+			entries[n.ID-hdr.minNodeID].inLen = int64(len(ids))
+			rec := appendCSRRun(nil, ids)
+			if _, err := w.Write(rec); err != nil {
+				return err
+			}
+			offset += int64(len(rec))
+		}
+		hdr.adjDirOffset = uint64(offset)
+		adjDirBytes = make([]byte, len(entries)*adjDirEntrySize)
+		for i, e := range entries {
+			b := adjDirBytes[i*adjDirEntrySize:]
+			binary.LittleEndian.PutUint64(b[0:], uint64(e.outOff))
+			binary.LittleEndian.PutUint64(b[8:], uint64(e.outLen))
+			binary.LittleEndian.PutUint64(b[16:], uint64(e.inOff))
+			binary.LittleEndian.PutUint64(b[24:], uint64(e.inLen))
+		}
+		if _, err := w.Write(adjDirBytes); err != nil {
+			return err
+		}
+		offset += int64(len(adjDirBytes))
+	}
+
 	hdr.metaOffset = uint64(offset)
 	hdr.metaLen = uint64(len(metaBytes))
 	if _, err := w.Write(metaBytes); err != nil {
 		return err
 	}
 
-	hdr.crc = computeCRC(hdr.marshal()[:hCRC], nodeDirBytes, edgeDirBytes, metaBytes)
+	hdr.crc = computeCRC(hdr.marshal()[:hCRC], nodeDirBytes, edgeDirBytes, adjDirBytes, metaBytes)
 
 	if err := w.Flush(); err != nil {
 		return err
