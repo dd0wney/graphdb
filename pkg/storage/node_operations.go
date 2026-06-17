@@ -139,12 +139,6 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 		return nil, fmt.Errorf("property %q is required for uniqueness check", uniquePropertyKey)
 	}
 
-	// mmap mode: the uniqueness scan reads the per-tenant label membership index,
-	// which is built lazily after reopen. Force the build before the scan so a
-	// post-reopen unique-create cannot miss a base node and create a duplicate.
-	// No-op when mmap is off or already built.
-	gs.ensureMembershipBuilt()
-
 	gs.mu.Lock()
 
 	if err := gs.checkClosed(); err != nil {
@@ -153,20 +147,18 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 	}
 
 	tid := effectiveTenantID(tenantID)
-	if labelMap := gs.tenantNodesByLabel[tid]; labelMap != nil {
-		for existingID := range labelMap[uniqueLabel] {
-			existing, exists := gs.resolveNodeRefLocked(existingID)
-			if !exists {
-				continue
-			}
-			if existingVal, has := existing.Properties[uniquePropertyKey]; has && valuesEqual(existingVal, newVal) {
-				gs.mu.Unlock()
-				return nil, &UniqueConstraintError{
-					Label:             uniqueLabel,
-					PropertyKey:       uniquePropertyKey,
-					ConflictingNodeID: existingID,
-					TenantID:          tid.String(),
-				}
+	for _, existingID := range gs.membershipNodeIDsByLabelLocked(tid, uniqueLabel) {
+		existing, exists := gs.resolveNodeRefLocked(existingID)
+		if !exists {
+			continue
+		}
+		if existingVal, has := existing.Properties[uniquePropertyKey]; has && valuesEqual(existingVal, newVal) {
+			gs.mu.Unlock()
+			return nil, &UniqueConstraintError{
+				Label:             uniqueLabel,
+				PropertyKey:       uniquePropertyKey,
+				ConflictingNodeID: existingID,
+				TenantID:          tid.String(),
 			}
 		}
 	}

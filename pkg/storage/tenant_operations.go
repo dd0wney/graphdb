@@ -3,7 +3,6 @@ package storage
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/dd0wney/graphdb/pkg/tenantid"
@@ -145,25 +144,11 @@ func (gs *GraphStorage) removeEdgeFromTenantIndex(edge *Edge) {
 
 // GetNodesByLabelForTenant returns all nodes with the given label for a specific tenant.
 func (gs *GraphStorage) GetNodesByLabelForTenant(tenantID, label string) []*Node {
-	gs.ensureMembershipBuilt()
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
 	tid := effectiveTenantID(tenantID)
-
-	labelMap := gs.tenantNodesByLabel[tid]
-	if labelMap == nil {
-		return nil
-	}
-
-	bucket := labelMap[label]
-	if len(bucket) == 0 {
-		return nil
-	}
-
-	// Sort on read: the set's iteration order is randomized, so sort the IDs
-	// to keep results deterministic for pagination and stable contracts.
-	nodeIDs := sortedBucketIDs(bucket)
+	nodeIDs := gs.membershipNodeIDsByLabelLocked(tid, label)
 	nodes := make([]*Node, 0, len(nodeIDs))
 	for _, id := range nodeIDs {
 		if node, exists := gs.resolveNodeRefLocked(id); exists {
@@ -181,38 +166,20 @@ func (gs *GraphStorage) GetNodesByLabelForTenant(tenantID, label string) []*Node
 // every node in the bucket — for a 50k-node label that is 50k Clone() calls
 // under gs.mu.RLock just to discard them and take a length (audit M1).
 func (gs *GraphStorage) CountNodesByLabelForTenant(tenantID, label string) int {
-	gs.ensureMembershipBuilt()
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
 	tid := effectiveTenantID(tenantID)
-	labelMap := gs.tenantNodesByLabel[tid]
-	if labelMap == nil {
-		return 0
-	}
-	return len(labelMap[label])
+	return len(gs.membershipNodeIDsByLabelLocked(tid, label))
 }
 
 // GetEdgesByTypeForTenant returns all edges with the given type for a specific tenant.
 func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Edge {
-	gs.ensureMembershipBuilt()
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
 	tid := effectiveTenantID(tenantID)
-
-	typeMap := gs.tenantEdgesByType[tid]
-	if typeMap == nil {
-		return nil
-	}
-
-	bucket := typeMap[edgeType]
-	if len(bucket) == 0 {
-		return nil
-	}
-
-	// Sort on read (see GetNodesByLabelForTenant) for deterministic order.
-	edgeIDs := sortedBucketIDs(bucket)
+	edgeIDs := gs.membershipEdgeIDsByTypeLocked(tid, edgeType)
 	edges := make([]*Edge, 0, len(edgeIDs))
 	for _, id := range edgeIDs {
 		if edge, exists := gs.resolveEdgeRefLocked(id); exists {
@@ -237,18 +204,11 @@ func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Ed
 // collection and its clone is simply skipped (same tradeoff A4 accepted for
 // GetNode). IDs are returned in ascending order for deterministic pagination.
 func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
-	gs.ensureMembershipBuilt()
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
-	idSet := gs.tenantNodeIDs[tid]
-	ids := make([]uint64, 0, len(idSet))
-	for id := range idSet {
-		ids = append(ids, id)
-	}
+	ids := gs.membershipNodeIDsForTenantLocked(tid)
 	gs.mu.RUnlock()
-
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 	nodes := make([]*Node, 0, len(ids))
 	for _, id := range ids {
@@ -277,18 +237,11 @@ func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
 // tradeoff as GetAllNodesForTenant: an edge deleted between collection and
 // clone is skipped.
 func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) []*Edge {
-	gs.ensureMembershipBuilt()
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
-	idSet := gs.tenantEdgeIDs[tid]
-	ids := make([]uint64, 0, len(idSet))
-	for id := range idSet {
-		ids = append(ids, id)
-	}
+	ids := gs.membershipEdgeIDsForTenantLocked(tid)
 	gs.mu.RUnlock()
-
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 	edges := make([]*Edge, 0, len(ids))
 	for _, id := range ids {
@@ -329,33 +282,15 @@ func (gs *GraphStorage) GetTenantStats(tenantID string) *TenantStats {
 
 // ListTenants returns a list of all tenant IDs that have data.
 func (gs *GraphStorage) ListTenants() []string {
-	gs.ensureMembershipBuilt()
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
-	tenants := make(map[tenantid.TenantID]bool)
-
-	// Collect tenants from stats
-	for tid := range gs.tenantStats {
-		tenants[tid] = true
-	}
-
-	// Collect tenants from node indexes
-	for tid := range gs.tenantNodesByLabel {
-		tenants[tid] = true
-	}
-
-	// Collect tenants from edge indexes
-	for tid := range gs.tenantEdgesByType {
-		tenants[tid] = true
-	}
-
+	tids := gs.membershipTenantsLocked()
 	// Convert to []string for the public API (deferred to A3 to migrate to []TenantID).
-	result := make([]string, 0, len(tenants))
-	for tid := range tenants {
+	result := make([]string, 0, len(tids))
+	for _, tid := range tids {
 		result = append(result, tid.String())
 	}
-
 	return result
 }
 
@@ -489,42 +424,18 @@ func (gs *GraphStorage) DeleteTenant(tenantID string) (nodesDeleted, edgesDelete
 
 // GetLabelsForTenant returns all unique labels used by a tenant.
 func (gs *GraphStorage) GetLabelsForTenant(tenantID string) []string {
-	gs.ensureMembershipBuilt()
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
 	tid := effectiveTenantID(tenantID)
-
-	labelMap := gs.tenantNodesByLabel[tid]
-	if labelMap == nil {
-		return nil
-	}
-
-	labels := make([]string, 0, len(labelMap))
-	for label := range labelMap {
-		labels = append(labels, label)
-	}
-
-	return labels
+	return gs.membershipLabelsForTenantLocked(tid)
 }
 
 // GetEdgeTypesForTenant returns all unique edge types used by a tenant.
 func (gs *GraphStorage) GetEdgeTypesForTenant(tenantID string) []string {
-	gs.ensureMembershipBuilt()
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
 	tid := effectiveTenantID(tenantID)
-
-	typeMap := gs.tenantEdgesByType[tid]
-	if typeMap == nil {
-		return nil
-	}
-
-	types := make([]string, 0, len(typeMap))
-	for edgeType := range typeMap {
-		types = append(types, edgeType)
-	}
-
-	return types
+	return gs.membershipEdgeTypesForTenantLocked(tid)
 }
