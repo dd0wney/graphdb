@@ -1203,3 +1203,94 @@ func TestMmapReopen_RandomizedParity(t *testing.T) {
 		"after-second-reopen",
 	)
 }
+
+// TestMmapReopen_DeleteAllNodesClears is the regression gate for #416. In mmap mode
+// the in-memory shards are an overlay on the still-mapped base; DeleteAllNodes cleared
+// only the overlay, leaving the base mapped and un-tombstoned. The result was that
+// Snapshot() (via forEachNodeUnlocked) re-persisted every "deleted" node and reads kept
+// serving them — so DeleteAllNodes was a silent no-op on an mmap store. A JSON-mode store
+// run through the identical sequence (where DeleteAllNodes already works) is the oracle:
+// after delete-all both stores must be empty, live and across a reopen.
+func TestMmapReopen_DeleteAllNodesClears(t *testing.T) {
+	jsonDir, mmapDir := t.TempDir(), t.TempDir()
+
+	// Seed identical data in both modes; close so the mmap snapshot is persisted.
+	jgs, err := NewGraphStorage(jsonDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildReopenFixture(t, jgs)
+	if err := jgs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	mgs, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildReopenFixture(t, mgs)
+	if err := mgs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reopen both. The mmap store must take the mmap path — that live base is the
+	// condition under which #416 reproduced.
+	jr, err := NewGraphStorage(jsonDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mr, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mr.mmapSnap == nil {
+		t.Fatal("mmap reopen did not take the mmap path")
+	}
+
+	// Delete everything in both.
+	if err := jr.DeleteAllNodes(); err != nil {
+		t.Fatalf("json DeleteAllNodes: %v", err)
+	}
+	if err := mr.DeleteAllNodes(); err != nil {
+		t.Fatalf("mmap DeleteAllNodes: %v", err)
+	}
+
+	// Live: both stores must report empty for every tenant. (Pre-fix the mmap store
+	// still served the base nodes here.)
+	for _, tenant := range []string{rtTenantA, rtTenantB} {
+		if c := mr.CountNodesForTenant(tenant); c != 0 {
+			t.Errorf("mmap CountNodesForTenant(%s) = %d after DeleteAllNodes, want 0", tenant, c)
+		}
+		if c := mr.CountEdgesForTenant(tenant); c != 0 {
+			t.Errorf("mmap CountEdgesForTenant(%s) = %d after DeleteAllNodes, want 0", tenant, c)
+		}
+		if n := mr.GetAllNodesForTenant(tenant); len(n) != 0 {
+			t.Errorf("mmap GetAllNodesForTenant(%s) = %d nodes after DeleteAllNodes, want 0", tenant, len(n))
+		}
+		assertFingerprintEqual(t, fingerprintTenant(t, jr, tenant), fingerprintTenant(t, mr, tenant), "live-after-deleteall "+tenant)
+	}
+	if err := jr.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := mr.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Across reopen: the cleared state must persist. (Pre-fix the snapshot written by
+	// DeleteAllNodes contained the whole old graph, so it reappeared here.)
+	jr2, err := NewGraphStorage(jsonDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jr2.Close()
+	mr2, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr2.Close()
+	for _, tenant := range []string{rtTenantA, rtTenantB} {
+		if c := mr2.CountNodesForTenant(tenant); c != 0 {
+			t.Errorf("mmap CountNodesForTenant(%s) = %d after reopen, want 0", tenant, c)
+		}
+		assertFingerprintEqual(t, fingerprintTenant(t, jr2, tenant), fingerprintTenant(t, mr2, tenant), "reopen-after-deleteall "+tenant)
+	}
+}
