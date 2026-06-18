@@ -44,16 +44,15 @@ Per CLAUDE.md ("trust the code, then surface the discrepancy"): the audit docs a
 
 ## Current state
 
-- **`origin/main` HEAD**: `20bd767` (#420). v0.6.0 released.
-- **Open PRs**: none.
-- **In-flight branch**: `fix/goreleaser-drop-windows` — one staged change to `.goreleaser.yml`: removes `windows` from `goos` on all three build entries and deletes the Windows `format_overrides` (`format: zip`) block. No PR yet. Ready to land.
+- **`origin/main` HEAD**: `0ccb976` (#423). v0.6.0 released; both §A quick-wins have since landed (below).
+- **Open PRs**: **#424** — file-organization refactor: splits 6 oversized, low-cohesion files into focused same-package siblings (`physical_plan.go` 1274→58, `executor_test.go` 2788→65, etc.), provably behavior-neutral (byte-identical executable code). In CI / merge-on-green. Spec + plan under `docs/superpowers/`.
 - **mmap mode**: shipped, **off by default**, no consumer exposed.
 
 ## Genuinely-outstanding inventory (reconciled)
 
-### A — In-flight / quick wins
-- **Land `fix/goreleaser-drop-windows`** — commit the staged diff → single-file PR → merge. Trivial.
-- **#416 — `DeleteAllNodes` mmap-awareness bug** — pre-existing from Stage 1; leaves the base mapped so a delete-all survives reopen. Small, concrete correctness fix; tracked issue exists.
+### A — In-flight / quick wins — ✅ both landed
+- **Land `fix/goreleaser-drop-windows`** — ✅ **DONE (#421, `5b97e3f`)**: dropped `windows` from all three goreleaser builds + the Windows `format_overrides`.
+- **#416 — `DeleteAllNodes` mmap-awareness bug** — ✅ **DONE (#423, `0ccb976`)**: `DeleteAllNodes` now unmaps the mmap base (mirroring `Close()`) before snapshotting, so a delete-all is real in memory and across reopen instead of silently re-persisting the base. Root cause was deeper than the issue title — in mmap mode the op was a no-op that rewrote the full old graph. Gated by a new JSON↔mmap parity test (`TestMmapReopen_DeleteAllNodesClears`).
 
 ### B — Open decisions gating further mmap work (carried from 06-17)
 - **B-1**: is full-graph `GetAllNodesForTenant`-on-reopen a real consumer hot path? → gates DoD Levers 2–3.
