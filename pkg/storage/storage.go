@@ -19,7 +19,17 @@ import (
 // construction time) start from this instead of duplicating defaults.
 func DefaultStorageConfig(dataDir string) StorageConfig {
 	return StorageConfig{
-		DataDir:               dataDir,
+		DataDir: dataDir,
+		// Per-write fsync is the default: it is the strongest-durability path
+		// AND the fastest on local/NVMe storage, where an fsync (~11µs) is far
+		// cheaper than BatchedWAL's flush-interval wait. The FlushInterval
+		// benchmark (bench_wal_flush_interval_test.go) measured per-write fsync
+		// at ~10.8µs/op vs batched-1ms at ~135µs/op — 13× faster — because at low
+		// writer counts each batched write is bounded by the flush timer.
+		// BatchedWAL (EnableBatching: true) amortizes fsync across a batch and
+		// wins only when fsync is EXPENSIVE — slow or networked disks under high
+		// write concurrency. Enable it per-deployment there; durability is
+		// preserved either way (a write returns only after its (batch-)fsync).
 		EnableBatching:        false,
 		EnableCompression:     false,
 		EnableEdgeCompression: true, // Enabled by default for 5.08x memory savings
