@@ -6,6 +6,7 @@ import (
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
+// TestExecutor_MatchSingleNode tests MATCH query for single node
 func TestExecutor_MatchSingleNode(t *testing.T) {
 	gs, cleanup := setupExecutorTestGraph(t)
 	defer cleanup()
