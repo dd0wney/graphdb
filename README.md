@@ -284,7 +284,7 @@ go build -o bin/tui-demo ./cmd/tui-demo
 > `pkg/replication/` library were retired in A8.1 (PRs #129/#130/#133,
 > 2026-05-12) because they pre-dated the multi-tenancy work and routed
 > writes to the default tenant. Use `cmd/server` for any real
-> deployment. Horizontal scale is a multi-quarter roadmap item — see
+> deployment. graphdb runs **single-node**; the `pkg/cluster` package is experimental and not wired into the server. Horizontal scale is a multi-quarter roadmap item — see
 > `docs/internals/design/A8_1_SPIKE_2026-05-12.md` for the architectural decision and
 > `docs/PRODUCTION_QUICKSTART.md` § "Scale Considerations" for the
 > practical workarounds.
