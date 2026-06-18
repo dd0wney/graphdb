@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -492,33 +493,25 @@ func main() {
 		logger.Info("encryption configured for API server")
 	}
 
-	// Handle graceful shutdown (Railway best practice)
+	// Graceful shutdown: stop accepting, drain in-flight, then close storage.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
 	go func() {
 		<-sigChan
 		logger.Info("shutting down server")
-
-		// Give time for graceful shutdown
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-
-		// Wait for shutdown or timeout
-		<-ctx.Done()
-
-		// Stop license manager
+		if err := server.Shutdown(ctx); err != nil {
+			logger.Error("graceful shutdown failed", "error", err)
+		}
 		licensing.Global().Stop()
-
-		// Close graph storage
 		graph.Close()
 		logger.Info("server exited")
 		os.Exit(0)
 	}()
 
-	// Start server
 	logger.Info("server starting", "port", *port)
-	if err := server.Start(); err != nil {
+	if err := server.Start(); err != nil && err != http.ErrServerClosed {
 		logger.Error("server error", "error", err)
 		os.Exit(1)
 	}
