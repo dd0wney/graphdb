@@ -887,6 +887,25 @@ func (gs *GraphStorage) DeleteAllNodes() error {
 		}
 	}
 
+	// mmap mode: the shards we just cleared are only an overlay on the mmap base.
+	// Without dropping the base, forEachNodeUnlocked (used by the Snapshot below)
+	// still enumerates every base node — re-persisting the data we just deleted —
+	// and reads keep serving it, because resolveNodeRefLocked falls through to the
+	// base for any node that isn't tombstoned and clearing the shards adds no
+	// tombstones. Drop the base so the clear is real. Mirrors Close()
+	// (persistence.go); same copy-on-read safety invariant. (#416)
+	if gs.mmapSnap != nil {
+		if err := gs.mmapSnap.close(); err != nil {
+			gs.mu.Unlock()
+			return fmt.Errorf("unmap snapshot base during clear: %w", err)
+		}
+		gs.mmapSnap = nil
+		for i := range gs.deletedNodes {
+			gs.deletedNodes[i] = make(map[uint64]struct{})
+			gs.deletedEdges[i] = make(map[uint64]struct{})
+		}
+	}
+
 	gs.mu.Unlock()
 
 	// Write an empty snapshot so a process restart doesn't reload from the old
