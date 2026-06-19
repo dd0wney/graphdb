@@ -125,6 +125,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/update/check", s.requireAdmin(s.handleUpdateCheck))
 	mux.HandleFunc("/admin/update/apply", s.requireAdmin(s.handleUpdateApply))
 	mux.HandleFunc("/admin/update/jobs/", s.requireAdmin(s.handleUpdateJob))
+	mux.HandleFunc("/admin/backup", s.requireAdmin(s.handleBackup))
 
 	// API Key management endpoints (admin only)
 	mux.HandleFunc("/api/v1/apikeys", s.requireAdmin(s.handleAPIKeys))
