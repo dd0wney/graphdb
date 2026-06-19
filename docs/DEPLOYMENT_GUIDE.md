@@ -476,6 +476,10 @@ docker-compose -f docker-compose.prod.yml exec -T postgres \
 
 ### GraphDB Data Backups
 
+**Hot backup (server running):** GraphDB ships a built-in `POST /admin/backup` endpoint that streams a consistent `.tar.gz` archive without stopping the server. See [`docs/BACKUP_RESTORE.md`](./BACKUP_RESTORE.md) for the full runbook, archive contents, security guidance, and offline restore procedure.
+
+**Cold backup (server stopped):** The approach below archives the Docker volume directly and remains valid when the server is not running.
+
 ```bash
 # Backup GraphDB data volume
 docker run --rm \

@@ -23,7 +23,7 @@ Much of the substrate is already GA-grade (see "Already GA-ready"). The gap to 1
 
 ## Hard blockers (must clear before any 1.0 tag)
 
-Each is grounded in current code. **Status: the v0.7.0 hardening track (B1/B2/B3/B6) shipped in #427 (2026-06-19); B4/B5 remain for v0.8.0/v1.0.**
+Each is grounded in current code. **Status: the v0.7.0 hardening track (B1/B2/B3/B6) shipped in #427 (2026-06-19); B4 shipped in the v0.8.0 backup track; B5a was already done (M-14); B5b remains for v1.0.**
 
 ### B1 — `DELETE /nodes` is a cross-tenant data-destruction hole — ✅ DONE (#427)
 `/nodes` is registered `requireAuth(withTenant(...))` but **not** admin-gated (`pkg/api/server.go:55`), and its DELETE handler (`pkg/api/handlers_nodes.go:24-62`) calls `graph.DeleteAllNodes()`, which is **tenant-blind** — no tenant parameter, clears every shard and every tenant index (`pkg/storage/node_operations.go:848`). Any authenticated tenant can wipe all tenants' data.
@@ -40,13 +40,18 @@ On SIGTERM (`cmd/server/main.go:499-516`) the handler builds a 30s timeout conte
 **Fix:** run the `FlushInterval` latency-vs-throughput sweep, then either flip the default or **document the per-write-fsync durability guarantee explicitly** as the 1.0 contract.
 **✅ Done (#427) — the data inverted the assumption:** the sweep measured batched WAL **13× slower** than per-write fsync on fast NVMe (~10.8µs/op vs batched-1ms ~135µs/op; batching is flush-interval-bound at low writer counts and only wins when fsync is expensive). **Decision: do NOT flip** — kept per-write fsync as the default and documented it + when to opt into batching at the config site. Benchmark retained as evidence.
 
-### B4 — No hot backup/restore in OSS
-OSS backup is a cold `tar` of a stopped volume (`docs/DEPLOYMENT_GUIDE.md`); the `BackupPlugin` interface (`pkg/plugins/interface.go`) is only implemented by the enterprise `r2-backup` plugin. There is no `/backup` or hot-snapshot endpoint in `pkg/api/server.go`.
-**Fix:** expose a hot-snapshot operator endpoint (checkpoint via `CompactWAL` + copy snapshot); restore-from-snapshot. Point-in-time WAL restore is a stretch goal.
+### B4 — No hot backup/restore in OSS — ✅ DONE (this track, v0.8.0)
+OSS backup was a cold `tar` of a stopped volume (`docs/DEPLOYMENT_GUIDE.md`); the `BackupPlugin` interface (`pkg/plugins/interface.go`) was only implemented by the enterprise `r2-backup` plugin. There was no `/backup` or hot-snapshot endpoint in `pkg/api/server.go`.
+**✅ Done (v0.8.0 track):** `POST /admin/backup` streams a snapshot-consistent `.tar.gz` archive (snapshot + wal/ + auth/ + lsa/ + manifest.json) without stopping the server. See `docs/BACKUP_RESTORE.md` for the operator runbook and restore procedure.
 
-### B5 — No written API/format stability commitment; JSON snapshot unversioned
-The **snapshot formats** have a no-change-without-version-bump rule (`CLAUDE.md`) enforced by the JSON↔mmap equivalence oracle ✅ — but the mmap format is the only one with a versioned magic header (`GMNP` v4). The **JSON snapshot has no magic/version header** (detection is a `data[0] != '{'` heuristic — audit finding **M-14**). The **REST/GraphQL API has no written stability policy**; the 9 `CONSUMER CONTRACT:` tests (`docs/CONSUMER_CONTRACTS.md`) are the only de-facto guard.
-**Fix:** (a) add a versioned header to the JSON snapshot; (b) write a one-page stability policy — what's covered, what "breaking" means, that breaks require a major bump. 1.0 is the moment that promise is made.
+### B5 — No written API/format stability commitment; JSON snapshot header (split into B5a/B5b)
+
+**B5a — JSON snapshot versioned header — ✅ ALREADY DONE (M-14, pre-v0.8.0)**
+The earlier survey described the JSON snapshot as headerless, with detection relying on a `data[0] != '{'` heuristic (audit finding **M-14**). That was correct at the time of the audit, but the fix has since landed: `pkg/storage/snapshot_envelope.go` adds a `GSNP` magic + version uint32 + flags byte envelope around every JSON payload, replacing the first-byte heuristic entirely. B5a was already implemented; the earlier survey mistook a comment in the code for live code.
+
+**B5b — Written API/format stability policy — open (v1.0.0)**
+The **REST/GraphQL API has no written stability policy**; the 9 `CONSUMER CONTRACT:` tests (`docs/CONSUMER_CONTRACTS.md`) are the only de-facto guard.
+**Fix:** write a one-page stability policy — what surfaces are covered, what "breaking" means, that breaks require a major version bump. 1.0 is the moment that promise is made.
 
 ### B6 — Cluster dead code must be scoped out, not shipped silently — ✅ DONE (#427)
 `pkg/cluster/` (~2,800 LOC) implements Raft-style election/membership but is **not wired** — `pkg/cluster/doc.go` says it has no replication append path and nothing outside its own tests imports it; `cmd/server`/`pkg/api` import none of it. Shipping it implies HA that doesn't exist.
@@ -87,7 +92,7 @@ Independent tracks; order front-loads correctness.
 | Release | Theme | Contents |
 |---|---|---|
 | **v0.7.0** ✅ | Production hardening | B1 (tenant-safe delete), B2 (graceful shutdown drain), B3 (WAL default decision), B6 (scope cluster experimental). **Shipped #427 (2026-06-19); tag pending.** |
-| **v0.8.0** | Operability | B4 (hot backup/restore endpoint), B5a (JSON snapshot versioned header). |
+| **v0.8.0** ✅ | Operability | B4 (hot backup/restore endpoint) ✅ DONE (this track); ~~B5a~~ already done pre-v0.8.0 (GSNP envelope, M-14 closed). |
 | **v1.0.0** | Stable | B5b (write the API/format stability policy), close docs + CHANGELOG gaps, declare single-node GA. Tag `v1.0.0` (drop the `dev` default; module path could move to `/v1` if desired, but pre-1.0 path is fine until then). |
 
 Roughly **4 hardening PRs + 2 operability features + a stability-policy doc**. Reachable in a few focused tracks because the security/observability/crypto substrate is already solid.
