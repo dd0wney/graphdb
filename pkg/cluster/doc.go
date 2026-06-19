@@ -5,7 +5,7 @@
 // roles, heartbeats, quorum detection), [ElectionManager] (election timeouts,
 // term tracking, vote collection), and seed-based node discovery.
 //
-// # Status: substrate only — not wired to the live write path
+// # Status: EXPERIMENTAL — NOT WIRED — single-node only
 //
 // This code is real and tested in isolation, but it is NOT connected to the
 // graph store. There is no replication log or append path; EnableAutoFailover

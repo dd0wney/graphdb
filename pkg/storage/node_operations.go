@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync/atomic"
@@ -652,6 +653,25 @@ func (gs *GraphStorage) RemoveNodePropertiesForTenant(nodeID uint64, keys []stri
 	}
 	gs.runlockShard(nodeID)
 	return gs.RemoveNodeProperties(nodeID, keys)
+}
+
+// DeleteAllNodesForTenant removes every node (and its edges) belonging to one
+// tenant, leaving all other tenants' data and the shared WAL/snapshot intact.
+// Each delete is routed through DeleteNodeForTenant so the per-node WAL records
+// and mmap tombstones are written: other tenants are unaffected and deleted
+// nodes do not resurrect from the mmap base on reopen (cf. #416/#423). Backs the
+// tenant-scoped DELETE /nodes endpoint. O(tenant size); a bulk path can come
+// later if a consumer needs it.
+func (gs *GraphStorage) DeleteAllNodesForTenant(tenantID string) error {
+	for _, n := range gs.GetAllNodesForTenant(tenantID) { // snapshot before mutating
+		if err := gs.DeleteNodeForTenant(n.ID, tenantID); err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				continue // concurrent delete already removed it — that's the goal
+			}
+			return fmt.Errorf("delete node %d for tenant %s: %w", n.ID, tenantID, err)
+		}
+	}
+	return nil
 }
 
 // DeleteNodeForTenant deletes a node and all its edges, scoped to the

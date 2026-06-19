@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -257,6 +258,7 @@ func (s *Server) Start() error {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+	s.httpServer.Store(server)
 
 	// Start server with or without TLS
 	if s.tlsConfig != nil && s.tlsConfig.Enabled {
@@ -272,4 +274,15 @@ func (s *Server) Start() error {
 	}
 
 	return server.ListenAndServe()
+}
+
+// Shutdown gracefully stops the HTTP server: it stops accepting new
+// connections and waits for in-flight requests to finish, up to ctx's
+// deadline. Safe to call if Start was never reached (no-op).
+func (s *Server) Shutdown(ctx context.Context) error {
+	srv := s.httpServer.Load()
+	if srv == nil {
+		return nil
+	}
+	return srv.Shutdown(ctx)
 }

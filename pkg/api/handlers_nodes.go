@@ -51,10 +51,12 @@ func (s *Server) countNodes(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// deleteAllNodes removes all nodes and edges and truncates the WAL+snapshot.
-// Used by wiki-graph before a full reload to prevent unbounded bloat.
+// deleteAllNodes removes all nodes and edges for the CALLER's tenant only.
+// Used by single-tenant consumers (e.g. wiki-graph) before a full reload.
+// Tenant-scoped (audit/ROADMAP B1): the previous global DeleteAllNodes let any
+// authenticated tenant wipe every tenant's data.
 func (s *Server) deleteAllNodes(w http.ResponseWriter, r *http.Request) {
-	if err := s.graph.DeleteAllNodes(); err != nil {
+	if err := s.graph.DeleteAllNodesForTenant(getTenantFromContext(r)); err != nil {
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete all nodes"))
 		return
 	}

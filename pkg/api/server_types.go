@@ -1,7 +1,9 @@
 package api
 
 import (
+	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -79,4 +81,6 @@ type Server struct {
 	// goroutines die with the process. If/when Server gains a formal
 	// Close, the pool's Shutdown should run as part of that flow.
 	autoEmbedPool *intelligence.Pool
+
+	httpServer atomic.Pointer[http.Server] // set in Start(); read by Shutdown()
 }
