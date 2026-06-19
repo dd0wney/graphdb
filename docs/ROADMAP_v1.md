@@ -23,19 +23,22 @@ Much of the substrate is already GA-grade (see "Already GA-ready"). The gap to 1
 
 ## Hard blockers (must clear before any 1.0 tag)
 
-Each is grounded in current code.
+Each is grounded in current code. **Status: the v0.7.0 hardening track (B1/B2/B3/B6) shipped in #427 (2026-06-19); B4/B5 remain for v0.8.0/v1.0.**
 
-### B1 — `DELETE /nodes` is a cross-tenant data-destruction hole
+### B1 — `DELETE /nodes` is a cross-tenant data-destruction hole — ✅ DONE (#427)
 `/nodes` is registered `requireAuth(withTenant(...))` but **not** admin-gated (`pkg/api/server.go:55`), and its DELETE handler (`pkg/api/handlers_nodes.go:24-62`) calls `graph.DeleteAllNodes()`, which is **tenant-blind** — no tenant parameter, clears every shard and every tenant index (`pkg/storage/node_operations.go:848`). Any authenticated tenant can wipe all tenants' data.
 **Fix:** admin-gate the route and/or add a tenant-scoped `DeleteAllNodesForTenant`. (Distinct from the mmap-correctness fix in #423, which addressed reopen behavior, not tenant scoping.)
+**✅ Done (#427):** added `DeleteAllNodesForTenant`; the handler now deletes only the caller's tenant via the per-node cascade (inherits WAL + mmap tombstones; other tenants untouched). Concurrent-delete race handled.
 
-### B2 — Graceful shutdown neither drains nor stops the listener
+### B2 — Graceful shutdown neither drains nor stops the listener — ✅ DONE (#427)
 On SIGTERM (`cmd/server/main.go:499-516`) the handler builds a 30s timeout context, then **blocks on `<-ctx.Done()`** — sleeping the full 30s — before `graph.Close()` + `os.Exit(0)`. There is **no `http.Server.Shutdown()`**; the listener is never stopped and in-flight requests are not drained.
 **Fix:** call `server.Shutdown(ctx)` to stop accepting and drain, then `graph.Close()`; exit as soon as draining completes rather than always waiting 30s.
+**✅ Done (#427):** `http.Server` promoted to an `atomic.Pointer` field + `Shutdown(ctx)`; `main.go` drains then closes, treating `http.ErrServerClosed` as a clean exit. `-race` clean.
 
-### B3 — BatchedWAL is not the production default
+### B3 — BatchedWAL is not the production default — ✅ DONE (#427, measure-then-decide)
 `DefaultStorageConfig` sets `EnableBatching: false` (`pkg/storage/storage.go:23`), and `cmd/server` uses it unmodified → every write does its own `fsync` (serialized writes, p99 latency floor). `BatchedWAL` (group-commit, correct all-or-nothing) exists and is tested but is never enabled in the binary. This is the open **PERF HIGH-3** / §D "batched-WAL sweep."
 **Fix:** run the `FlushInterval` latency-vs-throughput sweep, then either flip the default or **document the per-write-fsync durability guarantee explicitly** as the 1.0 contract.
+**✅ Done (#427) — the data inverted the assumption:** the sweep measured batched WAL **13× slower** than per-write fsync on fast NVMe (~10.8µs/op vs batched-1ms ~135µs/op; batching is flush-interval-bound at low writer counts and only wins when fsync is expensive). **Decision: do NOT flip** — kept per-write fsync as the default and documented it + when to opt into batching at the config site. Benchmark retained as evidence.
 
 ### B4 — No hot backup/restore in OSS
 OSS backup is a cold `tar` of a stopped volume (`docs/DEPLOYMENT_GUIDE.md`); the `BackupPlugin` interface (`pkg/plugins/interface.go`) is only implemented by the enterprise `r2-backup` plugin. There is no `/backup` or hot-snapshot endpoint in `pkg/api/server.go`.
@@ -45,9 +48,10 @@ OSS backup is a cold `tar` of a stopped volume (`docs/DEPLOYMENT_GUIDE.md`); the
 The **snapshot formats** have a no-change-without-version-bump rule (`CLAUDE.md`) enforced by the JSON↔mmap equivalence oracle ✅ — but the mmap format is the only one with a versioned magic header (`GMNP` v4). The **JSON snapshot has no magic/version header** (detection is a `data[0] != '{'` heuristic — audit finding **M-14**). The **REST/GraphQL API has no written stability policy**; the 9 `CONSUMER CONTRACT:` tests (`docs/CONSUMER_CONTRACTS.md`) are the only de-facto guard.
 **Fix:** (a) add a versioned header to the JSON snapshot; (b) write a one-page stability policy — what's covered, what "breaking" means, that breaks require a major bump. 1.0 is the moment that promise is made.
 
-### B6 — Cluster dead code must be scoped out, not shipped silently
+### B6 — Cluster dead code must be scoped out, not shipped silently — ✅ DONE (#427)
 `pkg/cluster/` (~2,800 LOC) implements Raft-style election/membership but is **not wired** — `pkg/cluster/doc.go` says it has no replication append path and nothing outside its own tests imports it; `cmd/server`/`pkg/api` import none of it. Shipping it implies HA that doesn't exist.
 **Fix:** declare 1.0 **single-node only**; mark the package `EXPERIMENTAL` (or exclude from the server binary). No new clustering work is a 1.0 requirement.
+**✅ Done (#427):** `doc.go` header → `EXPERIMENTAL — NOT WIRED — single-node only`; README + CAPABILITIES state single-node; added a `go/parser` import-guard test that fails if `cmd/server`/`pkg/api` ever import `pkg/cluster` (or a sub-package).
 
 ---
 
@@ -82,7 +86,7 @@ Independent tracks; order front-loads correctness.
 
 | Release | Theme | Contents |
 |---|---|---|
-| **v0.7.0** | Production hardening | B1 (tenant-safe delete), B2 (graceful shutdown drain), B3 (WAL default decision), B6 (scope cluster experimental). All small, all OSS. |
+| **v0.7.0** ✅ | Production hardening | B1 (tenant-safe delete), B2 (graceful shutdown drain), B3 (WAL default decision), B6 (scope cluster experimental). **Shipped #427 (2026-06-19); tag pending.** |
 | **v0.8.0** | Operability | B4 (hot backup/restore endpoint), B5a (JSON snapshot versioned header). |
 | **v1.0.0** | Stable | B5b (write the API/format stability policy), close docs + CHANGELOG gaps, declare single-node GA. Tag `v1.0.0` (drop the `dev` default; module path could move to `/v1` if desired, but pre-1.0 path is fine until then). |
 

@@ -44,8 +44,9 @@ Per CLAUDE.md ("trust the code, then surface the discrepancy"): the audit docs a
 
 ## Current state
 
-- **`origin/main` HEAD**: `0ccb976` (#423). v0.6.0 released; both §A quick-wins have since landed (below).
-- **Open PRs**: **#424** — file-organization refactor: splits 6 oversized, low-cohesion files into focused same-package siblings (`physical_plan.go` 1274→58, `executor_test.go` 2788→65, etc.), provably behavior-neutral (byte-identical executable code). In CI / merge-on-green. Spec + plan under `docs/superpowers/`.
+- **`origin/main` HEAD**: `dfbac2a`. v0.6.0 released; since this doc was written: the file-split refactor landed (#424), and the **v0.7.0 production-hardening track shipped (#427)** closing ROADMAP blockers **B1/B2/B3/B6** (see [`ROADMAP_v1.md`](./ROADMAP_v1.md)).
+- **Open PRs**: none.
+- **GA roadmap**: [`ROADMAP_v1.md`](./ROADMAP_v1.md) (#426) defines v1.0 scope + blockers. v0.7.0 done; **v0.8.0** (B4 hot backup/restore, B5a JSON snapshot header) and **v1.0.0** (B5b stability policy, docs) remain.
 - **mmap mode**: shipped, **off by default**, no consumer exposed.
 
 ## Genuinely-outstanding inventory (reconciled)
@@ -65,9 +66,9 @@ Per CLAUDE.md ("trust the code, then surface the discrepancy"): the audit docs a
 
 ### D — Carry-forward candidate tracks (none forced)
 - **Real-corpus coi-screen Milestone-1-proper** (~814K ICIJ run; deferred for lack of a local corpus). See recommendation below.
-- **Productization / operability Wave 2** — customer-facing onboarding docs (standing gap), single-node-limitation framing, deploy-ordering note (create indexes before traffic).
+- **Productization / operability Wave 2** — customer-facing onboarding docs (standing gap), ~~single-node-limitation framing~~ (✅ done #427: cluster marked EXPERIMENTAL + single-node stated in README/CAPABILITIES, ROADMAP B6), deploy-ordering note (create indexes before traffic).
 - **GraphQL index-level pagination** — REST side done (#366); resolver offset→ID-cursor change remains.
-- **Batched-WAL default sweep** — PERF **HIGH-3 is still genuinely open**: `BatchedWAL` exists but isn't the default; needs a `FlushInterval` latency-vs-throughput sweep first.
+- **Batched-WAL default sweep** — ✅ **RESOLVED #427 (ROADMAP B3 / PERF HIGH-3)**: the `FlushInterval` sweep measured batched WAL **13× slower** than per-write fsync on fast NVMe, so the default was kept as per-write fsync (strongest durability + fastest on local storage) and documented; batching stays opt-in for slow/networked disk. Not a flip — the data inverted the assumption.
 - **CI hygiene** — `cmd/...` packages outside the CI test allowlist; `golangci-lint` config doesn't flag `gofmt`; re-enable disabled fuzz tests (`pkg/api/fuzz_test.go.disabled`, `pkg/query/fuzz_test.go.disabled`).
 
 ### E — Known code residuals (lower priority)
