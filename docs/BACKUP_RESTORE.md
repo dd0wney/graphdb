@@ -55,6 +55,23 @@ The archive is **snapshot-consistent**: the snapshot is taken first (atomic poin
 
 ---
 
+## Verifying a backup
+
+Before trusting a backup — and especially before restoring it over live data —
+verify its integrity. The `graphdb-admin` CLI recomputes the SHA-256 of every
+archived file and checks it against the manifest, without extracting anything:
+
+```bash
+graphdb-admin backup verify backup.tar.gz
+```
+
+It exits non-zero and names the offending file(s) if any member is corrupt,
+truncated, missing, or unexpected, or if the manifest version is not understood
+by this build. A clean archive prints the recorded provenance (graphdb version,
+creation time, snapshot mode, file count).
+
+---
+
 ## Offline restore procedure
 
 Restore is an offline operation — the server must be stopped before replacing its data directory.
