@@ -1,0 +1,25 @@
+GraphDB release signing key(s).
+
+Artifacts published on GitHub releases (graphdb_<version>_<os>_<arch>.tar.gz and
+checksums.txt) are signed with this key. See docs/RELEASE_SIGNING.md for how to
+verify.
+
+  Import:  gpg --import KEYS
+  Verify:  gpg --verify <artifact>.asc <artifact>
+
+pub   ed25519  GraphDB Release <noreply@graphdb.io>
+      Fingerprint: 7E6B 6544 1BFF CB61 AE8C  77D5 E7C5 13EB 926B 660B
+
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEajjFOhYJKwYBBAHaRw8BAQdA7QMHjb50tlTaYTyg/7qZn06clUxJooAEo71H
+s49Y+U+0JEdyYXBoREIgUmVsZWFzZSA8bm9yZXBseUBncmFwaGRiLmlvPoiTBBMW
+CgA7FiEEfmtlRBv/y2GujHfV58UT65JrZgsFAmo4xToCGyMFCwkIBwICIgIGFQoJ
+CAsCBBYCAwECHgcCF4AACgkQ58UT65JrZgvxLQD7B8G+WDQJAwBqlXelGa4Bxa5c
+CzUwIeCtMeoGRH/UpDgBAIjPUEDeU29GtK54rIFhPqLioYxALC40gg8v8vzF4MIC
+uDgEajjFOhIKKwYBBAGXVQEFAQEHQMUsKtm4Ob569SI1FXfC4+zDDuWpAuHXH38K
+EMdMDp88AwEIB4h4BBgWCgAgFiEEfmtlRBv/y2GujHfV58UT65JrZgsFAmo4xToC
+GwwACgkQ58UT65JrZguGvAD9HY5uoIVbk5B+CUc6pdHXYBe7nxil37mMbRXJq+7L
+OTwBAK5bbUkkI4fCGlxFWlHApBtIjkFb5dq7JR2aCgt3kzwH
+=glHM
+-----END PGP PUBLIC KEY BLOCK-----
