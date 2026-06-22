@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
@@ -71,7 +73,7 @@ func TestWriteBackupArchive_RoundTrip(t *testing.T) {
 			if jerr := json.Unmarshal(b, &m); jerr != nil {
 				t.Fatalf("manifest: %v", jerr)
 			}
-			if m.GraphdbVersion != "test-version" || m.SnapshotMode != "json" || len(m.Files) == 0 {
+			if m.ManifestVersion != 1 || m.GraphdbVersion != "test-version" || m.SnapshotMode != "json" || len(m.Files) == 0 {
 				t.Errorf("bad manifest: %+v", m)
 			}
 			continue
@@ -108,5 +110,85 @@ func TestWriteBackupArchive_RoundTrip(t *testing.T) {
 	}
 	if c := restored.CountEdgesForTenant("t1"); c != 11 {
 		t.Errorf("restored edges = %d, want 11", c)
+	}
+}
+
+// TestWriteBackupArchive_PerFileIntegrity asserts the manifest records a
+// versioned envelope plus a size + SHA-256 for every archived file that
+// matches the actual bytes streamed into the tar. This is the integrity
+// contract the offline verify path (Task 2) depends on.
+func TestWriteBackupArchive_PerFileIntegrity(t *testing.T) {
+	srcDir := t.TempDir()
+	gs, err := storage.NewGraphStorage(srcDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if _, err := gs.CreateNodeWithTenant("t1", []string{"Person"},
+			map[string]storage.Value{"name": storage.StringValue("n")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := gs.Snapshot(); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := writeBackupArchive(&buf, srcDir, "test-version"); err != nil {
+		t.Fatalf("writeBackupArchive: %v", err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the archive once: hash every non-manifest member, capture the manifest.
+	var man backupManifest
+	gotHash := map[string]string{}
+	gotSize := map[string]int64{}
+	gz, err := gzip.NewReader(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, rerr := io.ReadAll(tr)
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		if hdr.Name == "manifest.json" {
+			if jerr := json.Unmarshal(b, &man); jerr != nil {
+				t.Fatalf("manifest: %v", jerr)
+			}
+			continue
+		}
+		sum := sha256.Sum256(b)
+		gotHash[hdr.Name] = hex.EncodeToString(sum[:])
+		gotSize[hdr.Name] = int64(len(b))
+	}
+
+	if man.ManifestVersion != 1 {
+		t.Errorf("manifest_version = %d, want 1", man.ManifestVersion)
+	}
+	if len(man.Files) == 0 {
+		t.Fatal("manifest lists no files")
+	}
+	for _, f := range man.Files {
+		if f.Path == "" || f.Sha256 == "" {
+			t.Errorf("incomplete manifest entry: %+v", f)
+			continue
+		}
+		if gotHash[f.Path] != f.Sha256 {
+			t.Errorf("%s: manifest sha256 %s != archived %s", f.Path, f.Sha256, gotHash[f.Path])
+		}
+		if gotSize[f.Path] != f.SizeBytes {
+			t.Errorf("%s: manifest size %d != archived %d", f.Path, f.SizeBytes, gotSize[f.Path])
+		}
 	}
 }

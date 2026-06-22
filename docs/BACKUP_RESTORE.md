@@ -35,7 +35,7 @@ Replace `$TOKEN` with your admin API key (`ADMIN_API_KEY` / `X-Admin-Token` head
 | `wal/` | Write-ahead log segments current at snapshot time |
 | `auth/` | Tenant credential files (hashed passwords, API keys) |
 | `lsa/` | LSA vector-index persistence files |
-| `manifest.json` | Archive metadata: graphdb version, creation timestamp (UTC), snapshot mode (`json`/`mmap`), list of included files |
+| `manifest.json` | Archive metadata, written as the **last** entry: manifest schema version, graphdb version, creation timestamp (UTC), snapshot mode (`json`/`mmap`), and for every included file its path, size, and SHA-256. The manifest is a trailer so each recorded hash describes exactly the bytes archived (immune to a WAL segment growing mid-stream). |
 
 ### Consistency guarantee
 
