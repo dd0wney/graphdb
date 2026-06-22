@@ -1,6 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# COLD / volume-level backup strategy. For a HOT, in-process backup that does
+# NOT stop the server, use the built-in endpoint instead:
+#   curl -fSL -X POST -H "Authorization: Bearer $TOKEN" https://host/admin/backup -o backup.tar.gz
+#   graphdb-admin backup verify  backup.tar.gz
+#   graphdb-admin backup restore --into /data backup.tar.gz
+# See docs/BACKUP_RESTORE.md. This script remains the cold-volume alternative.
+# ---------------------------------------------------------------------------
+
 #######################################################################
 # GraphDB Automated Backup Script
 #

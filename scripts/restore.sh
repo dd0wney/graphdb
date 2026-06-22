@@ -1,8 +1,14 @@
 #!/bin/bash
 # GraphDB Restore Script
-# Restores PostgreSQL database and GraphDB data volumes from backups
+# Restores the PostgreSQL licensing database and GraphDB data volumes (COLD).
 
 set -e
+
+# ---------------------------------------------------------------------------
+# This is the COLD full-deployment restore (PostgreSQL licensing DB + volumes).
+# To restore an archive from the built-in hot-backup endpoint instead, use
+# `graphdb-admin backup verify|restore --into /data`; see docs/BACKUP_RESTORE.md.
+# ---------------------------------------------------------------------------
 
 # Configuration
 BACKUP_DIR="${BACKUP_DIR:-./backups}"

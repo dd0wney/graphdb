@@ -1,8 +1,15 @@
 #!/bin/bash
 # GraphDB Backup Script
-# Backs up PostgreSQL database and GraphDB data volumes
+# Backs up the PostgreSQL licensing database and GraphDB data volumes (COLD).
 
 set -e
+
+# ---------------------------------------------------------------------------
+# This is the COLD full-deployment backup (PostgreSQL licensing DB + volumes).
+# For a HOT, in-process backup of the graph store that does NOT stop the
+# server, use the built-in endpoint (POST /admin/backup) +
+# `graphdb-admin backup verify|restore`; see docs/BACKUP_RESTORE.md.
+# ---------------------------------------------------------------------------
 
 # Configuration
 BACKUP_DIR="${BACKUP_DIR:-./backups}"

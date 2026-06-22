@@ -37,6 +37,8 @@ func main() {
 		handleSecurityCommand(os.Args[2:])
 	case "update":
 		handleUpdateCommand(os.Args[2:])
+	case "backup":
+		handleBackupCommand(os.Args[2:])
 	case "login":
 		handleLoginCommand(os.Args[2:])
 	case "mint-token":
@@ -69,6 +71,7 @@ Usage:
 Available Commands:
   security    Security management commands
   update      Check for and apply software updates
+  backup      Backup archive tooling (verify)
   login       Log in to a running server and print an access token
   mint-token  Mint a JWT offline from JWT_SECRET
   help        Show this help message

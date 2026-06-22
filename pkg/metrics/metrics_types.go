@@ -21,6 +21,11 @@ type Registry struct {
 	StorageOperationDuration *prometheus.HistogramVec
 	StorageDiskUsageBytes    prometheus.Gauge
 
+	// Backup Metrics
+	BackupsTotal    *prometheus.CounterVec
+	BackupDuration  prometheus.Histogram
+	BackupSizeBytes prometheus.Histogram
+
 	// Query Metrics
 	QueriesTotal      *prometheus.CounterVec
 	QueryDuration     *prometheus.HistogramVec
@@ -88,6 +93,7 @@ func NewRegistry() *Registry {
 	// Initialize all metrics
 	r.initHTTPMetrics()
 	r.initStorageMetrics()
+	r.initBackupMetrics()
 	r.initQueryMetrics()
 	r.initClusterMetrics()
 	r.initLicensingMetrics()

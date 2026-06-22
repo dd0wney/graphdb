@@ -1,0 +1,148 @@
+# Backup & Restore — Hot Backup Endpoint
+
+GraphDB ships a built-in hot-backup endpoint (`POST /admin/backup`) that captures a consistent archive of the running store without stopping the server.
+
+---
+
+## Endpoint
+
+```
+POST /admin/backup
+Authorization: Bearer <admin-token>
+```
+
+Returns a `.tar.gz` stream directly in the response body. The response `Content-Type` is `application/gzip` and `Content-Disposition` sets a timestamped filename.
+
+### Example
+
+```bash
+curl -fSL \
+  -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  https://host/admin/backup \
+  -o backup.tar.gz
+```
+
+Replace `$TOKEN` with your admin API key (`ADMIN_API_KEY` / `X-Admin-Token` header value as configured). The `-fSL` flags cause `curl` to fail loudly on HTTP errors and follow redirects.
+
+---
+
+## Archive contents
+
+| Path in archive | What it contains |
+|---|---|
+| `snapshot.json` (or `snapshot.mmap`) | Point-in-time serialised graph (nodes, edges, tenant indexes) |
+| `wal/` | Write-ahead log segments current at snapshot time |
+| `auth/` | Tenant credential files (hashed passwords, API keys) |
+| `lsa/` | LSA vector-index persistence files |
+| `manifest.json` | Archive metadata, written as the **last** entry: manifest schema version, graphdb version, creation timestamp (UTC), snapshot mode (`json`/`mmap`), and for every included file its path, size, and SHA-256. The manifest is a trailer so each recorded hash describes exactly the bytes archived (immune to a WAL segment growing mid-stream). |
+
+### Consistency guarantee
+
+The archive is **snapshot-consistent**: the snapshot is taken first (atomic point-in-time flush), and then WAL segments current at that instant are included. On restore, WAL replay brings the store from the snapshot state up to the best available recovery point. This is a best-effort-current-WAL guarantee — any writes that arrived and were acknowledged after the snapshot was captured but before the WAL copy completed may be replayed; any writes that arrived after both steps are not included.
+
+---
+
+## Security warning
+
+> **The backup archive contains sensitive data.**
+>
+> - It includes **password hashes and API keys** for all tenants (from `auth/`).
+> - It includes the **graph data of every tenant** in the store.
+> - The endpoint is **admin-only** — requests without a valid admin token receive `403 Forbidden`.
+> - Always transfer and store backup archives over **TLS / HTTPS**. A backup transferred over plaintext HTTP exposes every tenant's credentials and data.
+> - Treat backup archives with the same access controls as production database dumps. Store them in access-controlled, encrypted-at-rest object storage.
+
+---
+
+## Observability
+
+Each backup is recorded on the Prometheus `/metrics` endpoint:
+
+- `graphdb_backup_total{result="success"|"error"}` — count of backups by outcome
+- `graphdb_backup_duration_seconds` — time to produce an archive
+- `graphdb_backup_size_bytes` — produced archive size
+
+Alert on a rising `result="error"` rate or a backup that hasn't succeeded within
+your RPO window.
+
+---
+
+## Verifying a backup
+
+Before trusting a backup — and especially before restoring it over live data —
+verify its integrity. The `graphdb-admin` CLI recomputes the SHA-256 of every
+archived file and checks it against the manifest, without extracting anything:
+
+```bash
+graphdb-admin backup verify backup.tar.gz
+```
+
+It exits non-zero and names the offending file(s) if any member is corrupt,
+truncated, missing, or unexpected, or if the manifest version is not understood
+by this build. A clean archive prints the recorded provenance (graphdb version,
+creation time, snapshot mode, file count).
+
+---
+
+## Offline restore procedure
+
+Restore is an offline operation — the server must be stopped before replacing its data directory.
+
+1. **Stop the server.**
+
+   ```bash
+   # Docker
+   docker-compose -f docker-compose.prod.yml stop graphdb-community
+
+   # systemd
+   systemctl stop graphdb-server
+   ```
+
+2. **Back up the current data directory** (optional but recommended before overwriting).
+
+   ```bash
+   cp -r /data /data.pre-restore-$(date +%Y%m%dT%H%M%S)
+   ```
+
+3. **Validate and restore with the CLI** (recommended). `graphdb-admin backup
+   restore` verifies the archive's integrity and checks that its snapshot mode
+   matches this environment's `GRAPHDB_STORAGE_MODE` **before** writing anything,
+   so a corrupt archive or a mode mismatch can never half-overwrite your data.
+
+   ```bash
+   # Preview without writing — verifies integrity + mode compatibility:
+   graphdb-admin backup restore --into /data --dry-run backup.tar.gz
+
+   # Restore into a fresh (empty) data directory:
+   graphdb-admin backup restore --into /data backup.tar.gz
+   ```
+
+   The target must be empty; pass `--force` to restore over an existing
+   directory (archived files overwrite; files not in the archive are left in
+   place). If the archive's snapshot mode (`json`/`mmap`) differs from this
+   environment, restore refuses and tells you which `GRAPHDB_STORAGE_MODE` to
+   set — restoring an `mmap` snapshot into a JSON-mode server (or vice versa)
+   would silently load an empty graph.
+
+   **Manual fallback** (no integrity/mode check): `rm -rf /data/*` then
+   `tar xzf backup.tar.gz -C /data`. Verify first with `graphdb-admin backup
+   verify backup.tar.gz`.
+
+4. **Start the server.**
+
+   ```bash
+   # Docker
+   docker-compose -f docker-compose.prod.yml start graphdb-community
+
+   # systemd
+   systemctl start graphdb-server
+   ```
+
+On startup, the server loads the snapshot and replays the WAL segments in `wal/` to reconstruct the graph in memory. Vector indexes (LSA) are rebuilt from the node embeddings in the loaded graph; they are not persisted independently but regenerated automatically on first access.
+
+---
+
+## Cold backup (alternative — server stopped)
+
+If a hot backup is not required, the traditional cold-backup approach (stop the server, archive the volume, restart) remains valid and documented in [`docs/DEPLOYMENT_GUIDE.md`](./DEPLOYMENT_GUIDE.md).

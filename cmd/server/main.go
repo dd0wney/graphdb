@@ -25,6 +25,10 @@ import (
 	tlspkg "github.com/dd0wney/graphdb/pkg/tls"
 )
 
+// Version is the build version injected by goreleaser via -X main.Version={{.Version}}.
+// Defaults to "dev" for local / non-release builds.
+var Version = "dev"
+
 // loadLicense attempts to load a license from various sources
 func loadLicense(logger *slog.Logger) (*licensing.License, error) {
 	// 1. Try loading from environment variable (JSON format)
@@ -481,6 +485,9 @@ func main() {
 		logger.Error("Failed to create API server", "error", err)
 		os.Exit(1)
 	}
+	// Wire the build version into the backup manifest so archives are
+	// self-describing. Set once at startup — before any request can land.
+	api.BuildVersion = Version
 
 	// Apply TLS configuration if enabled
 	if tlsConfig != nil {
