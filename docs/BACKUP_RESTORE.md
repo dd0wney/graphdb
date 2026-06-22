@@ -92,19 +92,31 @@ Restore is an offline operation — the server must be stopped before replacing 
    cp -r /data /data.pre-restore-$(date +%Y%m%dT%H%M%S)
    ```
 
-3. **Clear the data directory.**
+3. **Validate and restore with the CLI** (recommended). `graphdb-admin backup
+   restore` verifies the archive's integrity and checks that its snapshot mode
+   matches this environment's `GRAPHDB_STORAGE_MODE` **before** writing anything,
+   so a corrupt archive or a mode mismatch can never half-overwrite your data.
 
    ```bash
-   rm -rf /data/*
+   # Preview without writing — verifies integrity + mode compatibility:
+   graphdb-admin backup restore --into /data --dry-run backup.tar.gz
+
+   # Restore into a fresh (empty) data directory:
+   graphdb-admin backup restore --into /data backup.tar.gz
    ```
 
-4. **Extract the archive into the data directory.**
+   The target must be empty; pass `--force` to restore over an existing
+   directory (archived files overwrite; files not in the archive are left in
+   place). If the archive's snapshot mode (`json`/`mmap`) differs from this
+   environment, restore refuses and tells you which `GRAPHDB_STORAGE_MODE` to
+   set — restoring an `mmap` snapshot into a JSON-mode server (or vice versa)
+   would silently load an empty graph.
 
-   ```bash
-   tar xzf backup.tar.gz -C /data
-   ```
+   **Manual fallback** (no integrity/mode check): `rm -rf /data/*` then
+   `tar xzf backup.tar.gz -C /data`. Verify first with `graphdb-admin backup
+   verify backup.tar.gz`.
 
-5. **Start the server.**
+4. **Start the server.**
 
    ```bash
    # Docker
