@@ -1,4 +1,4 @@
-package api
+package backup_test
 
 import (
 	"archive/tar"
@@ -12,10 +12,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/dd0wney/graphdb/pkg/backup"
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
-func TestWriteBackupArchive_RoundTrip(t *testing.T) {
+func TestWriteArchive_RoundTrip(t *testing.T) {
 	srcDir := t.TempDir()
 	gs, err := storage.NewGraphStorage(srcDir)
 	if err != nil {
@@ -40,8 +41,8 @@ func TestWriteBackupArchive_RoundTrip(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := writeBackupArchive(&buf, srcDir, "test-version"); err != nil {
-		t.Fatalf("writeBackupArchive: %v", err)
+	if err := backup.WriteArchive(&buf, srcDir, "test-version"); err != nil {
+		t.Fatalf("WriteArchive: %v", err)
 	}
 	if err := gs.Close(); err != nil {
 		t.Fatal(err)
@@ -63,9 +64,9 @@ func TestWriteBackupArchive_RoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if hdr.Name == "manifest.json" {
+		if hdr.Name == backup.ManifestName {
 			sawManifest = true
-			var m backupManifest
+			var m backup.Manifest
 			b, rerr := io.ReadAll(tr)
 			if rerr != nil {
 				t.Fatalf("read manifest: %v", rerr)
@@ -113,11 +114,11 @@ func TestWriteBackupArchive_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestWriteBackupArchive_PerFileIntegrity asserts the manifest records a
-// versioned envelope plus a size + SHA-256 for every archived file that
-// matches the actual bytes streamed into the tar. This is the integrity
-// contract the offline verify path (Task 2) depends on.
-func TestWriteBackupArchive_PerFileIntegrity(t *testing.T) {
+// TestWriteArchive_PerFileIntegrity asserts the manifest records a versioned
+// envelope plus a size + SHA-256 for every archived file that matches the
+// actual bytes streamed into the tar. This is the integrity contract the
+// offline verify path depends on.
+func TestWriteArchive_PerFileIntegrity(t *testing.T) {
 	srcDir := t.TempDir()
 	gs, err := storage.NewGraphStorage(srcDir)
 	if err != nil {
@@ -134,15 +135,15 @@ func TestWriteBackupArchive_PerFileIntegrity(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := writeBackupArchive(&buf, srcDir, "test-version"); err != nil {
-		t.Fatalf("writeBackupArchive: %v", err)
+	if err := backup.WriteArchive(&buf, srcDir, "test-version"); err != nil {
+		t.Fatalf("WriteArchive: %v", err)
 	}
 	if err := gs.Close(); err != nil {
 		t.Fatal(err)
 	}
 
 	// Read the archive once: hash every non-manifest member, capture the manifest.
-	var man backupManifest
+	var man backup.Manifest
 	gotHash := map[string]string{}
 	gotSize := map[string]int64{}
 	gz, err := gzip.NewReader(&buf)
@@ -162,7 +163,7 @@ func TestWriteBackupArchive_PerFileIntegrity(t *testing.T) {
 		if rerr != nil {
 			t.Fatal(rerr)
 		}
-		if hdr.Name == "manifest.json" {
+		if hdr.Name == backup.ManifestName {
 			if jerr := json.Unmarshal(b, &man); jerr != nil {
 				t.Fatalf("manifest: %v", jerr)
 			}
