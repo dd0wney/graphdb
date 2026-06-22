@@ -253,6 +253,27 @@ class APIClient {
 		return response.blob();
 	}
 
+	// Hot backup: streams a snapshot-consistent .tar.gz of the whole store
+	// (admin only). The archive is sensitive (all tenants' data + auth hashes);
+	// it is served over the authenticated connection and handed to the browser
+	// as a download. Restore is an offline operation — see docs/BACKUP_RESTORE.md.
+	async downloadBackup(): Promise<Blob> {
+		const response = await fetch(`${API_BASE}/admin/backup`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${this.accessToken}`
+			}
+		});
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json().catch(() => ({
+				error: 'Unknown error',
+				message: response.statusText
+			}));
+			throw new Error(error.message || error.error || 'Backup failed');
+		}
+		return response.blob();
+	}
+
 	// Encryption key management
 	async getKeyInfo(): Promise<KeyInfo> {
 		return this.request<KeyInfo>('/api/v1/security/keys/info');
