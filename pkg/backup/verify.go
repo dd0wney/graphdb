@@ -50,7 +50,10 @@ func Verify(r io.Reader) (*Manifest, error) {
 			continue
 		}
 		h := sha256.New()
-		n, err := io.Copy(h, tr)
+		// Bound the copy to the entry's declared size (which tar enforces) so we
+		// never read unboundedly from the decompressor (gosec G110). A truncated
+		// entry yields ErrUnexpectedEOF here and fails verification.
+		n, err := io.CopyN(h, tr, hdr.Size)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", hdr.Name, err)
 		}

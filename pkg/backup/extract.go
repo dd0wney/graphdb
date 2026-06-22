@@ -47,7 +47,7 @@ func Extract(r io.Reader, destDir string) error {
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return fmt.Errorf("create dir for %s: %w", hdr.Name, err)
 		}
-		if err := writeFile(dst, tr); err != nil {
+		if err := writeFile(dst, tr, hdr.Size); err != nil {
 			return fmt.Errorf("write %s: %w", hdr.Name, err)
 		}
 	}
@@ -69,12 +69,14 @@ func safeJoin(destDir, name string) (string, error) {
 	return dst, nil
 }
 
-func writeFile(dst string, r io.Reader) error {
+func writeFile(dst string, r io.Reader, size int64) error {
 	f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(f, r); err != nil {
+	// Bound the write to the entry's declared size (tar enforces it) so a
+	// crafted archive can't stream an unbounded decompression bomb to disk.
+	if _, err := io.CopyN(f, r, size); err != nil {
 		f.Close()
 		return err
 	}
