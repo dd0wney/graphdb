@@ -1,6 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# COLD / volume-level weekly snapshots. For a HOT, in-process backup that does
+# NOT stop the server, use the built-in endpoint (POST /admin/backup) +
+# `graphdb-admin backup verify|restore`; see docs/BACKUP_RESTORE.md. This
+# script remains the cold-volume alternative.
+# ---------------------------------------------------------------------------
+
 #######################################################################
 # GraphDB Weekly Backup Script
 #

@@ -1,6 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# COLD / volume-level restore strategy. For an archive produced by the built-in
+# hot-backup endpoint (POST /admin/backup), verify and restore it with:
+#   graphdb-admin backup verify  backup.tar.gz
+#   graphdb-admin backup restore --into /data backup.tar.gz
+# See docs/BACKUP_RESTORE.md. This script remains the cold-volume alternative.
+# ---------------------------------------------------------------------------
+
 #######################################################################
 # GraphDB Disaster Recovery - Restore Script
 #
