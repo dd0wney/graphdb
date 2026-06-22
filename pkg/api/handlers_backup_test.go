@@ -4,7 +4,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	dto "github.com/prometheus/client_model/go"
 )
+
+// backupSuccessCount reads the current graphdb_backup_total{result="success"}
+// value. The default metrics registry is shared across tests, so callers
+// assert on the delta rather than an absolute count.
+func backupSuccessCount(t *testing.T, server *Server) float64 {
+	t.Helper()
+	c, err := server.metricsRegistry.BackupsTotal.GetMetricWithLabelValues("success")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m dto.Metric
+	if err := c.Write(&m); err != nil {
+		t.Fatal(err)
+	}
+	return m.Counter.GetValue()
+}
 
 // backupReq issues a request to handleBackup wrapped in requireAdmin. The
 // caller's role is one of auth.RoleAdmin / auth.RoleViewer (plain strings).
@@ -43,6 +61,21 @@ func TestHandleBackup_AdminGetsGzip(t *testing.T) {
 	}
 	if rr.Body.Len() == 0 {
 		t.Error("empty archive body")
+	}
+}
+
+// TestHandleBackup_RecordsMetrics verifies a successful backup increments the
+// success counter.
+func TestHandleBackup_RecordsMetrics(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+	before := backupSuccessCount(t, server)
+	rr := backupReq(t, server, "admin", "admin-backup-metrics", http.MethodPost)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if after := backupSuccessCount(t, server); after-before != 1 {
+		t.Errorf("success counter delta = %v, want 1", after-before)
 	}
 }
 

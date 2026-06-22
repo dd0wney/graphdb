@@ -16,6 +16,14 @@ func (r *Registry) RecordStorageOperation(operation, status string, duration tim
 	r.StorageOperationDuration.WithLabelValues(operation).Observe(duration.Seconds())
 }
 
+// RecordBackup records a completed hot-backup attempt. result is "success" or
+// "error"; bytes is the archive size streamed (0 on error before streaming).
+func (r *Registry) RecordBackup(result string, bytes int64, duration time.Duration) {
+	r.BackupsTotal.WithLabelValues(result).Inc()
+	r.BackupDuration.Observe(duration.Seconds())
+	r.BackupSizeBytes.Observe(float64(bytes))
+}
+
 // RecordQuery records a query execution
 func (r *Registry) RecordQuery(queryType, status string, duration time.Duration, nodesScanned, edgesScanned int) {
 	r.QueriesTotal.WithLabelValues(queryType, status).Inc()

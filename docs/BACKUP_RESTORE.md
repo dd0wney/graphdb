@@ -55,6 +55,19 @@ The archive is **snapshot-consistent**: the snapshot is taken first (atomic poin
 
 ---
 
+## Observability
+
+Each backup is recorded on the Prometheus `/metrics` endpoint:
+
+- `graphdb_backup_total{result="success"|"error"}` — count of backups by outcome
+- `graphdb_backup_duration_seconds` — time to produce an archive
+- `graphdb_backup_size_bytes` — produced archive size
+
+Alert on a rising `result="error"` rate or a backup that hasn't succeeded within
+your RPO window.
+
+---
+
 ## Verifying a backup
 
 Before trusting a backup — and especially before restoring it over live data —
