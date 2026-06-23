@@ -8,6 +8,14 @@
 
 ---
 
+## Status update — 2026-06-23 (reconciliation)
+
+Since this checkpoint, **v0.8.0 shipped, was tagged, and is GPG-signed**: hot backup/restore (ROADMAP **B4**) plus per-file backup integrity, `graphdb-admin backup verify`/`restore`, backup metrics, and a repaired release-signing pipeline that publishes the public key (`KEYS`, `docs/RELEASE_SIGNING.md`, keys.openpgp.org). **v0.7.0** (production hardening B1/B2/B3/B6, #427) had also shipped to `main`.
+
+**Path to v1.0.0** ([`ROADMAP_v1.md`](./ROADMAP_v1.md)): **B5b stability policy is written** (`STABILITY_POLICY.md`) and the **CHANGELOG is backfilled** (#433). Remaining for GA: customer-facing onboarding docs, then declare single-node GA and tag `v1.0.0`.
+
+---
+
 ## State reconciliation
 
 ### Ask #1 — "cheap reopen" ✅ **SHIPPED and RELEASED (v0.6.0)**
