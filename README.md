@@ -10,15 +10,20 @@ A high-performance, feature-rich graph database built from scratch in Go. GraphD
 
 ## Releases
 
-Latest server release: **[v0.4.1](https://github.com/dd0wney/graphdb/releases/latest)**. First-party clients: **[Python SDK v0.1.0](clients/python/)** and **[TypeScript client v1.0.0](workers/graphdb-client/)** (Cloudflare Workers).
+Latest server release: **[v0.8.0](https://github.com/dd0wney/graphdb/releases/latest)** (GPG-signed — see [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md)). First-party clients: **[Python SDK v0.1.0](clients/python/)** and **[TypeScript client v1.0.0](workers/graphdb-client/)** (Cloudflare Workers).
 
 ## Try it in two minutes
+
+> **New to GraphDB?** The [**Getting Started guide**](docs/GETTING_STARTED.md) walks through running the server, getting a token, and your first query step by step.
 
 All data endpoints require authentication, so the quickstart includes getting a token:
 
 ```bash
-# 1. Start the server (Docker recommended)
-docker run -p 8080:8080 -e ADMIN_PASSWORD='choose-a-password' dd0wney/graphdb:latest
+# 1. Start the server (Docker recommended). JWT_SECRET is required.
+docker run -p 8080:8080 \
+  -e JWT_SECRET='dev-only-secret-change-me' \
+  -e ADMIN_PASSWORD='choose-a-password' \
+  dd0wney/graphdb:latest
 
 # 2. Log in and grab a token
 TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
@@ -32,13 +37,12 @@ curl -X POST http://localhost:8080/nodes \
   -d '{"labels": ["Person"], "properties": {"name": "Alice", "age": 30}}'
 ```
 
-Without `ADMIN_PASSWORD`, a development-mode server generates a random admin password and writes it to `<data-dir>/.graphdb_admin_password`. Pre-built binaries for Linux/macOS/Windows are on the [releases page](https://github.com/dd0wney/graphdb/releases/latest).
+Without `ADMIN_PASSWORD`, a development-mode server generates a random admin password and writes it to `<data-dir>/.graphdb_admin_password`. Pre-built binaries for Linux/macOS are on the [releases page](https://github.com/dd0wney/graphdb/releases/latest).
 
 **Available for:**
 - **Docker**: Multi-arch images (amd64, arm64) on [Docker Hub](https://hub.docker.com/r/dd0wney/graphdb)
 - **macOS**: arm64 (M1/M2/M3) & x86_64 (Intel)
 - **Linux**: arm64 & x86_64
-- **Windows**: arm64 & x86_64
 
 **Performance Highlights:**
 - **5M nodes + 50M edges** in just **73MB RAM** (15.31 bytes/node)
@@ -96,8 +100,8 @@ RETURN p, f
 #### 2. REST API Server
 
 ```bash
-# Start the server
-docker run -p 8080:8080 -e ADMIN_PASSWORD='choose-a-password' dd0wney/graphdb:latest
+# Start the server (JWT_SECRET is required)
+docker run -p 8080:8080 -e JWT_SECRET='dev-only-secret-change-me' -e ADMIN_PASSWORD='choose-a-password' dd0wney/graphdb:latest
 
 # Query via HTTP (get $TOKEN from /auth/login — see "Try it in two minutes")
 curl -X POST http://localhost:8080/query \
@@ -255,7 +259,7 @@ curl http://localhost:8080/health
 
 ### Using Pre-built Binaries
 
-Download the archive for your platform (Linux/macOS/Windows, amd64/arm64) from [GitHub Releases](https://github.com/dd0wney/graphdb/releases/latest), then:
+Download the archive for your platform (Linux/macOS, amd64/arm64) from [GitHub Releases](https://github.com/dd0wney/graphdb/releases/latest), then:
 
 ```bash
 tar -xzf graphdb_*_$(uname -s)_$(uname -m).tar.gz
