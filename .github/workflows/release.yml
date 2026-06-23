@@ -58,6 +58,8 @@ jobs:
             printf '%s' "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback --detach-sign --armor "$file"
           fi
         done
+        # publish the release public key alongside the signatures
+        gpg --armor --export "GraphDB Release <noreply@graphdb.io>" > graphdb-release-pubkey.asc
         ls -la *.asc
 
     - name: Upload signatures to release
