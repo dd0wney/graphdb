@@ -10,7 +10,7 @@ A high-performance, feature-rich graph database built from scratch in Go. GraphD
 
 ## Releases
 
-Latest server release: **[v0.8.0](https://github.com/dd0wney/graphdb/releases/latest)** (GPG-signed — see [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md)). First-party clients: **[Python SDK v0.1.0](clients/python/)** and **[TypeScript client v1.0.0](workers/graphdb-client/)** (Cloudflare Workers).
+Latest server release: **[v1.0.0](https://github.com/dd0wney/graphdb/releases/latest)** — first GA (single-node), GPG-signed (see [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md)). First-party clients: **[Python SDK v0.1.0](clients/python/)** and **[TypeScript client v1.0.0](workers/graphdb-client/)** (Cloudflare Workers).
 
 ## Try it in two minutes
 
