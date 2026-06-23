@@ -33,6 +33,27 @@ The following are present in the codebase but not yet part of a tagged release
 - Goroutine leaks in crash-simulation tests (LSM worker cleanup)
 - `go vet` errors in benchmark and example code
 
+## [1.0.0] - 2026-06-23
+
+**General Availability.** GraphDB 1.0 is a production-hardened, **single-node**
+graph database. As of this release the REST/GraphQL APIs and the on-disk
+snapshot/WAL/backup formats are covered by a written compatibility promise — see
+[`docs/STABILITY_POLICY.md`](docs/STABILITY_POLICY.md). Breaking changes to a
+covered surface now require a major version bump.
+
+This GA consolidates the production-hardening (0.7.0) and operability (0.8.0)
+work shipped since 0.6.0; it adds no new engine features beyond the stability
+commitment itself.
+
+### Added
+- Written API & on-disk format **stability policy** ([`docs/STABILITY_POLICY.md`](docs/STABILITY_POLICY.md)), effective at 1.0. (#434)
+- **Getting Started** onboarding guide ([`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md)). (#435)
+- GPG-signed releases with a published signing key (`KEYS`, keys.openpgp.org). (#430–#432)
+
+### Changed
+- Declared **single-node** scope for 1.0; clustering (`pkg/cluster`) remains EXPERIMENTAL and not wired in.
+- Backfilled the CHANGELOG (0.4.0–0.8.0) and corrected README quickstart accuracy (`JWT_SECRET` is required). (#433, #435)
+
 ## [0.8.0] - 2026-06-22
 
 **Operability — hot backup, verifiable restore, signed releases.** ROADMAP
@@ -197,7 +218,8 @@ Low backlog from the 2026-06-10 security re-audit (#371), across Waves 1–3.
 - 100x concurrency improvement
 - 650x faster LSM read performance
 
-[Unreleased]: https://github.com/dd0wney/graphdb/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/dd0wney/graphdb/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/dd0wney/graphdb/compare/v0.6.0...v0.8.0
 [0.7.0]: https://github.com/dd0wney/graphdb/compare/v0.6.0...b6eefef
 [0.6.0]: https://github.com/dd0wney/graphdb/compare/v0.5.0...v0.6.0
