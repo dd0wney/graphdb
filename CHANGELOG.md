@@ -5,30 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> **Release signing.** From v0.8.0, release artifacts are GPG-signed; see
+> [`docs/RELEASE_SIGNING.md`](docs/RELEASE_SIGNING.md) to verify a download.
+
 ## [Unreleased]
 
+The following are present in the codebase but not yet part of a tagged release
+(several relate to the EXPERIMENTAL, not-wired clustering/replication path — see
+`pkg/cluster/doc.go`):
+
 ### Added
-- Multi-tenancy support with data isolation and quota enforcement
+- Multi-node/replication groundwork: node listing on replicas (`/nodes` GET), datacenter-link parsing in ZMQ/NNG primaries, snapshot-transfer handling, and primary-mode transition with `PromotionCallback` for HA failover
 - Generic OIDC authentication support for enterprise identity providers
-- Modularity calculation for community detection algorithms (ConnectedComponents, LabelPropagation)
-- Query optimizer property index usage for WHERE equality conditions (O(n) to O(1))
-- EdgeDeletionRate calculation from temporal edge tombstones (valid_to timestamps)
-- Automatic version detection from Go module build info in licensing client
-- Plugin config loading from environment variables (PLUGIN_<NAME>_<KEY>=<VALUE>)
-- Node listing endpoint in replica nodes (/nodes GET)
-- Datacenter link parsing in ZMQ and NNG primary nodes
-- License key checksum validation (SHA256-based, backward compatible with legacy keys)
-- Snapshot transfer handling foundation in replica replication
-- Primary mode transition support with PromotionCallback for HA failover
+- Modularity calculation for community detection (ConnectedComponents, LabelPropagation)
+- Query optimizer property-index usage for WHERE equality conditions (O(n) → O(1))
+- EdgeDeletionRate from temporal edge tombstones (valid_to timestamps)
+- Automatic version detection from Go module build info in the licensing client
+- Plugin config loading from environment variables (`PLUGIN_<NAME>_<KEY>=<VALUE>`)
+- License key checksum validation (SHA256-based, backward compatible)
 
 ### Performance
-- Zero-allocation Contains() for compressed edge lists (sequential scan with early termination)
+- Zero-allocation `Contains()` for compressed edge lists (sequential scan with early termination)
 
 ### Fixed
 - Goroutine leaks in OIDC StateStore and server metrics subsystems
 - Memory leak in JWKS client key cache (unbounded growth on key rotation)
-- Goroutine leaks in crash simulation tests (LSM worker cleanup)
-- Go vet errors in benchmark and example code
+- Goroutine leaks in crash-simulation tests (LSM worker cleanup)
+- `go vet` errors in benchmark and example code
+
+## [0.8.0] - 2026-06-22
+
+**Operability — hot backup, verifiable restore, signed releases.** ROADMAP
+blocker **B4**. (B5a — the versioned JSON snapshot envelope — was already shipped
+in 0.5.0 as M-14.)
+
+### Added
+- `POST /admin/backup` (admin-only) streams a snapshot-consistent `.tar.gz` (snapshot + `wal/` + `auth/` + `lsa/` (+ `edgestore/`) + manifest) without stopping the server. (#429)
+- Per-file backup integrity: a versioned manifest envelope recording `manifest_version` + `{path, size_bytes, sha256}` per file, emitted as a trailer so each hash describes exactly the archived bytes. (#429)
+- `pkg/backup` leaf package + `graphdb-admin backup verify <archive>` (offline integrity check) and `graphdb-admin backup restore --into <dir> [--dry-run] [--force]` (verifies integrity and snapshot-mode compatibility before extracting; zip-slip guarded). (#429)
+- Backup observability metrics: `graphdb_backup_total{result}`, `graphdb_backup_duration_seconds`, `graphdb_backup_size_bytes`. (#429)
+- GPG-signed releases: artifacts carry detached `.asc` signatures; the public key is published in `KEYS`, `docs/RELEASE_SIGNING.md`, as a release asset, and on keys.openpgp.org. (#430, #431, #432)
+- Admin-UI backups page wired to the real `/admin/backup` endpoint (replaced the previously mocked page) + offline-restore instructions. (#429)
+
+### Fixed
+- Release workflow signing repaired: removed a malformed `gpg --quick-add-uid` call that failed the release job even with a valid key, and guarded the signing steps on the key being configured. (#430)
+- `pkg/backup` archive reads bounded with `io.CopyN` (gosec G110 — decompression-bomb hardening). (#429)
+
+## [0.7.0] - 2026-06-19
+
+**Production hardening.** ROADMAP blockers B1/B2/B3/B6. Shipped to `main`
+(#427/#428); rolled into the v0.8.0 release tag rather than tagged standalone.
+
+### Security
+- **B1** — tenant-safe delete: added `DeleteAllNodesForTenant`; `DELETE /nodes` now clears only the caller's tenant via the per-node cascade instead of every tenant's data. (#427)
+
+### Changed
+- **B2** — graceful shutdown now drains: `http.Server.Shutdown(ctx)` then `graph.Close()`, stopping the listener and exiting as soon as in-flight requests finish (no more fixed 30s sleep). (#427)
+- **B3** — WAL durability default decided by measurement: batched WAL benchmarked ~13× slower than per-write `fsync` on NVMe, so per-write fsync stays the default (batching remains opt-in for slow/networked disks), now documented. (#427)
+- **B6** — clustering scoped out of 1.0: `pkg/cluster` marked EXPERIMENTAL / NOT WIRED, single-node stated in README + CAPABILITIES, with an import-guard test preventing `cmd/server`/`pkg/api` from importing it. (#427)
+- Defined the path to GA in `docs/ROADMAP_v1.md`. (#426)
+- Split oversized source files into focused same-package siblings. (#424)
+
+### Fixed
+- `DeleteAllNodes` drops the mmap base so a delete-all is real in memory and across reopen (mmap mode). (#423)
+- Dropped Windows from the goreleaser build matrix (mmap uses Unix-only syscalls). (#421)
 
 ## [0.6.0] - 2026-06-17
 
@@ -44,6 +84,52 @@ takes reopen of a ~937k-node / 1.3M-edge store from ~14.4s to near-instant.
 
 ### Fixed
 - mmap membership writer double-counted a node with duplicate labels (e.g. `["Person","Person"]`) — its ID was written into a label run once per occurrence, while the in-memory index dedups, so `GetNodesByLabelForTenant` returned the node twice in mmap vs once in JSON. Found by the hardened equivalence oracle. (#417)
+
+## [0.5.0] - 2026-06-16
+
+**Security re-audit hardening (Track S).** Closes the 11 High / 16 Medium / 10
+Low backlog from the 2026-06-10 security re-audit (#371), across Waves 1–3.
+
+### Security
+- Versioned snapshot envelope (`GSNP` magic + version + flags) replacing the `data[0] != '{'` heuristic, plus construction-time encryption (M-14). (#395)
+- WAL entry payloads encrypted through the snapshot engine (H-3). (#399)
+- WAL checkpoint compaction purges deleted-tenant remanence (M-1) + GDPR Art-17 immediate tenant-erasure control. (#396, #393)
+- Token revocation via a per-user generation counter + an admin revoke endpoint (M-7). (#390, #398)
+- SHA-256 plugin manifest verification before `plugin.Open` (M-15, OSS side). (#397)
+- Tenant-status enforcement + tenant-ID override validation (H-1, M-5); rate limiting on by default (H-5); owner-only at-rest files + WAL record-size cap (H-2, H-4); HNSW/traversal result caps (H-7, H-8); GraphQL depth/body/audit caps (M-3, M-4, M-16); request context honored in heavy algorithms (H-6). (#372–#387)
+- Toolchain pinned to go1.26.4 to close stdlib vulnerabilities (H-9). (#374)
+
+### Fixed
+- TS/Python SDK hardening: path-segment encoding, cache identity namespace, idempotent-only retries, proxy handling, and keeping plaintext API keys out of representations (M-13, M-11, H-11). (#378–#380)
+- CI: migrated actions to Node-24 majors + scoped workflow permissions; retired the tolerated benchmark-comment-step failure. (#368)
+
+## [0.4.1] - 2026-06-05
+
+### Changed
+- Renamed the Go module `github.com/dd0wney/cluso-graphdb` → `github.com/dd0wney/graphdb`. (#335)
+
+### Added
+- First-party Python SDK (`clients/python`) — milestone M1. (#326, #327)
+- `PUT`/`DELETE /edges/{id}` + SDK `edges.update`/`edges.delete`. (#332)
+
+### Fixed
+- Reject non-finite edge weights (±Inf/NaN) at the API boundary. (#334)
+- Gate property-index `Remove`/`Insert` on type across the update and delete paths (no partial apply). (#321, #324)
+- WAL-log vector-index create/drop for crash durability. (#320)
+
+## [0.4.0] - 2026-06-04
+
+**Tenant-isolation and durability hardening.**
+
+### Added
+- Durable, index-consistent `Transaction.Commit` built on a new atomic batch-WAL primitive. (#279, #280)
+
+### Security
+- Tenant-isolation sweep: gate `/api/metrics` admin-only (#300), scope `/api/v1/tenants/{id}` with `withTenant` (#301), scope GraphQL aggregate-schema discovery to the requesting tenant (#295), and rename tenant-blind helpers to `*AcrossTenants` (#302).
+
+### Fixed
+- Maintain per-tenant indexes across the batch/bulk-import and cascade-delete paths; rebuild the vector index and edge adjacency across restart. (#287, #288, #298, #304, #305, #307)
+- Consumer-contract regression harness + metamorphic/invariant test suites for storage write paths (Tracks P/Q). (#291, #310, #311, #314)
 
 ## [0.3.0] - 2025-02-18
 
@@ -111,7 +197,13 @@ takes reopen of a ~937k-node / 1.3M-edge store from ~14.4s to near-instant.
 - 100x concurrency improvement
 - 650x faster LSM read performance
 
-[Unreleased]: https://github.com/dd0wney/graphdb/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/dd0wney/graphdb/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/dd0wney/graphdb/compare/v0.6.0...v0.8.0
+[0.7.0]: https://github.com/dd0wney/graphdb/compare/v0.6.0...b6eefef
+[0.6.0]: https://github.com/dd0wney/graphdb/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/dd0wney/graphdb/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/dd0wney/graphdb/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/dd0wney/graphdb/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dd0wney/graphdb/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dd0wney/graphdb/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dd0wney/graphdb/releases/tag/v0.1.0
