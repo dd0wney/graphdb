@@ -30,4 +30,6 @@ RUN mkdir -p /data/licenses
 EXPOSE 8080
 
 # Run
-CMD ["./license-server", "--port=8080", "--data=/data/licenses"]
+# Port is driven by the PORT env var (app default 8080; docker-compose sets 8082).
+# Do NOT hardcode --port here: a CLI flag overrides PORT and shadows the env.
+CMD ["./license-server", "--data=/data/licenses"]
