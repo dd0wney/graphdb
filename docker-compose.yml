@@ -1,5 +1,10 @@
 version: '3.8'
 
+# RUNTIME: Podman (primary local-dev runtime as of 2026-06-24). Docker Desktop
+# retired. Bring up with `JWT_SECRET=... podman compose up -d --build`.
+# `alias docker=podman` keeps `docker compose ...` working. See the syntopica-v2
+# migration spec: docs/superpowers/specs/2026-06-24-podman-apple-container-migration-design.md
+
 services:
   # PostgreSQL database for license server
   postgres:
