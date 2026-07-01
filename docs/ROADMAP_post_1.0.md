@@ -44,24 +44,36 @@ work are gated on the same corpus run; do it once, up front.
 
 ## The minor line (v1.1 → v1.9)
 
-### v1.1.0 — Validate & observe
+### v1.1.0 — Validate & observe ✅ **DONE (2026-07-01)**
 *Front-load the evidence that gates later releases; ship one easy adoption win.*
-- **Real-corpus coi-screen validation** (~814K ICIJ): first end-to-end mmap exercise on a real
-  consumer + product evidence + the empirical answer to decision **B-1** ("is full-graph
-  enumeration a hot path?"). Output is a decision doc, not a feature flip.
-- **Harden the JSON↔mmap equivalence oracle** to property-based / fuzzed coverage — the
-  precondition for making mmap the default.
-- **OpenTelemetry tracing** + SLO/SLI docs (additive; pairs with the metrics already shipped).
-- CI: re-enable the disabled fuzz tests (`pkg/api/fuzz_test.go.disabled`, `pkg/query/fuzz_test.go.disabled`).
+- ✅ **coi-screen validation (#444)**: ICIJ-scale (~937K) mmap-vs-JSON measurement of the
+  coi access pattern. **Answered B-1: NO — full-graph enumeration is not a coi-screen hot
+  path.** coi resolves parties by label index + bounded adjacency BFS (mmap's cheap paths);
+  enumeration is never on that path. mmap reopen is **~1370× cheaper** than JSON at scale
+  (6ms vs 8.2s). Findings: `docs/internals/design/SPIKE_COI_SCREEN_VALIDATION_2026-07-01.md`.
+  (Limitation: the real `../coi-screen` consumer repo isn't vendored here, so this validated
+  the storage primitives it depends on, not the consumer binary — runbook in the findings doc.)
+- ✅ **Property-based / fuzzed JSON↔mmap oracle (#440)** — raw-byte fingerprint + all-12-value-
+  type parity + native `FuzzMmapReopenParity`. The precondition for mmap-default.
+- ✅ **OpenTelemetry tracing + SLO/SLI docs (#442)** — env-configurable provider (off by
+  default), HTTP root-span middleware, `docs/OBSERVABILITY.md`.
+- ✅ **Re-enabled the disabled fuzz tests (#441)** — `pkg/api` rewired to the current API;
+  the stale `pkg/query` `.disabled` cruft dropped (its live twin already existed).
+- **Bonus (#445):** snapshot ship-and-serve hydration primitive validated (~7.4ms map at ICIJ
+  scale, position-independent) → seeds the v2.0 cluster-bootstrap thread below.
 - **Gates:** none · **Size:** M · **Risk:** low
 
 ### v1.2.0 — mmap by default
-*The headline single-node-scale win — gated on v1.1.*
+*The headline single-node-scale win — gated on v1.1. **Gate now satisfied** (v1.1 done): the
+oracle is property-based (#440) and the coi-screen validation (#444) confirmed the workload's
+hot paths are mmap-cheap. Ready to sequence.*
 - Flip **mmap-backed lazy reopen to the default** (JSON path stays as opt-out). Backward-
   compatible: the format is already versioned (`GMNP` v4) and the oracle is now property-based.
 - Deploy-ordering / index-build operability docs.
+- Give `cmd/import-icij` an mmap opt-in (honor `GRAPHDB_STORAGE_MODE` / a `--mmap` flag) —
+  small follow-up surfaced by #444; also unblocks the coi-screen consumer runbook.
 - CI: bring `cmd/...` into the test allowlist.
-- **Gates:** v1.1 (oracle hardening + real-consumer validation) · **Size:** S–M · **Risk:** medium (default-behavior change)
+- **Gates:** v1.1 ✅ (oracle hardening + real-consumer validation) · **Size:** S–M · **Risk:** medium (default-behavior change)
 
 ### v1.3.0 — Deploy anywhere
 *Adoption unblock — independent of the perf spine.*
@@ -78,14 +90,17 @@ work are gated on the same corpus run; do it once, up front.
 - SDK parity (Python/TS/Go catch up to the new endpoints).
 - **Gates:** none · **Size:** M · **Risk:** low
 
-### v1.5.0 — Scale the read path *(conditional)*
-*The deepest perf win — sequenced here because it's the hardest to keep backward-compatible.*
-- **DoD Levers 2–3** (lazy property bag → ~3.6× on the 479ms full-enum residual; columnar SoA),
-  done as **internal representation changes behind the existing public `*Node`/`Properties`
-  types** so the 1.0 promise holds. **Only if v1.1 confirmed enumeration is a hot path.**
-- If v1.1 says enumeration *isn't* hot → this release becomes additional ecosystem/connectors
-  work instead.
-- **Gates:** v1.1 decision · **Size:** L · **Risk:** medium (public-type blast radius — must stay internal)
+### v1.5.0 — ~~Scale the read path~~ → ecosystem/connectors *(v1.1 decided this)*
+*The conditional resolved: **v1.1 (#444) found enumeration is NOT a hot path** for the
+coi-screen workload, so the DoD-Levers track does not earn this slot.*
+- **DoD Levers 2–3** (lazy property bag / columnar SoA optimizing the 479ms full-enum residual)
+  are **deprioritized** — they optimize a path the validated consumer doesn't use. Revisit only
+  if a *different* consumer surfaces full-graph enumeration as a genuine hot path.
+- **Redirected optimization target (from #444):** the real coi cost is the label-bucket resolve
+  scan (~262ms over 337K officers), not enumeration — so a **name/property index on the label
+  bucket** is the higher-value read-path win if coi latency ever matters.
+- This release becomes **additional ecosystem/connectors work** instead (see v1.8).
+- **Gates:** v1.1 decision ✅ · **Size:** M (was L) · **Risk:** low (no longer a public-type refactor)
 
 ### v1.6.0 — Query maturity & developer experience
 *Make the engine pleasant to use, not just fast.*
@@ -137,6 +152,14 @@ territory per the v0.8.0 design).*
 
 - **Clustering / HA** — wire (or formally remove) `pkg/cluster`; sharded write path; distributed
   consensus. (`pkg/cluster` is ~2,800 LOC, currently EXPERIMENTAL and not wired in.)
+- **Snapshot-based replica hydration** *(new — seeded by #445)*. The mmap "cheap reopen" (~6ms)
+  makes base-state hydration near-free: a new node maps a shipped `snapshot.mmap` and is
+  read-ready in **~7.4ms at ~1M nodes**, byte-identically — the layout is position-independent
+  (validated: `TestSnapshotHydration_FromShippedFile`, `SPIKE_SNAPSHOT_HYDRATION_2026-07-01.md`).
+  Turning the primitive into a usable replica needs, in order: **delta-tail/freshness** (biggest
+  gap — snapshot is point-in-time), snapshot distribution (the `r2-backup` plugin is a substrate),
+  **encryption-in-mmap** (mmap is plaintext-only today), and the `pkg/cluster` join path. Fast
+  hydration is a building block for the bootstrap story, not the cluster itself.
 - **Breaking architecture refactors** that v1.9 could not do internally: Storage interface
   (arch HIGH-1), `pkg/api.Server` god-struct (HIGH-2), unified `TenantID` type, REST/GraphQL
   service-layer de-duplication (MED-1), `pkg/editions` global singleton.
