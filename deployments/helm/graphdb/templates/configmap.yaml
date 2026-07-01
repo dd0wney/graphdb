@@ -31,6 +31,9 @@ data:
   TLS_HOSTS: {{ . | quote }}
   {{- end }}
   {{- end }}
+  {{- if .Values.secrets.encryptionEnabled }}
+  ENCRYPTION_KEY_DIR: /data/keys
+  {{- end }}
   {{- range $k, $v := .Values.config.extraEnv }}
   {{ $k }}: {{ $v | quote }}
   {{- end }}

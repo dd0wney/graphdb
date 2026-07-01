@@ -45,12 +45,18 @@ spec:
             httpGet:
               path: {{ .Values.probes.liveness.path }}
               port: http
+              {{- if .Values.config.tls.enabled }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.readiness.path }}
               port: http
+              {{- if .Values.config.tls.enabled }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
           envFrom:
@@ -74,7 +80,12 @@ spec:
           {{- end }}
       volumes:
         - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        {{- if not .Values.persistence.enabled }}
+        - name: data
           emptyDir: {}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

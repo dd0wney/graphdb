@@ -28,9 +28,8 @@ jobs:
             --set serviceMonitor.enabled=true > /dev/null
       - name: replicaCount>1 must be rejected
         run: |
-          if helm template t deployments/helm/graphdb --set replicaCount=2 2>/dev/null; then
-            echo "ERROR: replicaCount=2 was accepted but must be rejected"; exit 1
-          fi
+          out=$(helm template t deployments/helm/graphdb --set replicaCount=2 2>&1) && { echo "ERROR: replicaCount=2 was accepted but must be rejected"; echo "$out"; exit 1; }
+          echo "$out" | grep -qi replicaCount || { echo "ERROR: rejected, but not due to replicaCount: $out"; exit 1; }
           echo "guard correctly rejected replicaCount=2"
 
   terraform:

@@ -12,4 +12,8 @@ spec:
     - name: curl
       image: curlimages/curl:8.10.1
       command: ["curl", "-fsS"]
-      args: ["http://{{ include "graphdb.fullname" . }}:{{ .Values.service.port }}/health"]
+      args:
+        {{- if .Values.config.tls.enabled }}
+        - --insecure
+        {{- end }}
+        - {{ printf "http%s://%s:%v/health" (ternary "s" "" .Values.config.tls.enabled) (include "graphdb.fullname" .) .Values.service.port | quote }}

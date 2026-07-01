@@ -26,6 +26,12 @@ helm install graphdb ./deployments/helm/graphdb \
 
 Full surface: `values.yaml` (validated by `values.schema.json`).
 
+**GitOps note:** the auto-generated `JWT_SECRET` persists across `helm upgrade`
+via a cluster `lookup`. GitOps tooling that renders without cluster reads
+(e.g. ArgoCD with `lookup` disabled, or `helm template` pipelines) will
+regenerate it on every render and invalidate sessions — set `secrets.jwtSecret`
+explicitly or use `secrets.existingSecret` in those setups.
+
 ## Verify
 
 ```bash
