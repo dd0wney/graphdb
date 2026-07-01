@@ -52,6 +52,13 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "graphdb.fullname" . }}-config
+            {{- if .Values.secrets.existingSecret }}
+            - secretRef:
+                name: {{ .Values.secrets.existingSecret }}
+            {{- else if .Values.secrets.create }}
+            - secretRef:
+                name: {{ include "graphdb.fullname" . }}-secret
+            {{- end }}
           volumeMounts:
             - name: data
               mountPath: /data
