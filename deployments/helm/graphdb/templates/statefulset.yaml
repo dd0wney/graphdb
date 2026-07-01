@@ -59,7 +59,7 @@ spec:
             {{- if .Values.secrets.existingSecret }}
             - secretRef:
                 name: {{ .Values.secrets.existingSecret }}
-            {{- else if .Values.secrets.create }}
+            {{- else }}
             - secretRef:
                 name: {{ include "graphdb.fullname" . }}-secret
             {{- end }}

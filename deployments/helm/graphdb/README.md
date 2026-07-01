@@ -19,7 +19,7 @@ helm install graphdb ./deployments/helm/graphdb \
 | `image.tag` | `.Chart.AppVersion` | pin your graphdb version |
 | `persistence.size` | `10Gi` | snapshot volume |
 | `config.storageMode` | `""` (mmap) | `json` to opt out of mmap |
-| `secrets.create` / `secrets.existingSecret` | `false` / `""` | license + encryption key |
+| `secrets.jwtSecret` / `secrets.existingSecret` | `""` / `""` | a managed Secret with an auto-generated, upgrade-persistent `JWT_SECRET` is created by default; set `jwtSecret` to pin it or `existingSecret` to bring your own (must include `JWT_SECRET`) |
 | `config.tls.enabled` | `false` | in-server TLS |
 | `ingress.enabled` | `false` | HTTP ingress |
 | `serviceMonitor.enabled` | `false` | Prometheus Operator |

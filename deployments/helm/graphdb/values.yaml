@@ -45,8 +45,12 @@ config:
 
 # Secret material. See Task 4 semantics.
 secrets:
-  create: false
-  existingSecret: ""
+  # A managed Secret is auto-created (unless existingSecret is set) holding a
+  # generated JWT_SECRET that PERSISTS across `helm upgrade` (reused via lookup).
+  # Set jwtSecret to pin your own; production installs should set it explicitly
+  # or provide everything via existingSecret.
+  existingSecret: ""      # bring your own Secret (must include JWT_SECRET)
+  jwtSecret: ""           # JWT_SECRET; "" = auto-generate + persist across upgrades
   license: ""             # GRAPHDB_LICENSE
   encryptionEnabled: false
   encryptionMasterKey: "" # ENCRYPTION_MASTER_KEY

@@ -37,8 +37,8 @@
     "secrets": {
       "type": "object",
       "properties": {
-        "create": { "type": "boolean" },
-        "existingSecret": { "type": "string" }
+        "existingSecret": { "type": "string" },
+        "jwtSecret": { "type": "string" }
       }
     }
   }
