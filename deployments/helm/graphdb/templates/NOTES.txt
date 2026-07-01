@@ -1,0 +1,19 @@
+graphdb has been deployed as release {{ .Release.Name }} (single node).
+
+1. Wait for the pod to become ready:
+   kubectl -n {{ .Release.Namespace }} rollout status statefulset/{{ include "graphdb.fullname" . }}
+
+2. Reach the API (port-forward):
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "graphdb.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+   curl http://localhost:{{ .Values.service.port }}/health
+
+{{- if .Values.ingress.enabled }}
+
+3. Ingress is enabled at:
+{{- range .Values.ingress.hosts }}
+   http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- end }}
+
+Storage mode: {{ .Values.config.storageMode | default "mmap (default)" }}.
+Clustering/HA is not supported in v1.x — this is a single-node release.

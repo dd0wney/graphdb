@@ -32,8 +32,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # Final stage - minimal runtime image
 FROM alpine:latest
 
-# Add non-root user
-RUN addgroup -S graphdb && adduser -S graphdb -G graphdb
+# Add non-root user with a fixed numeric uid/gid so Kubernetes runAsNonRoot works
+RUN addgroup -S -g 10001 graphdb && adduser -S -u 10001 -G graphdb graphdb
 
 # Install runtime dependencies
 RUN apk --no-cache add ca-certificates tzdata

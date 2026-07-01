@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "graphdb.fullname" . }}-config
+  labels:
+    {{- include "graphdb.labels" . | nindent 4 }}
+data:
+  PORT: {{ .Values.service.port | quote }}
+  {{- with .Values.config.storageMode }}
+  GRAPHDB_STORAGE_MODE: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.edition }}
+  GRAPHDB_EDITION: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.config.tracing.enabled }}
+  GRAPHDB_TRACING_ENABLED: "true"
+  {{- with .Values.config.tracing.otlpEndpoint }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.tracing.tracesExporter }}
+  OTEL_TRACES_EXPORTER: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.tracing.serviceName }}
+  OTEL_SERVICE_NAME: {{ . | quote }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.config.tls.enabled }}
+  TLS_ENABLED: "true"
+  TLS_AUTO_GENERATE: {{ .Values.config.tls.autoGenerate | quote }}
+  {{- with .Values.config.tls.hosts }}
+  TLS_HOSTS: {{ . | quote }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.secrets.encryptionEnabled }}
+  ENCRYPTION_KEY_DIR: /data/keys
+  {{- end }}
+  {{- range $k, $v := .Values.config.extraEnv }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
