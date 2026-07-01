@@ -37,17 +37,17 @@ func compactBackends() []struct {
 		cfg  func(dir string) StorageConfig
 	}{
 		{"plain", func(dir string) StorageConfig {
-			return DefaultStorageConfig(dir)
+			return jsonConfig(dir)
 		}},
 		{"batched", func(dir string) StorageConfig {
-			c := DefaultStorageConfig(dir)
+			c := jsonConfig(dir)
 			c.EnableBatching = true
 			c.BatchSize = 8
 			c.FlushInterval = time.Millisecond
 			return c
 		}},
 		{"compressed", func(dir string) StorageConfig {
-			c := DefaultStorageConfig(dir)
+			c := jsonConfig(dir)
 			c.EnableCompression = true
 			return c
 		}},
@@ -231,7 +231,7 @@ func TestCompactWAL_ConcurrentWritesNotLost(t *testing.T) {
 // clean invariants.
 func TestCompactWAL_TransactionCommitsSurviveCompaction(t *testing.T) {
 	dir := t.TempDir()
-	cfg := DefaultStorageConfig(dir)
+	cfg := jsonConfig(dir)
 	gs, err := NewGraphStorageWithConfig(cfg)
 	if err != nil {
 		t.Fatalf("NewGraphStorageWithConfig: %v", err)
@@ -302,7 +302,7 @@ func TestCompactWAL_TransactionCommitsSurviveCompaction(t *testing.T) {
 }
 
 func TestCompactWAL_NoWALConfiguredIsNoOp(t *testing.T) {
-	cfg := DefaultStorageConfig(t.TempDir())
+	cfg := jsonConfig(t.TempDir())
 	cfg.BulkImportMode = true // no WAL
 	gs, err := NewGraphStorageWithConfig(cfg)
 	if err != nil {
@@ -321,7 +321,7 @@ func TestCompactWAL_NoWALConfiguredIsNoOp(t *testing.T) {
 // create on the compressed backend.
 func TestCompressedWALBackend_SingleOpWritesAreDurable(t *testing.T) {
 	dir := t.TempDir()
-	cfg := DefaultStorageConfig(dir)
+	cfg := jsonConfig(dir)
 	cfg.EnableCompression = true
 	gs, err := NewGraphStorageWithConfig(cfg)
 	if err != nil {

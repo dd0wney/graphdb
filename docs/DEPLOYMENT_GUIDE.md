@@ -254,6 +254,35 @@ See [.env.example](./.env.example) for complete documentation.
 | `STRIPE_SECRET_KEY` | Stripe payment integration |
 | `GRAPHDB_ENABLE_TELEMETRY` | Usage analytics (opt-in) |
 
+### Storage mode (mmap default)
+
+As of **v1.2**, the server uses the **mmap-backed lazy-reopen** snapshot mode by
+default. It maps `snapshot.mmap` and serves nodes/edges/indexes lazily, so reopen
+after a restart is near-instant (~6 ms at ~1M nodes vs ~8 s for the JSON path) with
+byte-identical results (validated by a property-based JSON↔mmap oracle).
+
+| `GRAPHDB_STORAGE_MODE` | Effect |
+|---|---|
+| *(unset)* | **mmap** (default) |
+| `json` / `jsonl` | force the legacy JSON snapshot path |
+| `mmap` | explicit mmap (accepted for back-compat; same as unset) |
+
+Operational notes:
+
+- **Automatic fallback.** Stores with **encryption enabled** or **disk-backed edges**
+  transparently use the JSON path regardless of this setting (mmap can't map ciphertext
+  and Stage 1 is in-memory-adjacency only). No action needed.
+- **Existing deployments migrate transparently.** A data directory holding a legacy
+  `snapshot.json` loads via the JSON path on first open, then writes `snapshot.mmap` on
+  its next snapshot. Reads work throughout; roll back by setting `GRAPHDB_STORAGE_MODE=json`.
+- **Backup/restore is mode-specific.** An archive records its snapshot mode; restoring an
+  mmap archive into a JSON-mode target (or vice versa) is **refused up front** to avoid a
+  silent empty load. Restore under the mode that matches the archive (set
+  `GRAPHDB_STORAGE_MODE` to match, or restore into a matching-mode server).
+- **Deploy ordering.** Create property/vector indexes **before** directing production
+  traffic — index construction on a hot path competes with query load. Index membership is
+  persisted in the mmap snapshot and restored on reopen, so this is a one-time bootstrap cost.
+
 ### Generating Secrets
 
 ```bash

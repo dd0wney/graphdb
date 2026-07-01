@@ -2,11 +2,15 @@ package storage
 
 import "testing"
 
-// crashRecoveryConfig matches NewGraphStorage's defaults so all three phases of
-// a crash-recovery test share one WAL/snapshot format (EnableEdgeCompression is
-// on by default; edges stay in-memory).
+// crashRecoveryConfig pins the JSON snapshot path for the crash-recovery tests.
+// These assert via checkGraphInvariants (which requires shards to hold every
+// node — untrue under mmap's lazy base) and per-tenant counts across a reopen,
+// so they run in JSON regardless of the v1.2 mmap default. All phases (including
+// the initial create+snapshot) must use this so the WAL/snapshot format agrees;
+// mmap WAL-replay crash recovery is covered separately by
+// TestMmapReopen_CrashRecovery. EnableEdgeCompression matches the default.
 func crashRecoveryConfig(dir string) StorageConfig {
-	return StorageConfig{DataDir: dir, EnableEdgeCompression: true}
+	return StorageConfig{DataDir: dir, EnableEdgeCompression: true, UseMmapSnapshot: false}
 }
 
 // TestReplayDeleteNode_RemovesNodeFromTenantIndex pins that a node deleted
@@ -34,7 +38,7 @@ func TestReplayDeleteNode_RemovesNodeFromTenantIndex(t *testing.T) {
 
 	// Phase 1: create the node, clean close -> snapshot has it (no edges).
 	{
-		gs, err := NewGraphStorage(dir)
+		gs, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
 		if err != nil {
 			t.Fatalf("phase1 NewGraphStorage: %v", err)
 		}
@@ -60,7 +64,7 @@ func TestReplayDeleteNode_RemovesNodeFromTenantIndex(t *testing.T) {
 
 	// Phase 3: recover. Snapshot rebuilds the tenant index WITH the node;
 	// replayDeleteNode must remove it again.
-	gs, err := NewGraphStorage(dir)
+	gs, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
 	if err != nil {
 		t.Fatalf("recovery NewGraphStorage: %v", err)
 	}
@@ -95,7 +99,7 @@ func TestReplayDeleteNodeWithEdges_TenantCountsConsistent(t *testing.T) {
 
 	// Phase 1: two nodes + an edge between them, clean close -> snapshot.
 	{
-		gs, err := NewGraphStorage(dir)
+		gs, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
 		if err != nil {
 			t.Fatalf("phase1 NewGraphStorage: %v", err)
 		}
@@ -127,7 +131,7 @@ func TestReplayDeleteNodeWithEdges_TenantCountsConsistent(t *testing.T) {
 
 	// Phase 3: recover. replayDeleteNode (node) + its cascade (edge) must both
 	// update the per-tenant indexes.
-	gs, err := NewGraphStorage(dir)
+	gs, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
 	if err != nil {
 		t.Fatalf("recovery NewGraphStorage: %v", err)
 	}
@@ -160,7 +164,7 @@ func TestReplayDeleteEdge_RemovesEdgeFromTenantIndex(t *testing.T) {
 
 	// Phase 1: two nodes + one edge, clean close -> snapshot holds all three.
 	{
-		gs, err := NewGraphStorage(dir)
+		gs, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
 		if err != nil {
 			t.Fatalf("phase1 NewGraphStorage: %v", err)
 		}
@@ -193,7 +197,7 @@ func TestReplayDeleteEdge_RemovesEdgeFromTenantIndex(t *testing.T) {
 
 	// Phase 3: recover. The tenant edge index is rebuilt WITH the edge from the
 	// snapshot; replayDeleteEdge must remove it again. Nodes are untouched.
-	gs, err := NewGraphStorage(dir)
+	gs, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
 	if err != nil {
 		t.Fatalf("recovery NewGraphStorage: %v", err)
 	}

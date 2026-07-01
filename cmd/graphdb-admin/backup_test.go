@@ -11,10 +11,21 @@ import (
 )
 
 // writeTestArchive builds a real backup archive on disk and returns its path.
-func writeTestArchive(t *testing.T) string {
+// writeTestArchive builds a default-mode (mmap, as of v1.2) archive — matches
+// the default restore mode, so the happy-path restore tests round-trip cleanly.
+func writeTestArchive(t *testing.T) string { return writeTestArchiveMode(t, true) }
+
+// writeTestArchiveJSON builds a json-mode archive — the fixture for the
+// snapshot-mode-mismatch test (a json archive restored under the default mmap
+// target must be refused).
+func writeTestArchiveJSON(t *testing.T) string { return writeTestArchiveMode(t, false) }
+
+func writeTestArchiveMode(t *testing.T, useMmap bool) string {
 	t.Helper()
 	srcDir := t.TempDir()
-	gs, err := storage.NewGraphStorage(srcDir)
+	cfg := storage.DefaultStorageConfig(srcDir)
+	cfg.UseMmapSnapshot = useMmap
+	gs, err := storage.NewGraphStorageWithConfig(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -35,6 +35,15 @@ func DefaultStorageConfig(dataDir string) StorageConfig {
 		EnableEdgeCompression: true, // Enabled by default for 5.08x memory savings
 		BatchSize:             100,
 		FlushInterval:         10 * time.Millisecond,
+		// mmap-backed lazy reopen is the DEFAULT as of v1.2 (validated: #440
+		// property-based JSON<->mmap oracle proves byte-identical enumeration;
+		// #444 measured reopen ~1370x cheaper than JSON at ICIJ scale). It is
+		// safe to default because mmapEligible() falls back to the JSON path
+		// automatically when incompatible (encryption enabled, disk-backed
+		// edges) and reopen loads a legacy snapshot.json when no snapshot.mmap
+		// exists (existing stores migrate to mmap on their next Close). Opt out
+		// with UseMmapSnapshot:false (library) or GRAPHDB_STORAGE_MODE=json (cmd).
+		UseMmapSnapshot: true,
 	}
 }
 

@@ -14,10 +14,15 @@ import (
 // JSON-mode server (or vice versa) silently loads an empty graph, so restore
 // refuses a mismatch up front.
 func targetSnapshotMode() string {
-	if os.Getenv("GRAPHDB_STORAGE_MODE") == "mmap" {
+	// Mirror cmd/server: mmap is the default (v1.2); GRAPHDB_STORAGE_MODE=json
+	// forces the JSON path. Must invert in lockstep with the server, else restore
+	// would false-positive a mode mismatch or silently load an empty graph.
+	switch os.Getenv("GRAPHDB_STORAGE_MODE") {
+	case "json", "jsonl":
+		return "json"
+	default:
 		return "mmap"
 	}
-	return "json"
 }
 
 // handleBackupCommand implements `graphdb-admin backup <subcommand>`. Backup

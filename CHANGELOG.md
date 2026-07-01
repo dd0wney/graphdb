@@ -24,6 +24,15 @@ The following are present in the codebase but not yet part of a tagged release
 - Plugin config loading from environment variables (`PLUGIN_<NAME>_<KEY>=<VALUE>`)
 - License key checksum validation (SHA256-based, backward compatible)
 
+### Changed
+- **mmap-backed lazy reopen is now the DEFAULT snapshot mode** (v1.2). Reopen after a
+  restart is near-instant (~6 ms at ~1M nodes vs ~8 s for the JSON path), byte-identical
+  (property-based JSON↔mmap oracle). Backward-compatible: existing `snapshot.json` stores
+  load via the JSON path and migrate to `snapshot.mmap` on their next snapshot; encrypted
+  and disk-backed-edge stores transparently keep using JSON. Opt out with
+  `GRAPHDB_STORAGE_MODE=json` (server) or `StorageConfig.UseMmapSnapshot=false` (library).
+  Backup archives are mode-specific — restore under the mode matching the archive.
+
 ### Performance
 - Zero-allocation `Contains()` for compressed edge lists (sequential scan with early termination)
 

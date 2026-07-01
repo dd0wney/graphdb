@@ -74,12 +74,12 @@ func TestWriteArchive_RoundTrip(t *testing.T) {
 			if jerr := json.Unmarshal(b, &m); jerr != nil {
 				t.Fatalf("manifest: %v", jerr)
 			}
-			if m.ManifestVersion != 1 || m.GraphdbVersion != "test-version" || m.SnapshotMode != "json" || len(m.Files) == 0 {
+			if m.ManifestVersion != 1 || m.GraphdbVersion != "test-version" || m.SnapshotMode != "mmap" || len(m.Files) == 0 {
 				t.Errorf("bad manifest: %+v", m)
 			}
 			continue
 		}
-		if hdr.Name == "snapshot.json" {
+		if hdr.Name == "snapshot.mmap" {
 			sawSnapshot = true
 		}
 		dst := filepath.Join(restoreDir, hdr.Name)

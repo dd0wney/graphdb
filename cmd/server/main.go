@@ -376,12 +376,16 @@ func main() {
 		storageConfig.KeyManager = keyManager
 		logger.Info("encryption connected to storage layer")
 	}
-	// Opt into the mmap-backed lazy reopen path (graphdb ask #1, Stage 1). Falls
-	// back to the JSON path automatically when ineligible (encryption enabled,
-	// disk-backed edges, or no snapshot.mmap present).
-	if os.Getenv("GRAPHDB_STORAGE_MODE") == "mmap" {
-		storageConfig.UseMmapSnapshot = true
-		logger.Info("mmap-backed lazy reopen enabled (GRAPHDB_STORAGE_MODE=mmap)")
+	// mmap-backed lazy reopen is the default (v1.2). It falls back to the JSON
+	// path automatically when ineligible (encryption enabled, disk-backed edges,
+	// or no snapshot.mmap present). GRAPHDB_STORAGE_MODE=json forces the JSON
+	// path; =mmap is accepted as an explicit no-op for back-compat.
+	switch os.Getenv("GRAPHDB_STORAGE_MODE") {
+	case "json", "jsonl":
+		storageConfig.UseMmapSnapshot = false
+		logger.Info("JSON snapshot mode forced (GRAPHDB_STORAGE_MODE=json)")
+	default:
+		logger.Info("mmap-backed lazy reopen enabled (default; set GRAPHDB_STORAGE_MODE=json to opt out)")
 	}
 	graph, err := storage.NewGraphStorageWithConfig(storageConfig)
 	if err != nil {
