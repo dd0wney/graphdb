@@ -51,19 +51,42 @@ type QueryResult struct {
 	Rows []map[string]any `json:"rows"`
 }
 
-// EmbeddingsResult holds embedding vectors (OpenAI-shaped endpoint).
+// EmbeddingsResult is the OpenAI-shaped /v1/embeddings response.
 type EmbeddingsResult struct {
-	Vectors [][]float64 `json:"vectors"`
+	Object string          `json:"object"`
+	Data   []EmbeddingData `json:"data"`
+	Model  string          `json:"model"`
 }
 
-// RetrievedDoc is one graph-augmented retrieval document.
+// EmbeddingData is one embedding (with its position in the request's input array).
+type EmbeddingData struct {
+	Embedding []float64 `json:"embedding"`
+	Index     int       `json:"index"`
+}
+
+// Vectors returns just the embedding vectors, in the order returned by the server.
+func (r *EmbeddingsResult) Vectors() [][]float64 {
+	out := make([][]float64, len(r.Data))
+	for i, d := range r.Data {
+		out[i] = d.Embedding
+	}
+	return out
+}
+
+// RetrievedDoc is one graph-augmented retrieval document (LangChain-shaped).
 type RetrievedDoc struct {
-	NodeID  uint64  `json:"node_id"`
-	Score   float64 `json:"score"`
-	Content string  `json:"content,omitempty"`
+	PageContent string               `json:"page_content"`
+	Metadata    RetrievedDocMetadata `json:"metadata"`
 }
 
-// RetrieveResult is the result of graph-augmented retrieval.
+// RetrievedDocMetadata carries the graph signal for a retrieved chunk.
+type RetrievedDocMetadata struct {
+	NodeID uint64  `json:"node_id"`
+	Score  float64 `json:"score"`
+}
+
+// RetrieveResult is the response of graph-augmented retrieval.
 type RetrieveResult struct {
 	Documents []RetrievedDoc `json:"documents"`
+	Degraded  string         `json:"degraded,omitempty"`
 }
