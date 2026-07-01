@@ -22,7 +22,7 @@ jobs:
       - name: helm template (secrets + tls + ingress + servicemonitor)
         run: |
           helm template t deployments/helm/graphdb \
-            --set secrets.create=true --set secrets.license=x \
+            --set secrets.license=x --set secrets.jwtSecret=ci-test \
             --set config.tls.enabled=true \
             --set ingress.enabled=true --set 'ingress.hosts[0].host=x.example.com' --set 'ingress.hosts[0].paths[0].path=/' \
             --set serviceMonitor.enabled=true > /dev/null
