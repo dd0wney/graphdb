@@ -227,6 +227,26 @@ doctl compute droplet create graphdb \
 
 **Estimated Cost:** $5-15/month
 
+### Kubernetes (Helm)
+
+A single-node Helm chart lives at `deployments/helm/graphdb` and a thin
+Terraform wrapper at `deployments/terraform/graphdb`.
+
+```bash
+helm install graphdb ./deployments/helm/graphdb \
+  --namespace graphdb --create-namespace --set config.edition=community
+kubectl -n graphdb rollout status statefulset/graphdb
+```
+
+Clustering/HA is v2.0 — `replicaCount` is fixed at 1. See the chart README
+([`deployments/helm/graphdb/README.md`](../deployments/helm/graphdb/README.md))
+for the values surface and manual kind smoke-test runbook, and the
+Terraform module README
+([`deployments/terraform/graphdb/README.md`](../deployments/terraform/graphdb/README.md))
+for IaC usage.
+
+**Estimated Cost:** depends on the underlying cluster (self-managed, EKS/GKE/AKS, etc.)
+
 ---
 
 ## Configuration
