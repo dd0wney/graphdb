@@ -1,3 +1,6 @@
+{{- if gt (int .Values.replicaCount) 1 }}
+{{- fail "graphdb is single-node in v1.x: replicaCount must be 1. Clustering/HA is planned for v2.0 (see ROADMAP_post_1.0.md). Running multiple replicas behind one Service each write an independent snapshot and WILL corrupt/diverge your data." }}
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
