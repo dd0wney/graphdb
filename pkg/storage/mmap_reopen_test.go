@@ -1,12 +1,15 @@
 package storage
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Phase 1 correctness gate for the mmap reopen mode. checkGraphInvariants can't be
@@ -61,10 +64,18 @@ func itoa(i int) string {
 	return string(b)
 }
 
-// renderValue renders a Value to a deterministic string in the form "type:canonical".
-// Used to build stable property-bag signatures for fingerprinting.
+// renderValue renders a Value to a deterministic string in the form "type:hexbytes".
+//
+// It fingerprints the RAW Data bytes (not the semantic v.String()) on purpose: the
+// oracle's promise is that an mmap-reopened store enumerates BYTE-IDENTICALLY to the
+// JSON path. v.String() is lossy for several types — floats go through %g, timestamps
+// through time.Time.String() (drops sub-second + timezone), vectors/arrays through %v —
+// so a store bug that perturbed low mantissa bits or a timestamp's nanoseconds could
+// slip past a String()-based signature. Comparing type + raw bytes is byte-exact and is
+// what makes the widened value-type coverage (floats, timestamps, bytes, arrays, JSON)
+// actually trustworthy.
 func renderValue(v Value) string {
-	return fmt.Sprintf("%d:%s", v.Type, v.String())
+	return fmt.Sprintf("%d:%x", v.Type, v.Data)
 }
 
 // renderProps returns a deterministic string for a property map: keys sorted,
@@ -1293,4 +1304,369 @@ func TestMmapReopen_DeleteAllNodesClears(t *testing.T) {
 		}
 		assertFingerprintEqual(t, fingerprintTenant(t, jr2, tenant), fingerprintTenant(t, mr2, tenant), "reopen-after-deleteall "+tenant)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Per-value-type round-trip parity (explicit type coverage)
+// ---------------------------------------------------------------------------
+
+// valueTypeCases enumerates one property value per ValueType (with edge cases:
+// empty/zero/negative/NaN/Inf/unicode/empty-collection) so the oracle exercises
+// the full type space, not just String+Int. The mmap property codec is
+// type-agnostic (type|len|data verbatim, mmap_snapshot_format.go), so any
+// per-type divergence that surfaces here is a JSON-path representational gap,
+// not an mmap-layout bug — report it, do not weaken the test.
+//
+// Kept as a package-level func (not an inline literal) so the fuzz target can
+// draw from the same set.
+func valueTypeCases() []struct {
+	name string
+	v    Value
+} {
+	return []struct {
+		name string
+		v    Value
+	}{
+		{"string/empty", StringValue("")},
+		{"string/ascii", StringValue("hello")},
+		{"string/unicode", StringValue("héllo-世界-🌍")},
+		{"int/zero", IntValue(0)},
+		{"int/negative", IntValue(-42)},
+		{"int/max", IntValue(math.MaxInt64)},
+		{"int/min", IntValue(math.MinInt64)},
+		{"float/zero", FloatValue(0)},
+		{"float/negzero", FloatValue(math.Copysign(0, -1))},
+		{"float/pi", FloatValue(3.141592653589793)},
+		{"float/nan", FloatValue(math.NaN())},
+		{"float/posinf", FloatValue(math.Inf(1))},
+		{"float/neginf", FloatValue(math.Inf(-1))},
+		{"bool/true", BoolValue(true)},
+		{"bool/false", BoolValue(false)},
+		{"bytes/empty", BytesValue([]byte{})},
+		{"bytes/nul", BytesValue([]byte{0x00, 0x01, 0xff, 0x00})},
+		{"timestamp/epoch", TimestampValue(time.Unix(0, 0))},
+		{"timestamp/y2k", TimestampValue(time.Unix(946684800, 0))},
+		{"vector/empty", VectorValue([]float32{})},
+		{"vector/vals", VectorValue([]float32{1.5, -2.25, 0})},
+		{"strarray/empty", StringArrayValue([]string{})},
+		{"strarray/vals", StringArrayValue([]string{"a", "", "c"})},
+		{"intarray/vals", IntArrayValue([]int64{0, -1, math.MaxInt64})},
+		{"floatarray/vals", FloatArrayValue([]float64{0, 1.5, math.Inf(1)})},
+		{"boolarray/vals", BoolArrayValue([]bool{true, false, true})},
+	}
+}
+
+// TestMmapReopen_ValueTypeParity asserts that a node carrying a property of each
+// ValueType enumerates byte-identically from an mmap-reopened store and a JSON-mode
+// store — live, and across a reopen. Complements the random fuzzer with explicit,
+// named per-type coverage (a failing type names itself).
+func TestMmapReopen_ValueTypeParity(t *testing.T) {
+	const tenant = "vt-tenant"
+	for _, tc := range valueTypeCases() {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			jsonDir, mmapDir := t.TempDir(), t.TempDir()
+
+			seed := func(gs *GraphStorage) {
+				if _, err := gs.CreateNodeWithTenant(tenant, []string{"T"}, map[string]Value{"p": tc.v}); err != nil {
+					t.Fatalf("CreateNode: %v", err)
+				}
+			}
+
+			jgs, _ := NewGraphStorage(jsonDir)
+			seed(jgs)
+			if err := jgs.Close(); err != nil {
+				t.Fatal(err)
+			}
+			mgs, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			seed(mgs)
+			if err := mgs.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			jr, _ := NewGraphStorage(jsonDir)
+			defer jr.Close()
+			mr, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mr.Close()
+			if mr.mmapSnap == nil {
+				t.Fatal("reopen did not take the mmap path")
+			}
+			assertFingerprintEqual(t, fingerprintTenant(t, jr, tenant), fingerprintTenant(t, mr, tenant), "type "+tc.name)
+
+			// Non-vacuity guard: the property must actually survive the reopen with
+			// its exact type + bytes. Without this, a value silently dropped by BOTH
+			// stores would make the parity assertion pass trivially (empty == empty).
+			nodes := mr.GetNodesByLabelForTenant(tenant, "T")
+			if len(nodes) != 1 {
+				t.Fatalf("want 1 node after reopen, got %d", len(nodes))
+			}
+			got, ok := nodes[0].Properties["p"]
+			if !ok {
+				t.Fatalf("property %q dropped across reopen (parity was vacuous)", "p")
+			}
+			if got.Type != tc.v.Type || !bytes.Equal(got.Data, tc.v.Data) {
+				t.Fatalf("property round-trip corrupted: want %d:%x got %d:%x",
+					tc.v.Type, tc.v.Data, got.Type, got.Data)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Fuzzed parity (native go test -fuzz)
+// ---------------------------------------------------------------------------
+
+// byteReader turns a fuzz-supplied []byte into a deterministic stream of
+// structural choices. It wraps around on exhaustion so even short inputs yield
+// a full graph (and empty input yields all-zero choices — a minimal graph).
+type byteReader struct {
+	b   []byte
+	pos int
+}
+
+func (r *byteReader) u8() byte {
+	if len(r.b) == 0 {
+		return 0
+	}
+	v := r.b[r.pos%len(r.b)]
+	r.pos++
+	return v
+}
+
+func (r *byteReader) u64() uint64 {
+	var v uint64
+	for i := 0; i < 8; i++ {
+		v = v<<8 | uint64(r.u8())
+	}
+	return v
+}
+
+// intn returns a value in [0,n) drawn from two consumed bytes (0 for n<=0).
+func (r *byteReader) intn(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	return (int(r.u8())<<8 | int(r.u8())) % n
+}
+
+// finiteWeight returns a finite, varied float64 suitable for an edge weight.
+// Edge weight is a NATIVE float64 struct field that the JSON snapshot path
+// json.Marshals, so NaN/±Inf are illegal there — keep it finite. (Float
+// *properties* are opaque bytes and may be any bit pattern; see fuzzValue.)
+func (r *byteReader) finiteWeight() float64 {
+	return float64(r.intn(100000)) / 100.0
+}
+
+// fuzzValue draws a property Value spanning the full ValueType space, including
+// bit patterns the semantic API can't otherwise reach (NaN/±Inf floats via raw
+// bits, NUL bytes, empty collections). Values are opaque Data bytes end-to-end,
+// so any type/pattern is legal here.
+func fuzzValue(r *byteReader) Value {
+	switch r.intn(12) {
+	case 0:
+		n := r.intn(6)
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = r.u8()
+		}
+		return StringValue(string(b))
+	case 1:
+		return IntValue(int64(r.u64()))
+	case 2:
+		return FloatValue(math.Float64frombits(r.u64())) // may be NaN/Inf — fine as bytes
+	case 3:
+		return BoolValue(r.u8()&1 == 1)
+	case 4:
+		n := r.intn(6)
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = r.u8()
+		}
+		return BytesValue(b)
+	case 5:
+		return TimestampValue(time.Unix(int64(r.u64()>>2), 0))
+	case 6:
+		n := r.intn(4)
+		vec := make([]float32, n)
+		for i := range vec {
+			vec[i] = math.Float32frombits(uint32(r.u64()))
+		}
+		return VectorValue(vec)
+	case 7:
+		n := r.intn(4)
+		arr := make([]string, n)
+		for i := range arr {
+			arr[i] = fmt.Sprintf("s%d", r.intn(1000))
+		}
+		return StringArrayValue(arr)
+	case 8:
+		n := r.intn(4)
+		arr := make([]int64, n)
+		for i := range arr {
+			arr[i] = int64(r.u64())
+		}
+		return IntArrayValue(arr)
+	case 9:
+		n := r.intn(4)
+		arr := make([]float64, n)
+		for i := range arr {
+			arr[i] = math.Float64frombits(r.u64())
+		}
+		return FloatArrayValue(arr)
+	case 10:
+		n := r.intn(4)
+		arr := make([]bool, n)
+		for i := range arr {
+			arr[i] = r.u8()&1 == 1
+		}
+		return BoolArrayValue(arr)
+	default:
+		return StringValue("") // empty-Data edge case
+	}
+}
+
+// fuzzBuildSpecs materialises node/edge/mutation specs ONCE from the byte stream,
+// so both the JSON-mode and mmap-mode stores are fed byte-for-byte identical input
+// (no PRNG-ordering hazard). Counts are bounded so each fuzz exec stays cheap.
+func fuzzBuildSpecs(r *byteReader) ([]nodeSpec, []edgeSpec, []mutSpec) {
+	nodeCount := 1 + r.intn(32) // 1..32 (never vacuous)
+	nodes := make([]nodeSpec, nodeCount)
+	for i := range nodes {
+		numLabels := r.intn(3) // 0..2 labels
+		lbls := make([]string, numLabels)
+		for j := range lbls {
+			lbls[j] = rpNodeLabels[r.intn(len(rpNodeLabels))]
+		}
+		np := r.intn(4) // 0..3 props
+		props := make(map[string]Value, np)
+		for k := 0; k < np; k++ {
+			props[rpPropKeys[r.intn(len(rpPropKeys))]] = fuzzValue(r)
+		}
+		nodes[i] = nodeSpec{labels: lbls, props: props}
+	}
+
+	edgeCount := r.intn(48) // 0..47
+	edges := make([]edgeSpec, edgeCount)
+	for i := range edges {
+		np := r.intn(3)
+		props := make(map[string]Value, np)
+		for k := 0; k < np; k++ {
+			props[rpPropKeys[r.intn(len(rpPropKeys))]] = fuzzValue(r)
+		}
+		edges[i] = edgeSpec{
+			fromIdx: r.intn(nodeCount),
+			toIdx:   r.intn(nodeCount),
+			typ:     rpEdgeTypes[r.intn(len(rpEdgeTypes))],
+			weight:  r.finiteWeight(),
+			props:   props,
+		}
+	}
+
+	mutCount := r.intn(16) // 0..15
+	kinds := []string{"updateNode", "deleteNode", "createEdge", "deleteEdge", "updateEdge"}
+	muts := make([]mutSpec, mutCount)
+	for i := range muts {
+		muts[i] = mutSpec{
+			kind:    kinds[r.intn(len(kinds))],
+			nodeIdx: r.intn(nodeCount),
+			edgeIdx: r.intn(edgeCount + 1),
+			props:   map[string]Value{rpPropKeys[r.intn(len(rpPropKeys))]: fuzzValue(r)},
+			weight:  r.finiteWeight(),
+		}
+	}
+	return nodes, edges, muts
+}
+
+// FuzzMmapReopenParity is the property-based generalisation of
+// TestMmapReopen_RandomizedParity: instead of a single fixed seed, the fuzz
+// engine drives graph shape, value types, and the mutation sequence from its
+// corpus. The invariant is unchanged and load-bearing — an mmap-reopened store
+// must enumerate BYTE-IDENTICALLY to the same data via the JSON path, live and
+// across a second reopen.
+//
+// Seed-corpus entries run on every `go test` (deterministic, always-on CI
+// coverage); `go test -fuzz=FuzzMmapReopenParity` drives coverage-guided search.
+//
+// If this FAILS it is a genuine mmap≠JSON divergence — do NOT weaken it; the
+// failing input is written to testdata/fuzz/ for a deterministic repro. Report
+// it as BLOCKED with that corpus entry.
+func FuzzMmapReopenParity(f *testing.F) {
+	// Structurally-diverse seeds so the always-on (non -fuzz) run is non-trivial.
+	f.Add([]byte{})
+	f.Add([]byte{0x01, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80, 0x90})
+	f.Add(bytes.Repeat([]byte{0xff}, 64))
+	f.Add(bytes.Repeat([]byte{0x00, 0x01, 0x02, 0x03}, 32))
+	f.Add([]byte("the quick brown fox jumps over the lazy dog 0123456789"))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		const tenant = rpTenant
+		nodeSpecs, edgeSpecs, mutSpecs := fuzzBuildSpecs(&byteReader{b: data})
+
+		jsonDir, mmapDir := t.TempDir(), t.TempDir()
+
+		// Phase 1: populate both from identical specs, close.
+		jgs, err := NewGraphStorage(jsonDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		jNodeIDs, jEdgeIDs := populateStore(t, jgs, nodeSpecs, edgeSpecs)
+		if err := jgs.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		mgs, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mNodeIDs, mEdgeIDs := populateStore(t, mgs, nodeSpecs, edgeSpecs)
+		if err := mgs.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		// Phase 2: reopen both, assert parity.
+		jr, err := NewGraphStorage(jsonDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer jr.Close()
+		mr, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer mr.Close()
+		if mr.mmapSnap == nil {
+			t.Fatal("mmap reopen did not take the mmap path")
+		}
+		assertFingerprintEqual(t, fingerprintTenant(t, jr, tenant), fingerprintTenant(t, mr, tenant), "fuzz-after-first-reopen")
+
+		// Phase 3: identical mutation sequence, assert parity live.
+		applyMutSpecs(t, jr, mutSpecs, jNodeIDs, jEdgeIDs)
+		applyMutSpecs(t, mr, mutSpecs, mNodeIDs, mEdgeIDs)
+		assertFingerprintEqual(t, fingerprintTenant(t, jr, tenant), fingerprintTenant(t, mr, tenant), "fuzz-live-after-mutations")
+
+		// Phase 4: close + reopen both, assert parity survives persistence.
+		if err := jr.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := mr.Close(); err != nil {
+			t.Fatal(err)
+		}
+		jr2, err := NewGraphStorage(jsonDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer jr2.Close()
+		mr2, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer mr2.Close()
+		assertFingerprintEqual(t, fingerprintTenant(t, jr2, tenant), fingerprintTenant(t, mr2, tenant), "fuzz-after-second-reopen")
+	})
 }
