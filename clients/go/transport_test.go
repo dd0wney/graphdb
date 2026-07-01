@@ -70,3 +70,31 @@ func TestTransportRetriesRetryableStatus(t *testing.T) {
 		t.Errorf("calls = %d, want 2 (one retry)", calls)
 	}
 }
+
+func TestRefreshDoesNotConsumeRetryBudget(t *testing.T) {
+	var protectedCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/auth/refresh":
+			_, _ = w.Write([]byte(`{"access_token":"t2"}`))
+		default:
+			protectedCalls++
+			if protectedCalls == 1 {
+				w.WriteHeader(http.StatusUnauthorized) // triggers one refresh, no budget spent
+				return
+			}
+			w.WriteHeader(http.StatusServiceUnavailable) // persistent retryable
+		}
+	}))
+	defer srv.Close()
+
+	tr := &transport{baseURL: srv.URL, http: srv.Client(), token: "t1", refreshToken: "r1", maxRetries: 2}
+	_, err := tr.request(context.Background(), http.MethodGet, "/x", nil, nil)
+	if err == nil {
+		t.Fatal("expected error from persistent 503")
+	}
+	// 1 (401) + 1 initial-after-refresh + 2 retries = 4 protected calls.
+	if protectedCalls != 4 {
+		t.Errorf("protectedCalls = %d, want 4 (401 must not consume the 2-retry budget)", protectedCalls)
+	}
+}

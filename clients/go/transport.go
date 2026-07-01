@@ -50,7 +50,8 @@ func (t *transport) request(ctx context.Context, method, path string, body any, 
 		}
 	}
 	refreshed := false
-	for attempt := 0; ; attempt++ {
+	retries := 0
+	for {
 		resp, err := t.attempt(ctx, method, path, body, params)
 		if err != nil {
 			return nil, err
@@ -61,15 +62,16 @@ func (t *transport) request(ctx context.Context, method, path string, body any, 
 			if err := t.refresh(ctx); err != nil {
 				return nil, err
 			}
-			continue // retry once with the new token
+			continue // retry once with the new token; does NOT consume the retry budget
 		}
-		if resp.StatusCode >= 400 && attempt < t.maxRetries && isRetryable(resp.StatusCode) {
+		if resp.StatusCode >= 400 && retries < t.maxRetries && isRetryable(resp.StatusCode) {
 			resp.Body.Close()
 			select {
-			case <-time.After(backoff(attempt)):
+			case <-time.After(backoff(retries)):
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
+			retries++
 			continue
 		}
 		defer resp.Body.Close()
