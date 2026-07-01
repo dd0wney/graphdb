@@ -5,7 +5,9 @@ type: application
 # Chart version is independent of the app; bump on chart changes.
 version: 0.1.0
 # Tracks the graphdb release this chart is validated against. Bump on release.
-appVersion: "1.0.0"
+# NOTE: a matching dd0wney/graphdb:1.2.0 image must be published for the default
+# install to pull an image with mmap-default + JWT-fail-closed behavior.
+appVersion: "1.2.0"
 home: https://github.com/dd0wney/graphdb
 sources:
   - https://github.com/dd0wney/graphdb
