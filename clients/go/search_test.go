@@ -31,3 +31,19 @@ func TestSearchVector(t *testing.T) {
 		t.Fatalf("vector: %v %+v", err, hits)
 	}
 }
+
+func TestSearchListIndexesParsesEnvelope(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/vector-indexes" || r.Method != http.MethodGet {
+			t.Fatalf("got %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"indexes":[{"property_name":"embedding","dimensions":384}],"count":1}`))
+	})
+	got, err := c.Search.ListIndexes(context.Background())
+	if err != nil {
+		t.Fatalf("listindexes: %v", err)
+	}
+	if len(got) != 1 || got[0].PropertyName != "embedding" || got[0].Dimensions != 384 {
+		t.Fatalf("parsed = %+v, want one index embedding/384", got)
+	}
+}

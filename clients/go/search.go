@@ -102,8 +102,10 @@ func (s *Search) ListIndexes(ctx context.Context) ([]VectorIndex, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out []VectorIndex
-	return out, json.Unmarshal(res.data, &out)
+	var out struct {
+		Indexes []VectorIndex `json:"indexes"`
+	}
+	return out.Indexes, json.Unmarshal(res.data, &out)
 }
 
 func (s *Search) GetIndex(ctx context.Context, property string) (*VectorIndex, error) {
