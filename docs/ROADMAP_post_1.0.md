@@ -80,11 +80,21 @@ coi-screen validation #444).*
 - **Gates:** v1.1 ✅ · **Size:** S–M · **Risk:** medium (default-behavior change) — *shipped; the
   full suite is green under the flipped default.*
 
-### v1.3.0 — Deploy anywhere
+### v1.3.0 — Deploy anywhere  🟡 **PARTIAL (2026-07-01)**
 *Adoption unblock — independent of the perf spine.*
-- **Helm chart + Terraform module** (the #1 "can't deploy on k8s" gap).
-- First-party **Go-native client** (rounds out Python + TS).
-- CI: `gofmt` lint gate.
+- ✅ **Helm chart + Terraform module (PR #450)** — single-node StatefulSet+PVC chart
+  (`deployments/helm/graphdb`) with a `replicaCount>1` fail-guard (clustering is v2.0),
+  values→ConfigMap/Secret, non-root uid 10001 + read-only rootfs, auto-generated
+  `JWT_SECRET` persisted across upgrades, opt-in ingress/ServiceMonitor/PDB; a thin
+  provider-agnostic Terraform `helm_release` wrapper (`deployments/terraform/graphdb`);
+  `deploy-artifacts` CI (helm lint/template + terraform validate). Live-verified on kind
+  (default + TLS + encryption); the live runs caught 6 runtime bugs static rendering missed.
+  Additive/packaging-only (one Dockerfile uid pin). Design/plan under `docs/superpowers/`.
+  - **⚠️ Release prerequisite:** the chart default targets `dd0wney/graphdb:1.2.0`; that
+    image must be published (Docker Hub has only `1.0.0`/`latest`/`sha-*` today) or a
+    default `helm install` won't pull.
+- ⬜ First-party **Go-native client** (rounds out Python + TS) — **not started** (separate cycle).
+- ⬜ CI: `gofmt` lint gate — **not started** (separate, trivial cycle).
 - **Gates:** none · **Size:** M · **Risk:** low
 
 ### v1.4.0 — Finish the API surface
@@ -179,7 +189,7 @@ territory per the v0.8.0 design).*
 ```
 v1.1 validate + harden oracle ─► v1.2 mmap-default ───────────────┐
                               └─► (informs) ─► v1.5 perf/DoD levers │
-v1.3 IaC + Go client                                              │  single-node
+v1.3 IaC ✅ (#450) + Go client (pending)                          │  single-node
 v1.4 GraphQL paging + F3 compliance API                           │  1.x line
 v1.6 query/EXPLAIN + admin-UI + DX                                │  (all additive,
 v1.7 backup/DR + encryption + PITR                                │   green, signed)
@@ -198,7 +208,7 @@ schedulable; the order above reflects leverage, not a strict chain.
 |---|---|---|---|---|
 | **v1.1.0** | Validate & observe | coi-screen corpus run, property-based oracle, OTel tracing | — | M |
 | **v1.2.0** | mmap by default | flip mmap default (opt-out), deploy-ordering docs | v1.1 | S–M |
-| **v1.3.0** | Deploy anywhere | Helm + Terraform, Go-native client | — | M |
+| **v1.3.0** 🟡 | Deploy anywhere | Helm + Terraform ✅ (#450); Go-native client + gofmt gate pending | — | M |
 | **v1.4.0** | Finish the API | GraphQL pagination, F3 compliance API, SDK parity | — | M |
 | **v1.5.0** | Scale the read path | DoD Levers 2–3 (internal), *conditional on v1.1* | v1.1 | L |
 | **v1.6.0** | Query & DX | EXPLAIN/plan, Cypher coverage, admin-UI maturity | — | M |
