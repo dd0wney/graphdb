@@ -23,6 +23,7 @@ import (
 	"github.com/dd0wney/graphdb/pkg/plugins"
 	"github.com/dd0wney/graphdb/pkg/storage"
 	tlspkg "github.com/dd0wney/graphdb/pkg/tls"
+	"github.com/dd0wney/graphdb/pkg/tracing"
 )
 
 // Version is the build version injected by goreleaser via -X main.Version={{.Version}}.
@@ -253,6 +254,23 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
+
+	// OpenTelemetry tracing — off unless GRAPHDB_TRACING_ENABLED. Installs a
+	// global TracerProvider so the API's tracingMiddleware root spans and the
+	// query executor's spans become observable. Failure is non-fatal: tracing
+	// is additive and must never block startup.
+	tracingShutdown, err := tracing.Init(context.Background(), tracing.ConfigFromEnv())
+	if err != nil {
+		logger.Error("tracing init failed; continuing without tracing", "error", err)
+		tracingShutdown = func(context.Context) error { return nil }
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := tracingShutdown(shutdownCtx); err != nil {
+			logger.Error("tracing shutdown failed", "error", err)
+		}
+	}()
 
 	// Initialize license validation with server-based licensing
 	licenseKey := os.Getenv("GRAPHDB_LICENSE_KEY")

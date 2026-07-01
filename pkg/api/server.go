@@ -253,8 +253,10 @@ func (s *Server) Start() error {
 	// always empty because requireAuth/withTenant install claims/tenant
 	// via r.WithContext(ctx) — visible only downstream of the wrap.
 	server := &http.Server{
-		Addr:         addr,
-		Handler:      suilMiddleware(suil)(s.metricsMiddleware(s.panicRecoveryMiddleware(s.requestIDMiddleware(s.rateLimitMiddleware(s.securityHeadersMiddleware(s.bodyLimitMiddleware(s.inputValidationMiddleware(s.auditCollectorMiddleware(s.auditMiddleware(s.loggingMiddleware(s.corsMiddleware(mux)))))))))))),
+		Addr: addr,
+		// tracingMiddleware is outermost so the request span covers the full
+		// chain. It is a no-op unless a TracerProvider is installed (pkg/tracing).
+		Handler:      tracingMiddleware(suilMiddleware(suil)(s.metricsMiddleware(s.panicRecoveryMiddleware(s.requestIDMiddleware(s.rateLimitMiddleware(s.securityHeadersMiddleware(s.bodyLimitMiddleware(s.inputValidationMiddleware(s.auditCollectorMiddleware(s.auditMiddleware(s.loggingMiddleware(s.corsMiddleware(mux))))))))))))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
