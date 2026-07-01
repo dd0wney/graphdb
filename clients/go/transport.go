@@ -41,26 +41,66 @@ func (t *transport) authHeaders(h http.Header) {
 	}
 }
 
-// request performs a JSON request with retry on retryable statuses. Auth-refresh
-// on 401 is layered in by Task 2 (attemptWithRefresh).
+// request performs a JSON request with retry on retryable statuses. On a first
+// 401 it refreshes (or lazily logs in) and retries once.
 func (t *transport) request(ctx context.Context, method, path string, body any, params url.Values) (*apiResult, error) {
+	if t.token == "" && t.username != "" {
+		if err := t.login(ctx); err != nil {
+			return nil, err
+		}
+	}
+	refreshed := false
 	for attempt := 0; ; attempt++ {
 		resp, err := t.attempt(ctx, method, path, body, params)
 		if err != nil {
 			return nil, err
 		}
+		if resp.StatusCode == http.StatusUnauthorized && !refreshed && t.usesLogin() {
+			resp.Body.Close()
+			refreshed = true
+			if err := t.refresh(ctx); err != nil {
+				return nil, err
+			}
+			continue // retry once with the new token
+		}
 		if resp.StatusCode >= 400 && attempt < t.maxRetries && isRetryable(resp.StatusCode) {
 			resp.Body.Close()
-			time.Sleep(backoff(attempt))
+			select {
+			case <-time.After(backoff(attempt)):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 			continue
 		}
 		defer resp.Body.Close()
-		data, _ := io.ReadAll(resp.Body)
+		data, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, readErr
+		}
 		if resp.StatusCode >= 400 {
 			return nil, fromResponse(resp.StatusCode, data, method, path)
 		}
 		return &apiResult{data: data, header: resp.Header}, nil
 	}
+}
+
+// rawAttempt performs a single request and returns the raw body, without
+// triggering the 401-refresh path in request() (avoids recursion since
+// login/refresh themselves call rawAttempt).
+func (t *transport) rawAttempt(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
+	resp, err := t.attempt(ctx, method, path, body, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, readErr
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fromResponse(resp.StatusCode, data, method, path)
+	}
+	return data, nil
 }
 
 func (t *transport) attempt(ctx context.Context, method, path string, body any, params url.Values) (*http.Response, error) {
