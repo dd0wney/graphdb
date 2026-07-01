@@ -1,0 +1,49 @@
+name: Deploy Artifacts
+on:
+  push:
+    branches: [main]
+    paths: ["deployments/helm/**", "deployments/terraform/**", ".github/workflows/deploy-artifacts.yml"]
+  pull_request:
+    paths: ["deployments/helm/**", "deployments/terraform/**", ".github/workflows/deploy-artifacts.yml"]
+
+jobs:
+  helm:
+    name: helm lint + template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+      - name: helm lint
+        run: helm lint deployments/helm/graphdb
+      - name: helm template (default)
+        run: helm template t deployments/helm/graphdb > /dev/null
+      - name: helm template (secrets + tls + ingress + servicemonitor)
+        run: |
+          helm template t deployments/helm/graphdb \
+            --set secrets.create=true --set secrets.license=x \
+            --set config.tls.enabled=true \
+            --set ingress.enabled=true --set 'ingress.hosts[0].host=x.example.com' --set 'ingress.hosts[0].paths[0].path=/' \
+            --set serviceMonitor.enabled=true > /dev/null
+      - name: replicaCount>1 must be rejected
+        run: |
+          if helm template t deployments/helm/graphdb --set replicaCount=2 2>/dev/null; then
+            echo "ERROR: replicaCount=2 was accepted but must be rejected"; exit 1
+          fi
+          echo "guard correctly rejected replicaCount=2"
+
+  terraform:
+    name: terraform fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.5"
+      - name: fmt
+        run: terraform -chdir=deployments/terraform/graphdb fmt -check -recursive
+      - name: validate
+        run: |
+          terraform -chdir=deployments/terraform/graphdb init -backend=false
+          terraform -chdir=deployments/terraform/graphdb validate
