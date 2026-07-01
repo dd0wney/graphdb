@@ -29,7 +29,7 @@ func testEncryptionEngine(t *testing.T) *encryption.Engine {
 // snapshots it, returning the raw snapshot file bytes.
 func writeSnapshotToDir(t *testing.T, dir string, engine *encryption.Engine) []byte {
 	t.Helper()
-	gs, err := NewGraphStorage(dir)
+	gs, err := NewGraphStorageWithConfig(jsonConfig(dir))
 	if err != nil {
 		t.Fatalf("NewGraphStorage: %v", err)
 	}
@@ -58,7 +58,7 @@ func writeSnapshotToDir(t *testing.T, dir string, engine *encryption.Engine) []b
 // node written by writeSnapshotToDir survived the round-trip.
 func reopenAndAssertMarker(t *testing.T, dir string, engine *encryption.Engine) {
 	t.Helper()
-	cfg := DefaultStorageConfig(dir)
+	cfg := jsonConfig(dir)
 	if engine != nil { // typed-nil *Engine in the interface field would defeat != nil checks
 		cfg.EncryptionEngine = engine
 	}
@@ -192,7 +192,7 @@ func TestSnapshotLoad_EncryptedEnvelopeWithoutEngineFails(t *testing.T) {
 	dir := t.TempDir()
 	writeSnapshotToDir(t, dir, testEncryptionEngine(t))
 
-	_, err := NewGraphStorage(dir) // no engine configured
+	_, err := NewGraphStorageWithConfig(jsonConfig(dir)) // no engine configured
 	if err == nil {
 		t.Fatalf("expected load of encrypted snapshot without engine to fail")
 	}
@@ -209,7 +209,7 @@ func TestSnapshotLoad_UnknownVersionFails(t *testing.T) {
 		t.Fatalf("rewrite snapshot: %v", err)
 	}
 
-	_, err := NewGraphStorage(dir)
+	_, err := NewGraphStorageWithConfig(jsonConfig(dir))
 	if err == nil {
 		t.Fatalf("expected unknown snapshot version to fail loudly")
 	}

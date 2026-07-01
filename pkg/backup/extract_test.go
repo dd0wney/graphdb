@@ -40,8 +40,8 @@ func TestExtract_RestoresFilesNotManifest(t *testing.T) {
 
 	// The snapshot file must be present; the manifest is metadata and must not
 	// be written into the data directory.
-	if _, err := os.Stat(filepath.Join(dest, "snapshot.json")); err != nil {
-		t.Errorf("snapshot.json not extracted: %v", err)
+	if _, err := os.Stat(filepath.Join(dest, "snapshot.mmap")); err != nil {
+		t.Errorf("snapshot.mmap not extracted: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, backup.ManifestName)); !os.IsNotExist(err) {
 		t.Errorf("manifest should not be extracted into dataDir (err=%v)", err)

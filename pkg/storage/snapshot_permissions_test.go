@@ -19,7 +19,7 @@ func TestSnapshot_FilePermissionsOwnerOnly(t *testing.T) {
 		t.Skip("POSIX file modes not applicable on Windows")
 	}
 	dataDir := filepath.Join(t.TempDir(), "snap-perms")
-	gs, err := NewGraphStorage(dataDir)
+	gs, err := NewGraphStorageWithConfig(jsonConfig(dataDir))
 	if err != nil {
 		t.Fatalf("NewGraphStorage: %v", err)
 	}

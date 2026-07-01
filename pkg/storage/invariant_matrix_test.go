@@ -246,7 +246,7 @@ func TestInvariantMatrix_WALReplay(t *testing.T) {
 
 	// Phase 1: snapshot baseline — index + two nodes + one edge, clean close.
 	{
-		gs, err := NewGraphStorage(dir)
+		gs, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
 		if err != nil {
 			t.Fatalf("phase1 NewGraphStorage: %v", err)
 		}
@@ -290,7 +290,7 @@ func TestInvariantMatrix_WALReplay(t *testing.T) {
 	}
 
 	// Phase 3: recover and assert EVERY invariant holds over the replayed state.
-	gs, err := NewGraphStorage(dir)
+	gs, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
 	if err != nil {
 		t.Fatalf("recovery NewGraphStorage: %v", err)
 	}

@@ -31,7 +31,7 @@ func TestRunBackupRestore(t *testing.T) {
 		if err := runBackupRestore([]string{"--into", dest, "--dry-run", archive}); err != nil {
 			t.Fatalf("dry-run: %v", err)
 		}
-		if _, err := os.Stat(filepath.Join(dest, "snapshot.json")); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(dest, "snapshot.mmap")); !os.IsNotExist(err) {
 			t.Errorf("dry-run wrote snapshot (err=%v)", err)
 		}
 	})
@@ -60,13 +60,13 @@ func TestRunBackupRestore(t *testing.T) {
 		if err := runBackupRestore([]string{"--into", dest, corrupt}); err == nil {
 			t.Error("expected error for corrupt archive")
 		}
-		if _, err := os.Stat(filepath.Join(dest, "snapshot.json")); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(dest, "snapshot.mmap")); !os.IsNotExist(err) {
 			t.Errorf("corrupt restore wrote into target (err=%v)", err)
 		}
 	})
 
 	t.Run("snapshot-mode mismatch is refused", func(t *testing.T) {
-		archive := writeTestArchive(t) // json-mode snapshot
+		archive := writeTestArchiveJSON(t) // json-mode snapshot vs default mmap restore -> mismatch
 		t.Setenv("GRAPHDB_STORAGE_MODE", "mmap")
 		dest := filepath.Join(t.TempDir(), "data")
 		err := runBackupRestore([]string{"--into", dest, archive})

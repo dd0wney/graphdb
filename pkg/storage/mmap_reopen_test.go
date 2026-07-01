@@ -284,6 +284,16 @@ func mmapConfig(dir string) StorageConfig {
 	return c
 }
 
+// jsonConfig returns the default config with the mmap path forced OFF. Used by
+// tests that assert JSON-snapshot-specific behavior (the on-disk envelope,
+// file permissions, checkGraphInvariants) which don't apply to mmap. Since
+// mmap is the default (v1.2), these tests must opt into JSON explicitly.
+func jsonConfig(dir string) StorageConfig {
+	c := DefaultStorageConfig(dir)
+	c.UseMmapSnapshot = false
+	return c
+}
+
 // applyMutations exercises every write path against (mostly) base-resident entities:
 // update + remove-property (CoW promote), delete-with-cascade (tombstone), and create.
 func applyMutations(t *testing.T, gs *GraphStorage) {
