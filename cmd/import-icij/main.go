@@ -40,12 +40,42 @@ type ICIJEdge struct {
 	EndDate     string
 }
 
+// resolveMmap decides whether to write mmap snapshots, mirroring cmd/server:
+// mmap is the default (v1.2); GRAPHDB_STORAGE_MODE=json opts out. An explicit
+// --storage-mode flag overrides the env. Returns an error on an unrecognised
+// flag value so a typo fails loudly instead of silently importing the wrong mode.
+func resolveMmap(flagVal, envVal string) (bool, error) {
+	switch flagVal {
+	case "mmap":
+		return true, nil
+	case "json", "jsonl":
+		return false, nil
+	case "":
+		// fall through to the env
+	default:
+		return false, fmt.Errorf("invalid --storage-mode %q (want mmap or json)", flagVal)
+	}
+	switch envVal {
+	case "json", "jsonl":
+		return false, nil
+	default: // unset, "mmap", or unknown → mmap default
+		return true, nil
+	}
+}
+
 func main() {
 	nodesFile := flag.String("nodes", "", "Path to nodes.csv")
 	edgesFile := flag.String("edges", "", "Path to edges.csv (relationships)")
 	dataDir := flag.String("data", "./data/icij", "GraphDB data directory")
 	batchSize := flag.Int("batch", 10000, "Batch size for imports")
+	storageMode := flag.String("storage-mode", "", "snapshot mode: mmap (default) or json; overrides GRAPHDB_STORAGE_MODE")
 	flag.Parse()
+
+	useMmap, err := resolveMmap(*storageMode, os.Getenv("GRAPHDB_STORAGE_MODE"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	if *nodesFile == "" || *edgesFile == "" {
 		fmt.Println("Usage: import-icij --nodes nodes.csv --edges edges.csv [--data ./data/icij] [--batch 10000]")
@@ -60,7 +90,11 @@ func main() {
 	}))
 
 	logger.Info("ICIJ Offshore Leaks Importer for GraphDB")
-	logger.Info("opening graph storage", "data_dir", *dataDir)
+	snapshotMode := "json"
+	if useMmap {
+		snapshotMode = "mmap"
+	}
+	logger.Info("opening graph storage", "data_dir", *dataDir, "snapshot_mode", snapshotMode)
 
 	// Create graph storage with optimized config for bulk import
 	graph, err := storage.NewGraphStorageWithConfig(storage.StorageConfig{
@@ -70,9 +104,10 @@ func main() {
 		EnableEdgeCompression: true,  // Keep edge compression for memory efficiency
 		BatchSize:             1000,
 		FlushInterval:         100 * time.Millisecond,
-		UseDiskBackedEdges:    false, // Use in-memory for faster import
-		EdgeCacheSize:         50000, // Large cache for import
-		BulkImportMode:        true,  // Skip WAL and use fast path for bulk loading
+		UseDiskBackedEdges:    false,   // Use in-memory for faster import
+		EdgeCacheSize:         50000,   // Large cache for import
+		BulkImportMode:        true,    // Skip WAL and use fast path for bulk loading
+		UseMmapSnapshot:       useMmap, // v1.2 default: write snapshot.mmap unless GRAPHDB_STORAGE_MODE=json / --storage-mode json
 	})
 	if err != nil {
 		logger.Error("failed to create graph storage", "error", err)

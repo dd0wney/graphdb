@@ -70,10 +70,10 @@ To validate the actual consumer (requires the sibling repo):
 git clone https://github.com/dd0wney/coi-screen ../coi-screen
 # 2. Generate a synthetic corpus + import in mmap mode
 python3 scripts/gen-icij-synth.py /tmp/icij-synth
-GRAPHDB_STORAGE_MODE=mmap ./bin/import-icij \
+./bin/import-icij \
   --nodes /tmp/icij-synth/nodes.csv --edges /tmp/icij-synth/edges.csv --data ./data/icij-mmap
-#    NOTE: cmd/import-icij currently hardcodes a non-mmap StorageConfig — it needs an
-#    mmap opt-in (honor GRAPHDB_STORAGE_MODE or add a --mmap flag) before step 2 works.
+#    import-icij writes mmap snapshots by default (v1.2); pass --storage-mode json
+#    or GRAPHDB_STORAGE_MODE=json to force the JSON path.
 # 3. Run the real screen against the mmap data dir
 GRAPHDB_STORAGE_MODE=mmap go run ../coi-screen/cmd/coi \
   --data ./data/icij-mmap --party "Robert Smith" --party "Jane Doe" --max-hops 2
@@ -81,7 +81,7 @@ GRAPHDB_STORAGE_MODE=mmap go run ../coi-screen/cmd/coi \
 # 4. scripts/consumer-drive.sh runs steps 1–3 (it SKIPs if ../coi-screen is absent).
 ```
 
-Follow-up worth filing: give `cmd/import-icij` an mmap opt-in so the runbook's step 2 works without a code change.
+Follow-up (done): `cmd/import-icij` now writes mmap snapshots by default with a `--storage-mode`/`GRAPHDB_STORAGE_MODE` opt-out, so the runbook's step 2 works without a code change.
 
 ## Recommendation
 

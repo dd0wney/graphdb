@@ -188,3 +188,4 @@ __pycache__/
 
 # Serena IDE plugin
 .serena/
+/import-icij
