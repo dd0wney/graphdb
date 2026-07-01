@@ -1,0 +1,14 @@
+apiVersion: v2
+name: graphdb
+description: Single-node Helm chart for graphdb, a GA graph database.
+type: application
+# Chart version is independent of the app; bump on chart changes.
+version: 0.1.0
+# Tracks the graphdb release this chart is validated against. Bump on release.
+appVersion: "1.0.0"
+home: https://github.com/dd0wney/graphdb
+sources:
+  - https://github.com/dd0wney/graphdb
+maintainers:
+  - name: dd0wney
+kubeVersion: ">=1.23.0-0"

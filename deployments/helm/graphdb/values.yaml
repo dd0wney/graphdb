@@ -1,0 +1,93 @@
+# Default values for graphdb (single-node).
+image:
+  # Docker Hub release target. Override for your own registry / air-gapped mirror.
+  repository: dd0wney/graphdb
+  tag: ""            # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Single node only. clustering/HA is v2.0. Values > 1 are rejected (schema + template).
+replicaCount: 1
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: ""        # "" = cluster default
+  accessMode: ReadWriteOnce
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Non-secret environment (rendered into a ConfigMap).
+config:
+  storageMode: ""         # "" = mmap default; "json" opts out
+  edition: ""             # e.g. "community" to run unlicensed
+  tracing:
+    enabled: false
+    otlpEndpoint: ""      # OTEL_EXPORTER_OTLP_ENDPOINT
+    tracesExporter: ""    # OTEL_TRACES_EXPORTER
+    serviceName: ""       # OTEL_SERVICE_NAME
+  tls:
+    enabled: false
+    autoGenerate: true
+    hosts: ""
+  extraEnv: {}            # escape hatch: map of extra non-secret env vars
+
+# Secret material. See Task 4 semantics.
+secrets:
+  create: false
+  existingSecret: ""
+  license: ""             # GRAPHDB_LICENSE
+  encryptionEnabled: false
+  encryptionMasterKey: "" # ENCRYPTION_MASTER_KEY
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  readiness:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []               # [{host: graphdb.example.com, paths: [{path: /, pathType: Prefix}]}]
+  tls: []
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
