@@ -19,6 +19,14 @@ module "graphdb" {
 Configure the `helm` and `kubernetes` providers to point at your cluster
 (kubeconfig, cloud auth, etc.) in your root module.
 
+**Caveat for remote sourcing**: when sourcing this module remotely (as in the
+`source = "github.com/dd0wney/graphdb//..."` example above), the default
+`chart_path` (`../../helm/graphdb`) will NOT resolve — the Helm provider
+resolves a local chart path relative to the root module's working directory,
+not the fetched module's directory. Remote consumers must set `chart_path`
+explicitly to a locally-available chart path (or, in the future, an OCI/
+`oci://` source).
+
 ## Inputs
 
 | Name | Description | Default |

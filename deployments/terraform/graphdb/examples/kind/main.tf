@@ -24,8 +24,8 @@ module "graphdb" {
   source     = "../.."
   chart_path = "../../../../helm/graphdb"
   set_values = {
-    "config.edition"     = "community"
-    "persistence.size"   = "1Gi"
+    "config.edition"   = "community"
+    "persistence.size" = "1Gi"
   }
 }
 
