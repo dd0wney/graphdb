@@ -63,17 +63,22 @@ work are gated on the same corpus run; do it once, up front.
   scale, position-independent) → seeds the v2.0 cluster-bootstrap thread below.
 - **Gates:** none · **Size:** M · **Risk:** low
 
-### v1.2.0 — mmap by default
-*The headline single-node-scale win — gated on v1.1. **Gate now satisfied** (v1.1 done): the
-oracle is property-based (#440) and the coi-screen validation (#444) confirmed the workload's
-hot paths are mmap-cheap. Ready to sequence.*
-- Flip **mmap-backed lazy reopen to the default** (JSON path stays as opt-out). Backward-
-  compatible: the format is already versioned (`GMNP` v4) and the oracle is now property-based.
-- Deploy-ordering / index-build operability docs.
-- Give `cmd/import-icij` an mmap opt-in (honor `GRAPHDB_STORAGE_MODE` / a `--mmap` flag) —
-  small follow-up surfaced by #444; also unblocks the coi-screen consumer runbook.
-- CI: bring `cmd/...` into the test allowlist.
-- **Gates:** v1.1 ✅ (oracle hardening + real-consumer validation) · **Size:** S–M · **Risk:** medium (default-behavior change)
+### v1.2.0 — mmap by default ✅ **DONE (2026-07-01)**
+*The headline single-node-scale win. Gate satisfied by v1.1 (property-based oracle #440 +
+coi-screen validation #444).*
+- ✅ **Flipped mmap-backed lazy reopen to the default (#447)** — `DefaultStorageConfig`
+  `UseMmapSnapshot: true`; JSON path is the opt-out (`GRAPHDB_STORAGE_MODE=json` /
+  `UseMmapSnapshot=false`). Backward-compatible: encrypted / disk-backed stores auto-fall-back
+  to JSON, and existing `snapshot.json` stores migrate to `snapshot.mmap` on next snapshot.
+  Opt-out inverted in lockstep across all three env readers so backup restore-mode detection
+  stays consistent.
+- ✅ **Deploy-ordering / operability docs (#447)** — `DEPLOYMENT_GUIDE.md` storage-mode section
+  + CHANGELOG **Changed** entry.
+- ✅ **`cmd/import-icij` mmap opt-in (#448)** — default mmap, `--storage-mode json` /
+  `GRAPHDB_STORAGE_MODE=json` opts out; unblocks the coi-screen consumer runbook.
+- ⏭️ **Carry-forward:** CI `cmd/...` test-allowlist expansion (separable; not done).
+- **Gates:** v1.1 ✅ · **Size:** S–M · **Risk:** medium (default-behavior change) — *shipped; the
+  full suite is green under the flipped default.*
 
 ### v1.3.0 — Deploy anywhere
 *Adoption unblock — independent of the perf spine.*
