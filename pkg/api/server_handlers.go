@@ -175,9 +175,13 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	response := QueryResponse{
 		Columns: results.Columns,
-		Rows:    results.Rows,
-		Count:   results.Count,
-		Time:    time.Since(start).String(),
+		// decodeResultRows converts raw *storage.Node/*storage.Edge/
+		// storage.Value row values to the same decoded JSON shape the
+		// REST /nodes and /edges endpoints already return (#454) —
+		// results.Rows on its own leaks internal storage encoding.
+		Rows:  s.decodeResultRows(r.Context(), results.Rows),
+		Count: results.Count,
+		Time:  time.Since(start).String(),
 	}
 
 	s.respondJSON(w, http.StatusOK, response)
