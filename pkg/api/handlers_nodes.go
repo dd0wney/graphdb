@@ -273,13 +273,23 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := make([]*NodeResponse, 0, len(req.Nodes))
 	converter := newPropertyConverter()
 
-	for _, nodeReq := range req.Nodes {
+	// #455: track skipped items so callers can tell "dropped" from
+	// "never sent" instead of a bare Created count. Index refers to the
+	// item's position in req.Nodes (the request), not the response —
+	// dropped items never make it into `nodes`, so a response-relative
+	// index would be meaningless. This is purely additive: the existing
+	// Nodes/Created/Time fields and partial-success behaviour (CC7,
+	// consumer_contract_jailgraph_test.go) are untouched.
+	var errs []BatchItemError
+
+	for i, nodeReq := range req.Nodes {
 		// Validate each node request
 		validationReq := validation.NodeRequest{
 			Labels:     nodeReq.Labels,
 			Properties: nodeReq.Properties,
 		}
 		if err := validation.ValidateNodeRequest(&validationReq); err != nil {
+			errs = append(errs, BatchItemError{Index: i, Error: err.Error()})
 			continue // Skip invalid nodes
 		}
 
@@ -289,6 +299,7 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 		// Audit A6a: scoped create.
 		node, err := s.graph.CreateNodeWithTenant(tenantID, nodeReq.Labels, props)
 		if err != nil {
+			errs = append(errs, BatchItemError{Index: i, Error: err.Error()})
 			continue
 		}
 
@@ -299,6 +310,8 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 		Nodes:   nodes,
 		Created: len(nodes),
 		Time:    time.Since(start).String(),
+		Failed:  len(errs),
+		Errors:  errs,
 	}
 
 	s.respondJSON(w, http.StatusCreated, response)
