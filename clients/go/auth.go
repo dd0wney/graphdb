@@ -3,6 +3,8 @@ package graphdb
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 )
 
@@ -58,29 +60,44 @@ func (t *transport) login(ctx context.Context) error {
 	return nil
 }
 
-// refresh tries the refresh token, falling back to a full re-login. Callers
-// hold refreshMu.
+// refresh tries the refresh token, falling back to a full re-login. Without a
+// login fallback, the refresh failure itself surfaces — retrying the stale
+// token would only trade the real reason for a second 401. Callers hold
+// refreshMu.
 func (t *transport) refresh(ctx context.Context) error {
 	t.mu.Lock()
 	rt := t.refreshToken
 	t.mu.Unlock()
+	var refreshErr error
 	if rt != "" {
-		res, err := t.rawAttempt(ctx, http.MethodPost, "/auth/refresh",
-			map[string]string{"refresh_token": rt})
-		if err == nil {
-			var tok struct {
-				Access string `json:"access_token"`
-			}
-			if json.Unmarshal(res, &tok) == nil && tok.Access != "" {
-				t.mu.Lock()
-				t.token = tok.Access
-				t.mu.Unlock()
-				return nil
-			}
+		refreshErr = t.tryRefreshToken(ctx, rt)
+		if refreshErr == nil {
+			return nil
 		}
 	}
 	if t.username != "" {
 		return t.login(ctx)
 	}
+	return refreshErr
+}
+
+func (t *transport) tryRefreshToken(ctx context.Context, rt string) error {
+	res, err := t.rawAttempt(ctx, http.MethodPost, "/auth/refresh",
+		map[string]string{"refresh_token": rt})
+	if err != nil {
+		return err
+	}
+	var tok struct {
+		Access string `json:"access_token"`
+	}
+	if err := json.Unmarshal(res, &tok); err != nil {
+		return fmt.Errorf("graphdb: invalid refresh response: %w", err)
+	}
+	if tok.Access == "" {
+		return errors.New("graphdb: refresh response missing access_token")
+	}
+	t.mu.Lock()
+	t.token = tok.Access
+	t.mu.Unlock()
 	return nil
 }

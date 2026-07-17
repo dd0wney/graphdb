@@ -3,6 +3,7 @@ package graphdb
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -38,10 +39,16 @@ func WithTimeout(d time.Duration) Option   { return func(c *config) { c.timeout 
 func WithRetries(n int) Option             { return func(c *config) { c.retries = n } }
 func WithHTTPClient(h *http.Client) Option { return func(c *config) { c.httpClient = h } }
 
-// New builds a Client. Exactly one auth mode (token, api key, or login) is required.
+// New builds a Client. Exactly one auth mode (token, api key, or login) is
+// required. baseURL must be an absolute http(s) URL; note that http sends
+// credentials in cleartext and belongs to local development only.
 func New(baseURL string, opts ...Option) (*Client, error) {
 	if baseURL == "" {
 		return nil, errors.New("graphdb: baseURL is required")
+	}
+	if u, err := url.Parse(baseURL); err != nil ||
+		(u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, errors.New("graphdb: baseURL must be an absolute http(s) URL")
 	}
 	cfg := &config{timeout: 30 * time.Second, retries: 2}
 	for _, o := range opts {

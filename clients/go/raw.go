@@ -21,5 +21,5 @@ func (c *Client) Raw(ctx context.Context, method, path string, body any) (*RawRe
 	if err != nil {
 		return nil, err
 	}
-	return &RawResponse{Status: http.StatusOK, Body: res.data, Header: res.header}, nil
+	return &RawResponse{Status: res.status, Body: res.data, Header: res.header}, nil
 }

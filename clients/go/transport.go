@@ -13,6 +13,7 @@ import (
 )
 
 type apiResult struct {
+	status int
 	data   json.RawMessage
 	header http.Header
 }
@@ -98,15 +99,17 @@ func (t *transport) request(ctx context.Context, method, path string, body any, 
 		if resp.StatusCode >= 400 {
 			return nil, fromResponse(resp.StatusCode, data, method, path)
 		}
-		return &apiResult{data: data, header: resp.Header}, nil
+		return &apiResult{status: resp.StatusCode, data: data, header: resp.Header}, nil
 	}
 }
 
-// rawAttempt performs a single request and returns the raw body, without
-// triggering the 401-refresh path in request() (avoids recursion since
-// login/refresh themselves call rawAttempt).
+// rawAttempt performs a single unauthenticated request and returns the raw
+// body. It is used only by login/refresh: no Authorization header is sent
+// (credentials travel in the body, and a stale Bearer would leak to
+// auth-adjacent logs or be rejected by gateways that validate it globally),
+// and it must not re-enter the 401-refresh path in request().
 func (t *transport) rawAttempt(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
-	resp, err := t.attempt(ctx, method, path, body, nil, t.currentToken())
+	resp, err := t.attempt(ctx, method, path, body, nil, "")
 	if err != nil {
 		return nil, err
 	}
@@ -150,6 +153,11 @@ func isRetryable(status int) bool {
 }
 
 func backoff(attempt int) time.Duration {
+	// 100<<attempt overflows for large attempt values; the cap is reached at
+	// attempt 5 anyway.
+	if attempt > 4 {
+		return 2 * time.Second
+	}
 	d := time.Duration(100<<attempt) * time.Millisecond
 	if d > 2*time.Second {
 		d = 2 * time.Second

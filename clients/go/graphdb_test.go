@@ -29,3 +29,25 @@ func TestErrorSentinelsAreDistinct(t *testing.T) {
 		t.Error("sentinels must be distinct")
 	}
 }
+
+func TestNewValidatesBaseURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		baseURL string
+		wantErr bool
+	}{
+		{"https", "https://db.example.com", false},
+		{"http for local dev", "http://localhost:8080", false},
+		{"missing scheme", "db.example.com", true},
+		{"unsupported scheme", "ftp://db.example.com", true},
+		{"unparseable", "http://[::1", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := New(c.baseURL, WithToken("t"))
+			if (err != nil) != c.wantErr {
+				t.Errorf("New(%q) err = %v, wantErr=%v", c.baseURL, err, c.wantErr)
+			}
+		})
+	}
+}

@@ -192,31 +192,6 @@ func TestRefreshFailureFallsBackToLoginWhoseErrorSurfaces(t *testing.T) {
 	}
 }
 
-// With only a refresh token (no username), a failed refresh is swallowed and
-// the stale token is retried once; the second 401 then surfaces as ErrAuth.
-// This pins intended behavior: no infinite loop, no panic.
-func TestRefreshEndpointFailureWithoutLoginRetriesStaleTokenOnce(t *testing.T) {
-	var protectedCalls int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/auth/refresh" {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		protectedCalls++
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer srv.Close()
-
-	tr := &transport{baseURL: srv.URL, http: srv.Client(), token: "t1", refreshToken: "r1", maxRetries: 2}
-	_, err := tr.request(context.Background(), http.MethodGet, "/x", nil, nil)
-	if !errors.Is(err, ErrAuth) {
-		t.Fatalf("err = %v, want ErrAuth", err)
-	}
-	if protectedCalls != 2 {
-		t.Errorf("protectedCalls = %d, want 2 (one stale retry, then error)", protectedCalls)
-	}
-}
-
 func TestContextCancelledDuringRetryBackoff(t *testing.T) {
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -256,5 +231,14 @@ func TestTransportRetries429(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Errorf("calls = %d, want 2 (429 is retryable)", calls)
+	}
+}
+
+func TestBackoffClampsAtLargeAttempts(t *testing.T) {
+	for _, attempt := range []int{0, 1, 5, 40, 63} {
+		d := backoff(attempt)
+		if d <= 0 || d > 2*time.Second {
+			t.Errorf("backoff(%d) = %v, want (0, 2s]", attempt, d)
+		}
 	}
 }
