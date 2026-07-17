@@ -93,7 +93,12 @@ coi-screen validation #444).*
   - **⚠️ Release prerequisite:** the chart default targets `dd0wney/graphdb:1.2.0`; that
     image must be published (Docker Hub has only `1.0.0`/`latest`/`sha-*` today) or a
     default `helm install` won't pull.
-- ⬜ First-party **Go-native client** (rounds out Python + TS) — **not started** (separate cycle).
+- ✅ First-party **Go-native client (PR #458, 2026-07-17)** — `clients/go` (own module):
+  retry/backoff transport with goroutine-safe 401-refresh (coalesced concurrent refreshes),
+  token/API-key/login auth, Nodes/Edges/Search facets with `iter.Seq2` cursor pagination,
+  Traverse/Query/GraphQL/Embeddings/Retrieve helpers, `Raw` escape hatch, sentinel errors.
+  34 tests (~80% coverage) under `-race` in a dedicated least-privilege `go-client` CI
+  workflow (which includes a `gofmt` gate for the module). Design/plan under `docs/superpowers/`.
 - ⬜ CI: `gofmt` lint gate — **not started** (separate, trivial cycle).
 - **Gates:** none · **Size:** M · **Risk:** low
 
@@ -189,7 +194,7 @@ territory per the v0.8.0 design).*
 ```
 v1.1 validate + harden oracle ─► v1.2 mmap-default ───────────────┐
                               └─► (informs) ─► v1.5 perf/DoD levers │
-v1.3 IaC ✅ (#450) + Go client (pending)                          │  single-node
+v1.3 IaC ✅ (#450) + Go client ✅ (#458)                          │  single-node
 v1.4 GraphQL paging + F3 compliance API                           │  1.x line
 v1.6 query/EXPLAIN + admin-UI + DX                                │  (all additive,
 v1.7 backup/DR + encryption + PITR                                │   green, signed)
@@ -208,7 +213,7 @@ schedulable; the order above reflects leverage, not a strict chain.
 |---|---|---|---|---|
 | **v1.1.0** | Validate & observe | coi-screen corpus run, property-based oracle, OTel tracing | — | M |
 | **v1.2.0** | mmap by default | flip mmap default (opt-out), deploy-ordering docs | v1.1 | S–M |
-| **v1.3.0** 🟡 | Deploy anywhere | Helm + Terraform ✅ (#450); Go-native client + gofmt gate pending | — | M |
+| **v1.3.0** 🟡 | Deploy anywhere | Helm + Terraform ✅ (#450); Go-native client ✅ (#458); repo-wide gofmt gate pending | — | M |
 | **v1.4.0** | Finish the API | GraphQL pagination, F3 compliance API, SDK parity | — | M |
 | **v1.5.0** | Scale the read path | DoD Levers 2–3 (internal), *conditional on v1.1* | v1.1 | L |
 | **v1.6.0** | Query & DX | EXPLAIN/plan, Cypher coverage, admin-UI maturity | — | M |
