@@ -33,3 +33,30 @@ func TestFromResponseMapsStatusToSentinel(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractMessageFallbacks(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"error key", `{"error":"boom"}`, "boom"},
+		{"message key", `{"message":"m"}`, "m"},
+		{"detail key", `{"detail":"d"}`, "d"},
+		{"error precedes message", `{"error":"e","message":"m"}`, "e"},
+		{"non-JSON body", `upstream exploded`, "upstream exploded"},
+		{"empty body", ``, ""},
+		{"JSON without known keys", `{"other":"x"}`, `{"other":"x"}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var ae *Error
+			if !errors.As(fromResponse(500, []byte(c.body), "GET", "/x"), &ae) {
+				t.Fatal("expected *Error")
+			}
+			if ae.Message != c.want {
+				t.Errorf("message = %q, want %q", ae.Message, c.want)
+			}
+		})
+	}
+}
