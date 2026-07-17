@@ -56,7 +56,7 @@ func (s *Search) FullText(ctx context.Context, query string, opts SearchOptions)
 }
 
 func (s *Search) Hybrid(ctx context.Context, query string, opts HybridOptions) (*HybridSearchResult, error) {
-	body := opts.SearchOptions.body(query)
+	body := opts.body(query)
 	if opts.Alpha != nil {
 		body["alpha"] = *opts.Alpha
 	}
