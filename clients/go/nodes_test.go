@@ -3,6 +3,7 @@ package graphdb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -71,5 +72,76 @@ func TestNodesListFollowsCursor(t *testing.T) {
 	}
 	if fmt.Sprint(ids) != "[1 2 3]" {
 		t.Errorf("ids = %v, want [1 2 3]", ids)
+	}
+}
+
+func TestNodesListSendsLimitAndLabelParams(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("limit") != "2" || q.Get("label") != "Person" {
+			t.Errorf("query = %s, want limit=2&label=Person", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`[{"id":1}]`))
+	})
+	if _, err := c.Nodes.ListAll(context.Background(), ListOptions{Label: "Person", PageSize: 2}); err != nil {
+		t.Fatalf("listall: %v", err)
+	}
+}
+
+// Breaking out of the range must stop pagination: no further page fetches,
+// and no panic from the iterator calling yield after it returned false.
+func TestNodesListEarlyBreakStopsPagination(t *testing.T) {
+	var pages int
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		pages++
+		w.Header().Set("X-Next-Cursor", fmt.Sprintf("c%d", pages))
+		_, _ = w.Write([]byte(`[{"id":1},{"id":2}]`))
+	})
+	var seen int
+	for _, err := range c.Nodes.List(context.Background(), ListOptions{}) {
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		seen++
+		if seen == 1 {
+			break
+		}
+	}
+	if seen != 1 || pages != 1 {
+		t.Errorf("seen=%d pages=%d, want 1/1 (break must stop fetching)", seen, pages)
+	}
+}
+
+func TestNodesListErrorMidPagination(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "" {
+			w.Header().Set("X-Next-Cursor", "c1")
+			_, _ = w.Write([]byte(`[{"id":1}]`))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"page 2 exploded"}`))
+	})
+	_, err := c.Nodes.ListAll(context.Background(), ListOptions{})
+	if !errors.Is(err, ErrServer) {
+		t.Fatalf("err = %v, want ErrServer from page 2", err)
+	}
+}
+
+// A buggy server that echoes the same cursor forever must not cause an
+// infinite pagination loop.
+func TestNodesListStopsOnRepeatedCursor(t *testing.T) {
+	var pages int
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		pages++
+		w.Header().Set("X-Next-Cursor", "same")
+		_, _ = w.Write([]byte(`[{"id":1}]`))
+	})
+	got, err := c.Nodes.ListAll(context.Background(), ListOptions{})
+	if err != nil {
+		t.Fatalf("listall: %v", err)
+	}
+	if pages != 2 || len(got) != 2 {
+		t.Errorf("pages=%d nodes=%d, want 2/2 (repeated cursor must terminate)", pages, len(got))
 	}
 }
