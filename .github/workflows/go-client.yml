@@ -6,6 +6,9 @@ on:
   pull_request:
     paths: ["clients/go/**", ".github/workflows/go-client.yml"]
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
     name: build + vet + test + gofmt
@@ -25,4 +28,4 @@ jobs:
       - name: build
         run: go build ./...
       - name: test
-        run: go test ./...
+        run: go test -race ./...
