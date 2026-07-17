@@ -9,7 +9,7 @@ Keep this file under ~200 lines. If something only matters once a quarter, it do
 In this order:
 
 1. **`docs/CAPABILITIES_2026-05-10.md`** — what exists in `pkg/` + `cmd/` + the enterprise repo, with maturity tags. Read this before claiming anything is "missing" or "scaffolding only" — coarse grep is misleading because the codebase is large.
-2. **`docs/NEXT_STEPS_2026-06-17.md`** — current planning checkpoint (records the ask-#1 "cheap reopen" track: mmap Stages 1/2a/2b/2c + the JSON↔mmap equivalence oracle). Critical-path queue + already-tracked work. The header date is the source of truth; if a newer `NEXT_STEPS_<DATE>.md` exists, that supersedes. (Chain: `2026-05-10` → `05-13` → `05-14` → `05-15` → `06-03` → `06-17`; earlier docs are historical only.)
+2. **`docs/NEXT_STEPS_2026-06-18.md`** — current planning checkpoint (reconciles the shipped ask-#1 "cheap reopen" arc + v0.6.0, flags the stale-audit hazard, and carries the outstanding inventory). Critical-path queue + already-tracked work. The header date is the source of truth; if a newer `NEXT_STEPS_<DATE>.md` exists, that supersedes. (Chain: `2026-05-10` → `05-13` → `05-14` → `05-15` → `06-03` → `06-17` → `06-18`; earlier docs are historical only.)
 3. **`docs/internals/design/AUDIT_*_2026-05-06.md`** — multi-specialist audits (architecture, security, performance, code-quality). Most of the current work derives from these. Skim only if your task touches the named area.
 
 If the user names a task by track letter (`A4-edges`, `H2`, `F1.1`, `S1`, etc.) or audit-finding ID (`CRIT-1`, `HIGH-2`), that resolves via `NEXT_STEPS_<DATE>.md` or the audit docs. Don't guess what these mean — look them up.
@@ -31,7 +31,8 @@ This caught the productization-gaps PR (#71) — corrected in `docs/CAPABILITIES
 
 - `pkg/` — 42 packages. `storage` and `query` are the largest (~50/30 test files); see `CAPABILITIES_2026-05-10.md` for the per-package map.
 - `cmd/` — 24 binaries. **`cmd/server` is the production REST server** (what the Dockerfile and goreleaser build); `cmd/graphdb` is a hardcoded trust-network *demo*, despite the flagship name — easy to trip on (also noted in `TRACK_R_AUTO_EMBED_DEPLOYMENT_VERIFICATION_2026-06-02.md`). `cmd/benchmark*` are 13 separate exercisers (proliferation; consolidation might come later).
-- `workers/graphdb-client/` — first-party TypeScript client for Cloudflare Workers. Only non-Go SDK that ships.
+- `workers/graphdb-client/` — first-party TypeScript client for Cloudflare Workers.
+- `clients/go/` — first-party Go client SDK (own module; v1.3 track, #458). Has its own `go-client` CI workflow; run its tests from inside the directory, not via `./clients/go/` from the root module.
 - `docs/` — heavy on `AUDIT_*.md` and `NEXT_STEPS_*.md`; sparse on customer-facing onboarding (a productization-gap, see `CAPABILITIES_2026-05-10.md`).
 
 ## Common workflows

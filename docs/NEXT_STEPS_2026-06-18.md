@@ -14,6 +14,10 @@ Since this checkpoint, **v0.8.0 shipped, was tagged, and is GPG-signed**: hot ba
 
 **Path to v1.0.0** ([`ROADMAP_v1.md`](./ROADMAP_v1.md)): **B5b stability policy is written** (`STABILITY_POLICY.md`) and the **CHANGELOG is backfilled** (#433). Remaining for GA: customer-facing onboarding docs, then declare single-node GA and tag `v1.0.0`.
 
+## Status update — 2026-07-17 (v1.3 Go client SDK shipped)
+
+**First-party Go client SDK landed (#458, `d8bd162`)**: `clients/go` (its own module). Transport with retry/backoff + goroutine-safe 401-refresh (coalesced concurrent refreshes), exactly-one-of token/API-key/login auth, Nodes/Edges/Search facets with `iter.Seq2` cursor pagination, Traverse/Query/GraphQL/Embeddings/Retrieve helpers, `Raw` escape hatch, sentinel-error mapping. 34 tests (~80% coverage) run under `-race` in a dedicated least-privilege `go-client` CI workflow. Design spec + plan: `docs/superpowers/specs/2026-07-01-go-client-design.md`, `docs/superpowers/plans/2026-07-01-go-client.md`. This narrows the Section-G "Client SDKs" gap (Go now ships alongside the TS Workers client; Python/Java/Rust remain).
+
 ---
 
 ## State reconciliation
@@ -90,7 +94,7 @@ Per CLAUDE.md ("trust the code, then surface the discrepancy"): the audit docs a
 - Storage interface (arch HIGH-1), `pkg/api.Server` god-struct (HIGH-2), REST/GraphQL service-layer duplication (MED-1), `pkg/editions` global singleton, unified `TenantID` type.
 
 ### G — Productization / commercial gaps (`CAPABILITIES_2026-05-10.md`)
-- Client SDKs (Python/Java/Rust); IaC (Helm chart / Terraform provider / operator); observability (OTel tracing, SLO/SLI docs); data-platform connectors (Kafka, ETL, lakehouse export, BI drivers); commercial packaging (pricing/support/roadmap); F3 compliance HTTP-API surface; the 4 documented-but-unbuilt enterprise plugins (`ENTERPRISE_PLUGINS.md`).
+- Client SDKs (Python/Java/Rust; ~~Go~~ ✅ shipped 2026-07-17, #458 — see status update above); IaC (Helm chart / Terraform provider / operator); observability (OTel tracing, SLO/SLI docs); data-platform connectors (Kafka, ETL, lakehouse export, BI drivers); commercial packaging (pricing/support/roadmap); F3 compliance HTTP-API surface; the 4 documented-but-unbuilt enterprise plugins (`ENTERPRISE_PLUGINS.md`).
 
 ## Recommended next track
 
