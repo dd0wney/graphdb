@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,22 +21,34 @@ type transport struct {
 	baseURL string
 	http    *http.Client
 
-	// static auth
-	token  string
-	apiKey string
+	// immutable after New
+	apiKey   string
+	username string
+	password string
 
-	// login-based auth (Task 2 populates/uses these)
-	username     string
-	password     string
+	// mu guards the mutable token fields (refresh rewrites them while other
+	// goroutines read them for auth headers).
+	mu           sync.Mutex
+	token        string
 	refreshToken string
+
+	// refreshMu serializes login/refresh so concurrent 401s coalesce into a
+	// single token exchange. Never held while mu is held.
+	refreshMu sync.Mutex
 
 	maxRetries int
 }
 
-func (t *transport) authHeaders(h http.Header) {
+func (t *transport) currentToken() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.token
+}
+
+func (t *transport) authHeaders(h http.Header, token string) {
 	switch {
-	case t.token != "":
-		h.Set("Authorization", "Bearer "+t.token)
+	case token != "":
+		h.Set("Authorization", "Bearer "+token)
 	case t.apiKey != "":
 		h.Set("X-API-Key", t.apiKey)
 	}
@@ -44,22 +57,25 @@ func (t *transport) authHeaders(h http.Header) {
 // request performs a JSON request with retry on retryable statuses. On a first
 // 401 it refreshes (or lazily logs in) and retries once.
 func (t *transport) request(ctx context.Context, method, path string, body any, params url.Values) (*apiResult, error) {
-	if t.token == "" && t.username != "" {
-		if err := t.login(ctx); err != nil {
+	if t.username != "" {
+		if err := t.loginIfNeeded(ctx); err != nil {
 			return nil, err
 		}
 	}
 	refreshed := false
 	retries := 0
 	for {
-		resp, err := t.attempt(ctx, method, path, body, params)
+		// Snapshot the token used for this attempt so the 401 handler can
+		// tell whether a concurrent caller already replaced it.
+		usedToken := t.currentToken()
+		resp, err := t.attempt(ctx, method, path, body, params, usedToken)
 		if err != nil {
 			return nil, err
 		}
 		if resp.StatusCode == http.StatusUnauthorized && !refreshed && t.usesLogin() {
 			resp.Body.Close()
 			refreshed = true
-			if err := t.refresh(ctx); err != nil {
+			if err := t.refreshIfStale(ctx, usedToken); err != nil {
 				return nil, err
 			}
 			continue // retry once with the new token; does NOT consume the retry budget
@@ -90,7 +106,7 @@ func (t *transport) request(ctx context.Context, method, path string, body any, 
 // triggering the 401-refresh path in request() (avoids recursion since
 // login/refresh themselves call rawAttempt).
 func (t *transport) rawAttempt(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
-	resp, err := t.attempt(ctx, method, path, body, nil)
+	resp, err := t.attempt(ctx, method, path, body, nil, t.currentToken())
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +121,7 @@ func (t *transport) rawAttempt(ctx context.Context, method, path string, body an
 	return data, nil
 }
 
-func (t *transport) attempt(ctx context.Context, method, path string, body any, params url.Values) (*http.Response, error) {
+func (t *transport) attempt(ctx context.Context, method, path string, body any, params url.Values, token string) (*http.Response, error) {
 	var rdr io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -125,7 +141,7 @@ func (t *transport) attempt(ctx context.Context, method, path string, body any, 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	t.authHeaders(req.Header)
+	t.authHeaders(req.Header, token)
 	return t.http.Do(req)
 }
 

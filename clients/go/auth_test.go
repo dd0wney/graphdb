@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -40,5 +42,75 @@ func TestLoginThenRefreshOn401(t *testing.T) {
 	}
 	if protectedCalls != 2 {
 		t.Errorf("protectedCalls=%d, want 2 (initial 401 + retry)", protectedCalls)
+	}
+}
+
+// stale401Server 401s any protected request bearing staleToken and accepts the
+// token minted by /auth/refresh. Counters are atomic: handlers run concurrently.
+func stale401Server(t *testing.T, staleToken, freshToken string, refreshes *atomic.Int64) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/auth/refresh":
+			refreshes.Add(1)
+			_, _ = w.Write([]byte(`{"access_token":"` + freshToken + `"}`))
+		default:
+			if r.Header.Get("Authorization") == "Bearer "+staleToken {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"id":1}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// The client must be safe for concurrent use: refresh() rewrites the token
+// while other goroutines read it for auth headers. Run under -race.
+func TestConcurrentRequestsDuringRefreshAreRaceFree(t *testing.T) {
+	var refreshes atomic.Int64
+	srv := stale401Server(t, "t1", "t2", &refreshes)
+
+	tr := &transport{baseURL: srv.URL, http: srv.Client(), token: "t1", refreshToken: "r1", maxRetries: 0}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := tr.request(context.Background(), http.MethodGet, "/x", nil, nil); err != nil {
+				t.Errorf("request: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// N goroutines that all hit 401 on the same stale token must produce exactly
+// one refresh call: refresh tokens are commonly single-use server-side, so a
+// refresh stampede would invalidate the session.
+func TestConcurrent401sCoalesceToOneRefresh(t *testing.T) {
+	var refreshes atomic.Int64
+	srv := stale401Server(t, "t1", "t2", &refreshes)
+
+	tr := &transport{baseURL: srv.URL, http: srv.Client(), token: "t1", refreshToken: "r1", maxRetries: 0}
+
+	// Hold all workers at a barrier so they read the stale token together.
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			if _, err := tr.request(context.Background(), http.MethodGet, "/x", nil, nil); err != nil {
+				t.Errorf("request: %v", err)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if got := refreshes.Load(); got != 1 {
+		t.Errorf("refreshes = %d, want 1 (concurrent 401s must coalesce)", got)
 	}
 }
