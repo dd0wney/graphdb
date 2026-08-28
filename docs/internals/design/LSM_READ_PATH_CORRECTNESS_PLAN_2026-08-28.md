@@ -43,11 +43,44 @@ Task 3 closes that, and it comes with the fixes rather than after them. A fault-
 
 ## Task order
 
-| Task | Depends on |
-|---|---|
-| 1 — `Get` must stop at a tombstone | nothing |
-| 2 — `Scan` must merge newest-first and stop at a tombstone | nothing |
-| 3 — A model-based test of the read path | 1, 2 |
+| Task | Depends on | Outcome |
+|---|---|---|
+| 1 — `Get` must stop at a tombstone | nothing | `47d328f` |
+| 2 — `Scan` must merge newest-first and stop at a tombstone | nothing | `e3dbd34` |
+| 3 — A model-based test of the read path | 1, 2 | `42e1c32` |
+| 4 — Bound the SSTable decoder | discovered during 2 | `bb8e601` |
+| 5 — A tombstone has a size | discovered by 3 | `bcef385` |
+
+## Status: executed 2026-08-28, PR #488
+
+Two tasks were not in this plan when it was written. Both are recorded below
+rather than removed, because how they were found is the point of the plan.
+
+**Task 4 came out of writing Task 2's tests.** A scan of two one-entry tables
+cost 3.151 ms against 14.5 us for the equivalent `Get`. `ScanEntries` read to
+end of file, so it fed the sparse index and the bloom filter to `readEntry` as
+entries: `readEntry` took the next four bytes as a length and allocated that
+many. One 50-entry scan allocated 1,795,177,856 bytes. Separately, `readEntry`
+gave a `uint32` length straight to `make()`, which is the defect PR #477
+repaired in the mmap snapshot decoders. The SSTable decoder had it and no test
+covered it.
+
+**Task 5 came out of Task 3, and it is the plan's own argument in miniature.**
+The model-based test failed on its first seed at operation 71, against code that
+was clean in every hand-written test on the branch. `MemTable.Delete` never
+updated `mt.size`, so a memtable holding only tombstones reported `Size() == 0`.
+`Close` skips its final flush on that reading, so deleted keys came back at the
+next open, and `Sync` after a run of deletes wrote nothing and returned nil.
+
+**The instrument was checked in both directions.** Against the unfixed read
+path the reference-model property failed at operation 9 and the self-consistency
+property at operation 16. Against the fixed path it then found a defect the
+hand-written tests could not. Both directions matter: the first says the test
+can go red, and the second says it is worth keeping.
+
+So the count for this deliverable is four defects and five commits, and the
+generator found one of the four. The claim in "The uncomfortable part" below was
+written before Tasks 4 and 5 existed, and both strengthen it.
 
 ---
 
