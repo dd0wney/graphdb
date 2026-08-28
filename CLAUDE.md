@@ -45,7 +45,22 @@ go vet ./...
 go test ./pkg/<area>/ -short -timeout 90s -count=1     # pkg/storage needs -timeout 300s (suite runs ~120-170s as of 2026-06)
 go test -race ./pkg/storage/ -count=3 -timeout 300s   # for storage/concurrency changes
 golangci-lint run ./...                                # MUST pass before PR; CI cap is "same issue × 3"
+gofmt -s -l ./pkg ./cmd                                # MUST be empty; plain `gofmt` is a WEAKER gate
+make contract-guard                                    # consumer registry vs the tests that enforce it
 ```
+
+**`gofmt` is not the format gate; `gofmt -s` is.** `.golangci.yml` sets
+`gofmt.simplify: true`, so CI's lint job rejects what plain `gofmt` accepts — an
+empty `import ()` block, for one. PR #485 was formatted with `gofmt`, passed the
+`Run go fmt check` step (which used `go fmt ./...`), and failed `golangci-lint`
+on the same commit. Two format gates that disagree cost a round trip every time
+the weaker one is the one you run. The CI step now uses `gofmt -s -l ./pkg ./cmd`.
+
+**`enterprise-plugins/` is outside both gates** — 16 files there are not
+`gofmt -s` clean, `prometheus-metrics` has its own `go.mod`, and `r2-backup`
+does not load because its AWS imports are absent from `go.mod`. `go build ./...`
+fails there on a clean checkout. That is pre-existing; do not read it as a
+regression from your change.
 
 `/preflight` runs an equivalent set; `/review` checks the diff before commit.
 
@@ -54,6 +69,31 @@ golangci-lint run ./...                                # MUST pass before PR; CI
 Per the user's global `CLAUDE.md`, run `/review` then `/preflight` before opening a PR.
 
 Always pass `--delete-branch` to `gh pr merge` so squash-merged branches don't accumulate as stale local references — that debt was the H3 task this repo just closed (#69).
+
+### Red-first: a test that has never failed is not evidence
+
+Every fix lands with a test that was **seen to fail against the pre-fix code**,
+and the pull request says what it printed when it did.
+
+This is not ceremony. On 2026-08-28 the repository found 13 defects, and 3 of
+them were in the test apparatus rather than the system: a coverage floor taken
+from the wrong machine, a `-tags nng` job that compiled an identical file set,
+and an N-sweep that asserted a wrong invariant about itself. A fourth, the
+metamorphic tests, asserted nothing at all while appearing to pass. A test
+nobody has watched go red is the artefact most likely to be lying.
+
+The registry in `docs/CONSUMER_CONTRACTS.md` has required this for contracts
+since Track Q. It applies to every test, not only those rows.
+
+Two mechanics make it cheap:
+
+- To prove a new test is a gate, revert the fix and run it:
+  `git checkout <pre-fix-sha> -- <source files>`, run, restore with
+  `git checkout HEAD -- <dir>`. Record the seed or the operation count at which
+  it failed.
+- `scripts/contract-guard-selftest.sh` is the pattern for a gate that is a
+  script rather than a test: build a fixture for each way the check should fail,
+  and assert the exit code.
 
 ### Consumer contracts
 
