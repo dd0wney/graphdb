@@ -123,7 +123,6 @@ This codebase has had multiple audits and the planning doc sometimes misframes t
 
 ## Tooling notes
 
-- Serena MCP is configured (`.serena/`) for symbol-level navigation — useful for locating cross-package symbols faster than ad-hoc grep.
 - `golangci-lint` is configured with `max-same-issues: 3` (per `.golangci.yml`); cleanup PRs that touch many files often need 1-2 follow-up runs because new findings surface as originals clear. Plan the lint sweep accordingly.
 - The repo's bench harness is reusable across data types — see `bench_concurrent_read_test.go` (nodes) and `bench_concurrent_edge_read_test.go` (edges) for the template if you partition a third data type.
 

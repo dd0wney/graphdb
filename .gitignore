@@ -186,6 +186,4 @@ results.json
 __pycache__/
 *.pyc
 
-# Serena IDE plugin
-.serena/
 /import-icij
