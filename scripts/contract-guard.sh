@@ -32,6 +32,15 @@
 
 set -uo pipefail
 
+# Byte order, not dictionary order. The lock file is sorted, and sort's
+# collation follows the locale: under a UTF-8 locale punctuation is weighted
+# below letters, so "CC10-unique" sorts before "CC1-rest", while under C the
+# hyphen (0x2D) is below "0" (0x30) and the order reverses. The digests were
+# identical and the gate still failed, because a lock file written on a
+# developer machine did not match the one CI computed from the same tests.
+# A gate that depends on the environment is not a gate.
+export LC_ALL=C
+
 ROOT="."
 UPDATE=0
 while [ $# -gt 0 ]; do

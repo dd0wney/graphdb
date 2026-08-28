@@ -4,8 +4,8 @@
 # A change here means a contract test changed. That is allowed, and it must
 # be explained in the pull request that makes it. The point is that it cannot
 # happen quietly.
-CC10-unique-create-after-mmap-reopen pkg/storage TestMmapStage2_UniqueConstraintSurvivesReopen dc419c04a1a9d6bb8de01564bd6a951219693c5133cf9b0de1911329aad779bc
 CC1-rest-vector-ingest pkg/api TestVectorSearch_RESTFloatArrayIngestionRoundTrip 407988e068c7f9650d79871e9298b76b1ad6f40ae826a7a160542e295af2bd8f
+CC10-unique-create-after-mmap-reopen pkg/storage TestMmapStage2_UniqueConstraintSurvivesReopen dc419c04a1a9d6bb8de01564bd6a951219693c5133cf9b0de1911329aad779bc
 CC2-vector-nn-identity pkg/api TestVectorSearch_NearestNeighbourCorrectness a7e7bcbfe770fd487376cf5eac1ad4842eced38901a0761de3df2733459cfdad
 CC2-vector-nn-identity pkg/storage TestVectorSearchForTenant_KnownAnswerOrdering a97c98c58cbdbb4b7fc74b28f617b705de98039ad368a88945e09a330fd79a18
 CC3-adjacency-reopen pkg/storage TestEdgeAdjacencySurvivesReopen f3bca3ada6e52f43333daeebe35d633400efa53b6f6b7b773e7e2cfa910f10b9

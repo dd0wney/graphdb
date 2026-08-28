@@ -21,12 +21,17 @@ FAILURES=0
 fixture() {
   local d="$1"
   mkdir -p "$d/docs" "$d/pkg/fake"
+  # Two contracts, and the ids are chosen so their order differs between
+  # collations: under C the hyphen (0x2D) puts CC1- before CC10, and under a
+  # UTF-8 locale punctuation is weighted below letters and the order reverses.
+  # A one-contract fixture cannot exhibit the defect CI found.
   cat > "$d/docs/CONSUMER_CONTRACTS.md" <<'EOF'
 # Consumer contracts
 
 | id | Invariant | Consumer(s) | Guarding test(s) | Origin |
 |----|-----------|-------------|------------------|--------|
 | CC1-fixture | A fixture invariant | fixture-consumer | `pkg/fake` `TestFixture` | #1 |
+| CC10-fixture-ten | A second fixture invariant | fixture-consumer | `pkg/fake` `TestFixtureTen` | #10 |
 EOF
   cat > "$d/pkg/fake/fixture_test.go" <<'EOF'
 package fake
@@ -36,6 +41,13 @@ import "testing"
 // CONSUMER CONTRACT: CC1-fixture — fixture-consumer (#1)
 func TestFixture(t *testing.T) {
 	if 1 != 1 {
+		t.Fatal("arithmetic")
+	}
+}
+
+// CONSUMER CONTRACT: CC10-fixture-ten — fixture-consumer (#10)
+func TestFixtureTen(t *testing.T) {
+	if 2 != 2 {
 		t.Fatal("arithmetic")
 	}
 }
@@ -116,9 +128,47 @@ fixture "$WORK/wrongtree"
 rm "$WORK/wrongtree/pkg/fake/fixture_test.go"
 expect "no tags and no test files" 2 "$WORK/wrongtree"
 
+# 10. The lock must be in byte order, whatever locale the caller has. This is
+#     the defect CI found on the first run of this gate: the digests matched
+#     exactly, only the order differed, and a lock written on a developer
+#     machine failed on the runner.
+#
+#     Two checks, because either alone is weak. The byte-order assertion always
+#     runs. The locale comparison only runs where a UTF-8 locale is installed,
+#     and it is skipped rather than silently passing where one is not — a
+#     comparison between two identical fallbacks proves nothing.
+fixture "$WORK/locale"
+bash "$GUARD" --root "$WORK/locale" --update >/dev/null 2>&1
+LOCK="$WORK/locale/docs/consumer-contracts.lock"
+
+if grep -v '^#' "$LOCK" | grep -v '^$' | LC_ALL=C sort -c 2>/dev/null; then
+  echo "ok    the lock is in byte order"
+else
+  echo "FAIL  the lock is not in byte order, so it depends on the writer's collation"
+  FAILURES=$((FAILURES + 1))
+fi
+
+UTF8_LOCALE="$(locale -a 2>/dev/null | grep -iE '^(en_[A-Z]{2}\.)(utf-?8)$' | head -1)"
+if [ -z "$UTF8_LOCALE" ]; then
+  echo "skip  no UTF-8 locale installed, so the collation comparison cannot run"
+else
+  # Both ends are named. Comparing the ambient locale against a UTF-8 one
+  # passes for free wherever the ambient locale is already UTF-8, which is
+  # most developer machines, and that is a case that proves nothing.
+  LC_ALL=C bash "$GUARD" --root "$WORK/locale" --update >/dev/null 2>&1
+  cp "$LOCK" "$WORK/locale-c.lock"
+  LC_ALL="$UTF8_LOCALE" bash "$GUARD" --root "$WORK/locale" --update >/dev/null 2>&1
+  if cmp -s "$WORK/locale-c.lock" "$LOCK"; then
+    echo "ok    the lock is the same under C and $UTF8_LOCALE"
+  else
+    echo "FAIL  the lock differs between C and $UTF8_LOCALE"
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
 echo
 if [ "$FAILURES" = "0" ]; then
-  echo "contract-guard-selftest: all 10 cases behaved"
+  echo "contract-guard-selftest: all 11 cases behaved"
   exit 0
 fi
 echo "contract-guard-selftest: $FAILURES case(s) did not behave"
