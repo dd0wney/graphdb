@@ -18,7 +18,7 @@ func NewSSTable(path string, entries []*Entry) (*SSTable, error) {
 
 // NewSSTableWithFS writes an SSTable on a caller-supplied filesystem driver.
 // Intended for testing; see pkg/vfs and docs/adr/0002.
-func NewSSTableWithFS(path string, entries []*Entry, fs vfs.FileSystem) (*SSTable, error) {
+func NewSSTableWithFS(path string, entries []*Entry, fs vfs.FileSystem) (sst *SSTable, err error) {
 	if fs == nil {
 		fs = vfs.Default()
 	}
@@ -41,6 +41,23 @@ func NewSSTableWithFS(path string, entries []*Entry, fs vfs.FileSystem) (*SSTabl
 		return nil, err
 	}
 
+	// Close and remove the file on any error out of here.
+	//
+	// Every error path used to close the file and leave it on the disk. That
+	// is a half-written SSTable in the data directory that no level holds, and
+	// NewLSMStorage rebuilds the levels by reading that directory and returns
+	// an error when any file fails to open — so a single failed flush stopped
+	// the store from ever opening again. Found by the flush sweep.
+	//
+	// The cleanup belongs here rather than in the callers: this function
+	// created the file, so this function owns it until it hands it back.
+	defer func() {
+		if err != nil {
+			_ = file.Close()
+			_ = fs.Remove(path)
+		}
+	}()
+
 	// Note: bufio.NewWriter does not return an error - it always succeeds
 	writer := bufio.NewWriter(file)
 
@@ -52,7 +69,6 @@ func NewSSTableWithFS(path string, entries []*Entry, fs vfs.FileSystem) (*SSTabl
 	}
 
 	if err := binary.Write(writer, binary.LittleEndian, &header); err != nil {
-		_ = file.Close()
 		return nil, err
 	}
 
@@ -72,14 +88,12 @@ func NewSSTableWithFS(path string, entries []*Entry, fs vfs.FileSystem) (*SSTabl
 		// Write entry
 		entrySize, err := writeEntry(writer, entry)
 		if err != nil {
-			_ = file.Close()
 			return nil, err
 		}
 
 		// Check for offset overflow (extremely unlikely but defensive)
 		newOffset := offset + uint64(entrySize)
 		if newOffset < offset {
-			_ = file.Close()
 			return nil, fmt.Errorf("SSTable offset overflow: file too large")
 		}
 		offset = newOffset
@@ -91,46 +105,38 @@ func NewSSTableWithFS(path string, entries []*Entry, fs vfs.FileSystem) (*SSTabl
 
 	// Write index
 	if err := writeIndex(writer, index); err != nil {
-		_ = file.Close()
 		return nil, err
 	}
 
 	// Write Bloom filter
 	bloomData := bloom.MarshalBinary()
 	if err := binary.Write(writer, binary.LittleEndian, uint32(len(bloomData))); err != nil {
-		_ = file.Close()
 		return nil, err
 	}
 	if _, err := writer.Write(bloomData); err != nil {
-		_ = file.Close()
 		return nil, err
 	}
 
 	// Write footer with CRC over bloom filter data for integrity verification
 	crc := crc32.ChecksumIEEE(bloomData)
 	if err := binary.Write(writer, binary.LittleEndian, crc); err != nil {
-		_ = file.Close()
 		return nil, err
 	}
 
 	if err := writer.Flush(); err != nil {
-		_ = file.Close()
 		return nil, err
 	}
 
 	// Update header with index offset
 	if _, err := file.Seek(0, 0); err != nil {
-		_ = file.Close()
 		return nil, err
 	}
 
 	if err := binary.Write(file, binary.LittleEndian, &header); err != nil {
-		_ = file.Close()
 		return nil, err
 	}
 
 	if err := file.Sync(); err != nil {
-		_ = file.Close()
 		return nil, err
 	}
 

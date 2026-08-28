@@ -79,6 +79,22 @@ func (lsm *LSMStorage) flush() error {
 	sstPath := SSTablePath(lsm.dataDir, 0, int(time.Now().UnixNano()))
 	sst, err := NewSSTableWithFS(sstPath, entries, lsm.fs)
 	if err != nil {
+		lsm.mu.Lock()
+		// Put the entries back into the active memtable, and clear the
+		// immutable one.
+		//
+		// Clearing it matters because leaving it set makes every later flush
+		// take the "already flushing" arm above, so flushing stops for the
+		// life of the store and the memtable grows without a bound.
+		//
+		// Putting the entries back matters just as much, and the first
+		// attempt at this fix missed it. Dropping them loses writes that Put
+		// had acknowledged and that a reader could see a moment earlier, and
+		// the flush sweep caught it through the block cache: the cache held a
+		// key that no table held any more. A later flush now retries them.
+		lsm.memTable.MergeOlder(lsm.immutableTable)
+		lsm.immutableTable = nil
+		lsm.mu.Unlock()
 		return err
 	}
 

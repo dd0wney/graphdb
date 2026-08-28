@@ -383,3 +383,20 @@ func TestReadDirIsClassifiedAndFaultable(t *testing.T) {
 		t.Errorf("faulted ReadDir gave %v, want ErrInjected", err)
 	}
 }
+
+// FailAllForRole models a disk that stays broken, not one that hiccups. Every
+// operation of the role fails, and operations of other roles do not.
+func TestFailAllForRoleKeepsFailing(t *testing.T) {
+	dir := t.TempDir()
+	fs := NewRoles(vfs.OS(), "roles", bySuffix)
+	fs.FailAllForRole(roleA)
+
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := writeThrough(t, fs, filepath.Join(dir, "f.a")); !errors.Is(err, ErrInjected) {
+			t.Errorf("attempt %d: got %v, want ErrInjected every time", attempt, err)
+		}
+	}
+	if err := writeThrough(t, fs, filepath.Join(dir, "f.b")); err != nil {
+		t.Errorf("role b was faulted although only role a was armed: %v", err)
+	}
+}
