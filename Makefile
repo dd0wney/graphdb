@@ -5,6 +5,7 @@
         contract-guard contract-guard-update contract-guard-selftest \
         lint-local lint-local-selftest \
         mutation mutation-selftest \
+        dccc dccc-selftest \
         bench bench-cpu bench-mem build build-all clean fmt vet lint \
         run-server run-cli run-tui install-tools mod-tidy mod-verify \
         integration-test api-test profile-cpu profile-mem
@@ -136,6 +137,13 @@ mutation:
 ## mutation-selftest: Prove the mutation run can report both outcomes
 mutation-selftest:
 	@bash scripts/mutation-selftest.sh
+## dccc: Coverage restricted to the statements that cross a component boundary
+dccc:
+	@bash scripts/dccc.sh $(PROFILE)
+
+## dccc-selftest: Prove the coupling-coverage measure reports what it claims
+dccc-selftest:
+	@bash scripts/dccc-selftest.sh
 
 ## contract-guard: Check the consumer-contract registry against the tests
 contract-guard:

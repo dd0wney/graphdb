@@ -1,0 +1,32 @@
+# Machine-readable registry of the couplings in COUPLING_AND_INTERFERENCE.md.
+#
+# scripts/dccc.sh resolves each symbol at run time and measures statement
+# coverage restricted to it. That is the mechanically useful part of DO-178C's
+# data- and control-coupling objective: define the interfaces well enough to
+# write test cases against them, then measure coverage of the statements that
+# cross a component boundary.
+#
+# A symbol that cannot be resolved is a refusal, not a skip. A registry that
+# silently drops a renamed function reports a coverage number for fewer
+# couplings than it claims to cover.
+#
+# Columns: id	kind	package	symbol	what crosses the boundary
+#
+# NOT YET ENUMERATED: D4, the mmap copy-on-write overlay. A reader materialises
+# from the base while a writer promotes into the shard, and no single symbol is
+# the boundary. Naming the wrong one would be worse than the gap, so the gap is
+# recorded here instead.
+C1	control	pkg/storage	replayEntry	The WAL decides which storage mutation runs
+C2	control	pkg/wal/apply	ApplyWriteOperation	The fail-closed apply gate switches on op type
+C3	control	pkg/api	createNode	A caller decides whether a write takes the atomic unique path
+C4	control	pkg/storage	CreateNodeWithTenant	Node creation drives vector index maintenance
+C5	control	pkg/lsm	flush	A worker decides when a memtable becomes an SSTable
+C5	control	pkg/lsm	compact	A worker replaces the level set a reader is scanning
+D1	data	pkg/storage	openMmapSnapshot	The reader trusts a length the writer wrote
+D1	data	pkg/storage	sections	Section offsets read back from the file
+D2	data	pkg/wal	writeEntryTo	The WAL record format, write side
+D2	data	pkg/wal	readEntry	The WAL record format, read side
+D3	data	pkg/storage	CheckInvariants	Derived indexes against shard ground truth
+D5	data	pkg/lsm	lookupEntry	The cache against the levels it mirrors
+D6	data	pkg/vfs	Resolve	The process-wide filesystem driver
+D6	data	pkg/alloc	Bytes	The process-wide allocator
