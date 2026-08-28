@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Phase 1 correctness gate for the mmap reopen mode. checkGraphInvariants can't be
+// Phase 1 correctness gate for the mmap reopen mode. CheckInvariants cannot be
 // used here (it rebuilds ground truth from nodeShards, which are empty under the lazy
 // representation, and is documented not-for-use across a reopen). Instead we assert
 // PUBLIC-INTERFACE PARITY: the same operations against a mmap-mode store and a JSON-mode
@@ -286,7 +286,7 @@ func mmapConfig(dir string) StorageConfig {
 
 // jsonConfig returns the default config with the mmap path forced OFF. Used by
 // tests that assert JSON-snapshot-specific behavior (the on-disk envelope,
-// file permissions, checkGraphInvariants) which don't apply to mmap. Since
+// file permissions, CheckInvariants) which don't apply to mmap. Since
 // mmap is the default (v1.2), these tests must opt into JSON explicitly.
 func jsonConfig(dir string) StorageConfig {
 	c := DefaultStorageConfig(dir)
