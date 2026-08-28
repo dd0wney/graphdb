@@ -1,0 +1,26 @@
+# Per-package statement-coverage floors.
+#
+# The single global floor lets a well-covered package hide a poor one:
+# pkg/query at 63.0% sits under the same 74.0% gate as pkg/parallel at 93.4%,
+# and the total stays above it either way.
+#
+# EVERY NUMBER HERE CAME FROM CI, NOT FROM A DEVELOPER MACHINE.
+# Source: run 33159364069 on main, job "Code Coverage", 2026-08-28.
+# This repository has a four-point gap between the two environments, and a
+# floor set from the wrong one failed every pull request until #469 re-measured
+# it. Regenerate with `make coverage-floors-update` against a CI profile, never
+# a local one.
+#
+# The floor is the measured value less two points. That absorbs the ordinary
+# run-to-run variation without absorbing a real slide: a package that drops
+# three points trips it.
+#
+# Columns: package	floor	measured-in-CI
+pkg/storage	82.9	84.9
+pkg/lsm	79.9	81.9
+pkg/query	61.0	63.0
+pkg/algorithms	89.3	91.3
+pkg/parallel	91.4	93.4
+pkg/wal	72.5	74.5
+pkg/wal/apply	90.9	92.9
+pkg/graphql	76.9	78.9
