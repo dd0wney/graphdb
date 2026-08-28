@@ -358,3 +358,28 @@ func TestJitterDoesNotChangeTheTrace(t *testing.T) {
 		}
 	}
 }
+
+// A directory listing takes a role and can be faulted like any other
+// operation. pkg/lsm enumerates its SSTables this way, so its reopen path
+// depends on it.
+func TestReadDirIsClassifiedAndFaultable(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "listing.a") // bySuffix puts this in roleA
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fs := NewRoles(vfs.OS(), "roles", bySuffix)
+	if _, err := fs.ReadDir(dir); err != nil {
+		t.Fatalf("clean ReadDir: %v", err)
+	}
+	if got := fs.OpsForRole(roleA); got != 1 {
+		t.Errorf("ReadDir recorded %d operations for role a, want 1", got)
+	}
+
+	fs2 := NewRoles(vfs.OS(), "roles", bySuffix)
+	fs2.FailAtKey(Key{Role: roleA, Op: OpReadDir, Nth: 1})
+	if _, err := fs2.ReadDir(dir); !errors.Is(err, ErrInjected) {
+		t.Errorf("faulted ReadDir gave %v, want ErrInjected", err)
+	}
+}

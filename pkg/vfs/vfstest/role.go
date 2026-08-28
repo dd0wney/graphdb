@@ -366,6 +366,17 @@ func (r *RoleFS) MkdirAll(path string, perm os.FileMode) error {
 	return r.base.MkdirAll(path, perm)
 }
 
+// ReadDir lists a directory. pkg/lsm enumerates its SSTables this way, and a
+// driver that cannot fail a listing cannot test what happens when one fails.
+func (r *RoleFS) ReadDir(name string) ([]os.DirEntry, error) {
+	role := r.classify(OpReadDir, name, 0)
+	block, fail, nap := r.step(OpReadDir, role, name)
+	if err := gate(block, fail, nap, OpReadDir, name); err != nil {
+		return nil, err
+	}
+	return r.base.ReadDir(name)
+}
+
 func (r *RoleFS) Name() string { return r.name }
 
 // roleFile carries the role assigned when the file was opened.
