@@ -86,11 +86,19 @@ func TestCreateNode_ClaimUniquenessOnSingleLabelClaim(t *testing.T) {
 		}
 	})
 
-	t.Run("multi-label [Claim,Other] — uniqueness NOT applied, both succeed", func(t *testing.T) {
-		// The single-label gate is intentional. Multi-label nodes
-		// retain freedom to add secondary labels without inheriting
-		// uniqueness semantics — matching the GraphQL resolver's
-		// pkg/graphql/mutations_resolvers.go:78 behavior.
+	t.Run("multi-label [Claim,Other] — uniqueness IS applied", func(t *testing.T) {
+		// REVERSED, deliberately. This subtest used to pin the opposite
+		// rule: "multi-label nodes retain freedom to add secondary labels
+		// without inheriting uniqueness semantics". That reasoning is fine
+		// for behaviour and wrong for an integrity constraint. It let agent
+		// B take a task agent A already held by passing ["Claim","Tracer"],
+		// with no error on either side, so the at-most-one-claim-per-task
+		// invariant held only while every caller spelled its labels the
+		// expected way.
+		//
+		// The trigger is now label containment on both the REST and GraphQL
+		// paths. A caller that wants a non-unique node must not label it
+		// :Claim.
 		a := post(t, NodeRequest{
 			Labels:     []string{"Claim", "Tracer"},
 			Properties: map[string]any{"for_task": "graphdb:H4.4-test-multi"},
@@ -102,8 +110,8 @@ func TestCreateNode_ClaimUniquenessOnSingleLabelClaim(t *testing.T) {
 			Labels:     []string{"Claim", "Tracer"},
 			Properties: map[string]any{"for_task": "graphdb:H4.4-test-multi"},
 		})
-		if b.Code != http.StatusCreated {
-			t.Errorf("multi-label nodes should NOT be uniqueness-gated, got %d body=%s", b.Code, b.Body.String())
+		if b.Code != http.StatusConflict {
+			t.Errorf("duplicate multi-label claim should be 409, got %d body=%s", b.Code, b.Body.String())
 		}
 	})
 
@@ -124,6 +132,89 @@ func TestCreateNode_ClaimUniquenessOnSingleLabelClaim(t *testing.T) {
 		})
 		if b.Code != http.StatusCreated {
 			t.Errorf(":Task should not be uniqueness-gated even with same for_task, got %d body=%s", b.Code, b.Body.String())
+		}
+	})
+}
+
+// TestCreateNode_ClaimUniquenessSurvivesASecondLabel is the REST half of the
+// rule the GraphQL resolver enforces. A caller must not be able to take a task
+// another caller already claimed by adding a label to its own claim.
+//
+// Both surfaces have to agree. If REST kept the exact single-label trigger
+// while GraphQL moved to containment, REST would simply become the documented
+// way around the constraint.
+func TestCreateNode_ClaimUniquenessSurvivesASecondLabel(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	post := func(t *testing.T, body NodeRequest) *httptest.ResponseRecorder {
+		t.Helper()
+		buf, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		req := httptest.NewRequest(http.MethodPost, "/nodes", bytes.NewReader(buf))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		server.handleNodes(rr, req)
+		return rr
+	}
+
+	t.Run("single-label claim then multi-label claim for the same task", func(t *testing.T) {
+		first := post(t, NodeRequest{
+			Labels:     []string{"Claim"},
+			Properties: map[string]any{"for_task": "graphdb:acid-A"},
+		})
+		if first.Code != http.StatusCreated {
+			t.Fatalf("first claim should succeed, got %d body=%s", first.Code, first.Body.String())
+		}
+
+		second := post(t, NodeRequest{
+			Labels:     []string{"Claim", "Urgent"},
+			Properties: map[string]any{"for_task": "graphdb:acid-A"},
+		})
+		if second.Code != http.StatusConflict {
+			t.Fatalf("a second label must not bypass uniqueness; got %d body=%s",
+				second.Code, second.Body.String())
+		}
+	})
+
+	t.Run("two multi-label claims for the same task", func(t *testing.T) {
+		first := post(t, NodeRequest{
+			Labels:     []string{"Claim", "Urgent"},
+			Properties: map[string]any{"for_task": "graphdb:acid-B"},
+		})
+		if first.Code != http.StatusCreated {
+			t.Fatalf("first multi-label claim should succeed, got %d body=%s", first.Code, first.Body.String())
+		}
+
+		second := post(t, NodeRequest{
+			Labels:     []string{"Claim", "Deferred"},
+			Properties: map[string]any{"for_task": "graphdb:acid-B"},
+		})
+		if second.Code != http.StatusConflict {
+			t.Fatalf("duplicate multi-label claim should return 409, got %d body=%s",
+				second.Code, second.Body.String())
+		}
+	})
+
+	t.Run("multi-label claim without for_task is rejected", func(t *testing.T) {
+		res := post(t, NodeRequest{
+			Labels:     []string{"Claim", "Urgent"},
+			Properties: map[string]any{"note": "no for_task"},
+		})
+		if res.Code != http.StatusBadRequest {
+			t.Fatalf("claim without for_task should be 400, got %d body=%s", res.Code, res.Body.String())
+		}
+	})
+
+	t.Run("a non-Claim node with several labels is unaffected", func(t *testing.T) {
+		res := post(t, NodeRequest{
+			Labels:     []string{"Task", "Urgent"},
+			Properties: map[string]any{"for_task": "graphdb:acid-B"},
+		})
+		if res.Code != http.StatusCreated {
+			t.Fatalf("non-Claim node should be created, got %d body=%s", res.Code, res.Body.String())
 		}
 	})
 }

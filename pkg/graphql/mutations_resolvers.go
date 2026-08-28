@@ -3,6 +3,7 @@ package graphql
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/graphql-go/graphql"
 
@@ -70,12 +71,23 @@ func createNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		// Audit A6c-graphql-resolvers (2026-05-08).
 		tenantID := tenant.MustFromContext(p.Context)
 
-		// B-lite: special-case :Claim creation so two agents cannot both
-		// hold an active claim on the same task. The single-label
-		// labels==["Claim"] check is intentional — multi-label nodes
-		// take the regular path so callers retain freedom to add
-		// secondary labels without inheriting uniqueness semantics.
-		if len(labels) == 1 && labels[0] == claimLabel {
+		// B-lite: :Claim creation goes through the atomic uniqueness path so
+		// two agents cannot both hold an active claim on the same task.
+		//
+		// The trigger is label CONTAINMENT, not an exact single-label match.
+		// It used to be labels==["Claim"] exactly, on the reasoning that a
+		// caller adding a secondary label should not inherit uniqueness
+		// semantics. That made an integrity constraint depend on how the
+		// caller spelled its label list: agent B could claim a task agent A
+		// already held simply by passing ["Claim","Urgent"], and neither agent
+		// got an error. A constraint that a caller can opt out of by accident
+		// is not a constraint.
+		//
+		// Storage already had the stronger contract —
+		// CreateNodeWithUniquePropertyForTenant matches on label membership
+		// and runs the check and the insert under one gs.mu.Lock — so this
+		// change makes the callers agree with the guarantee underneath them.
+		if slices.Contains(labels, claimLabel) {
 			if _, ok := properties[claimUniqueProperty]; !ok {
 				return nil, fmt.Errorf(":Claim creation requires a %q property", claimUniqueProperty)
 			}

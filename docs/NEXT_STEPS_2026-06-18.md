@@ -14,6 +14,10 @@ Since this checkpoint, **v0.8.0 shipped, was tagged, and is GPG-signed**: hot ba
 
 **Path to v1.0.0** ([`ROADMAP_v1.md`](./ROADMAP_v1.md)): **B5b stability policy is written** (`STABILITY_POLICY.md`) and the **CHANGELOG is backfilled** (#433). Remaining for GA: customer-facing onboarding docs, then declare single-node GA and tag `v1.0.0`.
 
+## Status update — 2026-07-17 (v1.3 Go client SDK shipped)
+
+**First-party Go client SDK landed (#458, `d8bd162`)**: `clients/go` (its own module). Transport with retry/backoff + goroutine-safe 401-refresh (coalesced concurrent refreshes), exactly-one-of token/API-key/login auth, Nodes/Edges/Search facets with `iter.Seq2` cursor pagination, Traverse/Query/GraphQL/Embeddings/Retrieve helpers, `Raw` escape hatch, sentinel-error mapping. 34 tests (~80% coverage) run under `-race` in a dedicated least-privilege `go-client` CI workflow. Design spec + plan: `docs/superpowers/specs/2026-07-01-go-client-design.md`, `docs/superpowers/plans/2026-07-01-go-client.md`. This narrows the Section-G "Client SDKs" gap (Go now ships alongside the TS Workers client; Python/Java/Rust remain).
+
 ---
 
 ## State reconciliation
@@ -90,7 +94,7 @@ Per CLAUDE.md ("trust the code, then surface the discrepancy"): the audit docs a
 - Storage interface (arch HIGH-1), `pkg/api.Server` god-struct (HIGH-2), REST/GraphQL service-layer duplication (MED-1), `pkg/editions` global singleton, unified `TenantID` type.
 
 ### G — Productization / commercial gaps (`CAPABILITIES_2026-05-10.md`)
-- Client SDKs (Python/Java/Rust); IaC (Helm chart / Terraform provider / operator); observability (OTel tracing, SLO/SLI docs); data-platform connectors (Kafka, ETL, lakehouse export, BI drivers); commercial packaging (pricing/support/roadmap); F3 compliance HTTP-API surface; the 4 documented-but-unbuilt enterprise plugins (`ENTERPRISE_PLUGINS.md`).
+- Client SDKs (Python/Java/Rust; ~~Go~~ ✅ shipped 2026-07-17, #458 — see status update above); IaC (Helm chart / Terraform provider / operator); observability (OTel tracing, SLO/SLI docs); data-platform connectors (Kafka, ETL, lakehouse export, BI drivers); commercial packaging (pricing/support/roadmap); F3 compliance HTTP-API surface; the 4 documented-but-unbuilt enterprise plugins (`ENTERPRISE_PLUGINS.md`).
 
 ## Recommended next track
 
@@ -107,7 +111,7 @@ Consistent with 06-03/06-17: **no critical path is forced.** This is a recommend
 ## Decision points (open, for the user)
 
 - **B-1**: is full-graph enumeration-on-reopen a consumer hot path? Gates DoD Levers 2–3.
-- **B-2**: should mmap mode become a default? Recommended precondition: property-based oracle + real-consumer validation first (which the recommended track delivers).
+- ~~**B-2**: should mmap mode become a default?~~ **RESOLVED — shipped.** `UseMmapSnapshot: true` is the default as of v1.2 (#447), citing #440 (property-based oracle) and #444 (reopen ~1370x cheaper at ICIJ scale). The recommended track below still has value for B-1, but its "explicit precondition for B-2" framing is overtaken. Verified against `pkg/storage/storage.go:46` on 2026-08-28.
 
 ## How to use this document
 
@@ -115,3 +119,48 @@ Consistent with 06-03/06-17: **no critical path is forced.** This is a recommend
 2. `NEXT_STEPS_2026-06-03.md` remains the reference for Tracks P/Q/S + the productization/security waves (carried, unchanged).
 3. Before acting on any 2026-05-06 audit finding, re-verify against code — see the stale-audit hazard table above.
 4. No critical path is forced — take the recommended track, another candidate, or resolve a decision point.
+
+
+## Follow-ups opened 2026-08-28 (SQLite-comparison work)
+
+Source: a comparison of graphdb against SQLite's 15-technique test regime
+(sqlite.org/testing.html). Four items shipped; three findings need a decision or
+a track. Test-code-to-source ratio for context: SQLite 590x, graphdb 1.48x.
+
+**Shipped**
+
+| PR | What |
+|---|---|
+| #466 | I/O fault-injection seam (`walFile`) in `pkg/wal` + fixed the descriptor leak it found in `WAL.Close` |
+| #467 | Nightly workflow that fuzzes the 14 fuzz targets — they had never been fuzzed, only seed-replayed |
+| #468 | `CheckInvariants` promoted out of the test binary; refuses mmap-backed stores |
+| #469 | Coverage gate (floor 74.0% from the CI measurement) + `pkg/graphql` added to scope |
+| #470 | `:Claim` uniqueness enforced by label containment, closing a silent atomicity bypass |
+
+**Open — need a decision or a track**
+
+1. **No invariant checker for the mmap representation.** #468 made the gap
+   visible by refusing rather than falsely reporting health. mmap is the default
+   path since #447, so the default path has only the equivalence oracle as a
+   correctness gate. Building an mmap-aware ground truth (from the membership
+   section) is its own task.
+
+2. **Coverage moves with the machine, by ~4 points.** CI measured 75.5% where a
+   developer machine measured 79.5% on the same commit: wal 70.2 vs 79.1, lsm
+   64.6 vs 71.0, graphql 78.9 vs 85.1 — while `wal/apply`, which has no timing
+   or concurrency, is 92.9 on both. The shape points at code paths a 4-core
+   runner never reaches. Unverified: local runs show zero skipped tests in wal
+   and graphql, and skips were not measured on CI. If it holds, some statements
+   are covered only where tests run fast enough.
+
+3. **Uniqueness-rules registry** (`pkg/graphql/mutations_resolvers.go:25`, existing
+   TODO). #470 made the `:Claim` rule correct but kept the hardcoded label. The
+   registry is what removes coord-domain knowledge from graphdb and lets an
+   operator declare a rule. Directional steer recorded from the user
+   (2026-08-28): ACID over eventual consistency for this class of constraint.
+
+**Not started, from the same comparison:** I/O fault injection for `pkg/lsm` and
+`pkg/btree` (no filesystem seam — `pkg/storage` calls the OS directly at ~171
+sites), crash/power-loss simulation with torn writes and write reordering, and
+`pkg/api` coverage (excluded from the number for the runner reason `test-cover`
+documents).

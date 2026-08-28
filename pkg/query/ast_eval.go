@@ -15,9 +15,9 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 
 	switch op {
 	case "=":
-		return leftVal == rightVal, nil
+		return valuesEqual(leftVal, rightVal), nil
 	case "!=":
-		return leftVal != rightVal, nil
+		return !valuesEqual(leftVal, rightVal), nil
 	case ">":
 		return compareValues(leftVal, rightVal) > 0, nil
 	case "<":
@@ -165,6 +165,36 @@ func extractValue(expr Expression, context map[string]any) any {
 		return result
 	default:
 		return nil
+	}
+}
+
+// valuesEqual implements equality for the "=" / "!=" operators. It exists
+// because a raw Go `==` on two `any` values is type-strict: int64(5) == float64(5)
+// is false because the dynamic types differ. That silently broke `WHERE id(n) = $p`,
+// since id() returns int64 while JSON-decoded query parameters arrive as float64
+// (encoding/json unmarshals every JSON number into float64). The ordering
+// operators (>, <, ...) already coerced numerics via compareValues; equality did
+// not. For numeric operands we route through compareValues (which handles the
+// int64/float64 mix); all other operands keep the previous strict `==` behavior,
+// including nil == nil and string/bool comparison.
+func valuesEqual(left, right any) bool {
+	if isNumericValue(left) && isNumericValue(right) {
+		return compareValues(left, right) == 0
+	}
+	return left == right
+}
+
+// isNumericValue reports whether v is one of the numeric kinds compareValues can
+// coerce across (int64/float64). Plain int is intentionally excluded: compareValues
+// only coerces int against int, not int against float64, so treating int as
+// numeric here would let compareValues fall through to its "default: equal" branch
+// and report a false match. int operands therefore keep strict `==` semantics.
+func isNumericValue(v any) bool {
+	switch v.(type) {
+	case int64, float64:
+		return true
+	default:
+		return false
 	}
 }
 

@@ -9,7 +9,7 @@ Keep this file under ~200 lines. If something only matters once a quarter, it do
 In this order:
 
 1. **`docs/CAPABILITIES_2026-05-10.md`** — what exists in `pkg/` + `cmd/` + the enterprise repo, with maturity tags. Read this before claiming anything is "missing" or "scaffolding only" — coarse grep is misleading because the codebase is large.
-2. **`docs/NEXT_STEPS_2026-06-17.md`** — current planning checkpoint (records the ask-#1 "cheap reopen" track: mmap Stages 1/2a/2b/2c + the JSON↔mmap equivalence oracle). Critical-path queue + already-tracked work. The header date is the source of truth; if a newer `NEXT_STEPS_<DATE>.md` exists, that supersedes. (Chain: `2026-05-10` → `05-13` → `05-14` → `05-15` → `06-03` → `06-17`; earlier docs are historical only.)
+2. **`docs/NEXT_STEPS_2026-06-18.md`** — current planning checkpoint (reconciles the shipped ask-#1 "cheap reopen" arc + v0.6.0, flags the stale-audit hazard, and carries the outstanding inventory). Critical-path queue + already-tracked work. The header date is the source of truth; if a newer `NEXT_STEPS_<DATE>.md` exists, that supersedes. (Chain: `2026-05-10` → `05-13` → `05-14` → `05-15` → `06-03` → `06-17` → `06-18`; earlier docs are historical only.)
 3. **`docs/internals/design/AUDIT_*_2026-05-06.md`** — multi-specialist audits (architecture, security, performance, code-quality). Most of the current work derives from these. Skim only if your task touches the named area.
 
 If the user names a task by track letter (`A4-edges`, `H2`, `F1.1`, `S1`, etc.) or audit-finding ID (`CRIT-1`, `HIGH-2`), that resolves via `NEXT_STEPS_<DATE>.md` or the audit docs. Don't guess what these mean — look them up.
@@ -31,7 +31,8 @@ This caught the productization-gaps PR (#71) — corrected in `docs/CAPABILITIES
 
 - `pkg/` — 42 packages. `storage` and `query` are the largest (~50/30 test files); see `CAPABILITIES_2026-05-10.md` for the per-package map.
 - `cmd/` — 24 binaries. **`cmd/server` is the production REST server** (what the Dockerfile and goreleaser build); `cmd/graphdb` is a hardcoded trust-network *demo*, despite the flagship name — easy to trip on (also noted in `TRACK_R_AUTO_EMBED_DEPLOYMENT_VERIFICATION_2026-06-02.md`). `cmd/benchmark*` are 13 separate exercisers (proliferation; consolidation might come later).
-- `workers/graphdb-client/` — first-party TypeScript client for Cloudflare Workers. Only non-Go SDK that ships.
+- `workers/graphdb-client/` — first-party TypeScript client for Cloudflare Workers.
+- `clients/go/` — first-party Go client SDK (own module; v1.3 track, #458). Has its own `go-client` CI workflow; run its tests from inside the directory, not via `./clients/go/` from the root module.
 - `docs/` — heavy on `AUDIT_*.md` and `NEXT_STEPS_*.md`; sparse on customer-facing onboarding (a productization-gap, see `CAPABILITIES_2026-05-10.md`).
 
 ## Common workflows
@@ -90,9 +91,9 @@ If you add a third partitioned structure, mirror this exactly. Don't re-invent.
 There are **two** on-disk snapshot formats:
 
 1. **JSON (default)** — `snapshot.json`, a flat `map[uint64]*Node` / `map[uint64]*Edge` even though in-memory storage is partitioned. `flattenNodesForSnapshot` / `rebucketSnapshotNodes` (and edge variants) handle the conversion.
-2. **mmap binary (`snapshot.mmap`, magic `GMNP`, version 4)** — written when `StorageConfig.UseMmapSnapshot` / `GRAPHDB_STORAGE_MODE=mmap` is set (graphdb ask #1, "cheap reopen"). Layout: header → node records + dense dir → edge records + dir → CSR adjacency (out/in runs + combined dir) → membership section (per-tenant node/edge enumeration + by-label/by-type inverted runs + dir) → metadata blob. Reopen maps the file and serves nodes/edges/indexes lazily from it (open ~7ms, membership lookup ~11ms at 937k nodes). **mmap mode is plaintext-only and in-memory-adjacency-only** — encrypted stores and `UseDiskBackedEdges` fall back to the JSON path. **Off by default.**
+2. **mmap binary (`snapshot.mmap`, magic `GMNP`, version 4)** — written when `StorageConfig.UseMmapSnapshot` / `GRAPHDB_STORAGE_MODE=mmap` is set (graphdb ask #1, "cheap reopen"). Layout: header → node records + dense dir → edge records + dir → CSR adjacency (out/in runs + combined dir) → membership section (per-tenant node/edge enumeration + by-label/by-type inverted runs + dir) → metadata blob. Reopen maps the file and serves nodes/edges/indexes lazily from it (open ~7ms, membership lookup ~11ms at 937k nodes). **mmap mode is plaintext-only and in-memory-adjacency-only** — encrypted stores and `UseDiskBackedEdges` fall back to the JSON path. **On by default since v1.2 (#447)** — opt out with `UseMmapSnapshot:false` (library) or `GRAPHDB_STORAGE_MODE=json` (cmd). This file said "off by default" until 2026-08-28; the flip landed in #447 and the doc was not updated with it.
 
-**Do not change either on-disk format without a version bump** — the snapshot file is customer-data-equivalent, and graphdb's format is load-bearing across external consumers. For the mmap path specifically, the correctness gate is a **JSON↔mmap public-interface equivalence oracle** (`fingerprintTenant` / `assertFingerprintEqual` in `pkg/storage/mmap_reopen_test.go`): an mmap-reopened store must enumerate byte-identically to the same store via JSON. Strengthen that oracle before relying on any new mmap optimization. (`checkGraphInvariants` does NOT work in mmap mode — the lazy representation breaks its "shards hold every node" assumption.)
+**Do not change either on-disk format without a version bump** — the snapshot file is customer-data-equivalent, and graphdb's format is load-bearing across external consumers. For the mmap path specifically, the correctness gate is a **JSON↔mmap public-interface equivalence oracle** (`fingerprintTenant` / `assertFingerprintEqual` in `pkg/storage/mmap_reopen_test.go`): an mmap-reopened store must enumerate byte-identically to the same store via JSON. Strengthen that oracle before relying on any new mmap optimization. (`CheckInvariants` — promoted out of the test binary in #468 — REFUSES an mmap-backed store with `ErrInvariantsUnsupported`, because the lazy representation breaks its "shards hold every node" assumption. It used to run anyway and report health, comparing an empty ground truth against empty derived indexes. Consequence worth stating plainly: **graphdb has no invariant checker for the mmap representation, which is now the default path.** The equivalence oracle above is the only correctness gate there.)
 
 ### `//nolint:` per-site convention
 
@@ -122,7 +123,6 @@ This codebase has had multiple audits and the planning doc sometimes misframes t
 
 ## Tooling notes
 
-- Serena MCP is configured (`.serena/`) for symbol-level navigation — useful for locating cross-package symbols faster than ad-hoc grep.
 - `golangci-lint` is configured with `max-same-issues: 3` (per `.golangci.yml`); cleanup PRs that touch many files often need 1-2 follow-up runs because new findings surface as originals clear. Plan the lint sweep accordingly.
 - The repo's bench harness is reusable across data types — see `bench_concurrent_read_test.go` (nodes) and `bench_concurrent_edge_read_test.go` (edges) for the template if you partition a third data type.
 

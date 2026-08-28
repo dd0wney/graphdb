@@ -1,0 +1,131 @@
+name: Fuzz
+
+# graphdb has 14 fuzz targets, but before this workflow nothing ever ran them
+# as fuzzers. `go test` executes a FuzzXxx target's seed corpus as an ordinary
+# unit test and then stops, so CI only ever replayed the inputs a human had
+# already thought of. This workflow runs them as fuzzers on a schedule, and
+# keeps the corpus between runs so coverage accumulates instead of restarting
+# from the seeds every night.
+#
+# Deliberately NOT on pull_request: fuzzing is time-boxed and non-deterministic,
+# so it makes a poor merge gate. PRs keep the seed-corpus behaviour they had.
+
+on:
+  schedule:
+    # 14:17 UTC daily. Off the hour to avoid the GitHub-wide cron spike.
+    - cron: '17 14 * * *'
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: 'Fuzz duration per target (Go duration, e.g. 2m, 30s)'
+        required: false
+        default: '2m'
+
+permissions:
+  contents: read
+
+# A slow run must not overlap the next night's run: two fuzzers sharing one
+# corpus cache key would race to save it.
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Capped at 2 concurrent jobs. CLAUDE.md § "Known infra patterns" records
+      # Ubuntu matrix jobs being SIGTERMed under account-level contention; these
+      # jobs are short, but there is no reason to run all three at once.
+      max-parallel: 2
+      matrix:
+        include:
+          - name: query
+            path: ./pkg/query/
+          - name: api
+            path: ./pkg/api/
+          - name: storage
+            path: ./pkg/storage/
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        # Matches the pin in test.yml and go.mod's toolchain directive.
+        go-version: '1.26.4'
+        cache: true
+
+    - name: Restore fuzz corpus
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/go-build/fuzz
+        # A new key each run, restoring from the most recent previous run.
+        # Cache entries are immutable, so a fixed key would freeze the corpus
+        # at whatever the first run produced.
+        key: fuzz-corpus-${{ matrix.name }}-${{ github.run_id }}
+        restore-keys: |
+          fuzz-corpus-${{ matrix.name }}-
+
+    - name: Fuzz every target in the package
+      env:
+        FUZZTIME: ${{ github.event.inputs.fuzztime || '2m' }}
+      run: |
+        set -uo pipefail
+
+        # Discover targets rather than list them here, so a new FuzzXxx is
+        # picked up without editing this workflow.
+        targets=$(grep -rhoE '^func Fuzz[A-Za-z0-9_]+' ${{ matrix.path }} | awk '{print $2}' | sort -u)
+
+        if [ -z "$targets" ]; then
+          echo "::error::no fuzz targets found in ${{ matrix.path }} — the discovery grep is broken"
+          exit 1
+        fi
+
+        echo "Targets found:"
+        echo "$targets" | sed 's/^/  /'
+
+        failed=""
+        for target in $targets; do
+          echo "::group::$target (${FUZZTIME})"
+          # Every target runs even if an earlier one fails: one crash must not
+          # hide the state of the rest.
+          out=$(go test ${{ matrix.path }} -run='^$' -fuzz="^${target}$" -fuzztime="${FUZZTIME}" 2>&1)
+          status=$?
+          echo "$out"
+
+          # `go test -fuzz` exits 0 when the regex matches no target. Without
+          # this check a renamed target would leave the job green while
+          # fuzzing nothing at all, which is the one failure mode a fuzzing
+          # gate must never have.
+          if echo "$out" | grep -q "no fuzz tests to fuzz"; then
+            failed="$failed $target(unmatched)"
+            echo "::error::$target matched no fuzzer — discovery and the test binary disagree"
+          elif [ $status -ne 0 ]; then
+            failed="$failed $target"
+            echo "::error::fuzz target $target failed"
+          fi
+          echo "::endgroup::"
+        done
+
+        if [ -n "$failed" ]; then
+          echo "::error::failing targets:$failed"
+          exit 1
+        fi
+        echo "All targets survived ${FUZZTIME} each."
+
+    - name: Upload crashers
+      # A crash writes its reproducer to testdata/fuzz/<Target>/<hash>. That
+      # file IS the bug report — without it the run is unreproducible.
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: fuzz-crashers-${{ matrix.name }}
+        path: |
+          **/testdata/fuzz/**
+        if-no-files-found: warn
+        retention-days: 30
