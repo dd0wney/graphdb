@@ -67,3 +67,73 @@ func SweepCount(run func(fs vfs.FileSystem) error) (ops int, err error) {
 	err = run(fs)
 	return fs.Ops(), err
 }
+
+// SweepCrash walks a simulated power cut through every I/O operation a
+// scenario performs, and repeats each point with different damage.
+//
+// The crash-testing slide gives all three parts, and graphdb previously had
+// only the middle one:
+//
+//	Rig the virtual filesystem to make a snapshot of its state on the N-th
+//	system call, for N=1,2,3,....
+//	  - Make random changes to the snapshot that are typical of what one
+//	    expects of a real filesystem following a power loss
+//	  - Restart on the corrupted filesystem snapshot and verify that it
+//	    recovers correctly.
+//	  - Repeat the previous two steps multiple times for each N value.
+//
+// The repeats matter because the damage is random. One cut at operation N
+// exercises one of the many states a real power loss could leave; the same N
+// with a different seed leaves a different one. A single repeat per N is a
+// sweep in name only.
+//
+// run performs the scenario; it will fail, because every operation from the
+// cut onward returns ErrPowerLoss, and that error is the expected outcome
+// rather than a test failure. check runs after each repeat and is where
+// recovery is inspected: reopen the store, and assert whatever the design
+// promises about what survives.
+func SweepCrash(
+	t *testing.T,
+	maxOps, repeats int,
+	policy CrashPolicy,
+	run func(fs vfs.FileSystem) error,
+	check func(t *testing.T, n, repeat int, runErr error),
+) {
+	t.Helper()
+
+	if maxOps <= 0 {
+		maxOps = 256
+	}
+	if repeats <= 0 {
+		repeats = 4
+	}
+
+	for n := 1; ; n++ {
+		if n > maxOps {
+			t.Fatalf("crash sweep did not terminate within %d operations", maxOps)
+		}
+
+		fired := false
+		for r := 0; r < repeats; r++ {
+			// Seed from both n and r so every (operation, damage) pair is
+			// reproducible from the failure message alone.
+			fs := NewCrash(vfs.OS(), "crash-sweep", int64(n)*1_000_003+int64(r))
+			fs.SetPolicy(policy)
+			fs.CrashAt(n)
+
+			err := run(fs)
+			check(t, n, r, err)
+
+			if fs.Crashed() {
+				fired = true
+			}
+		}
+
+		if !fired {
+			if n == 1 {
+				t.Fatal("the scenario performed no I/O, so the crash sweep proved nothing")
+			}
+			return
+		}
+	}
+}

@@ -52,7 +52,20 @@ type CrashFS struct {
 	files  map[string]*crashFile
 	rnd    *rand.Rand
 	policy CrashPolicy
+
+	// crashAt fires the power cut on the N-th I/O operation, which is the
+	// sweep SQLite describes: "make a snapshot of its state on the N-th system
+	// call, for N=1,2,3,...". Zero disarms it, and Crash must then be called
+	// by hand.
+	crashAt int
+	ops     int
+	crashed bool
 }
+
+// ErrPowerLoss is returned by every operation after the simulated cut. The
+// process would be gone in reality; returning an error is how a caller in a
+// test unwinds so recovery can be inspected.
+var ErrPowerLoss = fmt.Errorf("vfstest: simulated power loss")
 
 // NewCrash wraps base. The seed makes a run reproducible: SQLite seeds its PRNG
 // for the same reason, because a crash test that cannot be replayed cannot be
@@ -64,6 +77,39 @@ func NewCrash(base vfs.FileSystem, name string, seed int64) *CrashFS {
 		files: make(map[string]*crashFile),
 		rnd:   rand.New(rand.NewSource(seed)),
 	}
+}
+
+// CrashAt arms a power cut on the N-th I/O operation, counting from 1. Every
+// operation from that point returns ErrPowerLoss.
+func (c *CrashFS) CrashAt(n int) {
+	c.mu.Lock()
+	c.crashAt, c.ops, c.crashed = n, 0, false
+	c.mu.Unlock()
+}
+
+// Crashed reports whether an armed cut actually fired. A sweep ends when it
+// does not: N has passed the end of the operation sequence.
+func (c *CrashFS) Crashed() bool { c.mu.Lock(); defer c.mu.Unlock(); return c.crashed }
+
+// Ops reports how many I/O operations reached the driver.
+func (c *CrashFS) Ops() int { c.mu.Lock(); defer c.mu.Unlock(); return c.ops }
+
+// gate counts an operation and reports whether the caller should be refused.
+// It fires the cut on the N-th operation and refuses everything after.
+func (c *CrashFS) gate() (refuse bool, fire bool) {
+	c.mu.Lock()
+	if c.crashed {
+		c.mu.Unlock()
+		return true, false
+	}
+	c.ops++
+	if c.crashAt > 0 && c.ops == c.crashAt {
+		c.crashed = true
+		c.mu.Unlock()
+		return true, true
+	}
+	c.mu.Unlock()
+	return false, false
 }
 
 // SetPolicy chooses what the next Crash does.
@@ -102,11 +148,19 @@ func (c *CrashFS) Crash() (int, error) {
 }
 
 func (c *CrashFS) Open(name string, flag int, perm os.FileMode) (vfs.File, error) {
+	if refuse, fire := c.gate(); refuse {
+		if fire {
+			if _, err := c.Crash(); err != nil {
+				return nil, err
+			}
+		}
+		return nil, ErrPowerLoss
+	}
 	inner, err := c.base.Open(name, flag, perm)
 	if err != nil {
 		return nil, err
 	}
-	cf := &crashFile{File: inner, path: name}
+	cf := &crashFile{File: inner, fs: c, path: name}
 	// Snapshot at open: a file that is never synced still has a known starting
 	// state to roll back to.
 	if err := cf.snap(); err != nil {
@@ -141,6 +195,7 @@ type segment struct {
 
 type crashFile struct {
 	vfs.File
+	fs   *CrashFS
 	path string
 
 	mu       sync.Mutex
@@ -174,6 +229,14 @@ func (f *crashFile) snapLocked() error {
 }
 
 func (f *crashFile) Write(p []byte) (int, error) {
+	if refuse, fire := f.fs.gate(); refuse {
+		if fire {
+			if _, err := f.fs.Crash(); err != nil {
+				return 0, err
+			}
+		}
+		return 0, ErrPowerLoss
+	}
 	f.mu.Lock()
 	off := f.pos
 	rec := make([]byte, len(p))
@@ -189,6 +252,14 @@ func (f *crashFile) Write(p []byte) (int, error) {
 }
 
 func (f *crashFile) WriteAt(p []byte, off int64) (int, error) {
+	if refuse, fire := f.fs.gate(); refuse {
+		if fire {
+			if _, err := f.fs.Crash(); err != nil {
+				return 0, err
+			}
+		}
+		return 0, ErrPowerLoss
+	}
 	f.mu.Lock()
 	rec := make([]byte, len(p))
 	copy(rec, p)
@@ -208,6 +279,16 @@ func (f *crashFile) Seek(offset int64, whence int) (int64, error) {
 }
 
 func (f *crashFile) Sync() error {
+	// The cut lands BEFORE the fsync commits, which is the interesting moment:
+	// the caller believes it is making data durable and the power goes.
+	if refuse, fire := f.fs.gate(); refuse {
+		if fire {
+			if _, err := f.fs.Crash(); err != nil {
+				return err
+			}
+		}
+		return ErrPowerLoss
+	}
 	if err := f.File.Sync(); err != nil {
 		return err
 	}
