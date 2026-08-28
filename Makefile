@@ -13,11 +13,23 @@
 BINARY_DIR := bin
 DATA_DIR := data
 COVERAGE_DIR := coverage
-# Statement-coverage floor enforced by `make coverage-gate`. Measured 79.5% on
-# 2026-08-28 over COVER_PKGS; the floor sits below that so ordinary variance
-# does not fail a PR. Raise it when the real number rises — this is a ratchet,
-# and lowering it needs a reason in the commit message.
-COVERAGE_MIN := 78.0
+# Statement-coverage floor enforced by `make coverage-gate`.
+#
+# The number comes from CI, which is the environment that enforces it. The
+# GitHub ubuntu runner measured 75.5% over COVER_PKGS on 2026-08-28; a developer
+# machine measured 79.5% on the same commit. A floor set from the second number
+# fails every PR, which is how this value was first got wrong.
+#
+# The 4-point gap is per-package and unexplained: wal 70.2 vs 79.1, lsm 64.6 vs
+# 71.0, graphql 78.9 vs 85.1, query 62.9 vs 64.6 — while wal/apply, which has no
+# timing or concurrency, is 92.9 in both. The shape points at paths that a
+# 4-core runner does not reach, but that is a hypothesis, not a measurement.
+# Worth its own investigation: coverage that moves with the machine means some
+# statements are tested only where the tests happen to be fast enough.
+#
+# Ratchet: raise it when the CI number rises. Lowering it needs a reason in the
+# commit message.
+COVERAGE_MIN := 74.0
 GO := go
 GOFLAGS :=
 TEST_TIMEOUT := 10m
