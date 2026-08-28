@@ -68,14 +68,44 @@ func openMmapSnapshot(path string) (*mmapSnapshot, error) {
 	return &mmapSnapshot{data: data, hdr: hdr, meta: meta, membDir: mdir}, nil
 }
 
+// sliceRange returns data[start:end] when the range is inside data and
+// correctly ordered, and reports false otherwise.
+//
+// The ordering test is the point. sections() used to check only that each
+// section END was inside the file, which a corrupt offset satisfies while
+// start > end — Go then panics with "slice bounds out of range [357:77]".
+// FuzzMmapSnapshotCorruption found exactly that at open, before the CRC check
+// that would have rejected the file.
+func sliceRange(data []byte, start, end uint64) ([]byte, bool) {
+	size := uint64(len(data))
+	if end < start || start > size || end > size {
+		return nil, false
+	}
+	return data[start:end], true
+}
+
+// addLen adds a length to an offset and reports false on unsigned overflow. A
+// wrapped sum produces a small "end" that passes a naive bounds check while the
+// start is enormous.
+func addLen(off, n uint64) (uint64, bool) {
+	sum := off + n
+	if sum < off {
+		return 0, false
+	}
+	return sum, true
+}
+
 // sections returns the directory and metadata byte ranges, bounds-checked.
 func sections(data []byte, hdr *mmapSnapshotHeader) (nodeDir, edgeDir, adjDir, membDir, meta []byte, err error) {
 	size := uint64(len(data))
-	nodeDirEnd := hdr.nodeDirOffset + hdr.nodeDirLen()*8
-	edgeDirEnd := hdr.edgeDirOffset + hdr.edgeDirLen()*8
-	adjDirEnd := hdr.adjDirOffset + hdr.nodeDirLen()*adjDirEntrySize
-	membDirEnd := hdr.membDirOffset + hdr.membDirLen
-	metaEnd := hdr.metaOffset + hdr.metaLen
+	nodeDirEnd, ok1 := addLen(hdr.nodeDirOffset, hdr.nodeDirLen()*8)
+	edgeDirEnd, ok2 := addLen(hdr.edgeDirOffset, hdr.edgeDirLen()*8)
+	adjDirEnd, ok3 := addLen(hdr.adjDirOffset, hdr.nodeDirLen()*adjDirEntrySize)
+	membDirEnd, ok4 := addLen(hdr.membDirOffset, hdr.membDirLen)
+	metaEnd, ok5 := addLen(hdr.metaOffset, hdr.metaLen)
+	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
+		return nil, nil, nil, nil, nil, fmt.Errorf("mmap snapshot section length overflows (size %d)", size)
+	}
 	if hdr.nodeCount > 0 && (nodeDirEnd > size || adjDirEnd > size) ||
 		hdr.edgeCount > 0 && edgeDirEnd > size ||
 		membDirEnd > size || metaEnd > size {
@@ -101,17 +131,30 @@ func sections(data []byte, hdr *mmapSnapshotHeader) (nodeDir, edgeDir, adjDir, m
 				hdr.nodeCount, hdr.adjDirOffset, hdr.membDataOffset, hdr.membDirOffset, hdr.metaOffset)
 		}
 	}
+	// Every slice goes through sliceRange: the checks above bound each END,
+	// which a corrupt offset satisfies while start > end.
+	var ok bool
 	if hdr.nodeCount > 0 {
-		nodeDir = data[hdr.nodeDirOffset:nodeDirEnd]
-		adjDir = data[hdr.adjDirOffset:adjDirEnd]
+		if nodeDir, ok = sliceRange(data, hdr.nodeDirOffset, nodeDirEnd); !ok {
+			return nil, nil, nil, nil, nil, fmt.Errorf("mmap snapshot node directory range invalid (%d..%d)", hdr.nodeDirOffset, nodeDirEnd)
+		}
+		if adjDir, ok = sliceRange(data, hdr.adjDirOffset, adjDirEnd); !ok {
+			return nil, nil, nil, nil, nil, fmt.Errorf("mmap snapshot adjacency directory range invalid (%d..%d)", hdr.adjDirOffset, adjDirEnd)
+		}
 	}
 	if hdr.edgeCount > 0 {
-		edgeDir = data[hdr.edgeDirOffset:edgeDirEnd]
+		if edgeDir, ok = sliceRange(data, hdr.edgeDirOffset, edgeDirEnd); !ok {
+			return nil, nil, nil, nil, nil, fmt.Errorf("mmap snapshot edge directory range invalid (%d..%d)", hdr.edgeDirOffset, edgeDirEnd)
+		}
 	}
 	if hdr.membDirLen > 0 {
-		membDir = data[hdr.membDirOffset:membDirEnd]
+		if membDir, ok = sliceRange(data, hdr.membDirOffset, membDirEnd); !ok {
+			return nil, nil, nil, nil, nil, fmt.Errorf("mmap snapshot membership directory range invalid (%d..%d)", hdr.membDirOffset, membDirEnd)
+		}
 	}
-	meta = data[hdr.metaOffset:metaEnd]
+	if meta, ok = sliceRange(data, hdr.metaOffset, metaEnd); !ok {
+		return nil, nil, nil, nil, nil, fmt.Errorf("mmap snapshot metadata range invalid (%d..%d)", hdr.metaOffset, metaEnd)
+	}
 	return nodeDir, edgeDir, adjDir, membDir, meta, nil
 }
 
@@ -128,7 +171,9 @@ func (m *mmapSnapshot) getNode(id uint64) (*Node, bool) {
 	if !ok {
 		return nil, false
 	}
-	return decodeNodeRecordAt(m.data, off), true
+	// A record the CRC does not cover can be damaged. A damaged record reads
+	// as absent rather than crashing the process.
+	return decodeNodeRecordAt(m.data, off)
 }
 
 func (m *mmapSnapshot) getEdge(id uint64) (*Edge, bool) {
@@ -136,7 +181,7 @@ func (m *mmapSnapshot) getEdge(id uint64) (*Edge, bool) {
 	if !ok {
 		return nil, false
 	}
-	return decodeEdgeRecordAt(m.data, off), true
+	return decodeEdgeRecordAt(m.data, off)
 }
 
 func (m *mmapSnapshot) nodeOffset(id uint64) (int64, bool) {
@@ -199,7 +244,7 @@ func (m *mmapSnapshot) outgoingCSR(id uint64) []uint64 {
 	if !ok || outLen == 0 {
 		return nil
 	}
-	ids, _ := readCSRRun(m.data, int(outOff))
+	ids, _, _ := readCSRRun(m.data, int(outOff))
 	return ids
 }
 
@@ -208,7 +253,7 @@ func (m *mmapSnapshot) incomingCSR(id uint64) []uint64 {
 	if !ok || inLen == 0 {
 		return nil
 	}
-	ids, _ := readCSRRun(m.data, int(inOff))
+	ids, _, _ := readCSRRun(m.data, int(inOff))
 	return ids
 }
 
@@ -221,7 +266,7 @@ func (m *mmapSnapshot) membershipRun(kind byte, tenant, name string) []uint64 {
 	if !ok || idCount == 0 {
 		return nil
 	}
-	ids, _ := readCSRRun(m.data, int(off))
+	ids, _, _ := readCSRRun(m.data, int(off))
 	return ids
 }
 

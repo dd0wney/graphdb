@@ -214,20 +214,131 @@ func appendCSRRun(buf []byte, ids []uint64) []byte {
 	return buf
 }
 
+// --- bounds-checked record reading ----------------------------------------
+//
+// The record decoders below read length prefixes out of the mapped file and
+// slice by them. The snapshot CRC covers the header, the directories and the
+// metadata blob — it does NOT cover the node and edge record bodies. So a
+// record damaged in place (bit rot, a partial write, a truncated copy, a
+// hostile file) survives open and reaches a decoder, which then slices past
+// the end of the mapping and panics.
+//
+// Found by FuzzMmapSnapshotCorruption on its seed corpus, before any fuzzing:
+// one byte changed at mmapHeaderSize+8 produced
+// "slice bounds out of range [:9558] with capacity 1040". SQLite's
+// malformed-database tests exist for exactly this class
+// (sqlite.org/testing.html §11) and require the reader to report the error
+// rather than perform "unwholesome actions".
+//
+// recordCursor makes every read bounds-checked. Once a read fails the cursor
+// is poisoned and every later read is a no-op, so a decoder can run to
+// completion and be discarded by its caller on !ok rather than checking after
+// each field.
+type recordCursor struct {
+	buf []byte
+	p   int
+	ok  bool
+}
+
+func newRecordCursor(buf []byte, off int64) *recordCursor {
+	c := &recordCursor{buf: buf, ok: true}
+	if off < 0 || off > int64(len(buf)) {
+		c.ok = false
+		return c
+	}
+	c.p = int(off)
+	return c
+}
+
+func (c *recordCursor) has(n int) bool {
+	if !c.ok || n < 0 || c.p+n > len(c.buf) {
+		c.ok = false
+		return false
+	}
+	return true
+}
+
+func (c *recordCursor) u64() uint64 {
+	if !c.has(8) {
+		return 0
+	}
+	v := binary.LittleEndian.Uint64(c.buf[c.p:])
+	c.p += 8
+	return v
+}
+
+func (c *recordCursor) u32() int {
+	if !c.has(4) {
+		return 0
+	}
+	v := int(binary.LittleEndian.Uint32(c.buf[c.p:]))
+	c.p += 4
+	return v
+}
+
+func (c *recordCursor) u16() int {
+	if !c.has(2) {
+		return 0
+	}
+	v := int(binary.LittleEndian.Uint16(c.buf[c.p:]))
+	c.p += 2
+	return v
+}
+
+func (c *recordCursor) u8() byte {
+	if !c.has(1) {
+		return 0
+	}
+	v := c.buf[c.p]
+	c.p++
+	return v
+}
+
+// str copies out of the mapping, so the result never aliases it.
+func (c *recordCursor) str(n int) string {
+	if !c.has(n) {
+		return ""
+	}
+	v := string(c.buf[c.p : c.p+n])
+	c.p += n
+	return v
+}
+
+// blob copies n bytes out of the mapping.
+func (c *recordCursor) blob(n int) []byte {
+	if !c.has(n) {
+		return nil
+	}
+	v := make([]byte, n)
+	copy(v, c.buf[c.p:c.p+n])
+	c.p += n
+	return v
+}
+
 // readCSRRun decodes a run at buf[p:], COPYING the IDs into a fresh slice so the
 // result is safe to retain after the mapping is closed. Returns nil for an empty run.
-func readCSRRun(buf []byte, p int) ([]uint64, int) {
-	n := int(binary.LittleEndian.Uint32(buf[p:]))
-	p += 4
+func readCSRRun(buf []byte, p int) ([]uint64, int, bool) {
+	c := newRecordCursor(buf, int64(p))
+	n := c.u32()
+	if !c.ok {
+		return nil, p, false
+	}
 	if n == 0 {
-		return nil, p
+		return nil, c.p, true
+	}
+	// Check the whole run fits before allocating: a corrupt count would
+	// otherwise allocate gigabytes and then fail read by read.
+	if !c.has(n * 8) {
+		return nil, p, false
 	}
 	ids := make([]uint64, n)
 	for i := 0; i < n; i++ {
-		ids[i] = binary.LittleEndian.Uint64(buf[p:])
-		p += 8
+		ids[i] = c.u64()
 	}
-	return ids, p
+	if !c.ok {
+		return nil, p, false
+	}
+	return ids, c.p, true
 }
 
 // --- membership directory codec -------------------------------------------
@@ -388,25 +499,23 @@ func appendProps(buf []byte, props map[string]Value) []byte {
 
 // readProps decodes a property bag at buf[p:], COPYING each Value.Data into a fresh
 // heap slice so the returned node is safe to retain after the mapping is closed.
-func readProps(buf []byte, p int) (map[string]Value, int) {
-	n := int(binary.LittleEndian.Uint16(buf[p:]))
-	p += 2
-	props := make(map[string]Value, n)
-	for i := 0; i < n; i++ {
-		kl := int(binary.LittleEndian.Uint16(buf[p:]))
-		p += 2
-		key := string(buf[p : p+kl])
-		p += kl
-		vt := ValueType(buf[p])
-		p++
-		dl := int(binary.LittleEndian.Uint32(buf[p:]))
-		p += 4
-		data := make([]byte, dl) // copy-on-read: do not alias the mapping
-		copy(data, buf[p:p+dl])
-		props[key] = Value{Type: vt, Data: data}
-		p += dl
+func readProps(buf []byte, p int) (map[string]Value, int, bool) {
+	c := newRecordCursor(buf, int64(p))
+	n := c.u16()
+	if !c.ok {
+		return nil, p, false
 	}
-	return props, p
+	props := make(map[string]Value, min(n, 64)) // cap the hint: n is untrusted
+	for i := 0; i < n; i++ {
+		key := c.str(c.u16())
+		vt := ValueType(c.u8())
+		data := c.blob(c.u32()) // copy-on-read: do not alias the mapping
+		if !c.ok {
+			return nil, p, false
+		}
+		props[key] = Value{Type: vt, Data: data}
+	}
+	return props, c.p, true
 }
 
 func encodeNodeRecord(n *Node) []byte {
@@ -426,55 +535,56 @@ func encodeNodeRecord(n *Node) []byte {
 }
 
 // decodeNodeRecordAt materializes a fully heap-owned *Node from buf[off:].
-func decodeNodeRecordAt(buf []byte, off int64) *Node {
-	p := int(off)
+func decodeNodeRecordAt(buf []byte, off int64) (*Node, bool) {
+	c := newRecordCursor(buf, off)
 	n := &Node{}
-	n.ID = binary.LittleEndian.Uint64(buf[p:])
-	p += 8
-	tl := int(binary.LittleEndian.Uint16(buf[p:]))
-	p += 2
-	n.TenantID = string(buf[p : p+tl]) // string() copies — no alias into the mmap region
-	p += tl
-	nl := int(binary.LittleEndian.Uint16(buf[p:]))
-	p += 2
-	if nl > 0 {
+	n.ID = c.u64()
+	n.TenantID = c.str(c.u16())
+	if nl := c.u16(); nl > 0 {
+		if !c.has(nl * 2) { // cheapest possible floor: 2 bytes per label prefix
+			return nil, false
+		}
 		n.Labels = make([]string, nl)
 		for i := 0; i < nl; i++ {
-			ll := int(binary.LittleEndian.Uint16(buf[p:]))
-			p += 2
-			n.Labels[i] = string(buf[p : p+ll]) // string() copies — heap-owned
-			p += ll
+			n.Labels[i] = c.str(c.u16())
 		}
 	}
-	n.Properties, p = readProps(buf, p)
-	n.CreatedAt = int64(binary.LittleEndian.Uint64(buf[p:]))
-	p += 8
-	n.UpdatedAt = int64(binary.LittleEndian.Uint64(buf[p:]))
-	return n
+	if !c.ok {
+		return nil, false
+	}
+	props, p, ok := readProps(buf, c.p)
+	if !ok {
+		return nil, false
+	}
+	n.Properties = props
+	c.p = p
+	n.CreatedAt = int64(c.u64())
+	n.UpdatedAt = int64(c.u64())
+	if !c.ok {
+		return nil, false
+	}
+	return n, true
 }
 
 // scanNodeFields reads only the indexed prefix (id, tenant, labels) without allocating
 // the property bag — used by the loader to build the in-memory indexes cheaply.
-func scanNodeFields(buf []byte, off int64) (id uint64, tenant string, labels []string) {
-	p := int(off)
-	id = binary.LittleEndian.Uint64(buf[p:])
-	p += 8
-	tl := int(binary.LittleEndian.Uint16(buf[p:]))
-	p += 2
-	tenant = string(buf[p : p+tl])
-	p += tl
-	nl := int(binary.LittleEndian.Uint16(buf[p:]))
-	p += 2
-	if nl > 0 {
+func scanNodeFields(buf []byte, off int64) (id uint64, tenant string, labels []string, ok bool) {
+	c := newRecordCursor(buf, off)
+	id = c.u64()
+	tenant = c.str(c.u16())
+	if nl := c.u16(); nl > 0 {
+		if !c.has(nl * 2) {
+			return 0, "", nil, false
+		}
 		labels = make([]string, nl)
 		for i := 0; i < nl; i++ {
-			ll := int(binary.LittleEndian.Uint16(buf[p:]))
-			p += 2
-			labels[i] = string(buf[p : p+ll])
-			p += ll
+			labels[i] = c.str(c.u16())
 		}
 	}
-	return id, tenant, labels
+	if !c.ok {
+		return 0, "", nil, false
+	}
+	return id, tenant, labels, true
 }
 
 func encodeEdgeRecord(e *Edge) []byte {
@@ -492,45 +602,41 @@ func encodeEdgeRecord(e *Edge) []byte {
 	return buf
 }
 
-func decodeEdgeRecordAt(buf []byte, off int64) *Edge {
-	p := int(off)
+func decodeEdgeRecordAt(buf []byte, off int64) (*Edge, bool) {
+	c := newRecordCursor(buf, off)
 	e := &Edge{}
-	e.ID = binary.LittleEndian.Uint64(buf[p:])
-	p += 8
-	tl := int(binary.LittleEndian.Uint16(buf[p:]))
-	p += 2
-	e.TenantID = string(buf[p : p+tl]) // string() copies — no alias into the mmap region
-	p += tl
-	e.FromNodeID = binary.LittleEndian.Uint64(buf[p:])
-	p += 8
-	e.ToNodeID = binary.LittleEndian.Uint64(buf[p:])
-	p += 8
-	tyl := int(binary.LittleEndian.Uint16(buf[p:]))
-	p += 2
-	e.Type = string(buf[p : p+tyl]) // string() copies — no alias into the mmap region
-	p += tyl
-	e.Properties, p = readProps(buf, p)
-	e.Weight = math.Float64frombits(binary.LittleEndian.Uint64(buf[p:]))
-	p += 8
-	e.CreatedAt = int64(binary.LittleEndian.Uint64(buf[p:]))
-	return e
+	e.ID = c.u64()
+	e.TenantID = c.str(c.u16()) // str copies — no alias into the mmap region
+	e.FromNodeID = c.u64()
+	e.ToNodeID = c.u64()
+	e.Type = c.str(c.u16())
+	if !c.ok {
+		return nil, false
+	}
+	props, p, ok := readProps(buf, c.p)
+	if !ok {
+		return nil, false
+	}
+	e.Properties = props
+	c.p = p
+	e.Weight = math.Float64frombits(c.u64())
+	e.CreatedAt = int64(c.u64())
+	if !c.ok {
+		return nil, false
+	}
+	return e, true
 }
 
 // scanEdgeFields reads only the indexed prefix (id, tenant, from, to, type).
-func scanEdgeFields(buf []byte, off int64) (id, from, to uint64, tenant, etype string) {
-	p := int(off)
-	id = binary.LittleEndian.Uint64(buf[p:])
-	p += 8
-	tl := int(binary.LittleEndian.Uint16(buf[p:]))
-	p += 2
-	tenant = string(buf[p : p+tl])
-	p += tl
-	from = binary.LittleEndian.Uint64(buf[p:])
-	p += 8
-	to = binary.LittleEndian.Uint64(buf[p:])
-	p += 8
-	tyl := int(binary.LittleEndian.Uint16(buf[p:]))
-	p += 2
-	etype = string(buf[p : p+tyl])
-	return id, from, to, tenant, etype
+func scanEdgeFields(buf []byte, off int64) (id, from, to uint64, tenant, etype string, ok bool) {
+	c := newRecordCursor(buf, off)
+	id = c.u64()
+	tenant = c.str(c.u16())
+	from = c.u64()
+	to = c.u64()
+	etype = c.str(c.u16())
+	if !c.ok {
+		return 0, 0, 0, "", "", false
+	}
+	return id, from, to, tenant, etype, true
 }

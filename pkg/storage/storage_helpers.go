@@ -309,7 +309,14 @@ func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
 		if _, shadowed := gs.lookupNodeShard(id); shadowed || gs.isNodeDeletedLocked(id) {
 			return
 		}
-		if !fn(decodeNodeRecordAt(gs.mmapSnap.data, off)) {
+		n, ok := decodeNodeRecordAt(gs.mmapSnap.data, off)
+		if !ok {
+			// A damaged record is skipped rather than crashing the walk. The
+			// invariant checker sees it as a missing record, which is the
+			// signal we want.
+			return
+		}
+		if !fn(n) {
 			stopped = true
 		}
 	})

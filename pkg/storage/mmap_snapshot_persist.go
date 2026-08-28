@@ -30,13 +30,26 @@ func (gs *GraphStorage) snapshotMmapLocked(boundary uint64) (uint64, error) {
 			edges = append(edges, e.Clone())
 		}
 	}
+	var damaged uint64
 	if gs.mmapSnap != nil {
 		gs.mmapSnap.forEachEdgeID(func(id uint64, off int64) {
 			if _, shadowed := gs.lookupEdgeShard(id); shadowed || gs.isEdgeDeletedLocked(id) {
 				return
 			}
-			edges = append(edges, decodeEdgeRecordAt(gs.mmapSnap.data, off))
+			e, ok := decodeEdgeRecordAt(gs.mmapSnap.data, off)
+			if !ok {
+				// Refuse rather than drop. Skipping the record here would turn
+				// a damaged byte into permanent data loss at the next
+				// snapshot, and the operator would never see it happen.
+				damaged = id
+				return
+			}
+			edges = append(edges, e)
 		})
+	}
+	if damaged != 0 {
+		gs.mu.RUnlock()
+		return 0, fmt.Errorf("refusing to write a snapshot: edge record %d in the current snapshot is damaged", damaged)
 	}
 
 	meta := buildMmapMetadata(gs)
