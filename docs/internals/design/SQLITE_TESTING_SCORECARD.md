@@ -54,13 +54,13 @@ found one on first run.
 | 14 | Undefined-behaviour checks | ✓ N/A, **gated** | Zero cgo, `CGO_ENABLED=0` in goreleaser and both Dockerfiles; CI job enforces it (#480) | Stays N/A only while graphdb is cgo-free. The gate is what makes that a fact rather than an assumption |
 | 15 | Checklists | ◐ | Audits, ADRs 0001–0002, this scorecard | — |
 
-| 16 | **Coupling coverage (DCCC)** — not a SQLite technique | ✗ | Added because SQLite's list is calibrated for one component and graphdb is 42 packages. **9 of the 13 defects found on 2026-08-28 were coupling defects**, and none would have been caught by raising coverage inside a package. Analysis: `COUPLING_AND_INTERFERENCE.md` | Every fault, crash and sweep test built is single-threaded; `pkg/storage`'s 28 concurrent test files inject no faults. The two halves have never met |
+| 16 | **Coupling coverage (DCCC)** — not a SQLite technique | ◐ | Added because SQLite's list is calibrated for one component and graphdb is 42 packages. **9 of the 13 defects found on 2026-08-28 were coupling defects**, and none would have been caught by raising coverage inside a package. Analysis: `COUPLING_AND_INTERFERENCE.md` `docs/internals/design/couplings.tsv` names 14 sites and `make dccc` measures statement coverage restricted to them: **538/616 = 87.3%**, with two sites at zero. Baseline and method: `DCCC_BASELINE.md` | 14 sites, and D4 is not among them — no single symbol is the mmap overlay boundary. No threshold: these numbers came from a developer machine |
 
 | 17 | **Mutation testing** — not a SQLite technique | ◐ | Added because coverage says which lines ran, not which lines anything checked. Five tests written on 2026-08-28 ran the code they claimed to test and constrained nothing, and each was found by reverting the repair by hand and watching the test stay green — this is that, automated. `gremlins` via `make mutation`, scoped to `pkg/vfs/vfstest` and `pkg/lsm`. Baselines in `MUTATION_BASELINE.md` | Two packages only. No threshold yet: a floor set before the number is understood is how the coverage floor was got wrong in #469 |
 
 Legend: ✓ done · ◐ partial · ✗ absent
 
-Counts: **4 done, 7 partial, 6 absent** (of 17 rows; rows 16 and 17 are not SQLite techniques).
+Counts: **4 done, 8 partial, 5 absent** (of 17 rows; rows 16 and 17 are not SQLite techniques).
 
 ## Defects these techniques found
 
