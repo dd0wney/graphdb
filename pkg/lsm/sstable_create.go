@@ -51,10 +51,16 @@ func NewSSTableWithFS(path string, entries []*Entry, fs vfs.FileSystem) (sst *SS
 	//
 	// The cleanup belongs here rather than in the callers: this function
 	// created the file, so this function owns it until it hands it back.
+	//
+	// The removal's own error is dropped on purpose. The caller is already
+	// being handed the failure that brought us here, and a second error about
+	// the tidying would replace the one that says what went wrong. A removal
+	// that does not happen leaves the file for CheckInvariants to report as an
+	// orphan, which is the same outcome as before this cleanup existed.
 	defer func() {
 		if err != nil {
 			_ = file.Close()
-			_ = fs.Remove(path)
+			_ = fs.Remove(path) //nolint:errcheck // see the paragraph above
 		}
 	}()
 
