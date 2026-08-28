@@ -49,6 +49,23 @@ gofmt -s -l ./pkg ./cmd                                # MUST be empty; plain `g
 make contract-guard                                    # consumer registry vs the tests that enforce it
 ```
 
+**The local `golangci-lint` is partly usable, not useless.** `golangci-lint run
+./...` fails to typecheck a Go 1.26 standard library file, and a typecheck
+failure suppresses the analysers, so it reports an environment error and nothing
+about the code. Only **govet and staticcheck** trip it. The other nine linters CI
+runs work here with CI's own settings. `make lint-local` runs them, and
+`make lint-local-selftest` proves it can report a finding.
+
+Two things it will not do, both deliberate:
+
+- It never claims to be CI. govet and staticcheck are not covered.
+- A package that fails to load exits 2, not 1. The analysers did not run on it,
+  so that is not a result about the code. `pkg/storage` is such a package here:
+  it imports `math/rand/v2`, which this golangci-lint cannot resolve, while
+  `go build` and `go vet` are clean on the same file.
+
+The errcheck finding that failed PR #494 would have been caught by this.
+
 **`gofmt` is not the format gate; `gofmt -s` is.** `.golangci.yml` sets
 `gofmt.simplify: true`, so CI's lint job rejects what plain `gofmt` accepts — an
 empty `import ()` block, for one. PR #485 was formatted with `gofmt`, passed the
