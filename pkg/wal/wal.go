@@ -117,6 +117,7 @@ func (w *WAL) ReadAll() ([]*Entry, error) {
 	reader := bufio.NewReader(w.file)
 	entries := make([]*Entry, 0)
 	var entriesRead int
+	var lastLSN uint64
 
 	for {
 		entry, err := w.readEntry(reader)
@@ -126,6 +127,26 @@ func (w *WAL) ReadAll() ([]*Entry, error) {
 		if err != nil {
 			// Log corruption details for debugging
 			log.Printf("WARNING: WAL corruption detected after %d entries: read error: %v", entriesRead, err)
+			log.Printf("WARNING: WAL recovery stopped, %d entries recovered successfully", entriesRead)
+			break
+		}
+
+		// A run of zero bytes decodes as a structurally valid record: LSN 0,
+		// OpType 0, zero-length data, checksum 0 — and crc32 of empty input IS
+		// 0, so the checksum below agrees with it. Filesystems zero-fill, so
+		// this is the shape a partially written page most often takes.
+		//
+		// Two rules reject it. LSNs start at 1, because Append increments
+		// before use, so LSN 0 never appears in a record this code wrote. And
+		// LSNs only ever increase, so a record that does not advance is not
+		// one of ours either.
+		//
+		// Without this, recovery walks past the damage, and recoverLSN takes
+		// its LSN from the LAST entry — so a phantom resets the counter and
+		// every later Append reuses LSNs that already exist on disk.
+		if entry.LSN == 0 || (entriesRead > 0 && entry.LSN <= lastLSN) {
+			log.Printf("WARNING: WAL entry %d has non-advancing LSN %d (previous %d): treating as corruption",
+				entriesRead, entry.LSN, lastLSN)
 			log.Printf("WARNING: WAL recovery stopped, %d entries recovered successfully", entriesRead)
 			break
 		}
@@ -141,6 +162,7 @@ func (w *WAL) ReadAll() ([]*Entry, error) {
 		}
 
 		entries = append(entries, entry)
+		lastLSN = entry.LSN
 		entriesRead++
 	}
 
