@@ -3,6 +3,7 @@
 **Date**: 2026-08-28 (single session; 8 PRs merged, 7 of them authored in-session)
 **Outgoing model**: Claude Opus 5 (1M context)
 **Format defined in**: `CLAUDE.md` § "Preparing a new session (handoff convention)"
+**Amended**: 02:33 UTC, before merge. The session continued after the first draft — #474 (the mmap invariant checker, which the draft listed as the recommended next track) is now open, and #457 was rebased. Sections 4, 5, 6 and 8 reflect the later state. Recorded here rather than rewritten silently, because a handoff that quietly changes under a reader is worse than one that is out of date.
 
 ## TL;DR
 
@@ -30,9 +31,12 @@ bypass in `:Claim` uniqueness.
 
 - **`origin/main`**: `79a6f31`
 - **Open PRs**:
-  - **#457** `fix(api): /query value decoding, batch per-item errors, ADMIN_PASSWORD warning` — green and MERGEABLE, but its checks ran against a **July base**, and it touches `pkg/api/handlers_nodes.go`, which #470 changed today. **Rebase and re-run before merging.** Git merging cleanly is not evidence the result is correct.
+  - **#474** `feat(storage): invariant checker for the mmap representation` — **the recommended track in §5, now built and in review.** Opened after this handoff's first draft. See §5 for what it does and does not cover.
+  - **#473** this handoff.
+  - **#457** `fix(api): /query value decoding, batch per-item errors, ADMIN_PASSWORD warning` — **rebased**: `origin/main` was merged into its branch (not a rebase+force-push, so the PR history is intact and the squash-merge collapses the merge commit). Verified after merging rather than trusting a clean merge: #470's containment fix survives at `handlers_nodes.go:138`, the full `pkg/api` suite passes, claim-uniqueness tests pass. CI re-running against today's base.
   - **#472** dependabot actions bump — untouched by this session.
-- **Open branches**: `fix/api-query-batch-restore` (the #457 branch), `main-prerebase-backup` (pre-existing, not this session's).
+- **Open branches**: `feat/mmap-invariant-checker` (#474), `fix/api-query-batch-restore` (#457), `docs/session-handoff-2026-08-28-0219Z` (#473), `main-prerebase-backup` (pre-existing, not this session's).
+- **Worktree note**: `fix/api-query-batch-restore` was registered to a worktree at `/data/Workspace/github.com/graphdb-fix-api` whose directory no longer exists, so `git switch` refused the branch. `git worktree prune` cleared it. If another branch refuses to check out for the same reason, that is the cause.
 - **Uncommitted changes**: none.
 - **Test/lint state on main**: `go build ./pkg/... ./cmd/...` clean; `go vet` clean; `go test ./pkg/storage/` and `-race` clean; coverage gate clears (79.8% local / 75.5% CI vs a 74.0 floor).
 - **Local-only gotcha**: `golangci-lint` on this machine panics on `pkg/graphql` and `pkg/api` with "file requires newer Go version go1.27 (application built with go1.26)", and reports a stdlib `splice_linux.go` typecheck error on every package. Both reproduce on `origin/main` without any local change. **CI's Lint job is the real gate and is green.** Don't chase these locally.
@@ -43,7 +47,7 @@ Ranked. The planning doc (`NEXT_STEPS_2026-06-18.md`) now carries these in its
 "Follow-ups opened 2026-08-28" section.
 
 1. **Rebase and land #457** — cheap, and it overlaps a file that moved today.
-2. **An invariant checker for the mmap representation.** This is the highest-value item. #468 made `CheckInvariants` refuse mmap-backed stores rather than falsely report health, which means **the default storage path since #447 has no invariant checking at all**. The JSON↔mmap equivalence oracle in `mmap_reopen_test.go` is the only correctness gate there. Building mmap-aware ground truth from the membership section is a track, not a task.
+2. ~~**An invariant checker for the mmap representation.**~~ **BUILT — in review as #474.** Ground truth is `shard records ∪ (mmap base records − tombstones)`, shard winning, built from raw records rather than the membership helpers (those fuse base and overlay and are the thing under test; comparing them against themselves would pass unconditionally). **What remains uncovered and is the real next item: the vector index and the adjacency lists have no mmap ground truth.** A clean result on the mmap path is therefore a weaker statement than a clean result on the JSON path, and `CheckInvariants`' doc comment says so. Closing that is the follow-on track.
 3. **Explain the coverage machine-dependence** (see §6). Cheap to investigate, and if the hypothesis holds it means some statements are only ever tested on fast hardware.
 4. **The uniqueness-rules registry** (`pkg/graphql/mutations_resolvers.go:25`, existing TODO). #470 made the `:Claim` rule correct but kept the label hardcoded. The registry is what removes coord-domain knowledge from graphdb. User's directional steer, 2026-08-28: **ACID over eventual consistency** for this class of constraint.
 5. **Off-path, from the same comparison, not started**: I/O fault injection for `pkg/lsm` and `pkg/btree` (no filesystem seam — `pkg/storage` calls the OS directly at ~171 sites); crash/power-loss simulation with torn writes and write reordering; `pkg/api` coverage (excluded from the number for the runner reason `test-cover` documents, so the HTTP surface is outside it).
@@ -57,7 +61,8 @@ Most were corrected in #471, but these are worth carrying forward:
 2. **`CLAUDE.md` § snapshot format, "`checkGraphInvariants` does NOT work in mmap mode"** → the function is now `CheckInvariants`, it lives in `pkg/storage/invariants.go` (not a `_test.go`), and it **refuses** rather than silently passing. Corrected in #471.
 3. **`NEXT_STEPS_2026-06-18.md` decision B-2 ("should mmap mode become a default?")** → answered and shipped in #447. Marked resolved in #471. The "Recommended next track" section still lists "explicit precondition for B-2" as one of three reasons to pick that track; **that reason is spent**, the other two (B-1 evidence, real-consumer validation) still stand.
 4. **"The coverage number is ~79%"** → that is a developer-machine number. **CI measures 75.5%**, reproduced exactly across two runs. The floor lives in `Makefile:COVERAGE_MIN` and must be set from CI. Anyone raising the ratchet should read the CI number, not run `make test-cover` locally.
-5. **"`:Claim` uniqueness is advisory / a second label opts out"** → false since #470 on both REST and GraphQL. graphdb-coord's `docs/COORD_DEPLOY_SPIKE_2026-05-10.md:213` still specifies the exact-match rule as the intended design; that session was told and is correcting it.
+5. **"`CheckInvariants` refuses mmap-backed stores"** → true on `main` today, false the moment **#474** merges. After that it inspects them, and `ErrInvariantsUnsupported` narrows to one case: a snapshot with no membership directory. `CLAUDE.md` § snapshot format was updated by #471 to describe the refusal and **will need a second edit when #474 lands** — it is the third correction to that same paragraph today, which is itself a signal that the paragraph tracks fast-moving code.
+6. **"`:Claim` uniqueness is advisory / a second label opts out"** → false since #470 on both REST and GraphQL. graphdb-coord's `docs/COORD_DEPLOY_SPIKE_2026-05-10.md:213` still specifies the exact-match rule as the intended design; that session was told and is correcting it.
 
 ## Open questions for the user
 

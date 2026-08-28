@@ -15,11 +15,12 @@ Two things before new work:
    and it touches `pkg/api/handlers_nodes.go`, which #470 changed. Re-run after
    the rebase.
 
-Then pick up the recommended track: **an invariant checker for the mmap
-representation.** #468 made `CheckInvariants` refuse mmap-backed stores instead
-of falsely reporting health, so the default storage path (mmap since #447) has
-no invariant checking — only the JSON↔mmap equivalence oracle. Build mmap-aware
-ground truth from the membership section in `pkg/storage/mmap_snapshot_loader.go`.
+Then: **#474 is the mmap invariant checker, already built and in review.** Land
+it or finish reviewing it first. The follow-on track is what it does NOT cover —
+the vector index and the adjacency lists still have no mmap ground truth, so a
+clean mmap result is weaker than a clean JSON result. When #474 lands, `CLAUDE.md`
+§ snapshot format needs a third edit (it described the refusal, which stops being
+true).
 
 Validation angle: this session added three gates (fault injection, nightly
 fuzzing, coverage floor). Report what they caught or failed to catch on real
