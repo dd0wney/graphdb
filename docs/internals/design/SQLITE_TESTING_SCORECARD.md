@@ -53,9 +53,11 @@ found one on first run.
 | 14 | Undefined-behaviour checks | ✓ N/A, **gated** | Zero cgo, `CGO_ENABLED=0` in goreleaser and both Dockerfiles; CI job enforces it (#480) | Stays N/A only while graphdb is cgo-free. The gate is what makes that a fact rather than an assumption |
 | 15 | Checklists | ◐ | Audits, ADRs 0001–0002, this scorecard | — |
 
+| 16 | **Coupling coverage (DCCC)** — not a SQLite technique | ✗ | Added because SQLite's list is calibrated for one component and graphdb is 42 packages. **9 of the 13 defects found on 2026-08-28 were coupling defects**, and none would have been caught by raising coverage inside a package. Analysis: `COUPLING_AND_INTERFERENCE.md` | Every fault, crash and sweep test built is single-threaded; `pkg/storage`'s 28 concurrent test files inject no faults. The two halves have never met |
+
 Legend: ✓ done · ◐ partial · ✗ absent
 
-Counts: **4 done, 6 partial, 5 absent.**
+Counts: **4 done, 6 partial, 6 absent** (of 16 rows; row 16 is not a SQLite technique).
 
 ## Defects these techniques found
 
