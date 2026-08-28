@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // walFile is the file surface the WAL depends on. *os.File satisfies it, and
@@ -30,6 +32,11 @@ type walFile interface {
 
 // WAL is a Write-Ahead Log for durability
 type WAL struct {
+	// fs is the filesystem driver. It is vfs.Default() unless a caller chose
+	// another through NewWALWithFS, which is how an I/O fault or a simulated
+	// power cut reaches this code — through the same path production takes,
+	// not through a substituted test object.
+	fs         vfs.FileSystem
 	file       walFile
 	writer     *bufio.Writer
 	currentLSN uint64
@@ -37,21 +44,35 @@ type WAL struct {
 	mu         sync.Mutex
 }
 
-// NewWAL creates a new Write-Ahead Log
+// NewWAL creates a new Write-Ahead Log on the default filesystem driver.
 func NewWAL(dataDir string) (*WAL, error) {
-	if err := os.MkdirAll(dataDir, walDirPerm); err != nil {
+	return NewWALWithFS(dataDir, vfs.Default())
+}
+
+// NewWALWithFS creates a Write-Ahead Log on a caller-supplied filesystem
+// driver.
+//
+// Intended for testing: pass a driver from pkg/vfs/vfstest to make the disk
+// fail, or to simulate a power cut. It is exported rather than test-only on
+// purpose — see pkg/vfs's package comment and docs/adr/0002.
+func NewWALWithFS(dataDir string, fs vfs.FileSystem) (*WAL, error) {
+	if fs == nil {
+		fs = vfs.Default()
+	}
+	if err := fs.MkdirAll(dataDir, walDirPerm); err != nil {
 		return nil, fmt.Errorf("failed to create WAL directory: %w", err)
 	}
 
 	walPath := filepath.Join(dataDir, "wal.log")
 
 	// Open or create WAL file
-	file, err := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm)
+	file, err := fs.Open(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open WAL file: %w", err)
 	}
 
 	wal := &WAL{
+		fs:      fs,
 		file:    file,
 		writer:  bufio.NewWriter(file),
 		dataDir: dataDir,
@@ -179,7 +200,7 @@ func (w *WAL) Truncate() error {
 	}
 
 	// Create the new file BEFORE closing the old one to ensure we have a valid handle
-	newFile, err := os.OpenFile(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)
+	newFile, err := w.fs.Open(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)
 	if err != nil {
 		return fmt.Errorf("failed to create new WAL file: %w", err)
 	}
@@ -188,11 +209,11 @@ func (w *WAL) Truncate() error {
 	closeErr := w.file.Close()
 
 	// Rename new file to replace old file (atomic on POSIX)
-	if err := os.Rename(walPath+".new", walPath); err != nil {
+	if err := w.fs.Rename(walPath+".new", walPath); err != nil {
 		// Failed to rename - close new file and return error
 		newFile.Close()
 		// Try to reopen old file to maintain consistent state
-		if oldFile, reopenErr := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm); reopenErr == nil {
+		if oldFile, reopenErr := w.fs.Open(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm); reopenErr == nil {
 			w.file = oldFile
 			w.writer = bufio.NewWriter(oldFile)
 		}
