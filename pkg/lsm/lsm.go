@@ -91,15 +91,31 @@ func (lsm *LSMStorage) Get(key []byte) ([]byte, bool) {
 		return value, true
 	}
 
+	entry, ok := lsm.lookupEntry(key)
+	if !ok {
+		return nil, false
+	}
+	return lsm.resolve(cacheKey, entry)
+}
+
+// lookupEntry finds the newest entry for a key in the memtables and the
+// levels, without consulting the block cache and without writing to it.
+//
+// CheckInvariants needs exactly this. A lookup that consults the cache would
+// compare the cache with itself and agree with any value, and a lookup that
+// populates the cache would repair the disagreement it was called to find.
+//
+// Caller holds lsm.mu.
+func (lsm *LSMStorage) lookupEntry(key []byte) (*Entry, bool) {
 	// 1. Check active MemTable
 	if entry, ok := lsm.memTable.GetEntry(key); ok {
-		return lsm.resolve(cacheKey, entry)
+		return entry, true
 	}
 
 	// 2. Check immutable MemTable
 	if lsm.immutableTable != nil {
 		if entry, ok := lsm.immutableTable.GetEntry(key); ok {
-			return lsm.resolve(cacheKey, entry)
+			return entry, true
 		}
 	}
 
@@ -107,7 +123,7 @@ func (lsm *LSMStorage) Get(key []byte) ([]byte, bool) {
 	for level := 0; level < len(lsm.levels); level++ {
 		for i := len(lsm.levels[level]) - 1; i >= 0; i-- {
 			if entry, ok := lsm.levels[level][i].GetEntry(key); ok {
-				return lsm.resolve(cacheKey, entry)
+				return entry, true
 			}
 		}
 	}

@@ -78,6 +78,27 @@ func (bc *BlockCache) Put(key string, value []byte) {
 	}
 }
 
+// Snapshot copies the cache's contents.
+//
+// CheckInvariants compares it with what the levels hold. Iterating the live
+// list under the caller's lock would need the cache's internals to leak, and
+// the copy also means the check cannot be perturbed by a concurrent eviction
+// half way through.
+func (bc *BlockCache) Snapshot() map[string][]byte {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
+	out := make(map[string][]byte, len(bc.cache))
+	for key, elem := range bc.cache {
+		if entry, ok := elem.Value.(*cacheEntry); ok {
+			value := make([]byte, len(entry.value))
+			copy(value, entry.value)
+			out[key] = value
+		}
+	}
+	return out
+}
+
 // evict removes the least recently used entry
 func (bc *BlockCache) evict() {
 	elem := bc.lru.Back()
