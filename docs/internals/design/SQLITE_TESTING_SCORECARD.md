@@ -26,6 +26,7 @@ gets a tracked artifact.
 | Test code vs source | 590× | **1.47×** (130,961 / 88,895 LOC) |
 | Fuzz targets | dbsqlfuzz, ~1e9 mutations/day | **16**, nightly |
 | Fault-sim sites | 24 | **2** |
+| Fault-driver roles | n/a | **3** (`flush`, `compact`, `read`) |
 | OOM loops | 2 | **2** |
 | assert() in shipped core | 6,754 | 0 (see row 12) |
 
@@ -41,14 +42,14 @@ found one on first run.
 | 2 | 100% branch + MC/DC coverage | ✗ | Statement coverage only, gated at a 74.0% floor; CI measures 75.5% (#469) | Per-package floors, per orca's `covcheck` design. **Unplanned — see Gaps** |
 | 3 | Millions of test cases | ✗ | Fixed cases + fuzz seeds | Follows from 7, not pursued directly |
 | 4 | Out-of-memory testing | ◐ | `pkg/alloc` + `alloctest` with BOTH loops — fail-once-at-N and fail-all-from-N — swept to termination (#484). Gates graphdb's own length-driven buffers; Go's implicit allocations are out of reach and the package says so. Found the LSN-reuse defect below | Only `pkg/wal`'s record buffer is gated. Snapshot assembly, LSM blocks and query results are not |
-| 5 | I/O error testing | ◐ | `pkg/vfs` + `vfstest.FaultFS` on the production path (#479); N-sweep (#481); `pkg/btree` and `pkg/lsm` migrated (#485). Found the `WAL.Close` descriptor leak (#466) and the LSM error-chain break (#485) | `pkg/storage` (179 sites) not migrated = ADR 0002 stage 4. Its `syscall.Mmap` path does not fit `File` at all |
+| 5 | I/O error testing | ◐ | `pkg/vfs` + `vfstest.FaultFS` on the production path (#479); N-sweep (#481); `pkg/btree` and `pkg/lsm` migrated (#485). **Now runs against background workers while a foreground reader runs** — `RoleFS` attributes each operation to an actor and `SweepRole` walks the fault through one actor's operations, checking that the actor's sequence is stable rather than assuming it (#492). Found the `WAL.Close` descriptor leak (#466), the LSM error-chain break (#485), and five defects in the LSM flush and compaction paths (#494), two of which were introduced by repairing the other three | `pkg/storage` (179 sites) not migrated = ADR 0002 stage 4. Its `syscall.Mmap` path does not fit `File` at all, and its 28 concurrent test files still inject nothing |
 | 6 | Crash and power-loss | ✓ | `vfstest.CrashFS` with LoseUnsynced / LosePartial / **ReorderAndLose** (#479); phantom-entry fix (#478); `SweepCrash` walks the cut through every operation with repeats per point (#483). `TestWAL_SweepEveryCrashPoint`: 9 cut points, 36 runs, 26 recovering entries | All three parts of the slide are now covered for `pkg/wal`. `pkg/lsm`, `pkg/btree` and `pkg/storage` inherit it once they migrate to the driver (ADR 0002 stages 3-4) |
 | 7 | Fuzz testing | ✓ | 16 targets, nightly workflow (#467), first run verified green | Corpus is not persisted beyond the cache; consider committing high-value seeds |
 | 8 | Boundary-value testing | ✗ | No `testcase()` equivalent | Unplanned. Go has no coverage-visible marker; needs thought |
 | 9 | Disabled-optimization testing | ◐ | Two differential oracles: JSON↔mmap enumeration, SIMD↔scalar | No general switch. ADR 0002 Driver 4 (test control) |
-| 10 | Regression testing | ✓ | 13 `CONSUMER CONTRACT:` tests + `scripts/consumer-drive.sh` | — |
+| 10 | Regression testing | ✓ | 13 `CONSUMER CONTRACT:` tests + `scripts/consumer-drive.sh`, and `make contract-guard` now pins each one's body so a weakened assertion changes a tracked file (#490). An approval transcript of the REST surface and a reference-model test of the node surface (#491) | The contract guard found a tenth contract that had no registry row since #412 |
 | 11 | Malformed-database testing | ◐ | `FuzzMmapSnapshotCorruption` + `FuzzMmapSnapshotTruncation` (#477); two panics fixed. WAL phantom entries (#478) | Truncation target is near-vacuous (1 of 209 lengths opens) — a CRC-recomputing variant would reach the read paths |
-| 12 | assert() and runtime checks | ◐ | `CheckInvariants` in production code for both representations (#468, #474) | No `never`/`always` equivalents, no production asserts = ADR 0002 Driver 4 |
+| 12 | assert() and runtime checks | ◐ | `CheckInvariants` in production code for both `pkg/storage` representations (#468, #474) and now for `pkg/lsm` — the level set against the files on the disk, and the record cache against the levels (#493). Each of its five invariants has a test that corrupts a store in the matching way | No `never`/`always` equivalents, no production asserts = ADR 0002 Driver 4. The `pkg/lsm` checker says nothing about the contents of an SSTable |
 | 13 | Valgrind | ✓ analogue | `-race` in CI | No `-msan`/`-asan`. Low value while row 14 holds |
 | 14 | Undefined-behaviour checks | ✓ N/A, **gated** | Zero cgo, `CGO_ENABLED=0` in goreleaser and both Dockerfiles; CI job enforces it (#480) | Stays N/A only while graphdb is cgo-free. The gate is what makes that a fact rather than an assumption |
 | 15 | Checklists | ◐ | Audits, ADRs 0001–0002, this scorecard | — |
