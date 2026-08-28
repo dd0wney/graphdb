@@ -4,6 +4,7 @@
 .PHONY: help test test-verbose test-short test-race test-cover coverage-gate test-cover-html \
         contract-guard contract-guard-update contract-guard-selftest \
         lint-local lint-local-selftest \
+        mutation mutation-selftest \
         bench bench-cpu bench-mem build build-all clean fmt vet lint \
         run-server run-cli run-tui install-tools mod-tidy mod-verify \
         integration-test api-test profile-cpu profile-mem
@@ -128,6 +129,13 @@ lint-local:
 ## lint-local-selftest: Prove the local lint gate can report a finding
 lint-local-selftest:
 	@bash scripts/lint-local-selftest.sh
+## mutation: Change one operator at a time and ask whether any test notices
+mutation:
+	@bash scripts/mutation.sh $(PKGS)
+
+## mutation-selftest: Prove the mutation run can report both outcomes
+mutation-selftest:
+	@bash scripts/mutation-selftest.sh
 
 ## contract-guard: Check the consumer-contract registry against the tests
 contract-guard:

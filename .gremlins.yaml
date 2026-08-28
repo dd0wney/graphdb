@@ -1,0 +1,37 @@
+# Mutation testing configuration.
+#
+# A mutation run changes one operator in the source, runs the tests, and asks
+# whether any test noticed. A mutant that lives is a line no test constrains.
+#
+# This exists because five tests written on 2026-08-28 were decoration: each
+# ran the code it claimed to test, constrained nothing, and was found only by
+# reverting the repair by hand and watching the test stay green. That is this,
+# one mutant at a time.
+
+unleash:
+  # The keys MUST be nested under the command. A top-level `timeout-coefficient`
+  # is silently ignored, and the run then reports a score computed from the
+  # handful of mutants that beat the default timeout. Measured: with the key at
+  # the top level, 88 of 88 mutants timed out for pkg/vfs/vfstest and gremlins
+  # reported "Test efficacy: 100.00%" from the one that did not.
+
+  # The default timeout is derived from the baseline test run and is far too
+  # short here. A timed-out mutant is not a killed mutant, and a score computed
+  # from 2 mutants out of 374 is not a score. Do not lower this without
+  # re-reading the paragraph above.
+  timeout-coefficient: 20
+
+  # Two, not four.
+  #
+  # Each worker compiles and runs the package under test. Four workers on
+  # pkg/lsm reached 669% CPU and exhausted this machine's memory into swap.
+  # Mutation testing is the most resource-hungry thing in this repository by a
+  # wide margin, and it is not worth an unusable machine to save 90 seconds.
+  workers: 2
+
+# Thresholds are deliberately absent.
+#
+# A floor set before the number is understood is how the coverage floor was got
+# wrong in #469: it came from a developer machine and failed every pull request
+# until it was re-measured from CI. Baselines live in MUTATION_BASELINE.md and
+# become gates only once measured where they will be enforced.
