@@ -6,6 +6,7 @@
         lint-local lint-local-selftest \
         mutation mutation-selftest \
         dccc dccc-selftest \
+        coverage-floors coverage-floors-update coverage-floors-selftest \
         bench bench-cpu bench-mem build build-all clean fmt vet lint \
         run-server run-cli run-tui install-tools mod-tidy mod-verify \
         integration-test api-test profile-cpu profile-mem
@@ -144,6 +145,17 @@ dccc:
 ## dccc-selftest: Prove the coupling-coverage measure reports what it claims
 dccc-selftest:
 	@bash scripts/dccc-selftest.sh
+## coverage-floors: Fail if any package is below its own floor
+coverage-floors:
+	@bash scripts/coverage-floors.sh $(COVERAGE_DIR)/coverage.out
+
+## coverage-floors-update: Rewrite the floors from a profile (CI's, never a local one)
+coverage-floors-update:
+	@bash scripts/coverage-floors.sh --update $(COVERAGE_DIR)/coverage.out
+
+## coverage-floors-selftest: Prove the per-package gate can report a failure
+coverage-floors-selftest:
+	@bash scripts/coverage-floors-selftest.sh
 
 ## contract-guard: Check the consumer-contract registry against the tests
 contract-guard:

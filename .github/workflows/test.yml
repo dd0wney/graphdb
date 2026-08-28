@@ -106,6 +106,16 @@ jobs:
       # A gate nobody has seen report the negative is not known to be a gate.
       run: make contract-guard-selftest
 
+    - name: Enforce the per-package coverage floors
+      # The global floor lets a well-covered package hide a poor one: pkg/query
+      # at 63.0% and pkg/parallel at 93.4% clear the same 74.0% gate together.
+      # The floors in coverage-floors.tsv came from this job on main, which is
+      # the only environment whose numbers may set them.
+      run: make coverage-floors
+
+    - name: Prove the per-package gate can report a failure
+      run: make coverage-floors-selftest
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
       with:

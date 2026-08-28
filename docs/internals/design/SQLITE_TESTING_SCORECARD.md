@@ -39,7 +39,7 @@ found one on first run.
 | # | Technique | State | Evidence | Next |
 |---|---|---|---|---|
 | 1 | Four independent harnesses | ✗ | One (`go test`), plus 13 consumer-contract tests as a partial second view | Not planned. A second harness is not obviously worth it at this size |
-| 2 | 100% branch + MC/DC coverage | ✗ | Statement coverage only, gated at a 74.0% floor; CI measures 75.5% (#469) | Per-package floors, per orca's `covcheck` design. **Unplanned — see Gaps** |
+| 2 | 100% branch + MC/DC coverage | ✗ | Statement coverage only. Gated at a 74.0% global floor AND at per-package floors (`coverage-floors.tsv`, taken from CI run 33159364069 on main), so a well-covered package can no longer hide a poor one | Still statement coverage, not branch and not MC/DC. `pkg/query` at 63.0% is the lowest and its floor only stops it falling further |
 | 3 | Millions of test cases | ✗ | Fixed cases + fuzz seeds | Follows from 7, not pursued directly |
 | 4 | Out-of-memory testing | ◐ | `pkg/alloc` + `alloctest` with BOTH loops — fail-once-at-N and fail-all-from-N — swept to termination (#484). Gates graphdb's own length-driven buffers; Go's implicit allocations are out of reach and the package says so. Found the LSN-reuse defect below | Only `pkg/wal`'s record buffer is gated. Snapshot assembly, LSM blocks and query results are not |
 | 5 | I/O error testing | ◐ | `pkg/vfs` + `vfstest.FaultFS` on the production path (#479); N-sweep (#481); `pkg/btree` and `pkg/lsm` migrated (#485). **Now runs against background workers while a foreground reader runs** — `RoleFS` attributes each operation to an actor and `SweepRole` walks the fault through one actor's operations, checking that the actor's sequence is stable rather than assuming it (#492). Found the `WAL.Close` descriptor leak (#466), the LSM error-chain break (#485), and five defects in the LSM flush and compaction paths (#494), two of which were introduced by repairing the other three | `pkg/storage` (179 sites) not migrated = ADR 0002 stage 4. Its `syscall.Mmap` path does not fit `File` at all, and its 28 concurrent test files still inject nothing |
@@ -87,10 +87,12 @@ Recorded because the yield is the argument for the next stage.
 
 These are tracked nowhere else, which is the point of this section.
 
-1. **Per-package coverage floors** (row 2). The single global floor lets a
-   well-covered package mask a poor one — `pkg/query` at 62.9% hides behind
-   `pkg/parallel` at 93.4%. orca's `tools/covcheck.py` has the design: per-file
-   floors, three exit codes, and a self-test. Not started, not in any ADR.
+1. ~~**Per-package coverage floors** (row 2).~~ Done. `coverage-floors.tsv`
+   holds a floor for each of the eight packages in `COVER_PKGS`, two points
+   below what CI measured on main, and `make coverage-floors` enforces them in
+   the coverage job. Three exit codes and a self-test, following
+   `coverage-gate.sh`. The numbers came from CI run 33159364069, never from a
+   developer machine — that distinction is what #469 was about.
 2. **The coverage number moves ~4 points with the machine** (CI 75.5% vs
    developer 79.5%, reproduced). Unexplained. If timing-dependent paths are the
    cause, some statements are only ever covered on fast hardware.
