@@ -2,6 +2,7 @@ package wal
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -11,9 +12,25 @@ import (
 	"sync"
 )
 
+// walFile is the file surface the WAL depends on. *os.File satisfies it, and
+// production code always holds one.
+//
+// The indirection exists so tests can inject I/O faults: a disk that fails a
+// write, an fsync that reports an error, a close that fails. Those paths carry
+// the durability contract, and without a seam they were unreachable from a
+// test. See wal_io_fault_test.go. This mirrors, in miniature, the substitutable
+// VFS that SQLite uses for the same purpose.
+type walFile interface {
+	io.Reader
+	io.Writer
+	io.Seeker
+	Sync() error
+	Close() error
+}
+
 // WAL is a Write-Ahead Log for durability
 type WAL struct {
-	file       *os.File
+	file       walFile
 	writer     *bufio.Writer
 	currentLSN uint64
 	dataDir    string
@@ -203,20 +220,22 @@ func (w *WAL) GetCurrentLSN() uint64 {
 	return w.currentLSN
 }
 
-// Close closes the WAL
+// Close closes the WAL.
+//
+// Every step runs even when an earlier one fails, and all faults are reported
+// together. Returning early on a flush or fsync error used to leak the file
+// descriptor, which is worst in the case that provokes it: a disk fault makes a
+// caller drop this WAL and open another, so the leak compounds until the
+// process hits EMFILE far away from the disk error that caused it.
 func (w *WAL) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if err := w.writer.Flush(); err != nil {
-		return err
-	}
+	flushErr := w.writer.Flush()
+	syncErr := w.file.Sync()
+	closeErr := w.file.Close()
 
-	if err := w.file.Sync(); err != nil {
-		return err
-	}
-
-	return w.file.Close()
+	return errors.Join(flushErr, syncErr, closeErr)
 }
 
 // Replay replays WAL entries to reconstruct state
