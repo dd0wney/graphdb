@@ -5,19 +5,32 @@ import (
 	"log"
 	"path/filepath"
 	"sort"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // Compactor performs SSTable compaction
 type Compactor struct {
 	strategy CompactionStrategy
 	dataDir  string
+	// fs is the driver the tables this compactor writes will carry.
+	fs vfs.FileSystem
 }
 
 // NewCompactor creates a new compactor
 func NewCompactor(dataDir string, strategy CompactionStrategy) *Compactor {
+	return NewCompactorWithFS(dataDir, strategy, vfs.Default())
+}
+
+// NewCompactorWithFS creates a compactor on a caller-supplied driver.
+func NewCompactorWithFS(dataDir string, strategy CompactionStrategy, fs vfs.FileSystem) *Compactor {
+	if fs == nil {
+		fs = vfs.Default()
+	}
 	return &Compactor{
 		strategy: strategy,
 		dataDir:  dataDir,
+		fs:       fs,
 	}
 }
 
@@ -106,7 +119,7 @@ func (c *Compactor) Compact(plan *CompactionPlan) (result []*SSTable, err error)
 		if currentSize+entrySize > maxSSTableSize && len(currentBatch) > 0 {
 			// Flush current batch
 			path := SSTablePath(c.dataDir, plan.OutputLevel, sstableID)
-			sst, createErr := NewSSTable(path, currentBatch)
+			sst, createErr := NewSSTableWithFS(path, currentBatch, c.fs)
 			if createErr != nil {
 				cleanup()
 				return nil, fmt.Errorf("create SSTable %s: %w", path, createErr)
@@ -125,7 +138,7 @@ func (c *Compactor) Compact(plan *CompactionPlan) (result []*SSTable, err error)
 	// Flush remaining entries
 	if len(currentBatch) > 0 {
 		path := SSTablePath(c.dataDir, plan.OutputLevel, sstableID)
-		sst, createErr := NewSSTable(path, currentBatch)
+		sst, createErr := NewSSTableWithFS(path, currentBatch, c.fs)
 		if createErr != nil {
 			cleanup()
 			return nil, fmt.Errorf("create SSTable %s: %w", path, createErr)
@@ -169,10 +182,39 @@ func (c *Compactor) CleanupOldSSTables(sstables []*SSTable) error {
 // Returns partial results even if some SSTables fail to open, along with an error
 // describing the failures. Callers should check both the result and error.
 func ListSSTables(dir string) ([][]*SSTable, error) {
-	files, err := filepath.Glob(filepath.Join(dir, "*.sst"))
-	if err != nil {
-		return nil, fmt.Errorf("glob SSTable files: %w", err)
+	return ListSSTablesWithFS(dir, vfs.Default())
+}
+
+// ListSSTablesWithFS enumerates SSTables on a caller-supplied filesystem
+// driver.
+//
+// It reads the directory rather than calling filepath.Glob, because Glob goes
+// straight to the real filesystem and a driver cannot fail it. A listing that
+// cannot fail is a listing whose error path is untested.
+func ListSSTablesWithFS(dir string, fs vfs.FileSystem) ([][]*SSTable, error) {
+	if fs == nil {
+		fs = vfs.Default()
 	}
+	entries, err := fs.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("list SSTable files: %w", err)
+	}
+	var files []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		// The pattern is a constant, so Match cannot return an error here —
+		// but an ignored error is an ignored error, and the linter is right to
+		// say so. Treating a match failure as "not an SSTable" is also the
+		// behaviour we want if the pattern is ever made dynamic.
+		ok, matchErr := filepath.Match("*.sst", e.Name())
+		if matchErr != nil || !ok {
+			continue
+		}
+		files = append(files, filepath.Join(dir, e.Name()))
+	}
+	sort.Strings(files)
 
 	// Group by level. This function returns partial results on error —
 	// successfully-opened SSTables are passed back via `levels`, so the
@@ -188,7 +230,7 @@ func ListSSTables(dir string) ([][]*SSTable, error) {
 			continue
 		}
 
-		sst, err := OpenSSTable(path)
+		sst, err := OpenSSTableWithFS(path, fs)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("open %s: %w", path, err))
 			continue
@@ -212,7 +254,12 @@ func ListSSTables(dir string) ([][]*SSTable, error) {
 
 	// Return partial results with error if any files failed to open
 	if len(errs) > 0 {
-		return levels, fmt.Errorf("failed to open %d SSTable(s): %v", len(errs), errs[0])
+		// %w, not %v: a caller must be able to tell an I/O failure from any
+		// other reason a table would not open. Flattening the cause here made
+		// errors.Is fail against the underlying error, which the LSM I/O sweep
+		// caught — the injected fault appeared in the message text while the
+		// error chain was broken.
+		return levels, fmt.Errorf("failed to open %d SSTable(s): %w", len(errs), errs[0])
 	}
 
 	return levels, nil

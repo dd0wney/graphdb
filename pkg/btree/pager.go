@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"sync"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // TODO: tombstone compaction. Tree.Delete writes zero-length values
@@ -32,28 +34,44 @@ type Page struct {
 
 // Pager manages reading and writing pages to a file
 type Pager struct {
-	file      *os.File
+	// fs is the filesystem driver. vfs.Default() unless a caller chose another
+	// through NewPagerWithFS, which is how an I/O fault or a simulated power
+	// cut reaches this code by the path production takes.
+	fs        vfs.FileSystem
+	file      vfs.File
 	mu        sync.RWMutex
 	maxPage   uint64
 	cache     map[uint64]*Page
 	cacheSize int
 }
 
-// NewPager creates a new pager for the given file path
+// NewPager creates a new pager for the given file path, on the default
+// filesystem driver.
 func NewPager(path string) (*Pager, error) {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	return NewPagerWithFS(path, vfs.Default())
+}
+
+// NewPagerWithFS creates a pager on a caller-supplied filesystem driver.
+// Intended for testing; see pkg/vfs and docs/adr/0002.
+func NewPagerWithFS(path string, fs vfs.FileSystem) (*Pager, error) {
+	if fs == nil {
+		fs = vfs.Default()
+	}
+	file, err := fs.Open(path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open pager file: %w", err)
 	}
 
-	info, err := file.Stat()
+	info, err := fs.Stat(path)
 	if err != nil {
+		_ = file.Close()
 		return nil, fmt.Errorf("failed to stat pager file: %w", err)
 	}
 
 	maxPage := uint64(info.Size() / PageSize)
 
 	return &Pager{
+		fs:        fs,
 		file:      file,
 		maxPage:   maxPage,
 		cache:     make(map[uint64]*Page),

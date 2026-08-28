@@ -175,7 +175,17 @@ func (f *FaultFS) Remove(name string) error               { return f.base.Remove
 func (f *FaultFS) Rename(old, new string) error           { return f.base.Rename(old, new) }
 func (f *FaultFS) Stat(name string) (os.FileInfo, error)  { return f.base.Stat(name) }
 func (f *FaultFS) MkdirAll(p string, m os.FileMode) error { return f.base.MkdirAll(p, m) }
-func (f *FaultFS) Name() string                           { return f.name }
+
+func (f *FaultFS) ReadDir(name string) ([]os.DirEntry, error) {
+	f.mu.Lock()
+	shouldFail := f.countOp()
+	f.mu.Unlock()
+	if shouldFail {
+		return nil, fmt.Errorf("readdir %s: %w", name, ErrInjected)
+	}
+	return f.base.ReadDir(name)
+}
+func (f *FaultFS) Name() string { return f.name }
 
 type faultFile struct {
 	vfs.File

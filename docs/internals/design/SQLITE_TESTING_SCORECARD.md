@@ -41,7 +41,7 @@ found one on first run.
 | 2 | 100% branch + MC/DC coverage | ✗ | Statement coverage only, gated at a 74.0% floor; CI measures 75.5% (#469) | Per-package floors, per orca's `covcheck` design. **Unplanned — see Gaps** |
 | 3 | Millions of test cases | ✗ | Fixed cases + fuzz seeds | Follows from 7, not pursued directly |
 | 4 | Out-of-memory testing | ◐ | `pkg/alloc` + `alloctest` with BOTH loops — fail-once-at-N and fail-all-from-N — swept to termination (#484). Gates graphdb's own length-driven buffers; Go's implicit allocations are out of reach and the package says so. Found the LSN-reuse defect below | Only `pkg/wal`'s record buffer is gated. Snapshot assembly, LSM blocks and query results are not |
-| 5 | I/O error testing | ◐ | `pkg/vfs` + `vfstest.FaultFS` on the production path (#479); N-sweep (#481). Found the `WAL.Close` descriptor leak (#466) | `pkg/lsm` (12 sites), `pkg/btree` (1), `pkg/storage` (179) not migrated = ADR 0002 stages 3–4 |
+| 5 | I/O error testing | ◐ | `pkg/vfs` + `vfstest.FaultFS` on the production path (#479); N-sweep (#481); `pkg/btree` and `pkg/lsm` migrated (#485). Found the `WAL.Close` descriptor leak (#466) and the LSM error-chain break (#485) | `pkg/storage` (179 sites) not migrated = ADR 0002 stage 4. Its `syscall.Mmap` path does not fit `File` at all |
 | 6 | Crash and power-loss | ✓ | `vfstest.CrashFS` with LoseUnsynced / LosePartial / **ReorderAndLose** (#479); phantom-entry fix (#478); `SweepCrash` walks the cut through every operation with repeats per point (#483). `TestWAL_SweepEveryCrashPoint`: 9 cut points, 36 runs, 26 recovering entries | All three parts of the slide are now covered for `pkg/wal`. `pkg/lsm`, `pkg/btree` and `pkg/storage` inherit it once they migrate to the driver (ADR 0002 stages 3-4) |
 | 7 | Fuzz testing | ✓ | 16 targets, nightly workflow (#467), first run verified green | Corpus is not persisted beyond the cache; consider committing high-value seeds |
 | 8 | Boundary-value testing | ✗ | No `testcase()` equivalent | Unplanned. Go has no coverage-visible marker; needs thought |
@@ -74,6 +74,9 @@ Recorded because the yield is the argument for the next stage.
 | `-tags nng` CI job compiled an identical file set | Measuring the tag's effect | #480 |
 | Recovery may exceed acknowledged appends (test invariant wrong) | The N-sweep, at N=3 | #481 |
 | An allocation failure during WAL open truncated the LSN, so the next append reused an LSN already on disk — silently dropped by the next recovery | The OOM fail-once loop | #484 |
+| `ListSSTables` flattened its cause with `%v`, so `errors.Is` could not tell an I/O failure from any other reason a table would not open | The LSM I/O sweep | #485 |
+| SSTable constructors returned a nil driver, so the first Close or Remove would have panicked | Reading the constructors instead of trusting the build | #485 |
+| Two scorecard rows were silently lost: a `str.replace()` anchored on a row that did not exist on the branch did nothing, and nothing checked | Noticing the merged table was short | #485 |
 
 ## Gaps in the plan itself
 

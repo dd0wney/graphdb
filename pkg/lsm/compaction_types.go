@@ -1,9 +1,5 @@
 package lsm
 
-import (
-	"os"
-)
-
 // CompactionStrategy defines how SSTables are compacted
 type CompactionStrategy interface {
 	SelectCompaction(levels [][]*SSTable) *CompactionPlan
@@ -67,7 +63,7 @@ func (lcs *LeveledCompactionStrategy) SelectCompaction(levels [][]*SSTable) *Com
 func calculateLevelSize(sstables []*SSTable) int64 {
 	var size int64
 	for _, sst := range sstables {
-		info, err := os.Stat(sst.path)
+		info, err := sst.fs.Stat(sst.path)
 		if err == nil {
 			size += info.Size()
 		}

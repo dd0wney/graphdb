@@ -1,7 +1,7 @@
 package lsm
 
 import (
-	"os"
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // SSTable format:
@@ -36,8 +36,11 @@ type SSTableHeader struct {
 
 // SSTable represents a Sorted String Table on disk
 type SSTable struct {
+	// fs is the filesystem driver this table was opened on. It travels with
+	// the table so a later Close, Remove or Stat uses the same one.
+	fs         vfs.FileSystem
 	path       string
-	file       *os.File
+	file       vfs.File
 	header     SSTableHeader
 	index      []IndexEntry // Sparse index
 	bloom      *BloomFilter // Bloom filter for fast negative lookups

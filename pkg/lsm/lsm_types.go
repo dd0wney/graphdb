@@ -3,6 +3,8 @@ package lsm
 import (
 	"sync"
 	"sync/atomic"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // LSMStorage is the main LSM-tree storage engine
@@ -18,6 +20,7 @@ type LSMStorage struct {
 	cache  *BlockCache // LRU cache for hot data
 
 	// Configuration
+	fs                 vfs.FileSystem
 	dataDir            string
 	memTableSize       int
 	compactionStrategy CompactionStrategy
@@ -56,7 +59,11 @@ type LSMStats struct {
 
 // LSMOptions configures LSM storage
 type LSMOptions struct {
-	DataDir              string
+	DataDir string
+
+	// FS is the filesystem driver. Nil means vfs.Default(), which is what
+	// production uses. A test supplies a fault or crash driver here.
+	FS                   vfs.FileSystem
 	MemTableSize         int // Bytes (default 4MB)
 	CompactionStrategy   CompactionStrategy
 	EnableAutoCompaction bool
