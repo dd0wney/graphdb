@@ -107,13 +107,27 @@ func (mt *MemTable) Delete(key []byte) error {
 
 	keyStr := string(key)
 
+	// A tombstone has a size, and it must be counted. Size drives every flush
+	// decision this package makes — Sync, Close and IsFull all read it — so a
+	// tombstone that costs nothing is a tombstone that is never written: the
+	// memtable reports itself empty, Close skips its final flush, and the
+	// deleted keys come back on the next open. The accounting mirrors Put's,
+	// including its underflow guard.
 	if existing, exists := mt.data[keyStr]; exists {
+		oldSize := len(existing.Value)
+		if mt.size >= oldSize {
+			mt.size -= oldSize
+		} else {
+			mt.size = 0
+		}
 		existing.Deleted = true
+		existing.Value = nil
 		existing.Timestamp = time.Now().UnixNano()
 	} else {
 		// Create tombstone
 		mt.keys = append(mt.keys, keyStr)
 		mt.sorted = false
+		mt.size += len(key)
 		mt.data[keyStr] = &Entry{
 			Key:       key,
 			Timestamp: time.Now().UnixNano(),

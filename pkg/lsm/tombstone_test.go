@@ -111,3 +111,55 @@ func TestScanPrefersNewestSSTable(t *testing.T) {
 		t.Errorf("Scan returned %q, want v2: Scan and Get disagree about which SSTable is newer", got["k"])
 	}
 }
+
+// A tombstone must survive a close and reopen.
+//
+// MemTable.Delete updated neither mt.size nor anything else the flush
+// decisions read, so a memtable holding only tombstones reported Size() == 0.
+// Close skips its final flush on that reading, so the tombstones were dropped
+// and the deleted keys came back on the next open.
+func TestDeleteSurvivesAReopen(t *testing.T) {
+	dir := t.TempDir()
+	opts := DefaultLSMOptions(dir)
+	opts.EnableAutoCompaction = false
+
+	l, err := NewLSMStorage(opts)
+	if err != nil {
+		t.Fatalf("NewLSMStorage: %v", err)
+	}
+	if err := l.Put([]byte("k"), []byte("v")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if err := l.Sync(); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if err := l.Delete([]byte("k")); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	reopened, err := NewLSMStorage(opts)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer reopened.Close()
+
+	if v, ok := reopened.Get([]byte("k")); ok {
+		t.Errorf("a deleted key came back as %q after a reopen", v)
+	}
+}
+
+// A memtable holding a tombstone is not empty. Size drives every flush
+// decision — Sync, Close and IsFull all read it — so a tombstone that costs
+// nothing is a tombstone that is never written.
+func TestMemTableSizeCountsATombstone(t *testing.T) {
+	mt := NewMemTable(1024)
+	if err := mt.Delete([]byte("k")); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if got := mt.Size(); got == 0 {
+		t.Error("a memtable holding one tombstone reports Size() == 0, so no flush will write it")
+	}
+}
