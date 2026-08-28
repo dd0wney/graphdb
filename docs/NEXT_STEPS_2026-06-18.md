@@ -139,11 +139,13 @@ a track. Test-code-to-source ratio for context: SQLite 590x, graphdb 1.48x.
 
 **Open — need a decision or a track**
 
-1. **No invariant checker for the mmap representation.** #468 made the gap
-   visible by refusing rather than falsely reporting health. mmap is the default
-   path since #447, so the default path has only the equivalence oracle as a
-   correctness gate. Building an mmap-aware ground truth (from the membership
-   section) is its own task.
+1. ~~**No invariant checker for the mmap representation.**~~ **SHIPPED — #474.**
+   Ground truth is `shard records ∪ (mmap base records − tombstones)`, shard
+   winning, built from raw records rather than the membership helpers.
+   **What remains, and is the live item: the vector index and the adjacency
+   lists have no mmap ground truth.** A clean mmap result is therefore a weaker
+   statement than a clean JSON result, and `CheckInvariants`' doc says so.
+   Closing that gap is the follow-on task.
 
 2. **Coverage moves with the machine, by ~4 points.** CI measured 75.5% where a
    developer machine measured 79.5% on the same commit: wal 70.2 vs 79.1, lsm
@@ -153,10 +155,15 @@ a track. Test-code-to-source ratio for context: SQLite 590x, graphdb 1.48x.
    and graphql, and skips were not measured on CI. If it holds, some statements
    are covered only where tests run fast enough.
 
-3. **Uniqueness-rules registry** (`pkg/graphql/mutations_resolvers.go:25`, existing
-   TODO). #470 made the `:Claim` rule correct but kept the hardcoded label. The
-   registry is what removes coord-domain knowledge from graphdb and lets an
-   operator declare a rule. Directional steer recorded from the user
+3. **Uniqueness-rules registry** (`pkg/graphql/mutations_resolvers.go:20`, existing
+   TODO). #470 made the `:Claim` rule correct but kept the hardcoded label.
+   **Design settled and recorded: `docs/adr/0001-uniqueness-rules-registry.md`
+   (#475), status `proposed`.** Implementation not started, ~150-300 LOC, no
+   caller migration. Read the ADR before building: three plausible designs were
+   tried and killed, including two that look obviously right (fail-closed on the
+   `:Claim` label, which relocates the coord knowledge it removes; and refusing
+   to serve while a rule is missing, which deadlocks because the declaration is
+   an admin write to that daemon). Directional steer from the user
    (2026-08-28): ACID over eventual consistency for this class of constraint.
 
 **Not started, from the same comparison:** I/O fault injection for `pkg/lsm` and
