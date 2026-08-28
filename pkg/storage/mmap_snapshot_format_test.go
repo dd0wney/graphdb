@@ -102,7 +102,10 @@ func TestMmapSnapshot_FieldScan(t *testing.T) {
 
 	seen := map[uint64]string{}
 	m.forEachNodeID(func(id uint64, off int64) {
-		gotID, tenant, labels := scanNodeFields(m.data, off)
+		gotID, tenant, labels, okScan := scanNodeFields(m.data, off)
+		if !okScan {
+			t.Fatalf("scanNodeFields rejected a valid record at offset %d", off)
+		}
 		if gotID != id {
 			t.Fatalf("scanNodeFields id %d != dir id %d", gotID, id)
 		}
@@ -117,7 +120,10 @@ func TestMmapSnapshot_FieldScan(t *testing.T) {
 
 	edges := 0
 	m.forEachEdgeID(func(id uint64, off int64) {
-		gotID, from, to, tenant, etype := scanEdgeFields(m.data, off)
+		gotID, from, to, tenant, etype, okScan := scanEdgeFields(m.data, off)
+		if !okScan {
+			t.Fatalf("scanEdgeFields rejected a valid record at offset %d", off)
+		}
 		if gotID != id || tenant == "" || etype == "" {
 			t.Fatalf("scanEdgeFields bad: id=%d from=%d to=%d t=%q ty=%q", gotID, from, to, tenant, etype)
 		}
@@ -133,7 +139,10 @@ func TestMmapSnapshot_CopyOnRead(t *testing.T) {
 	// unaffected — proving Value.Data is copied, not aliased (safe after munmap).
 	buf := encodeNodeRecord(&Node{ID: 1, TenantID: "t", Labels: []string{"L"},
 		Properties: map[string]Value{"k": StringValue("orig")}})
-	n := decodeNodeRecordAt(buf, 0)
+	n, okDecode := decodeNodeRecordAt(buf, 0)
+	if !okDecode {
+		t.Fatal("decodeNodeRecordAt rejected a valid record")
+	}
 	for i := range buf {
 		buf[i] = 0xFF
 	}
@@ -209,7 +218,7 @@ func TestCSRRunCodec_RoundTrip(t *testing.T) {
 	in := []uint64{7, 11, 13, 9000000001}
 	buf := appendCSRRun(nil, in)
 
-	got, n := readCSRRun(buf, 0)
+	got, n, _ := readCSRRun(buf, 0)
 	if n != len(buf) {
 		t.Fatalf("readCSRRun consumed %d, want %d", n, len(buf))
 	}
@@ -227,7 +236,7 @@ func TestCSRRunCodec_RoundTrip(t *testing.T) {
 	if len(empty) != 4 {
 		t.Fatalf("empty run len %d want 4", len(empty))
 	}
-	if got, _ := readCSRRun(empty, 0); got != nil {
+	if got, _, _ := readCSRRun(empty, 0); got != nil {
 		t.Errorf("empty run decoded to %v want nil", got)
 	}
 
@@ -235,8 +244,8 @@ func TestCSRRunCodec_RoundTrip(t *testing.T) {
 	// offset returned from the first.
 	buf2 := appendCSRRun(nil, []uint64{1, 2})
 	buf2 = appendCSRRun(buf2, []uint64{3})
-	_, after := readCSRRun(buf2, 0)
-	second, _ := readCSRRun(buf2, after)
+	_, after, _ := readCSRRun(buf2, 0)
+	second, _, _ := readCSRRun(buf2, after)
 	if len(second) != 1 || second[0] != 3 {
 		t.Errorf("second run = %v, want [3]", second)
 	}
@@ -335,7 +344,7 @@ func TestMembershipDirectory_RoundTrip(t *testing.T) {
 		if !ok {
 			return nil
 		}
-		ids, _ := readCSRRun(data, int(off))
+		ids, _, _ := readCSRRun(data, int(off))
 		_ = idCount
 		return ids
 	}
@@ -378,7 +387,7 @@ func TestMembershipDirectory_RoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("z not found")
 	}
-	ids, _ := readCSRRun(buf, int(off))
+	ids, _, _ := readCSRRun(buf, int(off))
 	if len(ids) != 2 || ids[0] != 5 || ids[1] != 6 {
 		t.Errorf("non-zero-base run = %v want [5 6]", ids)
 	}
