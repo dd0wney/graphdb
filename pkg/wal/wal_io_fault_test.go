@@ -108,6 +108,53 @@ func newFaultyWAL(t *testing.T) (*WAL, *faultyFile) {
 	return w, faulty
 }
 
+// TestWAL_CloseReleasesDescriptorWhenSyncFails pins the rule that Close must
+// release the file descriptor even when the fsync before it fails.
+//
+// Without this, every WAL whose final fsync fails leaks a descriptor. A
+// long-running server that opens and closes WALs then dies on EMFILE, and the
+// disk error that caused it is nowhere near the crash.
+func TestWAL_CloseReleasesDescriptorWhenSyncFails(t *testing.T) {
+	w, faulty := newFaultyWAL(t)
+
+	if _, err := w.Append(OpCreateNode, []byte("payload")); err != nil {
+		t.Fatalf("Append before fault: %v", err)
+	}
+
+	faulty.syncMode = faultAlways
+
+	err := w.Close()
+	if err == nil {
+		t.Fatal("Close returned nil, want the injected sync error surfaced")
+	}
+	if !errors.Is(err, errInjected) {
+		t.Fatalf("Close error = %v, want it to wrap errInjected", err)
+	}
+	if faulty.closes == 0 {
+		t.Error("Close did not close the underlying file: descriptor leaked")
+	}
+}
+
+// TestWAL_CloseReleasesDescriptorWhenFlushFails is the same rule for a failure
+// in the buffered write that precedes the fsync.
+func TestWAL_CloseReleasesDescriptorWhenFlushFails(t *testing.T) {
+	w, faulty := newFaultyWAL(t)
+
+	// Fill the buffer without flushing, so Close has pending bytes to write.
+	if err := w.writer.WriteByte('x'); err != nil {
+		t.Fatalf("seed buffer: %v", err)
+	}
+	faulty.writeMode = faultAlways
+
+	err := w.Close()
+	if err == nil {
+		t.Fatal("Close returned nil, want the injected write error surfaced")
+	}
+	if faulty.closes == 0 {
+		t.Error("Close did not close the underlying file: descriptor leaked")
+	}
+}
+
 // TestWAL_AppendSurfacesSyncError guards the durability contract: a caller that
 // gets a nil error from Append must be able to assume the entry is on stable
 // storage. If fsync fails, Append must say so.

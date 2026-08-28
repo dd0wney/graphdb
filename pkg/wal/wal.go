@@ -2,6 +2,7 @@ package wal
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -219,20 +220,22 @@ func (w *WAL) GetCurrentLSN() uint64 {
 	return w.currentLSN
 }
 
-// Close closes the WAL
+// Close closes the WAL.
+//
+// Every step runs even when an earlier one fails, and all faults are reported
+// together. Returning early on a flush or fsync error used to leak the file
+// descriptor, which is worst in the case that provokes it: a disk fault makes a
+// caller drop this WAL and open another, so the leak compounds until the
+// process hits EMFILE far away from the disk error that caused it.
 func (w *WAL) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if err := w.writer.Flush(); err != nil {
-		return err
-	}
+	flushErr := w.writer.Flush()
+	syncErr := w.file.Sync()
+	closeErr := w.file.Close()
 
-	if err := w.file.Sync(); err != nil {
-		return err
-	}
-
-	return w.file.Close()
+	return errors.Join(flushErr, syncErr, closeErr)
 }
 
 // Replay replays WAL entries to reconstruct state
