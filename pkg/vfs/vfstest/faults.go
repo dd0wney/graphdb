@@ -61,6 +61,17 @@ type FaultFS struct {
 	writeAfter int
 	writes     int
 	syncs      int
+
+	// nthOp is SQLite's sweep, one level up from writeAfter: fail the N-th I/O
+	// operation of ANY kind — open, write, sync or close. Walking N through
+	// 1,2,3,... visits every error path a scenario can reach, in order. Zero
+	// disarms it.
+	//
+	// "Rig the alternative interface to give an I/O error on the N-th system
+	// call, for N=1,2,3,.... Repeat until no I/O errors occur."
+	nthOp int
+	ops   int
+	fired bool
 }
 
 // NewFaults wraps base. Pass vfs.OS() for a driver that touches a real disk, or
@@ -87,11 +98,32 @@ func (f *FaultFS) FailSync(m Mode) { f.mu.Lock(); f.syncMode = m; f.mu.Unlock() 
 // FailClose arms a fault on Close.
 func (f *FaultFS) FailClose(m Mode) { f.mu.Lock(); f.closeMode = m; f.mu.Unlock() }
 
+// FailNthOp arms a fault on the N-th I/O operation of any kind, counting from
+// 1. It replaces any previously armed per-method fault, and it resets the
+// operation counter so each sweep step starts from the same place.
+func (f *FaultFS) FailNthOp(n int) {
+	f.mu.Lock()
+	f.openMode, f.writeMode, f.syncMode, f.closeMode = Off, Off, Off, Off
+	f.nthOp, f.ops, f.fired = n, 0, false
+	f.mu.Unlock()
+}
+
+// Fired reports whether an armed fault actually fired. A sweep ends when it
+// does not: that means N has passed the end of the operation sequence.
+//
+// This is also the negative control for any single fault test. Without it, a
+// test cannot tell a fault that fired from a code path that never ran.
+func (f *FaultFS) Fired() bool { f.mu.Lock(); defer f.mu.Unlock(); return f.fired }
+
+// Ops reports how many I/O operations reached the driver.
+func (f *FaultFS) Ops() int { f.mu.Lock(); defer f.mu.Unlock(); return f.ops }
+
 // Clear disarms every fault.
 func (f *FaultFS) Clear() {
 	f.mu.Lock()
 	f.openMode, f.writeMode, f.syncMode, f.closeMode = Off, Off, Off, Off
 	f.writes, f.writeAfter = 0, 0
+	f.nthOp, f.ops, f.fired = 0, 0, false
 	f.mu.Unlock()
 }
 
@@ -100,6 +132,17 @@ func (f *FaultFS) Clear() {
 // or it cannot tell a fired fault from a code path that never ran.
 func (f *FaultFS) Writes() int { f.mu.Lock(); defer f.mu.Unlock(); return f.writes }
 func (f *FaultFS) Syncs() int  { f.mu.Lock(); defer f.mu.Unlock(); return f.syncs }
+
+// countOp records an I/O operation and reports whether the N-th-op fault fires
+// on it. Caller holds f.mu.
+func (f *FaultFS) countOp() bool {
+	f.ops++
+	if f.nthOp > 0 && f.ops == f.nthOp {
+		f.fired = true
+		return true
+	}
+	return false
+}
 
 // fire reports whether an armed mode fires now, consuming a Once.
 func fire(m *Mode) bool {
@@ -116,7 +159,7 @@ func fire(m *Mode) bool {
 
 func (f *FaultFS) Open(name string, flag int, perm os.FileMode) (vfs.File, error) {
 	f.mu.Lock()
-	shouldFail := fire(&f.openMode)
+	shouldFail := f.countOp() || fire(&f.openMode)
 	f.mu.Unlock()
 	if shouldFail {
 		return nil, fmt.Errorf("open %s: %w", name, ErrInjected)
@@ -142,7 +185,8 @@ type faultFile struct {
 func (ff *faultFile) Write(p []byte) (int, error) {
 	ff.fs.mu.Lock()
 	ff.fs.writes++
-	shouldFail := ff.fs.writes > ff.fs.writeAfter && fire(&ff.fs.writeMode)
+	shouldFail := ff.fs.countOp() ||
+		(ff.fs.writes > ff.fs.writeAfter && fire(&ff.fs.writeMode))
 	ff.fs.mu.Unlock()
 	if shouldFail {
 		return 0, fmt.Errorf("write %s: %w", ff.Name(), ErrInjected)
@@ -153,7 +197,7 @@ func (ff *faultFile) Write(p []byte) (int, error) {
 func (ff *faultFile) Sync() error {
 	ff.fs.mu.Lock()
 	ff.fs.syncs++
-	shouldFail := fire(&ff.fs.syncMode)
+	shouldFail := ff.fs.countOp() || fire(&ff.fs.syncMode)
 	ff.fs.mu.Unlock()
 	if shouldFail {
 		return fmt.Errorf("sync %s: %w", ff.Name(), ErrInjected)
@@ -163,7 +207,7 @@ func (ff *faultFile) Sync() error {
 
 func (ff *faultFile) Close() error {
 	ff.fs.mu.Lock()
-	shouldFail := fire(&ff.fs.closeMode)
+	shouldFail := ff.fs.countOp() || fire(&ff.fs.closeMode)
 	ff.fs.mu.Unlock()
 	if shouldFail {
 		// The descriptor is still released. A fault driver that leaked one

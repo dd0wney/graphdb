@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/dd0wney/graphdb/pkg/faultsim"
 	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
@@ -92,8 +93,12 @@ func (w *WAL) Append(opType OpType, data []byte) (uint64, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// Check for LSN overflow (CRITICAL: prevents wraparound)
-	if w.currentLSN == ^uint64(0) { // MaxUint64
+	// Check for LSN overflow (CRITICAL: prevents wraparound).
+	//
+	// faultsim makes this branch reachable. Honestly reaching it needs 2^64
+	// appends, so before this the guard was code nobody had ever executed —
+	// which is the state SQLite's sqlite3FaultSim exists to fix.
+	if w.currentLSN == ^uint64(0) || faultsim.Fail(faultsim.WALLSNExhausted) { // MaxUint64
 		return 0, fmt.Errorf("WAL LSN space exhausted - require WAL rotation")
 	}
 
@@ -230,8 +235,15 @@ func (w *WAL) Truncate() error {
 	// Close current file
 	closeErr := w.file.Close()
 
-	// Rename new file to replace old file (atomic on POSIX)
-	if err := w.fs.Rename(walPath+".new", walPath); err != nil {
+	// Rename new file to replace old file (atomic on POSIX).
+	//
+	// faultsim reaches the recovery branch below, which otherwise runs only
+	// when a rename fails after the replacement file was already created.
+	renameErr := w.fs.Rename(walPath+".new", walPath)
+	if faultsim.Fail(faultsim.WALRotateReopen) && renameErr == nil {
+		renameErr = fmt.Errorf("simulated rename failure")
+	}
+	if err := renameErr; err != nil {
 		// Failed to rename - close new file and return error
 		newFile.Close()
 		// Try to reopen old file to maintain consistent state
