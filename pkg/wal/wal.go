@@ -11,9 +11,25 @@ import (
 	"sync"
 )
 
+// walFile is the file surface the WAL depends on. *os.File satisfies it, and
+// production code always holds one.
+//
+// The indirection exists so tests can inject I/O faults: a disk that fails a
+// write, an fsync that reports an error, a close that fails. Those paths carry
+// the durability contract, and without a seam they were unreachable from a
+// test. See wal_io_fault_test.go. This mirrors, in miniature, the substitutable
+// VFS that SQLite uses for the same purpose.
+type walFile interface {
+	io.Reader
+	io.Writer
+	io.Seeker
+	Sync() error
+	Close() error
+}
+
 // WAL is a Write-Ahead Log for durability
 type WAL struct {
-	file       *os.File
+	file       walFile
 	writer     *bufio.Writer
 	currentLSN uint64
 	dataDir    string
