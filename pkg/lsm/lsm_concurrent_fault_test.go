@@ -432,3 +432,254 @@ func TestCloseReportsAPersistentlyFailingFlush(t *testing.T) {
 		t.Error("Close returned nil after a background flush had failed")
 	}
 }
+
+// S2 walks the point of failure through every I/O operation a compaction
+// performs, including the removals of CleanupOldSSTables.
+//
+// The oracle is a deleted key. The scenario writes a key into several L0
+// tables, deletes it, and flushes the tombstone into its own table. A
+// compaction that replaces the levels and then fails to remove the superseded
+// files leaves them on the disk, and NewLSMStorage rebuilds the levels by
+// reading that directory — so the reopened store holds the pre-delete value
+// next to the table that replaced it, and the deleted key is readable again.
+//
+// Unlike S1 this drives compact directly, with the workers off. Every
+// successful flush calls triggerCompaction, so a store with workers running
+// compacts at moments that vary between runs, and the compaction role's own
+// operation sequence would not be stable. SweepRole would then refuse the
+// sweep, correctly, and the scenario would prove nothing.
+func TestCompactionUnderFaultSweep(t *testing.T) {
+	if testing.Short() {
+		t.Skip("the sweep opens a store per failure point")
+	}
+
+	root := t.TempDir()
+	const doomed = "doomed"
+
+	vfstest.SweepRole(t, roleCompact, 256,
+		func() *vfstest.RoleFS { return vfstest.NewRoles(vfs.OS(), "lsm-compact", lsmRoles) },
+		func(fs vfs.FileSystem) error {
+			stepDir := filepath.Join(root, fmt.Sprintf("step-%d", nextStepID()))
+			opts := LSMOptions{
+				DataDir:              stepDir,
+				FS:                   fs,
+				MemTableSize:         1 << 20,
+				CompactionStrategy:   DefaultLeveledCompaction(),
+				EnableAutoCompaction: false,
+			}
+			l, err := NewLSMStorage(opts)
+			if err != nil {
+				return err
+			}
+
+			// Several L0 tables, each holding the doomed key, then a tombstone
+			// in its own table on top.
+			for i := 0; i < 6; i++ {
+				if err := l.Put([]byte(doomed), []byte(fmt.Sprintf("v%d", i))); err != nil {
+					_ = l.Close()
+					return err
+				}
+				if err := l.Put([]byte(fmt.Sprintf("other%d", i)), []byte("x")); err != nil {
+					_ = l.Close()
+					return err
+				}
+				if err := l.Sync(); err != nil {
+					_ = l.Close()
+					return err
+				}
+			}
+			if err := l.Delete([]byte(doomed)); err != nil {
+				_ = l.Close()
+				return err
+			}
+			if err := l.Sync(); err != nil {
+				_ = l.Close()
+				return err
+			}
+
+			compactErr := l.compact()
+
+			violations, invErr := CheckInvariants(l)
+			_ = l.Close()
+
+			if invErr != nil {
+				return fmt.Errorf("CheckInvariants: %w", invErr)
+			}
+			if len(violations) > 0 {
+				return fmt.Errorf("invariants violated in %s: %s", stepDir, strings.Join(violations, "; "))
+			}
+
+			reopened, err := NewLSMStorage(LSMOptions{
+				DataDir:              stepDir,
+				MemTableSize:         1 << 20,
+				CompactionStrategy:   DefaultLeveledCompaction(),
+				EnableAutoCompaction: false,
+			})
+			if err != nil {
+				return fmt.Errorf("reopen %s: %w", stepDir, err)
+			}
+			defer reopened.Close()
+
+			if v, ok := reopened.Get([]byte(doomed)); ok {
+				return fmt.Errorf("a deleted key came back as %q after the reopen of %s", v, stepDir)
+			}
+
+			return compactErr
+		},
+		func(t *testing.T, n int, runErr error) {
+			if runErr == nil || errorsIsInjected(runErr) {
+				return
+			}
+			t.Errorf("failure point %d: %v", n, runErr)
+		},
+	)
+}
+
+// A compaction that cannot remove its superseded tables must say so, and must
+// name what happens next.
+//
+// The removals fail every time here, so no retry can help. The store is left
+// in the state a reopen reads wrongly, and the only thing the code can still
+// do is tell its caller while the caller can still act.
+func TestCompactionReportsUnremovableSupersededTables(t *testing.T) {
+	dir := t.TempDir()
+	fs := vfstest.NewRoles(vfs.OS(), "lsm-cleanup", lsmRoles)
+	// Removals only. Failing the whole compaction role would stop the work at
+	// the first write, long before the cleanup this is about.
+	fs.FailAllOpForRole(roleCompact, vfstest.OpRemove)
+
+	l, err := NewLSMStorage(LSMOptions{
+		DataDir:              dir,
+		FS:                   fs,
+		MemTableSize:         1 << 20,
+		CompactionStrategy:   DefaultLeveledCompaction(),
+		EnableAutoCompaction: false,
+	})
+	if err != nil {
+		t.Fatalf("NewLSMStorage: %v", err)
+	}
+	defer l.Close()
+
+	for i := 0; i < 6; i++ {
+		if err := l.Put([]byte(fmt.Sprintf("k%d", i)), []byte("v")); err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+		if err := l.Sync(); err != nil {
+			t.Fatalf("Sync: %v", err)
+		}
+	}
+
+	err = l.compact()
+	if err == nil {
+		t.Fatal("compact returned nil although no superseded table could be removed")
+	}
+	if !strings.Contains(err.Error(), "superseded") {
+		t.Errorf("the error does not name the consequence: %v", err)
+	}
+}
+
+// S3 runs concurrent readers against a store whose compaction is faulted, and
+// checks the shared record cache against the levels it mirrors.
+//
+// Row D5 of COUPLING_AND_INTERFERENCE.md calls this a block cache and says one
+// workload evicts another's entries. The eviction half is right: it is an LRU
+// with a fixed capacity. The name is not. BlockCache is keyed by the record
+// key and holds that record's value, with no file and no offset in the key, so
+// the hazard the name suggests — a reader serving data from a file compaction
+// removed — cannot occur, because no entry names a file.
+//
+// What can occur is a cached value the levels no longer agree with, and this
+// looks for that while a compaction is failing underneath the readers.
+func TestRecordCacheUnderFaultedCompaction(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs concurrent workloads across several failure points")
+	}
+
+	const keys = 32
+
+	for _, failAt := range []vfstest.Key{
+		{Role: roleCompact, Op: vfstest.OpOpen, Nth: 1},
+		{Role: roleCompact, Op: vfstest.OpWrite, Nth: 1},
+		{Role: roleCompact, Op: vfstest.OpSync, Nth: 1},
+		{Role: roleCompact, Op: vfstest.OpClose, Nth: 1},
+		{Role: roleCompact, Op: vfstest.OpRemove, Nth: 1},
+	} {
+		t.Run(failAt.String(), func(t *testing.T) {
+			dir := t.TempDir()
+			fs := vfstest.NewRoles(vfs.OS(), "lsm-cache", lsmRoles)
+			fs.FailAtKey(failAt)
+
+			l, err := NewLSMStorage(LSMOptions{
+				DataDir:              dir,
+				FS:                   fs,
+				MemTableSize:         1 << 20,
+				CompactionStrategy:   DefaultLeveledCompaction(),
+				EnableAutoCompaction: false,
+			})
+			if err != nil {
+				t.Fatalf("NewLSMStorage: %v", err)
+			}
+			defer l.Close()
+
+			// The reader starts BEFORE the writes, not after them. Started
+			// after, it only ever caches values that are already final, so no
+			// cached entry can go stale and the scenario proves nothing —
+			// removing the invalidation in Put left it green. Running
+			// throughout, it caches r0 while r1 is being written.
+			stop := make(chan struct{})
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				for i := 0; ; i++ {
+					select {
+					case <-stop:
+						return
+					default:
+						l.Get([]byte(fmt.Sprintf("k%02d", i%keys)))
+					}
+				}
+			}()
+
+			// Four rounds over the same keys, each in its own L0 table, so the
+			// compaction has real overlap to merge and the cache holds values
+			// that were superseded three times.
+			for round := 0; round < 4; round++ {
+				for i := 0; i < keys; i++ {
+					key := []byte(fmt.Sprintf("k%02d", i))
+					if err := l.Put(key, []byte(fmt.Sprintf("r%d", round))); err != nil {
+						t.Fatalf("Put: %v", err)
+					}
+				}
+				if err := l.Sync(); err != nil {
+					t.Fatalf("Sync: %v", err)
+				}
+			}
+
+			compactErr := l.compact()
+			close(stop)
+			<-done
+
+			violations, err := CheckInvariants(l)
+			if err != nil {
+				t.Fatalf("CheckInvariants: %v", err)
+			}
+			for _, v := range violations {
+				t.Errorf("compact returned %v, and: %s", compactErr, v)
+			}
+
+			// Whatever the compaction did, every key reads as the last value
+			// written to it.
+			for i := 0; i < keys; i++ {
+				key := fmt.Sprintf("k%02d", i)
+				got, ok := l.Get([]byte(key))
+				if !ok {
+					t.Errorf("%s vanished during a faulted compaction", key)
+					continue
+				}
+				if string(got) != "r3" {
+					t.Errorf("%s = %q, want r3", key, got)
+				}
+			}
+		})
+	}
+}

@@ -117,7 +117,9 @@ type RoleFS struct {
 	targetKey    Key
 	hasTargetKey bool
 
-	alwaysRole Role
+	alwaysRole  Role
+	alwaysOp    Op
+	alwaysOpSet bool
 
 	fired    bool
 	firedKey Key
@@ -220,7 +222,24 @@ func (r *RoleFS) FailRandomly(seed int64, role Role, p float64) {
 // persists, so testing it needs this.
 func (r *RoleFS) FailAllForRole(role Role) {
 	r.mu.Lock()
-	r.alwaysRole = role
+	r.alwaysRole, r.alwaysOpSet = role, false
+	r.target, r.nth = "", 0
+	r.hasTargetKey = false
+	r.resetLocked()
+	r.mu.Unlock()
+}
+
+// FailAllOpForRole fails every operation of one KIND for one role, and lets
+// that role's other operations through.
+//
+// This is what a partly broken disk looks like from inside: writes land and
+// removals do not, or the reverse. It is also the only way to reach an error
+// path that runs after a successful operation of a different kind — a cleanup
+// that cannot remove anything, for one, where failing the whole role would
+// stop the work before it ever got to the cleanup.
+func (r *RoleFS) FailAllOpForRole(role Role, op Op) {
+	r.mu.Lock()
+	r.alwaysRole, r.alwaysOp, r.alwaysOpSet = role, op, true
 	r.target, r.nth = "", 0
 	r.hasTargetKey = false
 	r.resetLocked()
@@ -299,7 +318,7 @@ func (r *RoleFS) step(op Op, role Role, _ string) (*Pause, bool, time.Duration) 
 
 	fail := (r.target != "" && role == r.target && n == r.nth) ||
 		(r.hasTargetKey && key == r.targetKey) ||
-		(r.alwaysRole != "" && role == r.alwaysRole)
+		(r.alwaysRole != "" && role == r.alwaysRole && (!r.alwaysOpSet || op == r.alwaysOp))
 	if !fail && r.failRole != "" && role == r.failRole && r.rng.Float64() < r.failProb {
 		fail = true
 		r.failRole = "" // one fault per run, so a failure names one point

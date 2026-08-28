@@ -1,7 +1,9 @@
 package lsm
 
 import (
+	"errors"
 	"fmt"
+	iofs "io/fs"
 	"log"
 	"path/filepath"
 	"sort"
@@ -165,10 +167,17 @@ func (c *Compactor) cleanupOutputSSTables(sstables []*SSTable) {
 // CleanupOldSSTables removes old SSTables after compaction.
 // Continues on errors to avoid leaving the LSM tree in an inconsistent state.
 // Returns an error aggregating all deletion failures.
+//
+// A file that is already gone counts as removed. The postcondition this is
+// asked for is absence, not a successful syscall, and treating ENOENT as a
+// failure made the operation impossible to retry: the first pass removes what
+// it can and stops short on one file, so a second pass reports every file the
+// first one succeeded on. The compaction sweep found that immediately after
+// the retry was added.
 func (c *Compactor) CleanupOldSSTables(sstables []*SSTable) error {
 	var errs []error
 	for _, sst := range sstables {
-		if err := sst.Delete(); err != nil {
+		if err := sst.Delete(); err != nil && !errors.Is(err, iofs.ErrNotExist) {
 			errs = append(errs, fmt.Errorf("delete %s: %w", sst.path, err))
 		}
 	}

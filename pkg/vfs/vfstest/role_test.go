@@ -400,3 +400,28 @@ func TestFailAllForRoleKeepsFailing(t *testing.T) {
 		t.Errorf("role b was faulted although only role a was armed: %v", err)
 	}
 }
+
+// FailAllOpForRole must fail one kind of operation for a role and let the
+// role's other operations through. Failing the whole role would stop the work
+// before it reached the error path that runs after a successful operation of a
+// different kind.
+func TestFailAllOpForRoleFailsOneKindOnly(t *testing.T) {
+	dir := t.TempDir()
+	fs := NewRoles(vfs.OS(), "roles", bySuffix)
+	fs.FailAllOpForRole(roleA, OpSync)
+
+	path := filepath.Join(dir, "f.a")
+	f, err := fs.Open(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		t.Fatalf("open was faulted although only sync was armed: %v", err)
+	}
+	if _, err := f.Write([]byte("x")); err != nil {
+		t.Fatalf("write was faulted although only sync was armed: %v", err)
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := f.Sync(); !errors.Is(err, ErrInjected) {
+			t.Errorf("sync attempt %d: got %v, want ErrInjected every time", attempt, err)
+		}
+	}
+	_ = f.Close()
+}

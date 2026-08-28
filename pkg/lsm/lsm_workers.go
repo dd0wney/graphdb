@@ -198,9 +198,23 @@ func (lsm *LSMStorage) compact() error {
 
 	lsm.mu.Unlock()
 
-	// Cleanup old SSTables
+	// Cleanup old SSTables.
+	//
+	// A failure here leaves the superseded tables on the disk while the levels
+	// already point at their replacement. NewLSMStorage rebuilds the levels by
+	// reading that directory, and Get scans level 0 before level 1 — which is
+	// correct while L0 really is the newest data, and wrong for an input table
+	// a compaction has already superseded. So a reopened store serves the
+	// pre-delete value, and a key that was deleted is readable again.
+	//
+	// One retry covers the transient case, which is the common one. A removal
+	// that still fails is reported with its consequence named, because the
+	// caller can act on it now and cannot act on it after the next open.
 	if err := lsm.compactor.CleanupOldSSTables(plan.SSTables); err != nil {
-		return fmt.Errorf("failed to cleanup old SSTables: %w", err)
+		if retryErr := lsm.compactor.CleanupOldSSTables(plan.SSTables); retryErr != nil {
+			return fmt.Errorf("compaction left superseded SSTables on the disk, which a reopen "+
+				"would load beside their replacement and read as live data: %w", retryErr)
+		}
 	}
 
 	return nil
