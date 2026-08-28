@@ -146,6 +146,18 @@ Each stage ships on its own and leaves the tree green.
 - **A published API used in production by mistake**: mitigation is SQLite's —
   document it as testing-only and name it so.
 
+## Amendment, 2026-08-28
+
+This ADR plans DRIVERS. It does not cover TECHNIQUES, and two shipped without
+appearing anywhere in it: the N-sweep (walk the failure point through every I/O
+operation) and `pkg/faultsim` (SQLite's `sqlite3FaultSim`), both in #481.
+faultsim is roughly this ADR's Driver 4, but Driver 4 as written describes
+`never`/`always` and a test-control surface, and those are still unbuilt.
+
+Techniques are tracked in `docs/internals/design/SQLITE_TESTING_SCORECARD.md`.
+Stage progress for the drivers stays here. Stage 1 and the `pkg/wal` half of
+stage 2 landed in #479.
+
 ## References
 
 - sqlite.org/testing.html — techniques 5, 4, 6, 9

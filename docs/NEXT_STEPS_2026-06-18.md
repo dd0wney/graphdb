@@ -137,6 +137,24 @@ a track. Test-code-to-source ratio for context: SQLite 590x, graphdb 1.48x.
 | #469 | Coverage gate (floor 74.0% from the CI measurement) + `pkg/graphql` added to scope |
 | #470 | `:Claim` uniqueness enforced by label containment, closing a silent atomicity bypass |
 
+**Shipped after that list was written (2026-08-28, same day)**
+
+| PR | What |
+|---|---|
+| #476 | CLAUDE.md + planning-doc reconciliation after #474/#475 |
+| #477 | Two panics on a malformed mmap snapshot, found by fuzzing |
+| #478 | Zero-filled corruption forged valid WAL entries and reset the LSN |
+| #479 | `pkg/vfs` testability drivers — fault injection on the production path |
+| #480 | Replaced the vacuous `-tags nng` CI job with a cgo-free gate |
+| #481 | N-sweep and `pkg/faultsim` |
+
+**The programme itself is now tracked**, in
+`docs/internals/design/SQLITE_TESTING_SCORECARD.md`: all 15 SQLite techniques
+with state, evidence, and next action, plus the defects each one found. It is a
+living document — update it in the PR that moves a row. It exists because this
+section recorded two of the eighteen PRs merged that day, and the rest of the
+list lived only in a chat window.
+
 **Open — need a decision or a track**
 
 1. ~~**No invariant checker for the mmap representation.**~~ **SHIPPED — #474.**
