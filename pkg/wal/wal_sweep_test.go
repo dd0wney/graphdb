@@ -184,3 +184,102 @@ func TestWAL_RotateRecoveryPathIsReachable(t *testing.T) {
 		t.Error("the replacement file was left on disk after the failed rotation")
 	}
 }
+
+// TestWAL_SweepEveryCrashPoint cuts the power at every I/O operation an
+// append cycle performs, four times at each point with different damage, and
+// requires that recovery is sane at all of them.
+//
+// This is the technique graphdb had least of. Its three original crash tests
+// close the store and reopen it, which exercises replay on an intact file.
+// #478 added truncation and a hole. Neither walks the cut through the
+// operation sequence, and neither repeats a point with different damage.
+//
+// The invariant is the same one the I/O sweep uses, and it is the weakest
+// statement that is still worth anything: recovery returns a contiguous prefix
+// of what was attempted, and never less than what was acknowledged as durable.
+func TestWAL_SweepEveryCrashPoint(t *testing.T) {
+	const appends = 3
+
+	var dir string
+	var acked int
+	var attempted int
+	var cuts, deepest, withEntries, maxRecovered int
+
+	run := func(fs vfs.FileSystem) error {
+		dir = t.TempDir()
+		acked, attempted = 0, 0
+
+		w, err := NewWALWithFS(dir, fs)
+		if err != nil {
+			return err
+		}
+		for i := 0; i < appends; i++ {
+			attempted++
+			if _, err := w.Append(OpCreateNode, []byte("payload")); err != nil {
+				_ = w.Close()
+				return err
+			}
+			acked++
+		}
+		return w.Close()
+	}
+
+	check := func(t *testing.T, n, repeat int, runErr error) {
+		t.Helper()
+		cuts++
+		if n > deepest {
+			deepest = n
+		}
+
+		reopened, err := NewWALWithFS(dir, vfs.OS())
+		if err != nil {
+			return // refusing a damaged WAL is acceptable
+		}
+		entries, err := reopened.ReadAll()
+		_ = reopened.Close()
+		if err != nil {
+			return
+		}
+		if len(entries) > 0 {
+			withEntries++
+			if len(entries) > maxRecovered {
+				maxRecovered = len(entries)
+			}
+		}
+
+		if len(entries) > attempted {
+			t.Fatalf("cut at op %d (repeat %d): recovery returned %d entries, more than the %d attempted",
+				n, repeat, len(entries), attempted)
+		}
+		if len(entries) < acked {
+			t.Fatalf("cut at op %d (repeat %d): recovery returned %d entries but %d were acknowledged durable",
+				n, repeat, len(entries), acked)
+		}
+		for i, e := range entries {
+			if e.LSN != uint64(i+1) {
+				t.Fatalf("cut at op %d (repeat %d): entry %d has LSN %d, want %d — not a prefix",
+					n, repeat, i, e.LSN, i+1)
+			}
+		}
+	}
+
+	vfstest.SweepCrash(t, 64, 4, vfstest.ReorderAndLose, run, check)
+
+	// State the coverage rather than imply it. A crash sweep that cut at two
+	// operations is not what the name suggests, and a 0.00s pass looks the
+	// same either way.
+	t.Logf("cut the power at %d distinct operations, %d runs in total; %d runs recovered at least one entry (most: %d)",
+		deepest, cuts, withEntries, maxRecovered)
+
+	// The vacuity control. If no run ever recovered an entry, every check
+	// returned early and the prefix invariant was never evaluated — the test
+	// would pass while asserting nothing, which is the failure this whole
+	// programme keeps finding.
+	if withEntries == 0 {
+		t.Error("no run recovered a single entry: the prefix invariant was never evaluated")
+	}
+	if deepest < appends {
+		t.Errorf("the sweep only reached operation %d for %d appends; it is not covering the cycle",
+			deepest, appends)
+	}
+}

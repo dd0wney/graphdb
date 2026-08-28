@@ -3,7 +3,7 @@
 **Living document.** Update it in the same PR as any change that moves a row.
 A tracker that is refreshed afterwards is a tracker that is wrong between times.
 
-**Last verified**: 2026-08-28, against `main` at `2dd18b3`.
+**Last verified**: 2026-08-28, against `main` at `99d8868` plus #483.
 
 ## Why this exists
 
@@ -41,7 +41,7 @@ found one on first run.
 | 3 | Millions of test cases | ✗ | Fixed cases + fuzz seeds | Follows from 7, not pursued directly |
 | 4 | Out-of-memory testing | ✗ | Go cannot substitute `malloc` | Allocation-limit driver for graphdb's own large buffers = ADR 0002 Driver 3. **Not built.** The double loop (fail once at N; fail everything from N) is the shape to copy |
 | 5 | I/O error testing | ◐ | `pkg/vfs` + `vfstest.FaultFS` on the production path (#479); N-sweep (#481). Found the `WAL.Close` descriptor leak (#466) | `pkg/lsm` (12 sites), `pkg/btree` (1), `pkg/storage` (179) not migrated = ADR 0002 stages 3–4 |
-| 6 | Crash and power-loss | ◐ | `vfstest.CrashFS` with LoseUnsynced / LosePartial / **ReorderAndLose** (#479); phantom-entry fix (#478) | **Crash point does not sweep.** The slide says snapshot at the N-th system call, damage, restart, repeat per N. Reuses #481's counter |
+| 6 | Crash and power-loss | ✓ | `vfstest.CrashFS` with LoseUnsynced / LosePartial / **ReorderAndLose** (#479); phantom-entry fix (#478); `SweepCrash` walks the cut through every operation with repeats per point (#483). `TestWAL_SweepEveryCrashPoint`: 9 cut points, 36 runs, 26 recovering entries | All three parts of the slide are now covered for `pkg/wal`. `pkg/lsm`, `pkg/btree` and `pkg/storage` inherit it once they migrate to the driver (ADR 0002 stages 3-4) |
 | 7 | Fuzz testing | ✓ | 16 targets, nightly workflow (#467), first run verified green | Corpus is not persisted beyond the cache; consider committing high-value seeds |
 | 8 | Boundary-value testing | ✗ | No `testcase()` equivalent | Unplanned. Go has no coverage-visible marker; needs thought |
 | 9 | Disabled-optimization testing | ◐ | Two differential oracles: JSON↔mmap enumeration, SIMD↔scalar | No general switch. ADR 0002 Driver 4 (test control) |
@@ -53,6 +53,8 @@ found one on first run.
 | 15 | Checklists | ◐ | Audits, ADRs 0001–0002, this scorecard | — |
 
 Legend: ✓ done · ◐ partial · ✗ absent
+
+Counts: **4 done, 5 partial, 6 absent.**
 
 ## Defects these techniques found
 
