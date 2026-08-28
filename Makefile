@@ -3,6 +3,7 @@
 
 .PHONY: help test test-verbose test-short test-race test-cover coverage-gate test-cover-html \
         contract-guard contract-guard-update contract-guard-selftest \
+        lint-local lint-local-selftest \
         bench bench-cpu bench-mem build build-all clean fmt vet lint \
         run-server run-cli run-tui install-tools mod-tidy mod-verify \
         integration-test api-test profile-cpu profile-mem
@@ -119,6 +120,14 @@ test-cover:
 ## coverage-gate: Fail if coverage is below COVERAGE_MIN
 coverage-gate: test-cover
 	@bash scripts/coverage-gate.sh $(COVERAGE_DIR)/coverage.out $(COVERAGE_MIN)
+
+## lint-local: Run the nine of CI's eleven linters that work on this machine
+lint-local:
+	@bash scripts/lint-local.sh $(PKGS)
+
+## lint-local-selftest: Prove the local lint gate can report a finding
+lint-local-selftest:
+	@bash scripts/lint-local-selftest.sh
 
 ## contract-guard: Check the consumer-contract registry against the tests
 contract-guard:
