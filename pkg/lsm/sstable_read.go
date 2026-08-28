@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"os"
 )
 
@@ -119,8 +120,19 @@ func (sst *SSTable) ScanEntries(start, end []byte) ([]*Entry, error) {
 		return nil, err
 	}
 
+	// Stop at the end of the data block. The header records where the sparse
+	// index begins, and everything from there on is index and bloom filter.
+	// Reading to end of file instead fed those bytes to readEntry as if they
+	// were entries: it took whatever four bytes came next as a length and
+	// allocated that many, so a fifty-entry scan allocated 1.8 GB. A byte
+	// sequence that happened to parse could also be returned as an entry.
+	limit := int64(sst.header.IndexOffset) - int64(startOffset)
+	if limit < 0 {
+		limit = 0
+	}
+
 	// Note: bufio.NewReader does not return an error - it always succeeds
-	reader := bufio.NewReader(sst.file)
+	reader := bufio.NewReader(io.LimitReader(sst.file, limit))
 	results := make([]*Entry, 0)
 
 	for {
