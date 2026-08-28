@@ -148,9 +148,26 @@ jobs:
         path: bin/
         retention-days: 7
 
-  tagged-build-nng:
-    name: Tagged Build (-tags nng)
+  cgo-free:
+    name: Pure Go (no cgo)
     runs-on: ubuntu-latest
+    # Replaces the former "Tagged Build (-tags nng)" job, which compiled an
+    # IDENTICAL file set to the ordinary build. `go list -tags nng` and
+    # `go list` returned the same GoFiles for all 83 packages: no file in the
+    # repo carries an nng build constraint. The job was added in #66 to
+    # exercise the surviving replication variant, and #130/#133 deleted that
+    # code — the job outlived it and had been reporting green about nothing.
+    #
+    # This job checks a property that is real, load-bearing, and currently
+    # true: graphdb contains no cgo. That is what keeps a whole class of
+    # defect out of the codebase — the manual C.free ownership rules, the
+    # pointer-passing rules, and the buffer overruns that valgrind and the
+    # sanitizers exist to find (go.dev/wiki/cgo). It is also what makes
+    # SQLite's techniques 13 and 14 inapplicable here rather than skipped.
+    #
+    # If cgo is ever introduced deliberately, this job is the place to record
+    # that decision, and the testing regime has to grow -msan/-asan coverage
+    # with it.
 
     steps:
     - name: Checkout code
@@ -162,11 +179,36 @@ jobs:
         go-version: '1.26.4'
         cache: true
 
-    - name: Build with -tags nng
-      run: go build -tags nng ./...
+    - name: No package may import "C"
+      run: |
+        set -uo pipefail
+        # go list reports CgoFiles per package; any non-zero count is cgo.
+        if ! go list -f '{{.ImportPath}} {{len .CgoFiles}}' ./... > /tmp/pkgs.txt 2>/tmp/pkgs.err; then
+          echo "::error::go list failed — this check cannot report anything, so it fails"
+          cat /tmp/pkgs.err
+          exit 1
+        fi
+        # Positive control. Without it, a go list that enumerates nothing
+        # produces an empty offender list and the job reports success while
+        # inspecting zero packages.
+        count=$(wc -l < /tmp/pkgs.txt)
+        if [ "$count" -lt 50 ]; then
+          echo "::error::go list enumerated only $count packages; expected the whole module (~83). Refusing to report a pass."
+          exit 1
+        fi
+        offenders=$(awk '$2 != "0" { print $1 }' /tmp/pkgs.txt)
+        if [ -n "$offenders" ]; then
+          echo "::error::these packages use cgo:"
+          echo "$offenders"
+          exit 1
+        fi
+        echo "no package imports \"C\" across $count packages"
 
-    - name: Vet with -tags nng
-      run: go vet -tags nng ./...
+    - name: The whole module builds with CGO_ENABLED=0
+      # goreleaser and both Dockerfiles already set CGO_ENABLED=0, so a cgo
+      # dependency would break release builds rather than CI. This makes that
+      # failure land on the PR that introduces it.
+      run: CGO_ENABLED=0 go build ./...
 
   simd-smoke:
     name: SIMD smoke (amd64, GOEXPERIMENT=simd)
