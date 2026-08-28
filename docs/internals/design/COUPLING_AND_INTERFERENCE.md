@@ -141,16 +141,23 @@ read/write and procedure call statements" — that is, statement coverage
 restricted to the statements that cross a component boundary.
 
 For graphdb that is tractable: the tables above name the interfaces, and the
-call sites are identifiable. A coverage report filtered to those sites would
-say what fraction of the couplings any test run actually exercises. Nothing
-computes that today.
+call sites are identifiable. A coverage report filtered to those sites says
+what fraction of the couplings any test run actually exercises.
+
+`make dccc` computes it (#498). `couplings.tsv` names the sites, and the
+measure is statement coverage restricted to them. The baseline is 563/616 =
+91.4% (#501), recorded in `DCCC_BASELINE.md`. There is no threshold, because
+the number came from a developer machine — see the same caveat on the mutation
+baseline.
 
 ## Open items
 
 1. ~~**Concurrent fault injection.**~~ Done for `pkg/lsm` (#492, #493, #494).
    Open for `pkg/storage`, which needs ADR 0002 stage 4 first. That is where
    the residual risk now sits, and it is the larger half.
-2. **A DCCC coverage measure** over the interfaces above.
+2. ~~**A DCCC coverage measure** over the interfaces above.~~ Done. `make dccc`
+   (#498), baseline 563/616 = 91.4% (#501). What is left is a threshold, which
+   waits on a CI measurement rather than a developer-machine one.
 3. ~~**D5 and C5 have no evidence at all.**~~ Both have evidence now. D5's
    *description* was also wrong, which is worth keeping in view: the incorrect
    name generated a plausible correctness hazard that cannot occur, and it was
