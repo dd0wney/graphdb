@@ -86,33 +86,43 @@ func (lsm *LSMStorage) Get(key []byte) ([]byte, bool) {
 	}
 
 	// 1. Check active MemTable
-	if entry, ok := lsm.memTable.Get(key); ok {
-		// Add to cache
-		lsm.cache.Put(cacheKey, entry.Value)
-		return entry.Value, true
+	if entry, ok := lsm.memTable.GetEntry(key); ok {
+		return lsm.resolve(cacheKey, entry)
 	}
 
 	// 2. Check immutable MemTable
 	if lsm.immutableTable != nil {
-		if entry, ok := lsm.immutableTable.Get(key); ok {
-			lsm.cache.Put(cacheKey, entry.Value)
-			return entry.Value, true
+		if entry, ok := lsm.immutableTable.GetEntry(key); ok {
+			return lsm.resolve(cacheKey, entry)
 		}
 	}
 
 	// 3. Check SSTables from newest to oldest
 	for level := 0; level < len(lsm.levels); level++ {
 		for i := len(lsm.levels[level]) - 1; i >= 0; i-- {
-			sst := lsm.levels[level][i]
-			if entry, ok := sst.Get(key); ok {
-				// Add to cache
-				lsm.cache.Put(cacheKey, entry.Value)
-				return entry.Value, true
+			if entry, ok := lsm.levels[level][i].GetEntry(key); ok {
+				return lsm.resolve(cacheKey, entry)
 			}
 		}
 	}
 
 	return nil, false
+}
+
+// resolve turns the newest entry found for a key into a Get result.
+//
+// The first entry found wins, because the search runs newest to oldest. A
+// tombstone therefore ends the search rather than being skipped, which is the
+// whole point: skipping it revives the value held in an older level.
+//
+// A tombstone is not cached. The cache holds live values only, and Delete
+// removes the key from it. Caller holds lsm.mu.
+func (lsm *LSMStorage) resolve(cacheKey string, entry *Entry) ([]byte, bool) {
+	if entry.Deleted {
+		return nil, false
+	}
+	lsm.cache.Put(cacheKey, entry.Value)
+	return entry.Value, true
 }
 
 // Delete removes a key (writes tombstone)
@@ -132,36 +142,39 @@ func (lsm *LSMStorage) Scan(start, end []byte) (map[string][]byte, error) {
 	lsm.mu.RLock()
 	defer lsm.mu.RUnlock()
 
+	// seen records every key already resolved, tombstones included. Without it
+	// an older level revives a key that a newer level deleted or replaced.
+	seen := make(map[string]struct{})
 	results := make(map[string][]byte)
 
-	// Scan MemTable
-	memEntries := lsm.memTable.Scan(start, end)
-	for _, entry := range memEntries {
-		results[string(entry.Key)] = entry.Value
-	}
-
-	// Scan immutable MemTable
-	if lsm.immutableTable != nil {
-		immEntries := lsm.immutableTable.Scan(start, end)
-		for _, entry := range immEntries {
-			if _, exists := results[string(entry.Key)]; !exists {
-				results[string(entry.Key)] = entry.Value
+	take := func(entries []*Entry) {
+		for _, entry := range entries {
+			k := string(entry.Key)
+			if _, done := seen[k]; done {
+				continue
+			}
+			seen[k] = struct{}{}
+			if !entry.Deleted {
+				results[k] = entry.Value
 			}
 		}
 	}
 
-	// Scan SSTables
+	// Newest to oldest, the same order Get uses. Within a level the last
+	// SSTable is the most recently written one, so the walk runs in reverse.
+	// Taking the first entry in forward order returned the OLDEST value for a
+	// key written twice into L0, which disagreed with Get.
+	take(lsm.memTable.ScanEntries(start, end))
+	if lsm.immutableTable != nil {
+		take(lsm.immutableTable.ScanEntries(start, end))
+	}
 	for level := 0; level < len(lsm.levels); level++ {
-		for _, sst := range lsm.levels[level] {
-			entries, err := sst.Scan(start, end)
+		for i := len(lsm.levels[level]) - 1; i >= 0; i-- {
+			entries, err := lsm.levels[level][i].ScanEntries(start, end)
 			if err != nil {
 				continue
 			}
-			for _, entry := range entries {
-				if _, exists := results[string(entry.Key)]; !exists {
-					results[string(entry.Key)] = entry.Value
-				}
-			}
+			take(entries)
 		}
 	}
 

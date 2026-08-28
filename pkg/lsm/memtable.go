@@ -82,6 +82,24 @@ func (mt *MemTable) Get(key []byte) (*Entry, bool) {
 	return entry, true
 }
 
+// GetEntry retrieves the entry for a key, tombstone included.
+//
+// Get cannot express "deleted here": it returns (nil, false) both for a
+// tombstone and for an absent key, so a caller that searches several levels in
+// turn cannot stop at a delete and falls through to an older level holding the
+// pre-delete value. GetEntry carries that third state. lsm.Get uses it, and
+// Get stays as the filtering form its own callers expect.
+func (mt *MemTable) GetEntry(key []byte) (*Entry, bool) {
+	mt.mu.RLock()
+	defer mt.mu.RUnlock()
+
+	entry, exists := mt.data[string(key)]
+	if !exists {
+		return nil, false
+	}
+	return entry, true
+}
+
 // Delete marks a key as deleted (tombstone)
 func (mt *MemTable) Delete(key []byte) error {
 	mt.mu.Lock()
@@ -89,13 +107,27 @@ func (mt *MemTable) Delete(key []byte) error {
 
 	keyStr := string(key)
 
+	// A tombstone has a size, and it must be counted. Size drives every flush
+	// decision this package makes — Sync, Close and IsFull all read it — so a
+	// tombstone that costs nothing is a tombstone that is never written: the
+	// memtable reports itself empty, Close skips its final flush, and the
+	// deleted keys come back on the next open. The accounting mirrors Put's,
+	// including its underflow guard.
 	if existing, exists := mt.data[keyStr]; exists {
+		oldSize := len(existing.Value)
+		if mt.size >= oldSize {
+			mt.size -= oldSize
+		} else {
+			mt.size = 0
+		}
 		existing.Deleted = true
+		existing.Value = nil
 		existing.Timestamp = time.Now().UnixNano()
 	} else {
 		// Create tombstone
 		mt.keys = append(mt.keys, keyStr)
 		mt.sorted = false
+		mt.size += len(key)
 		mt.data[keyStr] = &Entry{
 			Key:       key,
 			Timestamp: time.Now().UnixNano(),
@@ -139,7 +171,37 @@ func (mt *MemTable) Iterator() []*Entry {
 	return entries
 }
 
-// Scan returns entries in range [start, end)
+// ScanEntries returns entries in range [start, end), tombstones included.
+//
+// Scan drops tombstones, which is right for a caller looking at one table and
+// wrong for a caller merging several: the dropped tombstone lets an older
+// table revive the key. lsm.Scan merges, so it uses this.
+func (mt *MemTable) ScanEntries(start, end []byte) []*Entry {
+	mt.mu.Lock()
+	defer mt.mu.Unlock()
+
+	if !mt.sorted {
+		sort.Strings(mt.keys)
+		mt.sorted = true
+	}
+
+	startStr := string(start)
+	endStr := string(end)
+
+	results := make([]*Entry, 0)
+	for _, key := range mt.keys {
+		if key >= endStr {
+			break
+		}
+		if key >= startStr {
+			results = append(results, mt.data[key])
+		}
+	}
+
+	return results
+}
+
+// Scan returns live entries in range [start, end). A tombstone is omitted.
 func (mt *MemTable) Scan(start, end []byte) []*Entry {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()

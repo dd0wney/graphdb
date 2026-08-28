@@ -14,6 +14,16 @@ const (
 	SSTableMagic   = 0x53535442 // "SSTB"
 	SSTableVersion = 1
 	IndexInterval  = 128 // Create index entry every N keys
+
+	// MaxEntryFieldSize bounds a key or value length read from a file.
+	//
+	// The format stores each length as a uint32, so a corrupt or truncated
+	// SSTable can ask for up to 4 GiB per field, and readEntry passed that
+	// number straight to make(). This is the defect #477 fixed for the mmap
+	// snapshot decoders; the SSTable decoder had it too. The bound is far
+	// above any legitimate entry and far below what an allocator will accept
+	// without complaint.
+	MaxEntryFieldSize = 64 << 20
 )
 
 // SSTableHeader represents the header of an SSTable file

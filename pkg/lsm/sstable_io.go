@@ -67,6 +67,12 @@ func readEntry(r *bufio.Reader) (*Entry, error) {
 		return nil, err
 	}
 
+	if keyLen > MaxEntryFieldSize {
+		return nil, fmt.Errorf("sstable: key length %d exceeds the %d byte maximum, "+
+			"so the file is corrupt or this offset is not an entry boundary",
+			keyLen, MaxEntryFieldSize)
+	}
+
 	// Key
 	key := make([]byte, keyLen)
 	if _, err := io.ReadFull(r, key); err != nil {
@@ -77,6 +83,12 @@ func readEntry(r *bufio.Reader) (*Entry, error) {
 	var valueLen uint32
 	if err := binary.Read(r, binary.LittleEndian, &valueLen); err != nil {
 		return nil, err
+	}
+
+	if valueLen > MaxEntryFieldSize {
+		return nil, fmt.Errorf("sstable: value length %d exceeds the %d byte maximum, "+
+			"so the file is corrupt or this offset is not an entry boundary",
+			valueLen, MaxEntryFieldSize)
 	}
 
 	// Value
