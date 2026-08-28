@@ -74,6 +74,9 @@ Recorded because the yield is the argument for the next stage.
 | `-tags nng` CI job compiled an identical file set | Measuring the tag's effect | #480 |
 | Recovery may exceed acknowledged appends (test invariant wrong) | The N-sweep, at N=3 | #481 |
 | An allocation failure during WAL open truncated the LSN, so the next append reused an LSN already on disk — silently dropped by the next recovery | The OOM fail-once loop | #484 |
+| `ListSSTables` flattened its cause with `%v`, so `errors.Is` could not tell an I/O failure from any other reason a table would not open | The LSM I/O sweep | #485 |
+| SSTable constructors returned a nil driver, so the first Close or Remove would have panicked | Reading the constructors instead of trusting the build | #485 |
+| Two scorecard rows were silently lost: a `str.replace()` anchored on a row that did not exist on the branch did nothing, and nothing checked | Noticing the merged table was short | #485 |
 
 ## Gaps in the plan itself
 
