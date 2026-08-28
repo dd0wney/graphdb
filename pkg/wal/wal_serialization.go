@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"encoding/binary"
 	"io"
+
+	"github.com/dd0wney/graphdb/pkg/alloc"
 )
 
 // writeEntry writes a single entry to the WAL
@@ -79,8 +81,18 @@ func (w *WAL) readEntry(reader *bufio.Reader) (*Entry, error) {
 		return nil, errWALRecordTooLarge
 	}
 
-	// Read data
-	entry.Data = make([]byte, dataLen)
+	// Read data.
+	//
+	// Routed through pkg/alloc so the out-of-memory sweeps can refuse it. This
+	// is a length-driven allocation: dataLen comes from the record header, so
+	// the size is data and the failure is real. A refusal here must behave like
+	// any other bad record — ReadAll stops and keeps what it already has —
+	// rather than losing the entries before it.
+	data, allocErr := alloc.Bytes(int(dataLen))
+	if allocErr != nil {
+		return nil, allocErr
+	}
+	entry.Data = data
 	if _, err := io.ReadFull(reader, entry.Data); err != nil {
 		return nil, err
 	}
