@@ -7,8 +7,18 @@ import (
 	"sort"
 )
 
-// Get retrieves a value by key
+// Get retrieves a live value by key. A tombstone reads as absent.
 func (sst *SSTable) Get(key []byte) (*Entry, bool) {
+	entry, ok := sst.GetEntry(key)
+	if !ok || entry.Deleted {
+		return nil, false
+	}
+	return entry, true
+}
+
+// GetEntry retrieves the entry for a key, tombstone included. See
+// MemTable.GetEntry for why the third state matters to a merging caller.
+func (sst *SSTable) GetEntry(key []byte) (*Entry, bool) {
 	// Check Bloom filter first - fast negative lookup
 	if sst.bloom != nil && !sst.bloom.MayContain(key) {
 		return nil, false // Definitely not in this SSTable
@@ -49,9 +59,6 @@ func (sst *SSTable) Get(key []byte) (*Entry, bool) {
 
 		cmp := string(entry.Key)
 		if cmp == string(key) {
-			if entry.Deleted {
-				return nil, false
-			}
 			return entry, true
 		}
 

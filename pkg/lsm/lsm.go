@@ -86,33 +86,43 @@ func (lsm *LSMStorage) Get(key []byte) ([]byte, bool) {
 	}
 
 	// 1. Check active MemTable
-	if entry, ok := lsm.memTable.Get(key); ok {
-		// Add to cache
-		lsm.cache.Put(cacheKey, entry.Value)
-		return entry.Value, true
+	if entry, ok := lsm.memTable.GetEntry(key); ok {
+		return lsm.resolve(cacheKey, entry)
 	}
 
 	// 2. Check immutable MemTable
 	if lsm.immutableTable != nil {
-		if entry, ok := lsm.immutableTable.Get(key); ok {
-			lsm.cache.Put(cacheKey, entry.Value)
-			return entry.Value, true
+		if entry, ok := lsm.immutableTable.GetEntry(key); ok {
+			return lsm.resolve(cacheKey, entry)
 		}
 	}
 
 	// 3. Check SSTables from newest to oldest
 	for level := 0; level < len(lsm.levels); level++ {
 		for i := len(lsm.levels[level]) - 1; i >= 0; i-- {
-			sst := lsm.levels[level][i]
-			if entry, ok := sst.Get(key); ok {
-				// Add to cache
-				lsm.cache.Put(cacheKey, entry.Value)
-				return entry.Value, true
+			if entry, ok := lsm.levels[level][i].GetEntry(key); ok {
+				return lsm.resolve(cacheKey, entry)
 			}
 		}
 	}
 
 	return nil, false
+}
+
+// resolve turns the newest entry found for a key into a Get result.
+//
+// The first entry found wins, because the search runs newest to oldest. A
+// tombstone therefore ends the search rather than being skipped, which is the
+// whole point: skipping it revives the value held in an older level.
+//
+// A tombstone is not cached. The cache holds live values only, and Delete
+// removes the key from it. Caller holds lsm.mu.
+func (lsm *LSMStorage) resolve(cacheKey string, entry *Entry) ([]byte, bool) {
+	if entry.Deleted {
+		return nil, false
+	}
+	lsm.cache.Put(cacheKey, entry.Value)
+	return entry.Value, true
 }
 
 // Delete removes a key (writes tombstone)

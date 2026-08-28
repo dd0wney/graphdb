@@ -82,6 +82,24 @@ func (mt *MemTable) Get(key []byte) (*Entry, bool) {
 	return entry, true
 }
 
+// GetEntry retrieves the entry for a key, tombstone included.
+//
+// Get cannot express "deleted here": it returns (nil, false) both for a
+// tombstone and for an absent key, so a caller that searches several levels in
+// turn cannot stop at a delete and falls through to an older level holding the
+// pre-delete value. GetEntry carries that third state. lsm.Get uses it, and
+// Get stays as the filtering form its own callers expect.
+func (mt *MemTable) GetEntry(key []byte) (*Entry, bool) {
+	mt.mu.RLock()
+	defer mt.mu.RUnlock()
+
+	entry, exists := mt.data[string(key)]
+	if !exists {
+		return nil, false
+	}
+	return entry, true
+}
+
 // Delete marks a key as deleted (tombstone)
 func (mt *MemTable) Delete(key []byte) error {
 	mt.mu.Lock()
