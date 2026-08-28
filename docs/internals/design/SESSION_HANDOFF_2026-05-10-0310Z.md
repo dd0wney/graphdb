@@ -83,5 +83,5 @@ End the session via `session-handoff` skill.
 1. Read this first.
 2. Then `docs/NEXT_STEPS_2026-05-10.md`.
 3. Then `CLAUDE.md` § "Orient first" (auto-loaded).
-4. If picking up F1.1-spike: read `docs/AUDIT_*_2026-05-06.md` rows referencing F1 multi-tenant LSA, plus `pkg/embeddings/` and `pkg/lsa/` (or wherever LSA lives in this repo — locate via `Serena MCP` symbol search if not obvious).
+4. If picking up F1.1-spike: read `docs/AUDIT_*_2026-05-06.md` rows referencing F1 multi-tenant LSA, plus `pkg/embeddings/` and `pkg/lsa/` (or wherever LSA lives in this repo — locate with grep if not obvious).
 5. If diverting to coord-deploy work: read `docs/COORD_GAP_2026-05-10.md` (PR #82) for the option analysis before starting.
