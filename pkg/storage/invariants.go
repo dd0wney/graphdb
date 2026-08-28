@@ -8,17 +8,30 @@ import (
 	"github.com/dd0wney/graphdb/pkg/tenantid"
 )
 
-// ErrInvariantsUnsupported is returned by CheckInvariants when the store is
-// serving lazily from an mmap snapshot. The check rebuilds ground truth from
-// nodeShards/edgeShards, which an mmap-backed store populates on demand, so a
-// run in that mode reports absent-but-healthy records as violations.
+// ErrInvariantsUnsupported is returned by CheckInvariants for a store whose
+// representation it cannot inspect. Since the mmap checker landed, that is one
+// case only: an mmap snapshot with no membership directory, where every index
+// lookup returns nil and the comparison would produce false violations rather
+// than findings.
 //
 // This is a refusal, never a silent pass. A checker that quietly returns "no
 // violations" for a state it cannot inspect is worse than no checker.
-var ErrInvariantsUnsupported = errors.New("storage: invariant check unsupported while serving from an mmap snapshot")
+var ErrInvariantsUnsupported = errors.New("storage: invariant check unsupported for this store representation")
 
 // CheckInvariants returns one string per violated invariant (an empty slice
 // means healthy), or ErrInvariantsUnsupported for a store it cannot inspect.
+//
+// It dispatches on representation, and the two paths do NOT cover the same
+// ground:
+//
+//   - shard-backed (JSON): every derived structure, including the vector index
+//     and the adjacency lists.
+//   - mmap-backed: per-tenant and per-label/per-type membership, the tenant
+//     list, and edge endpoint integrity. The vector index and adjacency lists
+//     have no mmap ground truth yet — see checkInvariantsMmap.
+//
+// A clean result on the mmap path is therefore a weaker statement than a clean
+// result on the JSON path. Do not read them as equivalent.
 //
 // It lived in a _test.go file until now, which meant the strongest correctness
 // statement graphdb owns could not run anywhere but a test binary. It is
@@ -59,7 +72,14 @@ func CheckInvariants(gs *GraphStorage) ([]string, error) {
 	// Checked under the lock: a concurrent reopen could otherwise swap the
 	// representation between the test and the scan.
 	if gs.mmapSnap != nil {
-		return nil, ErrInvariantsUnsupported
+		// A snapshot with no membership directory (pre-v4, or a v4 whose
+		// section is absent) makes every membership lookup return nil. The
+		// checker would then report every live record as omitted: a storm of
+		// false violations, not a finding. Refuse instead.
+		if gs.mmapSnap.membDir == nil {
+			return nil, ErrInvariantsUnsupported
+		}
+		return checkInvariantsMmap(gs), nil
 	}
 
 	type idSet = map[uint64]struct{}
@@ -448,4 +468,183 @@ func containsUint64(s []uint64, want uint64) bool {
 		}
 	}
 	return false
+}
+
+// checkInvariantsMmap is the mmap-representation counterpart to the shard-based
+// checks above. The caller holds gs.mu.RLock.
+//
+// The JSON checker rebuilds ground truth from nodeShards/edgeShards, which an
+// mmap-backed store populates only on demand — that is why CheckInvariants
+// refused this representation until now, and why running the shard checker here
+// reported health against an empty ground truth.
+//
+// Ground truth here is the raw record set:
+//
+//	live = shard-resident records  ∪  (mmap base records − tombstones)
+//
+// with the shard winning, exactly as resolveNodeRefLocked resolves a read. It
+// is built from mmapSnapshot.forEachNodeID/getNode and forEachNodeUnlocked —
+// deliberately NOT from the membership helpers, because those already fuse base
+// and overlay and are the thing under test. Comparing the membership path
+// against itself would pass unconditionally, which is the failure this whole
+// checker exists to prevent.
+//
+// Covered: per-tenant node and edge membership, per-label and per-type
+// membership, the tenant list, and edge endpoint integrity.
+//
+// NOT covered, and deliberately so: the vector index and the adjacency lists.
+// Both are checked by the shard path and neither has an mmap ground truth yet.
+// Do not read a clean result here as equivalent to a clean result on the JSON
+// path.
+func checkInvariantsMmap(gs *GraphStorage) []string {
+	var violations []string
+	report := func(format string, args ...any) {
+		violations = append(violations, fmt.Sprintf(format, args...))
+	}
+
+	// --- ground truth: raw records, base ∪ overlay, shard wins ---------------
+	liveNodes := make(map[uint64]*Node)
+	gs.mmapSnap.forEachNodeID(func(id uint64, _ int64) {
+		if gs.isNodeDeletedLocked(id) {
+			return
+		}
+		if n, ok := gs.mmapSnap.getNode(id); ok {
+			liveNodes[id] = n
+		}
+	})
+	gs.forEachNodeUnlocked(func(n *Node) bool {
+		liveNodes[n.ID] = n
+		return true
+	})
+
+	liveEdges := make(map[uint64]*Edge)
+	gs.mmapSnap.forEachEdgeID(func(id uint64, _ int64) {
+		if gs.isEdgeDeletedLocked(id) {
+			return
+		}
+		if e, ok := gs.mmapSnap.getEdge(id); ok {
+			liveEdges[id] = e
+		}
+	})
+	for i := range gs.edgeShards {
+		for id, e := range gs.edgeShards[i] {
+			liveEdges[id] = e
+		}
+	}
+
+	// --- derive the sets the membership indexes claim to hold ---------------
+	gtNodesByTenant := map[tenantid.TenantID]map[uint64]struct{}{}
+	gtNodesByLabel := map[tenantid.TenantID]map[string]map[uint64]struct{}{}
+	for id, n := range liveNodes {
+		tid := effectiveTenantID(n.TenantID)
+		addToSet(gtNodesByTenant, tid, id)
+		for _, label := range n.Labels {
+			if gtNodesByLabel[tid] == nil {
+				gtNodesByLabel[tid] = map[string]map[uint64]struct{}{}
+			}
+			if gtNodesByLabel[tid][label] == nil {
+				gtNodesByLabel[tid][label] = map[uint64]struct{}{}
+			}
+			gtNodesByLabel[tid][label][id] = struct{}{}
+		}
+	}
+
+	gtEdgesByTenant := map[tenantid.TenantID]map[uint64]struct{}{}
+	gtEdgesByType := map[tenantid.TenantID]map[string]map[uint64]struct{}{}
+	for id, e := range liveEdges {
+		tid := effectiveTenantID(e.TenantID)
+		addToSet(gtEdgesByTenant, tid, id)
+		if gtEdgesByType[tid] == nil {
+			gtEdgesByType[tid] = map[string]map[uint64]struct{}{}
+		}
+		if gtEdgesByType[tid][e.Type] == nil {
+			gtEdgesByType[tid][e.Type] = map[uint64]struct{}{}
+		}
+		gtEdgesByType[tid][e.Type][id] = struct{}{}
+	}
+
+	// --- compare against the path serving reads actually take ---------------
+	tenants := map[tenantid.TenantID]struct{}{}
+	for _, tid := range gs.membershipTenantsLocked() {
+		tenants[tid] = struct{}{}
+	}
+	for tid := range gtNodesByTenant {
+		if _, ok := tenants[tid]; !ok {
+			report("tenant %q holds %d live nodes but is absent from membershipTenantsLocked()",
+				tid, len(gtNodesByTenant[tid]))
+		}
+		tenants[tid] = struct{}{}
+	}
+	for tid := range gtEdgesByTenant {
+		tenants[tid] = struct{}{}
+	}
+
+	for tid := range tenants {
+		reportSliceDiff(report, "membershipNodeIDsForTenant", tid,
+			gs.membershipNodeIDsForTenantLocked(tid), gtNodesByTenant[tid])
+		reportSliceDiff(report, "membershipEdgeIDsForTenant", tid,
+			gs.membershipEdgeIDsForTenantLocked(tid), gtEdgesByTenant[tid])
+
+		labels := map[string]struct{}{}
+		for _, l := range gs.membershipLabelsForTenantLocked(tid) {
+			labels[l] = struct{}{}
+		}
+		for l := range gtNodesByLabel[tid] {
+			labels[l] = struct{}{}
+		}
+		for label := range labels {
+			reportSliceDiff(report, "membershipNodeIDsByLabel["+label+"]", tid,
+				gs.membershipNodeIDsByLabelLocked(tid, label), gtNodesByLabel[tid][label])
+		}
+
+		etypes := map[string]struct{}{}
+		for _, t := range gs.membershipEdgeTypesForTenantLocked(tid) {
+			etypes[t] = struct{}{}
+		}
+		for t := range gtEdgesByType[tid] {
+			etypes[t] = struct{}{}
+		}
+		for etype := range etypes {
+			reportSliceDiff(report, "membershipEdgeIDsByType["+etype+"]", tid,
+				gs.membershipEdgeIDsByTypeLocked(tid, etype), gtEdgesByType[tid][etype])
+		}
+	}
+
+	// --- referential integrity: an edge must join two live nodes ------------
+	for id, e := range liveEdges {
+		if _, ok := liveNodes[e.FromNodeID]; !ok {
+			report("edge %d: FromNodeID %d does not resolve to a live node", id, e.FromNodeID)
+		}
+		if _, ok := liveNodes[e.ToNodeID]; !ok {
+			report("edge %d: ToNodeID %d does not resolve to a live node", id, e.ToNodeID)
+		}
+	}
+
+	return violations
+}
+
+// addToSet inserts id into m[tid], creating the inner set on first use.
+func addToSet(m map[tenantid.TenantID]map[uint64]struct{}, tid tenantid.TenantID, id uint64) {
+	if m[tid] == nil {
+		m[tid] = map[uint64]struct{}{}
+	}
+	m[tid][id] = struct{}{}
+}
+
+// reportSliceDiff compares what an index returned against ground truth, and
+// reports each direction separately: an id the index invented, and an id the
+// index lost. The two mean different bugs.
+func reportSliceDiff(report reportFunc, name string, tid tenantid.TenantID, got []uint64, want map[uint64]struct{}) {
+	gotSet := make(map[uint64]struct{}, len(got))
+	for _, id := range got {
+		gotSet[id] = struct{}{}
+		if _, ok := want[id]; !ok {
+			report("tenant %q: %s returned id %d, which is not a live record", tid, name, id)
+		}
+	}
+	for id := range want {
+		if _, ok := gotSet[id]; !ok {
+			report("tenant %q: %s omitted live id %d", tid, name, id)
+		}
+	}
 }
