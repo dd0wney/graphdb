@@ -3,7 +3,7 @@
 **Living document.** Update it in the same PR as any change that moves a row.
 A tracker that is refreshed afterwards is a tracker that is wrong between times.
 
-**Last verified**: 2026-08-28, against `main` at `99d8868` plus #483.
+**Last verified**: 2026-08-28, against `main` at `568adf3` plus #484.
 
 ## Why this exists
 
@@ -26,6 +26,7 @@ gets a tracked artifact.
 | Test code vs source | 590× | **1.47×** (130,961 / 88,895 LOC) |
 | Fuzz targets | dbsqlfuzz, ~1e9 mutations/day | **16**, nightly |
 | Fault-sim sites | 24 | **2** |
+| OOM loops | 2 | **2** |
 | assert() in shipped core | 6,754 | 0 (see row 12) |
 
 The ratio is not a target. It is the reason graphdb should expect to keep
@@ -39,7 +40,7 @@ found one on first run.
 | 1 | Four independent harnesses | ✗ | One (`go test`), plus 13 consumer-contract tests as a partial second view | Not planned. A second harness is not obviously worth it at this size |
 | 2 | 100% branch + MC/DC coverage | ✗ | Statement coverage only, gated at a 74.0% floor; CI measures 75.5% (#469) | Per-package floors, per orca's `covcheck` design. **Unplanned — see Gaps** |
 | 3 | Millions of test cases | ✗ | Fixed cases + fuzz seeds | Follows from 7, not pursued directly |
-| 4 | Out-of-memory testing | ✗ | Go cannot substitute `malloc` | Allocation-limit driver for graphdb's own large buffers = ADR 0002 Driver 3. **Not built.** The double loop (fail once at N; fail everything from N) is the shape to copy |
+| 4 | Out-of-memory testing | ◐ | `pkg/alloc` + `alloctest` with BOTH loops — fail-once-at-N and fail-all-from-N — swept to termination (#484). Gates graphdb's own length-driven buffers; Go's implicit allocations are out of reach and the package says so. Found the LSN-reuse defect below | Only `pkg/wal`'s record buffer is gated. Snapshot assembly, LSM blocks and query results are not |
 | 5 | I/O error testing | ◐ | `pkg/vfs` + `vfstest.FaultFS` on the production path (#479); N-sweep (#481); `pkg/btree` and `pkg/lsm` migrated (#485). Found the `WAL.Close` descriptor leak (#466) and the LSM error-chain break (#485) | `pkg/storage` (179 sites) not migrated = ADR 0002 stage 4. Its `syscall.Mmap` path does not fit `File` at all |
 | 6 | Crash and power-loss | ✓ | `vfstest.CrashFS` with LoseUnsynced / LosePartial / **ReorderAndLose** (#479); phantom-entry fix (#478); `SweepCrash` walks the cut through every operation with repeats per point (#483). `TestWAL_SweepEveryCrashPoint`: 9 cut points, 36 runs, 26 recovering entries | All three parts of the slide are now covered for `pkg/wal`. `pkg/lsm`, `pkg/btree` and `pkg/storage` inherit it once they migrate to the driver (ADR 0002 stages 3-4) |
 | 7 | Fuzz testing | ✓ | 16 targets, nightly workflow (#467), first run verified green | Corpus is not persisted beyond the cache; consider committing high-value seeds |
@@ -54,7 +55,7 @@ found one on first run.
 
 Legend: ✓ done · ◐ partial · ✗ absent
 
-Counts: **4 done, 5 partial, 6 absent.**
+Counts: **4 done, 6 partial, 5 absent.**
 
 ## Defects these techniques found
 
@@ -72,6 +73,7 @@ Recorded because the yield is the argument for the next stage.
 | `WriteAt` impossible on an `O_APPEND` file | First real caller of `CrashFS` | #479 |
 | `-tags nng` CI job compiled an identical file set | Measuring the tag's effect | #480 |
 | Recovery may exceed acknowledged appends (test invariant wrong) | The N-sweep, at N=3 | #481 |
+| An allocation failure during WAL open truncated the LSN, so the next append reused an LSN already on disk — silently dropped by the next recovery | The OOM fail-once loop | #484 |
 
 ## Gaps in the plan itself
 
