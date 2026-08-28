@@ -21,7 +21,10 @@ func TestMmapSnapshotCodec_RoundTrip(t *testing.T) {
 		CreatedAt: 1000,
 		UpdatedAt: 2000,
 	}
-	gotNode := decodeNodeRecordAt(encodeNodeRecord(node), 0)
+	gotNode, okNode := decodeNodeRecordAt(encodeNodeRecord(node), 0)
+	if !okNode {
+		t.Fatal("decodeNodeRecordAt rejected a record it had just encoded")
+	}
 	if gotNode.ID != node.ID || gotNode.TenantID != node.TenantID ||
 		!reflect.DeepEqual(gotNode.Labels, node.Labels) ||
 		!reflect.DeepEqual(gotNode.Properties, node.Properties) ||
@@ -39,7 +42,10 @@ func TestMmapSnapshotCodec_RoundTrip(t *testing.T) {
 		Weight:     2.5, // v2 records carry Weight (the prototype dropped it)
 		CreatedAt:  3000,
 	}
-	gotEdge := decodeEdgeRecordAt(encodeEdgeRecord(edge), 0)
+	gotEdge, okEdge := decodeEdgeRecordAt(encodeEdgeRecord(edge), 0)
+	if !okEdge {
+		t.Fatal("decodeEdgeRecordAt rejected a record it had just encoded")
+	}
 	if gotEdge.ID != edge.ID || gotEdge.TenantID != edge.TenantID ||
 		gotEdge.FromNodeID != edge.FromNodeID || gotEdge.ToNodeID != edge.ToNodeID ||
 		gotEdge.Type != edge.Type || gotEdge.Weight != edge.Weight ||
@@ -50,7 +56,10 @@ func TestMmapSnapshotCodec_RoundTrip(t *testing.T) {
 
 	// Empty property bag and no labels must round-trip too.
 	bare := &Node{ID: 1, TenantID: "", Labels: nil, Properties: map[string]Value{}}
-	gb := decodeNodeRecordAt(encodeNodeRecord(bare), 0)
+	gb, okBare := decodeNodeRecordAt(encodeNodeRecord(bare), 0)
+	if !okBare {
+		t.Fatal("decodeNodeRecordAt rejected a bare record it had just encoded")
+	}
 	if gb.ID != 1 || len(gb.Labels) != 0 || len(gb.Properties) != 0 {
 		t.Fatalf("bare node round-trip mismatch: %+v", gb)
 	}
