@@ -3,7 +3,7 @@
 **Living document.** Update it in the same PR as any change that adds, removes
 or alters a coupling.
 
-**Last verified**: 2026-08-28, against `main` at `f9c9654`.
+**Last verified**: 2026-08-28, against `main` at `c39efab`.
 
 ## Why this exists, and why the SQLite scorecard is not enough
 
@@ -50,7 +50,7 @@ enumeration below arbitrary:
 | C2 | `pkg/wal/apply` → storage | `apply.go:108` switches on `op.Type`, the fail-closed apply gate | `apply_test.go` |
 | C3 | `pkg/graphql` and `pkg/api` → `pkg/storage` uniqueness | Two callers decide whether a write takes the atomic unique path or the ordinary one. **This is where #470 lived**: both callers narrowed a guarantee storage made correctly | Tests on both surfaces since #470 |
 | C4 | `pkg/storage` → `pkg/vector` | Node create/update/delete drive vector index maintenance (5 sites in `node_operations.go`) | Metamorphic tests |
-| C5 | Background flush and compaction → foreground readers | A worker decides when a memtable becomes an SSTable, changing which read path a concurrent reader takes | **None under fault injection** |
+| C5 | Background flush and compaction → foreground readers | A worker decides when a memtable becomes an SSTable, changing which read path a concurrent reader takes | `TestFlushWorkerUnderFaultSweep`, `TestCompactionUnderFaultSweep` (#494) |
 
 ### Data coupling
 
@@ -60,7 +60,7 @@ enumeration below arbitrary:
 | D2 | WAL record format | The WAL writes, storage replay reads. **#478's phantom entries and #484's LSN reuse lived here** | Crash sweep, OOM sweeps |
 | D3 | Derived indexes vs shard ground truth | Every write path must update several representations | `CheckInvariants`, 35 checks |
 | D4 | The mmap CoW overlay | A reader materialises from the base while a writer promotes into the shard | `CheckInvariants` mmap path (#474) |
-| D5 | LSM block cache | Shared LRU across readers; one workload evicts another's entries | **None** |
+| D5 | LSM record cache | Shared LRU across readers; one workload evicts another's entries. **Named a block cache here until 2026-08-28, and it is not one**: `BlockCache` is keyed by the record key and holds that record's value (`pkg/lsm/lsm.go`), with no file and no offset in the key. So the hazard the name suggests — a reader serving data from a file compaction removed — cannot occur, because no entry names a file | `TestRecordCacheUnderFaultedCompaction` (#494); `CheckInvariants` I5 (#493) |
 | D6 | `vfs.FileSystem` / `alloc.Allocator` | Process-wide installed drivers | The drivers' own tests |
 
 ## Interference
@@ -76,8 +76,8 @@ The concept transfers to its own shared resources:
 | Channel | Kind | Mitigated? |
 |---|---|---|
 | Global `gs.mu` | Direct | Partially — the A4 work moved readers to per-shard locks |
-| 256 shard locks | Direct, partitioned | **Yes, by design.** Partitioning a contended resource is the software analogue of hardware partitioning, and `bench_concurrent_read_test.go` measures the effect |
-| LSM block cache (D5) | Direct | No |
+| 256 shard locks | Direct, partitioned | **Partitioned by design, and the mitigation is not measured.** `bench_concurrent_read_test.go` has 12 benchmark functions and no `ReportMetric`, no percentile and no maximum, so it reports Go's default mean. A(M)C 20-193 asks for no observable impact on performance, and a mean is not even a high-water mark. See open item 5 |
+| LSM record cache (D5) | Direct | No. The eviction claim is still unmeasured — see open item 4 |
 | Background flush/compaction vs foreground I/O | Direct | No |
 | Go GC and scheduler | Indirect | Not analysable from inside |
 
@@ -86,19 +86,52 @@ is no observable impact from it on the system's performance. graphdb can
 measure that for the ones it owns, and `bench_concurrent_read_test.go` already
 does for the shard locks.
 
-## The gap, stated plainly
+## The gap, and what is left of it
 
-**Every fault, crash and sweep test built on 2026-08-28 is single-threaded.**
-Measured: zero of the tests in `wal_sweep_test.go`, `wal_vfs_test.go`,
-`wal_crash_test.go`, `wal_oom_test.go`, `lsm_vfs_test.go` and
-`pager_vfs_test.go` start a goroutine. Meanwhile `pkg/storage` has 28 test
-files that do run concurrent workloads, and none of them inject a fault.
+**As first written, this section said every fault, crash and sweep test in the
+repository was single-threaded, and that `pkg/storage`'s 28 concurrent test
+files injected no fault.** That was measured and it was true. It is no longer
+true of `pkg/lsm`.
 
-So the two halves have never met: faults are injected sequentially, and
-concurrency is tested without faults. C5, D4 and D5 are exercised by neither.
+`TestFlushWorkerUnderFaultSweep` walks a fault through every I/O operation the
+shipped flush worker performs while a foreground reader runs.
+`TestCompactionUnderFaultSweep` does the same for a compaction, including the
+removals of its cleanup. `TestRecordCacheUnderFaultedCompaction` runs readers
+against a store whose compaction is failing underneath them. C5 and D5 have
+evidence for the first time.
 
-`-race` does not close this. It finds unsynchronised access; it does not find
-wrong *sequencing* across an interface, and it injects nothing.
+**What is left**: `pkg/storage`. Its 28 concurrent test files still inject no
+fault, and they cannot until ADR 0002 stage 4 puts the package on the driver —
+179 call sites, and a `syscall.Mmap` path that does not fit `vfs.File` at all.
+D4, the mmap copy-on-write overlay, is inside that.
+
+`-race` does not close any of it. It finds unsynchronised access. It does not
+find wrong *sequencing* across an interface, and it injects nothing. Every
+defect in the table below is race-free.
+
+## What the concurrency track found, and a category this document lacked
+
+Five defects, and only two of them were the ones the design predicted:
+
+| Defect | Kind | Predicted |
+|---|---|---|
+| `flush` strands `immutableTable`, so flushing stops for the life of the store | Control coupling, C5 | Yes, H1 |
+| `NewSSTableWithFS` leaves its half-written file, so one failed flush makes the store unopenable | Data coupling, D2-like: a writer leaves a file a reader trusts | No |
+| The repair for H1 discarded writes `Put` had acknowledged | **Introduced by a repair** | No |
+| `compact` leaves superseded tables, so a reopen resurrects a deleted key | Data coupling, C5 | Yes, H2 |
+| `CleanupOldSSTables` counted an absent file as a failure, so no retry could work | **Introduced by a repair** | No |
+
+**Two of the five came out of repairing the other three**, and the first table
+in this document has no row for that. It is the argument for a sweep rather
+than a single test: a sweep re-runs after every change, so a repair that breaks
+something else is caught by the same instrument that found the original.
+
+It is also the argument for the red-first rule. Two tests in that track were
+decoration when first written, and each looked correct. The partial-file test
+faulted the flush's *open*, so no file was ever created to leak. The cache
+scenario started its reader *after* the writes, so nothing it cached could go
+stale. Both were found by removing the repair and watching the test stay
+green — not by reading them.
 
 ## What DCCC coverage would mean here
 
@@ -114,12 +147,23 @@ computes that today.
 
 ## Open items
 
-1. **Concurrent fault injection.** Inject a fault while a background flush is
-   mid-write and a reader is mid-scan, and sweep that point. This is the
-   graphdb analogue of MCP_Software_2, and it is where the residual risk is.
+1. ~~**Concurrent fault injection.**~~ Done for `pkg/lsm` (#492, #493, #494).
+   Open for `pkg/storage`, which needs ADR 0002 stage 4 first. That is where
+   the residual risk now sits, and it is the larger half.
 2. **A DCCC coverage measure** over the interfaces above.
-3. **D5 and C5 have no evidence at all.**
-4. **The CI-versus-developer coverage gap is still unexplained.** The leading
+3. ~~**D5 and C5 have no evidence at all.**~~ Both have evidence now. D5's
+   *description* was also wrong, which is worth keeping in view: the incorrect
+   name generated a plausible correctness hazard that cannot occur, and it was
+   only caught by reading the code the row describes.
+4. **Nothing here measures a maximum.** The mitigation claims in the
+   interference table rest on benchmarks that report a mean. Rapita's account
+   of worst-case execution time draws the distinction that matters: a
+   measurement gives a high-water mark, not a WCET, and a mean gives neither.
+   graphdb has no real-time deadline, so the certification use does not carry
+   over, but the measurement discipline does — an interference channel is
+   visible in the tail, not in the average. `b.ReportMetric` is the whole cost.
+
+5. **The CI-versus-developer coverage gap is still unexplained.** The leading
    hypothesis — interference from a 4-core runner suppressing timing-dependent
    paths — was **tested and falsified** on 2026-08-28: constraining this
    machine to `GOMAXPROCS=4 -p 2` produced 80.0%, identical to unconstrained,
@@ -133,4 +177,7 @@ computes that today.
 - A(M)C 20-193 MCP_Software_2 — DCCC of a multicore system; MCP_Resource_Usage_3
   — identify interference channels
 - Rapita MC-WP-015, *Mitigation of interference in multicore processors*
+- Rapita, *Worst-case execution time* — the measurement-based, static and
+  hybrid methods, and why a measurement gives a high-water mark and not a WCET.
+  The source for open item 4
 - `SQLITE_TESTING_SCORECARD.md` — the per-component axis this document complements
