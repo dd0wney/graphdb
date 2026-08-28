@@ -145,7 +145,7 @@ func (ff *faultFile) Write(p []byte) (int, error) {
 	shouldFail := ff.fs.writes > ff.fs.writeAfter && fire(&ff.fs.writeMode)
 	ff.fs.mu.Unlock()
 	if shouldFail {
-		return 0, fmt.Errorf("write %s: %w", ff.File.Name(), ErrInjected)
+		return 0, fmt.Errorf("write %s: %w", ff.Name(), ErrInjected)
 	}
 	return ff.File.Write(p)
 }
@@ -156,7 +156,7 @@ func (ff *faultFile) Sync() error {
 	shouldFail := fire(&ff.fs.syncMode)
 	ff.fs.mu.Unlock()
 	if shouldFail {
-		return fmt.Errorf("sync %s: %w", ff.File.Name(), ErrInjected)
+		return fmt.Errorf("sync %s: %w", ff.Name(), ErrInjected)
 	}
 	return ff.File.Sync()
 }
@@ -170,7 +170,7 @@ func (ff *faultFile) Close() error {
 		// would make every test using it leak, and the leak would be blamed on
 		// the code under test.
 		_ = ff.File.Close()
-		return fmt.Errorf("close %s: %w", ff.File.Name(), ErrInjected)
+		return fmt.Errorf("close %s: %w", ff.Name(), ErrInjected)
 	}
 	return ff.File.Close()
 }
