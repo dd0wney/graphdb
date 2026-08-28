@@ -1,7 +1,5 @@
 package lsm
 
-import ()
-
 // CompactionStrategy defines how SSTables are compacted
 type CompactionStrategy interface {
 	SelectCompaction(levels [][]*SSTable) *CompactionPlan
