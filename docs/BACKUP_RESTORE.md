@@ -143,6 +143,28 @@ On startup, the server loads the snapshot and replays the WAL segments in `wal/`
 
 ---
 
+## Credentials after a restore
+
+The archive includes the auth store (`auth/`, see [Archive contents](#archive-contents) above), so a
+restored instance boots with the **SOURCE instance's users and password
+hashes already loaded** — not fresh ones. In particular:
+
+- `ADMIN_PASSWORD` set on the new instance is **ignored** if the restored
+  auth store already contains users. The admin-bootstrap path only runs
+  against an empty store, and a restore never leaves it empty.
+- This is silent unless you check the logs: look for a boot warning that
+  mentions `ADMIN_PASSWORD` and `ignored`. Its absence means bootstrap ran
+  normally (i.e. the auth store was empty); its presence confirms
+  `ADMIN_PASSWORD` had no effect and the loaded (source instance's)
+  credentials are the ones in force.
+- **Remedy**: don't rely on `ADMIN_PASSWORD` to rotate credentials on a
+  restored instance. Instead, start the server, authenticate with the
+  source instance's existing credentials, and rotate via the running
+  instance's user-management API/CLI (change password / rotate API keys)
+  after boot.
+
+---
+
 ## Cold backup (alternative — server stopped)
 
 If a hot backup is not required, the traditional cold-backup approach (stop the server, archive the volume, restart) remains valid and documented in [`docs/DEPLOYMENT_GUIDE.md`](./DEPLOYMENT_GUIDE.md).

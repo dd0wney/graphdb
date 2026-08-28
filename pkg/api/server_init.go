@@ -243,6 +243,15 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 				}
 			}
 		}
+	} else if adminPasswordIgnored(len(userStore.ListUsers()), os.Getenv("ADMIN_PASSWORD")) {
+		// #456: a non-empty auth store (typically loaded from a restored
+		// backup — see docs/BACKUP_RESTORE.md, the auth store is part of
+		// the backup archive) means the admin-bootstrap block above never
+		// runs, so ADMIN_PASSWORD set on this instance is silently
+		// ignored. Surface that instead of leaving it invisible.
+		log.Printf("⚠️  ADMIN_PASSWORD is set but ignored: existing auth store loaded (%d user(s)) — "+
+			"this instance authenticates with credentials from the loaded auth store (typically the "+
+			"SOURCE instance's, after a backup restore). See docs/BACKUP_RESTORE.md.", len(userStore.ListUsers()))
 	}
 
 	// Determine server environment for API key enforcement
@@ -529,6 +538,15 @@ func (s *Server) bootstrapAutoEmbedFromEnv() {
 		label, sourceProp, targetProp,
 		nonZeroOrDefault(cfg.Workers, intelligence.DefaultWorkers),
 		nonZeroOrDefault(cfg.QueueDepth, intelligence.DefaultQueueDepth))
+}
+
+// adminPasswordIgnored reports whether ADMIN_PASSWORD is set but will be
+// ignored because the auth store already has users — e.g. a backup restore
+// brought its own auth/users.json (#456). Pure function so the decision
+// is unit-testable without exercising the full NewServerWithDataDir
+// bootstrap (which needs a real GraphStorage + dataDir + JWT_SECRET).
+func adminPasswordIgnored(existingUserCount int, adminPasswordEnv string) bool {
+	return existingUserCount > 0 && adminPasswordEnv != ""
 }
 
 // nonZeroOrDefault returns v if v > 0, otherwise defaultVal. Used to

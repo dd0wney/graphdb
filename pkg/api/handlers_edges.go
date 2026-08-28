@@ -332,7 +332,12 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 	edges := make([]*EdgeResponse, 0, len(req.Edges))
 	converter := newPropertyConverter()
 
-	for _, edgeReq := range req.Edges {
+	// #455: mirrors handlers_nodes.go::handleBatchNodes — see that
+	// comment for why Index is request-relative and why this is additive
+	// with respect to CC7-style partial-success contracts.
+	var errs []BatchItemError
+
+	for i, edgeReq := range req.Edges {
 		// Validate each edge request
 		var weightPtr *float64
 		if edgeReq.Weight != 0 {
@@ -346,6 +351,7 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 			Properties: edgeReq.Properties,
 		}
 		if err := validation.ValidateEdgeRequest(&validationReq); err != nil {
+			errs = append(errs, BatchItemError{Index: i, Error: err.Error()})
 			continue // Skip invalid edges
 		}
 
@@ -355,6 +361,7 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 		// Audit A6a: scoped create.
 		edge, err := s.graph.CreateEdgeWithTenant(tenantID, edgeReq.FromNodeID, edgeReq.ToNodeID, edgeReq.Type, props, edgeReq.Weight)
 		if err != nil {
+			errs = append(errs, BatchItemError{Index: i, Error: err.Error()})
 			continue
 		}
 
@@ -365,6 +372,8 @@ func (s *Server) handleBatchEdges(w http.ResponseWriter, r *http.Request) {
 		Edges:   edges,
 		Created: len(edges),
 		Time:    time.Since(start).String(),
+		Failed:  len(errs),
+		Errors:  errs,
 	}
 
 	s.respondJSON(w, http.StatusCreated, response)

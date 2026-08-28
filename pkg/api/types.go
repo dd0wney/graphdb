@@ -136,11 +136,22 @@ type BatchNodeRequest struct {
 	Nodes []NodeRequest `json:"nodes"`
 }
 
+// BatchItemError records one failed item from a batch create request.
+// Index is the item's position in the REQUEST array (Nodes/Edges as
+// submitted) — NOT its position in the response, since failed items
+// are omitted from the response array entirely (#455).
+type BatchItemError struct {
+	Index int    `json:"index"`
+	Error string `json:"error"`
+}
+
 // BatchNodeResponse represents batch node creation response
 type BatchNodeResponse struct {
-	Nodes   []*NodeResponse `json:"nodes"`
-	Created int             `json:"created"`
-	Time    string          `json:"time"`
+	Nodes   []*NodeResponse  `json:"nodes"`
+	Created int              `json:"created"`
+	Time    string           `json:"time"`
+	Failed  int              `json:"failed"`
+	Errors  []BatchItemError `json:"errors,omitempty"`
 }
 
 // BatchEdgeRequest represents a batch edge creation request
@@ -150,9 +161,11 @@ type BatchEdgeRequest struct {
 
 // BatchEdgeResponse represents batch edge creation response
 type BatchEdgeResponse struct {
-	Edges   []*EdgeResponse `json:"edges"`
-	Created int             `json:"created"`
-	Time    string          `json:"time"`
+	Edges   []*EdgeResponse  `json:"edges"`
+	Created int              `json:"created"`
+	Time    string           `json:"time"`
+	Failed  int              `json:"failed"`
+	Errors  []BatchItemError `json:"errors,omitempty"`
 }
 
 // AlgorithmRequest represents a graph algorithm execution request
