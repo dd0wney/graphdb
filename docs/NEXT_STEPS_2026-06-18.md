@@ -56,10 +56,14 @@ Per CLAUDE.md ("trust the code, then surface the discrepancy"): the audit docs a
 
 ## Current state
 
-- **`origin/main` HEAD**: `dfbac2a`. v0.6.0 released; since this doc was written: the file-split refactor landed (#424), and the **v0.7.0 production-hardening track shipped (#427)** closing ROADMAP blockers **B1/B2/B3/B6** (see [`ROADMAP_v1.md`](./ROADMAP_v1.md)).
+**Corrected 2026-08-28.** Three of the four bullets below were true on 2026-06-18
+and are not true now. The original wording is struck through, in the style this
+doc already uses for decision point B-2.
+
+- ~~**`origin/main` HEAD**: `dfbac2a`.~~ **`e289ba4`** (2026-08-28). v0.6.0 released; since this doc was written: the file-split refactor landed (#424), and the **v0.7.0 production-hardening track shipped (#427)** closing ROADMAP blockers **B1/B2/B3/B6** (see [`ROADMAP_v1.md`](./ROADMAP_v1.md)).
 - **Open PRs**: none.
-- **GA roadmap**: [`ROADMAP_v1.md`](./ROADMAP_v1.md) (#426) defines v1.0 scope + blockers. v0.7.0 done; **v0.8.0** (B4 hot backup/restore, B5a JSON snapshot header) and **v1.0.0** (B5b stability policy, docs) remain.
-- **mmap mode**: shipped, **off by default**, no consumer exposed.
+- ~~**GA roadmap**: v0.8.0 and v1.0.0 remain.~~ **Both shipped.** Every v1.0 blocker is closed and **`v1.0.0` was tagged 2026-06-23** (GA, GPG-signed). [`ROADMAP_v1.md`](./ROADMAP_v1.md) (#426) is now history; the live roadmap is [`ROADMAP_post_1.0.md`](./ROADMAP_post_1.0.md), where **v1.1.0** and **v1.2.0** are done (2026-07-01) and **v1.3.0** is partial.
+- ~~**mmap mode**: shipped, **off by default**, no consumer exposed.~~ **On by default since v1.2.0 (#447)**, and `cmd/import-icij` exposes it (#448). `GRAPHDB_STORAGE_MODE=json` is the documented opt-out. **That opt-out is unsafe today** on a store that has already shut down cleanly in mmap mode — it opens an empty database and reports no error. See the warning in [`DEPLOYMENT_GUIDE.md`](./DEPLOYMENT_GUIDE.md); the code repair is not started.
 
 ## Genuinely-outstanding inventory (reconciled)
 
@@ -94,7 +98,7 @@ Per CLAUDE.md ("trust the code, then surface the discrepancy"): the audit docs a
 - Storage interface (arch HIGH-1), `pkg/api.Server` god-struct (HIGH-2), REST/GraphQL service-layer duplication (MED-1), `pkg/editions` global singleton, unified `TenantID` type.
 
 ### G — Productization / commercial gaps (`CAPABILITIES_2026-05-10.md`)
-- Client SDKs (Python/Java/Rust; ~~Go~~ ✅ shipped 2026-07-17, #458 — see status update above); IaC (Helm chart / Terraform provider / operator); observability (OTel tracing, SLO/SLI docs); data-platform connectors (Kafka, ETL, lakehouse export, BI drivers); commercial packaging (pricing/support/roadmap); F3 compliance HTTP-API surface; the 4 documented-but-unbuilt enterprise plugins (`ENTERPRISE_PLUGINS.md`).
+- Client SDKs (Java/Rust; ~~Go~~ ✅ shipped 2026-07-17, #458 — see status update above; ~~Python~~ ✅ shipped — `clients/python`, 81 files with tests, tagged `python-sdk/v0.1.0` on 2026-06-11); IaC (Helm chart / Terraform provider / operator); observability (OTel tracing, SLO/SLI docs); data-platform connectors (Kafka, ETL, lakehouse export, BI drivers); commercial packaging (pricing/support/roadmap); F3 compliance HTTP-API surface; the 4 documented-but-unbuilt enterprise plugins (`ENTERPRISE_PLUGINS.md`).
 
 ## Recommended next track
 
