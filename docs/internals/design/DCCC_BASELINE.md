@@ -3,6 +3,7 @@
 **Living document.** Update it in the same PR as any change that moves a number.
 
 **Measured**: 2026-08-28, `go test -short ./pkg/...` on a developer machine.
+Re-measured after #500, which closed the two sites that were at zero.
 
 ## What this measures, and what it does not
 
@@ -36,29 +37,41 @@ the couplings are correct. It says how much of them a test run reaches.
 | D2 | `pkg/wal.readEntry` | 28/28, 100.0% |
 | D3 | `pkg/storage.CheckInvariants` | 227/242, 93.8% |
 | D5 | `pkg/lsm.lookupEntry` | 8/10, 80.0% |
-| D6 | `pkg/vfs.Resolve` | **0/6, 0.0%** |
-| D6 | `pkg/alloc.Bytes` | **0/20, 0.0%** |
+| D6 | `pkg/vfs.Resolve` | 6/6, 100.0% |
+| D6 | `pkg/alloc.Bytes` | 19/20, 95.0% |
 
-**538/616 statements = 87.3%.**
+**563/616 statements = 91.4%.**
 
-## The two at zero
+It was 538/616, 87.3%, when the measure was first written. The difference is
+#500 and nothing else.
 
-**`pkg/vfs.Resolve` has no test at all**, and its own doc comment says why that
-matters:
+## ~~The two at zero~~ — closed by #500
+
+This section is struck through rather than deleted. "How to use this" below
+says why: the point of a baseline is which lines were unconstrained, not the
+final score, and the reasoning here is the argument for the measure existing at
+all.
+
+~~**`pkg/vfs.Resolve` has no test at all**~~, and its own doc comment says why
+that mattered:
 
 > An unknown name is an error rather than a silent fallback, because falling
 > back would run a test against the real filesystem while the test believed it
 > had installed a fault driver — a pass that means nothing.
 
-The function that exists to prevent a meaningless pass is the one nothing
-exercises. `pkg/vfs` has no `_test.go` files; its drivers are tested from
+The function that existed to prevent a meaningless pass was the one nothing
+exercised. `pkg/vfs` had no `_test.go` files; its drivers are tested from
 `pkg/vfs/vfstest`, which never calls `Resolve`.
 
-**`pkg/alloc.Bytes` is the same shape.** `pkg/alloc` has no package-level tests;
-`alloctest` covers the fault driver and not the production entry point.
+**`pkg/alloc.Bytes` was the same shape.** `pkg/alloc` had no package-level
+tests; `alloctest` covers the fault driver and not the production entry point.
 
 Both are D6, the process-wide installed drivers, and D6 is the row of the
-coupling table whose evidence column reads "the drivers' own tests".
+coupling table whose evidence column read "the drivers' own tests" — which was
+the problem stated exactly.
+
+**#500 closed both.** `pkg/vfs` went from 0% to 74.3% and `pkg/alloc` from 0% to
+96.9%. The measure found them; nothing else had.
 
 ## No threshold, deliberately
 
