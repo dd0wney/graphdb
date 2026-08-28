@@ -48,14 +48,26 @@ jobs:
       run: go vet ./...
 
     - name: Run go fmt check
+      # gofmt -s, not go fmt. .golangci.yml sets gofmt.simplify, so the lint job
+      # rejects what plain gofmt accepts — an empty import () block, for one.
+      # This step used `go fmt ./...` and passed a tree the lint job then failed
+      # (PR #485). Two format gates that disagree cost a round trip every time
+      # the weaker one is the one a developer runs. -l also reports rather than
+      # rewriting, which is what a check should do.
+      #
+      # Scoped to pkg and cmd. enterprise-plugins is not gofmt -s clean (16
+      # files), and golangci-lint does not reach it either: prometheus-metrics
+      # has its own go.mod, and r2-backup does not load because its AWS imports
+      # are not in go.mod. Widening this check is a separate change from
+      # repairing that directory.
       run: |
-        fmt_output=$(go fmt ./...)
-        if [ -n "$fmt_output" ]; then
-          echo "❌ The following files need formatting:"
-          echo "$fmt_output"
+        unformatted=$(gofmt -s -l ./pkg ./cmd)
+        if [ -n "$unformatted" ]; then
+          echo "The following files under pkg or cmd are not gofmt -s clean:"
+          echo "$unformatted"
           exit 1
         fi
-        echo "✅ All files properly formatted"
+        echo "pkg and cmd are gofmt -s clean"
 
     - name: Run tests
       run: make test-verbose
@@ -82,6 +94,17 @@ jobs:
       # checks the total against COVERAGE_MIN. One step keeps the floor in the
       # Makefile only — a copy of the number here would drift from it.
       run: make coverage-gate
+
+    - name: Check the consumer contracts against their tests
+      # Cheap and independent of the build, so it runs beside coverage rather
+      # than in its own job. It fails if the registry and the tagged tests stop
+      # describing each other, or if a guarding test's body changed without the
+      # lock file changing with it.
+      run: make contract-guard
+
+    - name: Prove the contract guard can fail
+      # A gate nobody has seen report the negative is not known to be a gate.
+      run: make contract-guard-selftest
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7

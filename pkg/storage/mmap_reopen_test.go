@@ -677,11 +677,11 @@ func TestMmapStage2_AdjacencyFromCSR(t *testing.T) {
 	}
 }
 
-// CONSUMER CONTRACT: coord's claim semantics rely on
-// CreateNodeWithUniquePropertyForTenant rejecting duplicates. After an mmap
-// reopen the per-tenant membership index is built lazily; the unique-create must
-// still see base nodes WITHOUT a prior enumeration call, or a reopened store
-// would silently allow duplicate claims.
+// CONSUMER CONTRACT: CC10-unique-create-after-mmap-reopen — graphdb-coord (#412)
+// coord's claim semantics rely on CreateNodeWithUniquePropertyForTenant
+// rejecting duplicates. After an mmap reopen the per-tenant membership index is
+// built lazily; the unique-create must still see base nodes WITHOUT a prior
+// enumeration call, or a reopened store would silently allow duplicate claims.
 func TestMmapStage2_UniqueConstraintSurvivesReopen(t *testing.T) {
 	dir := t.TempDir()
 	const tenant = "t"

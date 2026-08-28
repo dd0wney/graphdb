@@ -20,8 +20,34 @@ Find the tests: `grep -rn "CONSUMER CONTRACT:" pkg/`
 | CC7-batch-partial-echo | `POST /nodes/batch` returns only the nodes actually created (partial success), in unspecified order, echoing each node's properties so a client can reconcile assigned IDs to a correlation key (jailgraph's `_key`) | jailgraph | `pkg/api` `TestBatchNodes_PartialOutOfOrderEchoesProperties` | #319 |
 | CC8-label-list-properties-paginated | `GET /nodes?label=` returns nodes with their properties and is followable to completion via the `X-Next-Cursor` header | jailgraph | `pkg/api` `TestNodesByLabel_ReturnsPropertiesAcrossPages` | #319 |
 | CC9-traverse-outgoing-depth | `POST /traverse` returns the nodes reachable via outgoing edges within `max_depth` | jailgraph | `pkg/api` `TestTraverse_OutgoingNeighborsAtDepth` | #319 |
+| CC10-unique-create-after-mmap-reopen | `CreateNodeWithUniquePropertyForTenant` still rejects a duplicate after an mmap reopen, without a prior enumeration call to build the lazy per-tenant index | graphdb-coord | `pkg/storage` `TestMmapStage2_UniqueConstraintSurvivesReopen` | #412 |
 
 **CC7–CC9 are pre-emptive guards, not bug fixes.** CC1–CC6 were each written *red* against a real divergence found by driving the consumer. CC7–CC9 instead pin behaviours the jailgraph consumer already relies on (it works against graphdb as-is) so the in-flight storage-hardening wave can't silently change them — they pass against the code they ship with. They were teeth-proven by temporarily breaking the pinned behaviour (property echo, cursor pagination) and confirming the test fails. Origin: `../jailgraph/docs/GRAPHDB_CONTRACTS_HANDOFF.md`.
+
+## Enforcement
+
+`scripts/contract-guard.sh` checks that this file and the tests still describe
+each other, and pins the body of every guarding test in
+`docs/consumer-contracts.lock`. It runs in CI and from `make contract-guard`.
+
+It checks four things, and each one has a case in
+`scripts/contract-guard-selftest.sh` that makes it fail:
+
+1. Every `CONSUMER CONTRACT:` comment carries a `CC<n>-<slug>` id.
+2. Every row here is enforced by at least one tagged test.
+3. Every tagged id has a row here.
+4. Every guarding test this file names exists, and its body matches the lock.
+
+Point 4 is the reason the lock file exists. The first three catch a test that is
+deleted or renamed. Only the digest catches an assertion weakened in place,
+which is the failure that reads like an ordinary diff. The guard does not
+prevent that edit. It makes the edit change a tracked file, so it has to be
+explained rather than merged unnoticed.
+
+**CC10 is why the guard exists.** Its contract comment had been in
+`pkg/storage/mmap_reopen_test.go` since #412 with no id and no row here. The
+guard found it on its first run against the real tree, before it was wired into
+anything.
 
 ## Growth rule
 

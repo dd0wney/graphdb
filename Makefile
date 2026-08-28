@@ -2,6 +2,7 @@
 # Leverages Go's native tooling for testing, building, and profiling
 
 .PHONY: help test test-verbose test-short test-race test-cover coverage-gate test-cover-html \
+        contract-guard contract-guard-update contract-guard-selftest \
         bench bench-cpu bench-mem build build-all clean fmt vet lint \
         run-server run-cli run-tui install-tools mod-tidy mod-verify \
         integration-test api-test profile-cpu profile-mem
@@ -118,6 +119,18 @@ test-cover:
 ## coverage-gate: Fail if coverage is below COVERAGE_MIN
 coverage-gate: test-cover
 	@bash scripts/coverage-gate.sh $(COVERAGE_DIR)/coverage.out $(COVERAGE_MIN)
+
+## contract-guard: Check the consumer-contract registry against the tests
+contract-guard:
+	@bash scripts/contract-guard.sh
+
+## contract-guard-update: Rewrite the contract lock file after a deliberate change
+contract-guard-update:
+	@bash scripts/contract-guard.sh --update
+
+## contract-guard-selftest: Prove the contract guard can fail
+contract-guard-selftest:
+	@bash scripts/contract-guard-selftest.sh
 
 ## test-cover-html: Generate HTML coverage report
 test-cover-html: test-cover
