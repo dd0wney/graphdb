@@ -77,7 +77,7 @@ func (lsm *LSMStorage) flush() error {
 
 	// Create SSTable
 	sstPath := SSTablePath(lsm.dataDir, 0, int(time.Now().UnixNano()))
-	sst, err := NewSSTable(sstPath, entries)
+	sst, err := NewSSTableWithFS(sstPath, entries, lsm.fs)
 	if err != nil {
 		return err
 	}

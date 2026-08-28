@@ -55,6 +55,14 @@ type FileSystem interface {
 	// MkdirAll creates a directory tree, with the semantics of os.MkdirAll.
 	MkdirAll(path string, perm os.FileMode) error
 
+	// ReadDir lists a directory, with the semantics of os.ReadDir.
+	//
+	// Added when pkg/lsm became the second caller: it enumerates its SSTables,
+	// and a driver that cannot fail a directory listing cannot test what
+	// happens when that listing fails. The method set is the intersection of
+	// what callers actually use, so the intersection grew.
+	ReadDir(name string) ([]os.DirEntry, error)
+
 	// Name identifies the driver, for diagnostics and for tests that assert
 	// which driver is installed. "os" is the default.
 	Name() string

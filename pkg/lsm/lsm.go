@@ -2,18 +2,23 @@ package lsm
 
 import (
 	"fmt"
-	"os"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // NewLSMStorage creates a new LSM storage engine
 func NewLSMStorage(opts LSMOptions) (*LSMStorage, error) {
 	// Create data directory
-	if err := os.MkdirAll(opts.DataDir, 0o700); err != nil {
+	fs := opts.FS
+	if fs == nil {
+		fs = vfs.Default()
+	}
+	if err := fs.MkdirAll(opts.DataDir, 0o700); err != nil {
 		return nil, err
 	}
 
 	// Load existing SSTables
-	levels, err := ListSSTables(opts.DataDir)
+	levels, err := ListSSTablesWithFS(opts.DataDir, fs)
 	if err != nil {
 		return nil, err
 	}
@@ -23,10 +28,11 @@ func NewLSMStorage(opts LSMOptions) (*LSMStorage, error) {
 		immutableTable:     nil,
 		levels:             levels,
 		cache:              NewBlockCache(100000), // Cache 100k blocks (10x increase for large graphs)
+		fs:                 fs,
 		dataDir:            opts.DataDir,
 		memTableSize:       opts.MemTableSize,
 		compactionStrategy: opts.CompactionStrategy,
-		compactor:          NewCompactor(opts.DataDir, opts.CompactionStrategy),
+		compactor:          NewCompactorWithFS(opts.DataDir, opts.CompactionStrategy, fs),
 		flushChan:          make(chan struct{}, 1),
 		compactionChan:     make(chan struct{}, 1),
 		stopChan:           make(chan struct{}),

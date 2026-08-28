@@ -185,6 +185,18 @@ func (c *CrashFS) Stat(name string) (os.FileInfo, error) { return c.base.Stat(na
 func (c *CrashFS) MkdirAll(p string, m os.FileMode) error {
 	return c.base.MkdirAll(p, m)
 }
+func (c *CrashFS) ReadDir(name string) ([]os.DirEntry, error) {
+	if refuse, fire := c.gate(); refuse {
+		if fire {
+			if _, err := c.Crash(); err != nil {
+				return nil, err
+			}
+		}
+		return nil, ErrPowerLoss
+	}
+	return c.base.ReadDir(name)
+}
+
 func (c *CrashFS) Name() string { return c.name }
 
 // segment is one write recorded since the last Sync.

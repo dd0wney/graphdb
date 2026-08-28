@@ -22,6 +22,7 @@ func (osFS) Remove(name string) error                     { return os.Remove(nam
 func (osFS) Rename(oldpath, newpath string) error         { return os.Rename(oldpath, newpath) }
 func (osFS) Stat(name string) (os.FileInfo, error)        { return os.Stat(name) }
 func (osFS) MkdirAll(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
+func (osFS) ReadDir(name string) ([]os.DirEntry, error)   { return os.ReadDir(name) }
 func (osFS) Name() string                                 { return "os" }
 
 // *os.File already satisfies File. This fails to compile if the interface ever

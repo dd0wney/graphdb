@@ -5,8 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // writeEntry writes an entry to the writer
@@ -133,7 +134,7 @@ func writeIndex(w *bufio.Writer, index []IndexEntry) error {
 }
 
 // readIndex reads the sparse index
-func readIndex(r *os.File) ([]IndexEntry, error) {
+func readIndex(r vfs.File) ([]IndexEntry, error) {
 	// Index entry count
 	var count uint32
 	if err := binary.Read(r, binary.LittleEndian, &count); err != nil {

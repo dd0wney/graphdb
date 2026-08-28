@@ -15,7 +15,7 @@ func (sst *SSTable) Get(key []byte) (*Entry, bool) {
 	}
 
 	// Open a new file handle for concurrent reads
-	file, err := os.Open(sst.path)
+	file, err := sst.fs.Open(sst.path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, false
 	}
@@ -81,5 +81,5 @@ func (sst *SSTable) Close() error {
 // Delete removes the SSTable file
 func (sst *SSTable) Delete() error {
 	_ = sst.Close()
-	return os.Remove(sst.path)
+	return sst.fs.Remove(sst.path)
 }

@@ -6,11 +6,21 @@ import (
 	"fmt"
 	"hash/crc32"
 	"os"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // OpenSSTable opens an existing SSTable
 func OpenSSTable(path string) (*SSTable, error) {
-	file, err := os.Open(path)
+	return OpenSSTableWithFS(path, vfs.Default())
+}
+
+// OpenSSTableWithFS opens an SSTable on a caller-supplied filesystem driver.
+func OpenSSTableWithFS(path string, fs vfs.FileSystem) (*SSTable, error) {
+	if fs == nil {
+		fs = vfs.Default()
+	}
+	file, err := fs.Open(path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +55,7 @@ func OpenSSTable(path string) (*SSTable, error) {
 		// Old format without bloom filter - create empty one
 		bloom := NewBloomFilter(int(header.EntryCount), 0.01)
 		return &SSTable{
+			fs:         fs,
 			path:       path,
 			file:       file,
 			header:     header,
@@ -80,6 +91,7 @@ func OpenSSTable(path string) (*SSTable, error) {
 	}
 
 	return &SSTable{
+		fs:         fs,
 		path:       path,
 		file:       file,
 		header:     header,

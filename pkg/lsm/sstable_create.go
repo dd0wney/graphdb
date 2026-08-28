@@ -7,10 +7,21 @@ import (
 	"hash/crc32"
 	"os"
 	"sort"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // NewSSTable creates a new SSTable from MemTable entries
 func NewSSTable(path string, entries []*Entry) (*SSTable, error) {
+	return NewSSTableWithFS(path, entries, vfs.Default())
+}
+
+// NewSSTableWithFS writes an SSTable on a caller-supplied filesystem driver.
+// Intended for testing; see pkg/vfs and docs/adr/0002.
+func NewSSTableWithFS(path string, entries []*Entry, fs vfs.FileSystem) (*SSTable, error) {
+	if fs == nil {
+		fs = vfs.Default()
+	}
 	// Ensure entries are sorted
 	sort.Slice(entries, func(i, j int) bool {
 		return EntryCompare(entries[i], entries[j]) < 0
@@ -25,7 +36,7 @@ func NewSSTable(path string, entries []*Entry) (*SSTable, error) {
 	// Create file owner-only. os.Create would use 0666 pre-umask, which
 	// is world- or group-writable under a permissive umask (common in
 	// containers); SSTables hold customer graph data (security audit H-2).
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+	file, err := fs.Open(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +135,7 @@ func NewSSTable(path string, entries []*Entry) (*SSTable, error) {
 	}
 
 	return &SSTable{
+		fs:         fs,
 		path:       path,
 		file:       file,
 		header:     header,
