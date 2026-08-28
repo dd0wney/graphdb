@@ -204,9 +204,15 @@ func ListSSTablesWithFS(dir string, fs vfs.FileSystem) ([][]*SSTable, error) {
 		if e.IsDir() {
 			continue
 		}
-		if ok, _ := filepath.Match("*.sst", e.Name()); ok {
-			files = append(files, filepath.Join(dir, e.Name()))
+		// The pattern is a constant, so Match cannot return an error here —
+		// but an ignored error is an ignored error, and the linter is right to
+		// say so. Treating a match failure as "not an SSTable" is also the
+		// behaviour we want if the pattern is ever made dynamic.
+		ok, matchErr := filepath.Match("*.sst", e.Name())
+		if matchErr != nil || !ok {
+			continue
 		}
+		files = append(files, filepath.Join(dir, e.Name()))
 	}
 	sort.Strings(files)
 
