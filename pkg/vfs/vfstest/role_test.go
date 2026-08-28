@@ -290,3 +290,71 @@ func TestSweepRoleRejectsAScenarioThatDoesNothing(t *testing.T) {
 		t.Error("the sweep accepted a scenario that performed no I/O")
 	}
 }
+
+// Explore must run every seed and hand back a key that can be pinned. A
+// discovery mode that finds something it cannot return as a scripted test
+// costs more than it returns.
+func TestExploreReturnsAPinnableKey(t *testing.T) {
+	dir := t.TempDir()
+	fake := &testing.T{}
+
+	var keys []Key
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		keys = Explore(fake, 4,
+			func(seed int64) *RoleFS {
+				fs := NewRoles(vfs.OS(), "explore", bySuffix)
+				fs.Jitter(seed)
+				fs.FailRandomly(seed, roleA, 1.0) // always fault something
+				return fs
+			},
+			func(fs vfs.FileSystem) error {
+				return writeThrough(t, fs, filepath.Join(dir, "f.a"))
+			},
+			func(t *testing.T, seed int64, runErr error) {
+				if runErr != nil {
+					t.Errorf("seed %d failed", seed)
+				}
+			},
+		)
+	}()
+	<-done
+
+	if len(keys) == 0 {
+		t.Fatal("Explore returned no keys although every seed was armed to fail")
+	}
+	for _, k := range keys {
+		if k.Role != roleA || k.Nth < 1 {
+			t.Errorf("key %s is not usable as a FailAtKey regression test", k)
+		}
+	}
+
+	// The key must actually reproduce the failure on its own, with no seed and
+	// no jitter. That is the whole claim the discovery mode makes.
+	fs := NewRoles(vfs.OS(), "pinned", bySuffix)
+	fs.FailAtKey(keys[0])
+	if err := writeThrough(t, fs, filepath.Join(dir, "f.a")); err == nil {
+		t.Errorf("the key %s did not reproduce the failure without its seed", keys[0])
+	}
+}
+
+// Jitter must change when things happen, not what happens.
+func TestJitterDoesNotChangeTheTrace(t *testing.T) {
+	var first string
+	for seed := int64(0); seed < 4; seed++ {
+		fs := NewRoles(vfs.OS(), "jitter", bySuffix)
+		fs.Jitter(seed)
+		if err := writeThrough(t, fs, filepath.Join(t.TempDir(), "f.a")); err != nil {
+			t.Fatalf("seed %d: %v", seed, err)
+		}
+		trace := strings.Join(fs.Trace(roleA), ",")
+		if first == "" {
+			first = trace
+			continue
+		}
+		if trace != first {
+			t.Errorf("seed %d produced trace %q, seed 0 produced %q", seed, trace, first)
+		}
+	}
+}

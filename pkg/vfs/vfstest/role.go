@@ -2,9 +2,12 @@ package vfstest
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
+	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dd0wney/graphdb/pkg/vfs"
 )
@@ -120,6 +123,12 @@ type RoleFS struct {
 	pause     *Pause
 	pauseRole Role
 	pauseNth  int
+
+	// Discovery mode. rng is shared and used only under mu.
+	rng      *rand.Rand
+	jitter   bool
+	failRole Role
+	failProb float64
 }
 
 // NewRoles wraps base. Pass vfs.OS() for a driver that touches a real disk.
@@ -162,6 +171,37 @@ func (r *RoleFS) resetLocked() {
 	r.counts = make(map[Role]int)
 	r.kinds = make(map[Role]map[Op]int)
 	r.traces = make(map[Role][]string)
+}
+
+// Jitter makes the driver yield the processor, and sometimes sleep briefly,
+// before each operation.
+//
+// Go offers no control over its scheduler, so this is the only lever a driver
+// has on the interleaving. It widens the windows between one actor's
+// operations, which makes states reachable that a tight loop never visits. It
+// is a discovery aid and not a proof of anything: an interleaving that jitter
+// never produces is still an interleaving that can happen.
+func (r *RoleFS) Jitter(seed int64) {
+	r.mu.Lock()
+	r.jitter = true
+	if r.rng == nil {
+		r.rng = rand.New(rand.NewSource(seed))
+	}
+	r.mu.Unlock()
+}
+
+// FailRandomly arms a fault on each of a role's operations with probability p,
+// chosen from the seed.
+//
+// Exactly one fault fires per run: the driver disarms after it fires, so a
+// failing run names one failure point and Explore can hand it back as a Key.
+func (r *RoleFS) FailRandomly(seed int64, role Role, p float64) {
+	r.mu.Lock()
+	if r.rng == nil {
+		r.rng = rand.New(rand.NewSource(seed))
+	}
+	r.failRole, r.failProb = role, p
+	r.mu.Unlock()
 }
 
 // PauseBeforeNthOpForRole parks the role's N-th operation, counting from 1,
@@ -214,7 +254,7 @@ func (r *RoleFS) Trace(role Role) []string {
 // The caller blocks OUTSIDE r.mu. Holding the driver's lock while an actor is
 // parked would stop every other actor as well, which would turn the barrier
 // into a global freeze and destroy the interleaving it exists to expose.
-func (r *RoleFS) step(op Op, role Role, _ string) (*Pause, bool) {
+func (r *RoleFS) step(op Op, role Role, _ string) (*Pause, bool, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -236,15 +276,36 @@ func (r *RoleFS) step(op Op, role Role, _ string) (*Pause, bool) {
 
 	fail := (r.target != "" && role == r.target && n == r.nth) ||
 		(r.hasTargetKey && key == r.targetKey)
+	if !fail && r.failRole != "" && role == r.failRole && r.rng.Float64() < r.failProb {
+		fail = true
+		r.failRole = "" // one fault per run, so a failure names one point
+	}
 	if fail {
 		r.fired, r.firedKey = true, key
 	}
-	return block, fail
+
+	// A negative nap means jitter is off. Zero is a real value the generator
+	// produces, so it cannot double as "disabled" — without this the
+	// deterministic sweep would yield on every operation too.
+	nap := time.Duration(-1)
+	if r.jitter {
+		nap = time.Duration(r.rng.Intn(3)) * 100 * time.Microsecond
+	}
+	return block, fail, nap
 }
 
 // gate applies what step decided. It returns the error the operation must
 // report, or nil to proceed.
-func gate(block *Pause, fail bool, op Op, name string) error {
+func gate(block *Pause, fail bool, nap time.Duration, op Op, name string) error {
+	// Outside the driver's lock, for the same reason the barrier is: holding
+	// it while sleeping would stop every other actor and destroy the very
+	// interleaving the jitter exists to produce.
+	if nap >= 0 && block == nil {
+		runtime.Gosched()
+		if nap > 0 {
+			time.Sleep(nap)
+		}
+	}
 	if block != nil {
 		if err := block.arrive(); err != nil {
 			return err
@@ -258,8 +319,8 @@ func gate(block *Pause, fail bool, op Op, name string) error {
 
 func (r *RoleFS) Open(name string, flag int, perm os.FileMode) (vfs.File, error) {
 	role := r.classify(OpOpen, name, flag)
-	block, fail := r.step(OpOpen, role, name)
-	if err := gate(block, fail, OpOpen, name); err != nil {
+	block, fail, nap := r.step(OpOpen, role, name)
+	if err := gate(block, fail, nap, OpOpen, name); err != nil {
 		return nil, err
 	}
 	inner, err := r.base.Open(name, flag, perm)
@@ -271,8 +332,8 @@ func (r *RoleFS) Open(name string, flag int, perm os.FileMode) (vfs.File, error)
 
 func (r *RoleFS) Remove(name string) error {
 	role := r.classify(OpRemove, name, 0)
-	block, fail := r.step(OpRemove, role, name)
-	if err := gate(block, fail, OpRemove, name); err != nil {
+	block, fail, nap := r.step(OpRemove, role, name)
+	if err := gate(block, fail, nap, OpRemove, name); err != nil {
 		return err
 	}
 	return r.base.Remove(name)
@@ -280,8 +341,8 @@ func (r *RoleFS) Remove(name string) error {
 
 func (r *RoleFS) Rename(oldpath, newpath string) error {
 	role := r.classify(OpRename, oldpath, 0)
-	block, fail := r.step(OpRename, role, oldpath)
-	if err := gate(block, fail, OpRename, oldpath); err != nil {
+	block, fail, nap := r.step(OpRename, role, oldpath)
+	if err := gate(block, fail, nap, OpRename, oldpath); err != nil {
 		return err
 	}
 	return r.base.Rename(oldpath, newpath)
@@ -289,8 +350,8 @@ func (r *RoleFS) Rename(oldpath, newpath string) error {
 
 func (r *RoleFS) Stat(name string) (os.FileInfo, error) {
 	role := r.classify(OpStat, name, 0)
-	block, fail := r.step(OpStat, role, name)
-	if err := gate(block, fail, OpStat, name); err != nil {
+	block, fail, nap := r.step(OpStat, role, name)
+	if err := gate(block, fail, nap, OpStat, name); err != nil {
 		return nil, err
 	}
 	return r.base.Stat(name)
@@ -298,8 +359,8 @@ func (r *RoleFS) Stat(name string) (os.FileInfo, error) {
 
 func (r *RoleFS) MkdirAll(path string, perm os.FileMode) error {
 	role := r.classify(OpMkdirAll, path, 0)
-	block, fail := r.step(OpMkdirAll, role, path)
-	if err := gate(block, fail, OpMkdirAll, path); err != nil {
+	block, fail, nap := r.step(OpMkdirAll, role, path)
+	if err := gate(block, fail, nap, OpMkdirAll, path); err != nil {
 		return err
 	}
 	return r.base.MkdirAll(path, perm)
@@ -315,8 +376,8 @@ type roleFile struct {
 }
 
 func (rf *roleFile) op(op Op) error {
-	block, fail := rf.fs.step(op, rf.role, rf.Name())
-	return gate(block, fail, op, rf.Name())
+	block, fail, nap := rf.fs.step(op, rf.role, rf.Name())
+	return gate(block, fail, nap, op, rf.Name())
 }
 
 func (rf *roleFile) Read(p []byte) (int, error) {
