@@ -214,6 +214,12 @@ func (lsm *LSMStorage) Sync() error {
 			return fmt.Errorf("failed to flush memtable: %w", err)
 		}
 	}
+
+	// No sticky error is needed here. A flush that fails puts its entries back
+	// into the memtable, so the check above sees them and this Sync retries
+	// them and reports whatever happens. A sticky field was written first and
+	// then removed: no test could be made to observe it, because there is no
+	// path where a failed background flush leaves the memtable empty.
 	return nil
 }
 

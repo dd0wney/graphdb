@@ -117,6 +117,10 @@ type RoleFS struct {
 	targetKey    Key
 	hasTargetKey bool
 
+	alwaysRole  Role
+	alwaysOp    Op
+	alwaysOpSet bool
+
 	fired    bool
 	firedKey Key
 
@@ -150,6 +154,7 @@ func (r *RoleFS) FailNthOpForRole(role Role, n int) {
 	r.mu.Lock()
 	r.target, r.nth = role, n
 	r.hasTargetKey = false
+	r.alwaysRole = ""
 	r.resetLocked()
 	r.mu.Unlock()
 }
@@ -161,6 +166,7 @@ func (r *RoleFS) FailAtKey(k Key) {
 	r.mu.Lock()
 	r.targetKey, r.hasTargetKey = k, true
 	r.target, r.nth = "", 0
+	r.alwaysRole = ""
 	r.resetLocked()
 	r.mu.Unlock()
 }
@@ -201,6 +207,42 @@ func (r *RoleFS) FailRandomly(seed int64, role Role, p float64) {
 		r.rng = rand.New(rand.NewSource(seed))
 	}
 	r.failRole, r.failProb = role, p
+	r.mu.Unlock()
+}
+
+// FailAllForRole fails every operation of one role, from now on.
+//
+// FailNthOpForRole and FailAtKey each name a single operation, so they model a
+// transient error: the caller retries and the store recovers. A disk that is
+// full, or mounted read-only, does not behave that way.
+//
+// The distinction is not academic. A durability promise — "this call returning
+// nil means the data is on the disk" — is kept, not broken, when a transient
+// error is retried into success. It is only observable at all when the failure
+// persists, so testing it needs this.
+func (r *RoleFS) FailAllForRole(role Role) {
+	r.mu.Lock()
+	r.alwaysRole, r.alwaysOpSet = role, false
+	r.target, r.nth = "", 0
+	r.hasTargetKey = false
+	r.resetLocked()
+	r.mu.Unlock()
+}
+
+// FailAllOpForRole fails every operation of one KIND for one role, and lets
+// that role's other operations through.
+//
+// This is what a partly broken disk looks like from inside: writes land and
+// removals do not, or the reverse. It is also the only way to reach an error
+// path that runs after a successful operation of a different kind — a cleanup
+// that cannot remove anything, for one, where failing the whole role would
+// stop the work before it ever got to the cleanup.
+func (r *RoleFS) FailAllOpForRole(role Role, op Op) {
+	r.mu.Lock()
+	r.alwaysRole, r.alwaysOp, r.alwaysOpSet = role, op, true
+	r.target, r.nth = "", 0
+	r.hasTargetKey = false
+	r.resetLocked()
 	r.mu.Unlock()
 }
 
@@ -275,7 +317,8 @@ func (r *RoleFS) step(op Op, role Role, _ string) (*Pause, bool, time.Duration) 
 	}
 
 	fail := (r.target != "" && role == r.target && n == r.nth) ||
-		(r.hasTargetKey && key == r.targetKey)
+		(r.hasTargetKey && key == r.targetKey) ||
+		(r.alwaysRole != "" && role == r.alwaysRole && (!r.alwaysOpSet || op == r.alwaysOp))
 	if !fail && r.failRole != "" && role == r.failRole && r.rng.Float64() < r.failProb {
 		fail = true
 		r.failRole = "" // one fault per run, so a failure names one point

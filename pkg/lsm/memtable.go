@@ -138,6 +138,39 @@ func (mt *MemTable) Delete(key []byte) error {
 	return nil
 }
 
+// MergeOlder inserts each entry from older that this table does not hold.
+//
+// The receiver's entries are newer by construction: older was moved aside by a
+// flush, and this table took the writes that arrived after that. So a key in
+// both keeps the receiver's value, tombstones included.
+//
+// A flush that fails uses this to put the entries back. Dropping them instead
+// would lose writes that Put had already acknowledged and that a reader could
+// still see a moment earlier, and it would leave the block cache holding keys
+// that no table holds.
+func (mt *MemTable) MergeOlder(older *MemTable) {
+	if older == nil {
+		return
+	}
+
+	// Iterator takes older's own lock, which is a different one.
+	entries := older.Iterator()
+
+	mt.mu.Lock()
+	defer mt.mu.Unlock()
+
+	for _, entry := range entries {
+		keyStr := string(entry.Key)
+		if _, exists := mt.data[keyStr]; exists {
+			continue // the receiver holds a newer value for this key
+		}
+		mt.keys = append(mt.keys, keyStr)
+		mt.sorted = false
+		mt.size += len(entry.Key) + len(entry.Value)
+		mt.data[keyStr] = entry
+	}
+}
+
 // Size returns the approximate size in bytes
 func (mt *MemTable) Size() int {
 	mt.mu.RLock()
