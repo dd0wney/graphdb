@@ -1,0 +1,75 @@
+# A node is created, read back, updated and deleted
+
+POST /nodes
+  -> {"labels":["Person"],"properties":{"born":1815,"name":"ada"}}
+  201 {"id":1,"labels":["Person"],"properties":{"born":1815,"name":"ada"}}
+
+GET /nodes/1
+  200 {"id":1,"labels":["Person"],"properties":{"born":1815,"name":"ada"}}
+
+PUT /nodes/1
+  -> {"properties":{"born":1815,"field":"analysis","name":"ada"}}
+  200 {"id":1,"labels":["Person"],"properties":{"born":1815,"field":"analysis","name":"ada"}}
+
+GET /nodes/1
+  200 {"id":1,"labels":["Person"],"properties":{"born":1815,"field":"analysis","name":"ada"}}
+
+DELETE /nodes/1
+  200 {"deleted":1}
+
+GET /nodes/1
+  404 {"code":404,"error":"Not Found","message":"Node not found"}
+
+
+# A label listing returns the nodes and their properties
+
+POST /nodes
+  -> {"labels":["City"],"properties":{"name":"dublin"}}
+  201 {"id":2,"labels":["City"],"properties":{"name":"dublin"}}
+
+POST /nodes
+  -> {"labels":["City"],"properties":{"name":"cork"}}
+  201 {"id":3,"labels":["City"],"properties":{"name":"cork"}}
+
+GET /nodes?label=City
+  200 [{"id":2,"labels":["City"],"properties":{"name":"dublin"}},{"id":3,"labels":["City"],"properties":{"name":"cork"}}]
+
+GET /nodes?label=Nowhere
+  200 []
+
+
+# An edge joins two nodes, and a traversal finds the neighbour
+
+POST /edges
+  -> {"from_node_id":2,"properties":{"km":260},"to_node_id":3,"type":"ROAD_TO"}
+  201 {"from_node_id":2,"id":1,"properties":{"km":260},"to_node_id":3,"type":"ROAD_TO","weight":0}
+
+GET /edges/1
+  200 {"from_node_id":2,"id":1,"properties":{"km":260},"to_node_id":3,"type":"ROAD_TO","weight":0}
+
+POST /traverse
+  -> {"direction":"outgoing","max_depth":1,"start_node_id":2}
+  200 {"count":2,"nodes":[{"id":2,"labels":["City"],"properties":{"name":"dublin"}},{"id":3,"labels":["City"],"properties":{"name":"cork"}}],"time":"\u003celapsed\u003e"}
+
+
+# A second tenant cannot see the first tenant's data
+
+GET /nodes/2   (tenant other)
+  404 {"code":404,"error":"Not Found","message":"Node not found"}
+
+GET /nodes?label=City   (tenant other)
+  200 []
+
+
+# Rejections
+
+POST /nodes
+  -> {"labels":[]}
+  400 {"code":400,"error":"Bad Request","message":"Labels: must be at least 1"}
+
+GET /nodes/99999
+  404 {"code":404,"error":"Not Found","message":"Node not found"}
+
+DELETE /nodes/99999
+  404 {"code":404,"error":"Not Found","message":"Node not found"}
+
