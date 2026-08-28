@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -131,7 +132,10 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 		node *storage.Node
 		err  error
 	)
-	if len(req.Labels) == 1 && req.Labels[0] == claimLabel {
+	// Label containment, not an exact single-label match: see the reasoning in
+	// pkg/graphql/mutations_resolvers.go. REST and GraphQL must enforce the
+	// same rule, or the weaker path becomes the way around the stronger one.
+	if slices.Contains(req.Labels, claimLabel) {
 		if _, ok := props[claimUniquePropertyKey]; !ok {
 			s.respondError(w, http.StatusBadRequest,
 				":Claim creation requires a "+claimUniquePropertyKey+" property")
