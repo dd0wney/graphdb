@@ -283,9 +283,16 @@ func newWALMDriver(t *testing.T) *walMDriver {
 	// rebuilds the HNSW graph from the WAL-replayed nodes (the #305 fix) rather
 	// than entangling the separate, still-open "CreateVectorIndex not WAL-logged"
 	// gap. Matches the matrix WALReplay cell's discipline.
-	seed, err := NewGraphStorage(dir)
+	// JSON path throughout this driver: the mmap reopen serves nodes lazily, so
+	// the shard maps stay empty and the invariant check in
+	// assertMetamorphicEquivalence would compare an empty ground truth against
+	// empty derived indexes and report health. crashRecoveryConfig (used for the
+	// crashable instance below and for the recovery in finalize) already forces
+	// the JSON path; the seed has to agree or Close writes a snapshot the
+	// recovery cannot read.
+	seed, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
 	if err != nil {
-		t.Fatalf("wal seed NewGraphStorage: %v", err)
+		t.Fatalf("wal seed NewGraphStorageWithConfig: %v", err)
 	}
 	if err := seed.CreateVectorIndexForTenant(DefaultTenantID, "embedding", 3, 16, 200, vector.MetricCosine); err != nil {
 		t.Fatalf("wal seed CreateVectorIndexForTenant: %v", err)
@@ -316,9 +323,9 @@ func (d *walMDriver) finalize() *GraphStorage {
 	// testCrashableStorage cleanup closes it after the test). Recover from the
 	// same dir — WAL replay is the path under test, and this is the one cell that
 	// queries after a reopen (the CC6-inverse: rebuild-on-load is the subject).
-	rec, err := NewGraphStorage(d.dir)
+	rec, err := NewGraphStorageWithConfig(crashRecoveryConfig(d.dir))
 	if err != nil {
-		d.t.Fatalf("wal recover NewGraphStorage: %v", err)
+		d.t.Fatalf("wal recover NewGraphStorageWithConfig: %v", err)
 	}
 	d.t.Cleanup(func() { _ = rec.Close() })
 	d.gs = rec

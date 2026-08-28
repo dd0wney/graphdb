@@ -296,7 +296,7 @@ func TestCompactWAL_TransactionCommitsSurviveCompaction(t *testing.T) {
 	}
 	// Over-replay (entry both in snapshot and surviving WAL) would drift
 	// derived indexes; the parallel-invariant checker catches that class.
-	if violations := checkGraphInvariants(gs2); len(violations) != 0 {
+	if violations := mustCheckInvariants(t, gs2); len(violations) != 0 {
 		t.Fatalf("invariant violations after recovery: %v", violations)
 	}
 }

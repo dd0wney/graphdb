@@ -40,7 +40,7 @@ func validGraph(t *testing.T) (gs *GraphStorage, a, b uint64) {
 	if _, err := gs.CreateEdgeWithTenant("acme", na.ID, nb.ID, "LINKS", nil, 1.0); err != nil {
 		t.Fatalf("create edge: %v", err)
 	}
-	if v := checkGraphInvariants(gs); len(v) != 0 {
+	if v := mustCheckInvariants(t, gs); len(v) != 0 {
 		t.Fatalf("baseline graph is not invariant-clean: %v", v)
 	}
 	return gs, na.ID, nb.ID
@@ -61,7 +61,7 @@ func propIndexFor(t *testing.T, gs *GraphStorage, key string) *PropertyIndex {
 
 // TestGraphInvariants_DetectsDrift proves the checker has TEETH: each case
 // corrupts exactly one derived structure (the way a forgotten index update
-// would) and asserts checkGraphInvariants reports it. A checker that only ever
+// would) and asserts CheckInvariants reports it. A checker that only ever
 // passes green tests would be worthless against silent drift — this is the
 // evidence it catches the bug classes #288/#298/#305/#307/#308 came from.
 func TestGraphInvariants_DetectsDrift(t *testing.T) {
@@ -196,7 +196,7 @@ func TestGraphInvariants_DetectsDrift(t *testing.T) {
 
 			tt.corrupt(gs, a, b)
 
-			violations := checkGraphInvariants(gs)
+			violations := mustCheckInvariants(t, gs)
 			if len(violations) == 0 {
 				t.Fatalf("checker reported NO violation after corruption %q — it would miss this drift class", tt.name)
 			}

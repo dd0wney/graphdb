@@ -3,7 +3,7 @@ package storage
 import "testing"
 
 // crashRecoveryConfig pins the JSON snapshot path for the crash-recovery tests.
-// These assert via checkGraphInvariants (which requires shards to hold every
+// These assert via CheckInvariants (which requires shards to hold every
 // node — untrue under mmap's lazy base) and per-tenant counts across a reopen,
 // so they run in JSON regardless of the v1.2 mmap default. All phases (including
 // the initial create+snapshot) must use this so the WAL/snapshot format agrees;
