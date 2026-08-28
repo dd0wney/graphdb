@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/dd0wney/graphdb/pkg/alloc"
 	"github.com/dd0wney/graphdb/pkg/faultsim"
 	"github.com/dd0wney/graphdb/pkg/vfs"
 )
@@ -151,6 +152,27 @@ func (w *WAL) ReadAll() ([]*Entry, error) {
 			break
 		}
 		if err != nil {
+			// Two very different reasons to stop, and conflating them costs
+			// data.
+			//
+			// The DATA is bad or ended: a torn tail, a bad length, a record
+			// the writer never finished. Nothing beyond that point was ever
+			// durable, so the last good entry is the true end of the log and
+			// recovery is complete. This is the common case after a crash.
+			//
+			// We COULD NOT READ: an allocation was refused, or the device
+			// returned an error. Valid records may well follow the point we
+			// gave up at, so the last entry we saw is NOT the end of the log.
+			// Deriving currentLSN from it makes the next Append reuse an LSN
+			// that already exists on disk, and after the non-advancing-LSN
+			// guard above, that new record is silently dropped by the NEXT
+			// recovery. Found by the out-of-memory sweep: refusing allocation
+			// 3 of a 5-entry WAL left currentLSN=2 and the next append took
+			// LSN 3.
+			if isResourceError(err) {
+				log.Printf("WARNING: WAL recovery could not read after %d entries: %v", entriesRead, err)
+				return entries, fmt.Errorf("WAL recovery incomplete after %d entries: %w", entriesRead, err)
+			}
 			// Log corruption details for debugging
 			log.Printf("WARNING: WAL corruption detected after %d entries: read error: %v", entriesRead, err)
 			log.Printf("WARNING: WAL recovery stopped, %d entries recovered successfully", entriesRead)
@@ -198,6 +220,26 @@ func (w *WAL) ReadAll() ([]*Entry, error) {
 	}
 
 	return entries, nil
+}
+
+// isResourceError reports whether a read stopped because the reader could not
+// obtain something it needed, rather than because the data was bad or ended.
+//
+// A resource failure says nothing about the records that follow it, so
+// recovery cannot treat the last entry it read as the end of the log.
+func isResourceError(err error) bool {
+	if errors.Is(err, alloc.ErrNoMemory) {
+		return true
+	}
+	// A short read at the end of a record is a torn tail, which is data, not a
+	// resource failure.
+	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, errWALRecordTooLarge) {
+		return false
+	}
+	// Anything the underlying file returns that is not an end-of-file is a
+	// device or driver failure.
+	var pathErr *os.PathError
+	return errors.As(err, &pathErr)
 }
 
 // recoverLSN recovers the current LSN from existing WAL entries
