@@ -91,6 +91,22 @@ func OpenSSTable(path string) (*SSTable, error) {
 
 // Scan returns entries in range [start, end)
 func (sst *SSTable) Scan(start, end []byte) ([]*Entry, error) {
+	entries, err := sst.ScanEntries(start, end)
+	if err != nil {
+		return nil, err
+	}
+	live := make([]*Entry, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.Deleted {
+			live = append(live, entry)
+		}
+	}
+	return live, nil
+}
+
+// ScanEntries returns entries in range [start, end), tombstones included. See
+// MemTable.ScanEntries for why a merging caller needs them.
+func (sst *SSTable) ScanEntries(start, end []byte) ([]*Entry, error) {
 	// Find starting position
 	idx := sst.findIndexPosition(start)
 
@@ -115,9 +131,7 @@ func (sst *SSTable) Scan(start, end []byte) ([]*Entry, error) {
 
 		keyStr := string(entry.Key)
 		if keyStr >= string(start) && keyStr < string(end) {
-			if !entry.Deleted {
-				results = append(results, entry)
-			}
+			results = append(results, entry)
 		}
 
 		if keyStr >= string(end) {

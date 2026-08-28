@@ -142,36 +142,39 @@ func (lsm *LSMStorage) Scan(start, end []byte) (map[string][]byte, error) {
 	lsm.mu.RLock()
 	defer lsm.mu.RUnlock()
 
+	// seen records every key already resolved, tombstones included. Without it
+	// an older level revives a key that a newer level deleted or replaced.
+	seen := make(map[string]struct{})
 	results := make(map[string][]byte)
 
-	// Scan MemTable
-	memEntries := lsm.memTable.Scan(start, end)
-	for _, entry := range memEntries {
-		results[string(entry.Key)] = entry.Value
-	}
-
-	// Scan immutable MemTable
-	if lsm.immutableTable != nil {
-		immEntries := lsm.immutableTable.Scan(start, end)
-		for _, entry := range immEntries {
-			if _, exists := results[string(entry.Key)]; !exists {
-				results[string(entry.Key)] = entry.Value
+	take := func(entries []*Entry) {
+		for _, entry := range entries {
+			k := string(entry.Key)
+			if _, done := seen[k]; done {
+				continue
+			}
+			seen[k] = struct{}{}
+			if !entry.Deleted {
+				results[k] = entry.Value
 			}
 		}
 	}
 
-	// Scan SSTables
+	// Newest to oldest, the same order Get uses. Within a level the last
+	// SSTable is the most recently written one, so the walk runs in reverse.
+	// Taking the first entry in forward order returned the OLDEST value for a
+	// key written twice into L0, which disagreed with Get.
+	take(lsm.memTable.ScanEntries(start, end))
+	if lsm.immutableTable != nil {
+		take(lsm.immutableTable.ScanEntries(start, end))
+	}
 	for level := 0; level < len(lsm.levels); level++ {
-		for _, sst := range lsm.levels[level] {
-			entries, err := sst.Scan(start, end)
+		for i := len(lsm.levels[level]) - 1; i >= 0; i-- {
+			entries, err := lsm.levels[level][i].ScanEntries(start, end)
 			if err != nil {
 				continue
 			}
-			for _, entry := range entries {
-				if _, exists := results[string(entry.Key)]; !exists {
-					results[string(entry.Key)] = entry.Value
-				}
-			}
+			take(entries)
 		}
 	}
 

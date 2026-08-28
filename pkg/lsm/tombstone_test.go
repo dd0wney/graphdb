@@ -62,3 +62,52 @@ func TestGetFlushedTombstoneMasksOlderValue(t *testing.T) {
 		t.Errorf("Get returned %q for a deleted key, want absent", v)
 	}
 }
+
+// Scan must not revive a key whose tombstone lives in a newer level.
+func TestScanTombstoneMasksFlushedValue(t *testing.T) {
+	l := newTombstoneStore(t)
+
+	if err := l.Put([]byte("k"), []byte("v")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if err := l.Sync(); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if err := l.Delete([]byte("k")); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	got, err := l.Scan([]byte("a"), []byte("z"))
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if v, ok := got["k"]; ok {
+		t.Errorf("Scan returned %q for a deleted key, want absent", v)
+	}
+}
+
+// Scan must agree with Get about which of two L0 tables is newer.
+func TestScanPrefersNewestSSTable(t *testing.T) {
+	l := newTombstoneStore(t)
+
+	for _, v := range []string{"v1", "v2"} {
+		if err := l.Put([]byte("k"), []byte(v)); err != nil {
+			t.Fatalf("Put %s: %v", v, err)
+		}
+		if err := l.Sync(); err != nil {
+			t.Fatalf("Sync %s: %v", v, err)
+		}
+	}
+
+	if v, ok := l.Get([]byte("k")); !ok || string(v) != "v2" {
+		t.Fatalf("Get returned %q ok=%v, want v2: the test cannot prove anything", v, ok)
+	}
+
+	got, err := l.Scan([]byte("a"), []byte("z"))
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if string(got["k"]) != "v2" {
+		t.Errorf("Scan returned %q, want v2: Scan and Get disagree about which SSTable is newer", got["k"])
+	}
+}

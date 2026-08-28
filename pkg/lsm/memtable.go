@@ -157,7 +157,37 @@ func (mt *MemTable) Iterator() []*Entry {
 	return entries
 }
 
-// Scan returns entries in range [start, end)
+// ScanEntries returns entries in range [start, end), tombstones included.
+//
+// Scan drops tombstones, which is right for a caller looking at one table and
+// wrong for a caller merging several: the dropped tombstone lets an older
+// table revive the key. lsm.Scan merges, so it uses this.
+func (mt *MemTable) ScanEntries(start, end []byte) []*Entry {
+	mt.mu.Lock()
+	defer mt.mu.Unlock()
+
+	if !mt.sorted {
+		sort.Strings(mt.keys)
+		mt.sorted = true
+	}
+
+	startStr := string(start)
+	endStr := string(end)
+
+	results := make([]*Entry, 0)
+	for _, key := range mt.keys {
+		if key >= endStr {
+			break
+		}
+		if key >= startStr {
+			results = append(results, mt.data[key])
+		}
+	}
+
+	return results
+}
+
+// Scan returns live entries in range [start, end). A tombstone is omitted.
 func (mt *MemTable) Scan(start, end []byte) []*Entry {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
