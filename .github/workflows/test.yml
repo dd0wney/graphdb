@@ -77,8 +77,11 @@ jobs:
         go-version: '1.26.4'
         cache: true
 
-    - name: Run tests with coverage
-      run: make test-cover
+    - name: Run tests with coverage, and enforce the floor
+      # coverage-gate depends on test-cover, so this runs the suite and then
+      # checks the total against COVERAGE_MIN. One step keeps the floor in the
+      # Makefile only — a copy of the number here would drift from it.
+      run: make coverage-gate
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7

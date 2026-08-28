@@ -1,7 +1,7 @@
 # Cluso GraphDB Makefile
 # Leverages Go's native tooling for testing, building, and profiling
 
-.PHONY: help test test-verbose test-short test-race test-cover test-cover-html \
+.PHONY: help test test-verbose test-short test-race test-cover coverage-gate test-cover-html \
         bench bench-cpu bench-mem build build-all clean fmt vet lint \
         run-server run-cli run-tui install-tools mod-tidy mod-verify \
         integration-test api-test profile-cpu profile-mem
@@ -13,6 +13,11 @@
 BINARY_DIR := bin
 DATA_DIR := data
 COVERAGE_DIR := coverage
+# Statement-coverage floor enforced by `make coverage-gate`. Measured 79.5% on
+# 2026-08-28 over COVER_PKGS; the floor sits below that so ordinary variance
+# does not fail a PR. Raise it when the real number rises — this is a ratchet,
+# and lowering it needs a reason in the commit message.
+COVERAGE_MIN := 78.0
 GO := go
 GOFLAGS :=
 TEST_TIMEOUT := 10m
@@ -36,6 +41,14 @@ TEST_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
 # Race detector omits ./pkg/api/...: its server-spinning suite exceeds the 10m
 # budget under -race -p 2 (a timeout, NOT a data race). pkg/graphql and ./cmd/...
 # are race-clean and fast, so they stay in.
+# Coverage scope. Mirrors RACE_PKGS minus ./cmd/...: 13 of those binaries are
+# benchmark mains with no tests, and including them moves the total from 79.5%
+# to 52.9% without saying anything about test quality. ./pkg/api/... stays out
+# for the reason test-cover already documents.
+COVER_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
+	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... \
+	./pkg/graphql/...
+
 RACE_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
 	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... \
 	./pkg/graphql/... ./cmd/...
@@ -85,12 +98,14 @@ test-race:
 test-cover:
 	@echo "Running tests with coverage..."
 	@mkdir -p $(COVERAGE_DIR)
-	$(GO) test -cover -coverprofile=$(COVERAGE_DIR)/coverage.out \
-		./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
-		./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/...
+	$(GO) test -cover -coverprofile=$(COVERAGE_DIR)/coverage.out $(COVER_PKGS)
 	@echo ""
 	@echo "Coverage Summary:"
 	@$(GO) tool cover -func=$(COVERAGE_DIR)/coverage.out | tail -1
+
+## coverage-gate: Fail if coverage is below COVERAGE_MIN
+coverage-gate: test-cover
+	@bash scripts/coverage-gate.sh $(COVERAGE_DIR)/coverage.out $(COVERAGE_MIN)
 
 ## test-cover-html: Generate HTML coverage report
 test-cover-html: test-cover
