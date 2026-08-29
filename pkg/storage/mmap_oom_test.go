@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,24 +35,25 @@ func snapshotOnDisk(t *testing.T) string {
 }
 
 // readAll opens the snapshot and returns every node it could decode, keyed by
-// ID, plus a count of the IDs the directory listed but the decoder refused.
-func readAll(path string) (map[uint64]*Node, int, error) {
+// ID, plus the IDs the directory listed and the decoder refused, with why.
+func readAll(path string) (map[uint64]*Node, map[uint64]error, error) {
 	snap, err := openMmapSnapshot(path)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, err
 	}
 	defer func() { _ = snap.close() }()
 
 	got := make(map[uint64]*Node)
-	absent := 0
+	refused := make(map[uint64]error)
 	snap.forEachNodeID(func(id uint64, _ int64) {
-		if n, err := snap.getNode(id); err == nil {
-			got[id] = n
-		} else {
-			absent++
+		n, err := snap.getNode(id)
+		if err != nil {
+			refused[id] = err
+			return
 		}
+		got[id] = n
 	})
-	return got, absent, nil
+	return got, refused, nil
 }
 
 func TestSnapshotReadPathUnderAllocationFailure(t *testing.T) {
@@ -59,12 +61,12 @@ func TestSnapshotReadPathUnderAllocationFailure(t *testing.T) {
 
 	// Reference decode with no injection. Every later comparison is against
 	// this; without it the sweep could pass while returning nothing at all.
-	want, absent, err := readAll(path)
+	want, refusedRef, err := readAll(path)
 	if err != nil {
 		t.Fatalf("reference read: %v", err)
 	}
-	if absent != 0 || len(want) == 0 {
-		t.Fatalf("reference read is not clean: %d decoded, %d absent", len(want), absent)
+	if len(refusedRef) != 0 || len(want) == 0 {
+		t.Fatalf("reference read is not clean: %d decoded, %d refused", len(want), len(refusedRef))
 	}
 
 	for _, mode := range []alloctest.Mode{alloctest.FailOnce, alloctest.FailAllFrom} {
@@ -76,8 +78,8 @@ func TestSnapshotReadPathUnderAllocationFailure(t *testing.T) {
 					if err != nil {
 						return err
 					}
-					if missing > worstAbsent {
-						worstAbsent = missing
+					if len(missing) > worstAbsent {
+						worstAbsent = len(missing)
 					}
 					// SAFETY: whatever came back must be RIGHT. A refused
 					// allocation may cost a node; it must never produce a
@@ -102,6 +104,20 @@ func TestSnapshotReadPathUnderAllocationFailure(t *testing.T) {
 								return errWrongProperty(id, k)
 							}
 						}
+					}
+					// COMPLETENESS. The safety property above says a returned
+					// node is right. This says a node that did not come back
+					// said so. Before this assertion the sweep logged
+					// "worst case %d of %d nodes unreadable" and passed.
+					for id, cause := range missing {
+						if !errors.Is(cause, ErrRecordUnreadable) {
+							return errSilentlyAbsent(id, cause)
+						}
+					}
+					// Every listed ID is accounted for: decoded, or refused
+					// with a reason.
+					if len(got)+len(missing) != len(want) {
+						return errUnaccounted(len(got), len(missing), len(want))
 					}
 					return nil
 				},
@@ -131,4 +147,13 @@ func errPartialNode(id uint64, key string) error {
 }
 func errWrongProperty(id uint64, key string) error {
 	return nodeErr{msg: "node " + strconv.FormatUint(id, 10) + " property " + key + " differs from the reference decode"}
+}
+func errSilentlyAbsent(id uint64, cause error) error {
+	return nodeErr{msg: "node " + strconv.FormatUint(id, 10) +
+		" was absent for a reason that is not ErrRecordUnreadable: " + cause.Error()}
+}
+func errUnaccounted(decoded, refused, want int) error {
+	return nodeErr{msg: "the directory listed " + strconv.Itoa(want) +
+		" nodes; " + strconv.Itoa(decoded) + " decoded and " +
+		strconv.Itoa(refused) + " were refused — the rest vanished"}
 }

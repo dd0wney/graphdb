@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -80,7 +81,7 @@ func (gs *GraphStorage) checkClosed() error {
 // callers should prefer verifyNodeExistsForTenant.
 func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
 	if _, err := gs.resolveNodeRefLocked(nodeID); err != nil {
-		return fmt.Errorf("%s node %d not found", nodeType, nodeID) // PR B: wrap err
+		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, err)
 	}
 	return nil
 }
@@ -99,7 +100,14 @@ func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
 func (gs *GraphStorage) verifyNodeExistsForTenant(nodeID uint64, nodeType string, tenantID string) error {
 	node, err := gs.resolveNodeRefLocked(nodeID)
 	if err != nil {
-		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound) // PR B: wrap err
+		// See GetNodeForTenant: report an unreadable record only to the tenant
+		// that owns it. CreateEdgeWithTenant reaches here with a caller-supplied
+		// node ID, so this is a cross-tenant probe surface too.
+		if errors.Is(err, ErrRecordUnreadable) &&
+			gs.tenantOwnsUnreadableNode(nodeID, effectiveTenantID(tenantID)) {
+			return fmt.Errorf("%s node %d: %w", nodeType, nodeID, err)
+		}
+		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound)
 	}
 	expected := effectiveTenantID(tenantID).String()
 	if node.TenantID != expected {
@@ -311,10 +319,23 @@ func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
 		}
 		n, err := decodeNodeRecordAt(gs.mmapSnap.data, off)
 		if err != nil {
-			// A damaged record is skipped rather than crashing the walk. The
-			// invariant checker sees it as a missing record, which is the
-			// signal we want. PR B revisits this: the checker should report
-			// the damage instead of inferring it.
+			// A damaged record is skipped rather than crashing the walk.
+			// This walk has no way to report a decode failure — fn's
+			// signature is bool-returning, not error-returning. The
+			// invariant checker (checkInvariantsMmap) reports the damage
+			// itself, from its own pass over gs.mmapSnap.forEachNodeID and
+			// getNode, which sees every damaged record directly and does
+			// not depend on this walk to surface it.
+			//
+			// snapshotMmapLocked (mmap_snapshot_persist.go) also calls this
+			// walk, to collect the live node set for the next snapshot.
+			// There, a skip here is not safe: the damaged record is
+			// dropped from the write, and once it completes the record's
+			// directory entry, and every diagnostic this change adds for
+			// it, are gone. The edge branch of that same function refuses
+			// the write instead of dropping one (mmap_snapshot_persist.go,
+			// "Refuse rather than drop"). The node branch does not. That
+			// asymmetry predates this change and is not fixed here.
 			return
 		}
 		if !fn(n) {

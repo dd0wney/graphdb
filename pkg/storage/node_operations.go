@@ -331,7 +331,7 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 	node, owned, err := gs.resolveNodeRefOwnedLocked(nodeID)
 	if err != nil {
 		gs.recordOperation("get_node", "error", start)
-		return nil, ErrNodeNotFound // PR B: return err
+		return nil, err
 	}
 	if !owned {
 		node = node.Clone()
@@ -359,7 +359,14 @@ func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node,
 	defer gs.runlockShard(nodeID)
 	node, owned, err := gs.resolveNodeRefOwnedLocked(nodeID)
 	if err != nil {
-		return nil, ErrNodeNotFound // PR B: return err
+		// An unreadable record must not tell a cross-tenant caller that the ID
+		// exists. The record's tenant is inside the record we could not read,
+		// so consult the membership run instead. Not knowable means not found.
+		if errors.Is(err, ErrRecordUnreadable) &&
+			!gs.tenantOwnsUnreadableNode(nodeID, effectiveTenantID(tenantID)) {
+			return nil, ErrNodeNotFound
+		}
+		return nil, err
 	}
 	if node.TenantID != effectiveTenantID(tenantID).String() {
 		// Cross-tenant: same error as missing to avoid existence-leak side channel.
@@ -369,6 +376,32 @@ func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node,
 		node = node.Clone()
 	}
 	return node, nil
+}
+
+// tenantOwnsUnreadableNode reports whether a node ID whose record would not
+// decode belongs to the given tenant, so that a cross-tenant caller cannot
+// learn the ID exists from the error class alone.
+//
+// The ordering is what makes this cheap. The caller consults it ONLY after a
+// decode has already failed, which is rare, so the happy path pays nothing.
+// The search itself is O(log n) over the mapped bytes with no allocation —
+// membershipRun would copy every ID the tenant owns.
+//
+// Returns false when there is no mmap base and when the snapshot carries no
+// membership section. The caller turns false into ErrNodeNotFound, so those
+// cases leak nothing.
+//
+// A DAMAGED run is NOT one of those cases, and this guard is not a defence
+// against a corrupt file. The run bytes lie outside computeCRC, so a damaged
+// run can produce either answer: membershipContains refuses a read that would
+// leave the mapping, but a wrong value that is still in range compares like
+// any other and can return true. What this guard defends is a cross-tenant
+// probe against an INTACT file.
+func (gs *GraphStorage) tenantOwnsUnreadableNode(nodeID uint64, tid tenantid.TenantID) bool {
+	if gs.mmapSnap == nil {
+		return false
+	}
+	return gs.mmapSnap.membershipContains(membKindNodeTenant, string(tid), "", nodeID)
 }
 
 // WithNodeRefForTenant invokes fn with the live node pointer for the
@@ -417,7 +450,13 @@ func (gs *GraphStorage) WithNodeRefForTenant(nodeID uint64, tenantID string, fn 
 func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*Node, error) {
 	node, err := gs.resolveNodeRefLocked(nodeID)
 	if err != nil {
-		return nil, ErrNodeNotFound // PR B: return err
+		// See GetNodeForTenant: an unreadable record must not leak its
+		// existence to a caller from another tenant.
+		if errors.Is(err, ErrRecordUnreadable) &&
+			!gs.tenantOwnsUnreadableNode(nodeID, effectiveTenantID(tenantID)) {
+			return nil, ErrNodeNotFound
+		}
+		return nil, err
 	}
 	expectedTenant := effectiveTenantID(tenantID).String()
 	if node.TenantID != expectedTenant {
@@ -464,7 +503,7 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	gs.unlockShard(nodeID)
 	if err != nil {
 		gs.mu.Unlock()
-		return ErrNodeNotFound // PR B: return err
+		return err
 	}
 
 	// R2.1: snapshot pre-update state for observer dispatch. Only allocate
@@ -544,7 +583,7 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	gs.unlockShard(nodeID)
 	if err != nil {
 		gs.mu.Unlock()
-		return ErrNodeNotFound // PR B: return err
+		return err
 	}
 
 	// R2.1: snapshot pre-removal state for observer dispatch. Only
@@ -710,7 +749,7 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	node, err := gs.resolveNodeRefLocked(nodeID)
 	if err != nil {
 		gs.mu.Unlock()
-		return ErrNodeNotFound // PR B: return err
+		return err
 	}
 
 	// Capture for OnNodeDeleted dispatch after unlock. node.TenantID is

@@ -210,18 +210,44 @@ sites), crash/power-loss simulation with torn writes and write reordering, and
 `pkg/api` coverage (excluded from the number for the runner reason `test-cover`
 documents).
 
-4. **A refused allocation is indistinguishable from a missing record.**
-   `getNode` returns `(nil, false)` for both "no such node" and "could not
-   allocate one", so under memory pressure a query returns an incomplete result
-   with nothing to signal it.
-   `TestSnapshotReadPathUnderAllocationFailure` measured 1 of 3 nodes vanishing
-   under fail-once and 2 of 3 under fail-all-from (#507).
+4. ~~**A refused allocation is indistinguishable from a missing record.**~~
+   **Framing corrected, single-record half SHIPPED.** The framing above was too
+   narrow: `alloc.Bytes` cannot fail in production with no allocator installed
+   (`pkg/alloc/alloc.go:75-77`), so a refused allocation is a test-injection
+   case, not the field defect. **The production cause is a damaged record
+   body**, not memory pressure — the snapshot CRC covers the header, the
+   directories and the metadata blob, NOT record bodies, so a record damaged by
+   bit rot, a partial write, a truncated copy or a hostile file survives open
+   and fails only at decode. `TestSnapshotReadPathUnderAllocationFailure`
+   measured 1 of 3 nodes vanishing under fail-once and 2 of 3 under
+   fail-all-from (#507); that sweep now asserts completeness rather than only
+   logging it.
    **This is the one place SQLite's design makes the failure impossible and
    graphdb's makes it the default**: `sqlite3_malloc` failure returns
    `SQLITE_NOMEM`, an error code that cannot be mistaken for an empty result
-   (sqlite.org/malloc.html). The fix is a reason code instead of a bool across
-   8 internal call sites, reaching the public error boundary. It is a contract
-   change and wants its own PR.
+   (sqlite.org/malloc.html).
+   **Single-record half: SHIPPED — PR B** (branch
+   `fix/storage-unreadable-single-record`, commits `50edf57..64bab7d`).
+   `GetNode`, `GetNodeForTenant`, `GetEdge`, `GetEdgeForTenant`, the verify
+   path behind edge creation (`verifyNodeExistsForTenant`), and
+   `CheckInvariants` now return or report `ErrRecordUnreadable` — wrapping
+   `errRecordDamaged` or `alloc.ErrNoMemory` — instead of collapsing to
+   `ErrNodeNotFound`. The delete cascade inside `DeleteNode` and the batch
+   executor still collapse an unreadable record to absent; that is not part
+   of this half. The fix opened a tenant
+   existence side-channel (a damaged record's tenant string is inside the
+   record, so the decode failure precedes the tenant check); a
+   `membershipContains` guard on five tenant-scoped sites closes it by binary
+   search over the mmap'd membership run, at zero allocation on the happy path.
+   **What remains, and is the live item: the enumeration half.**
+   `GetAllNodesForTenant`, `GetAllEdgesForTenant`, `GetNodesByLabelForTenant`
+   and the four `*PageForTenant` methods still skip an unreadable record rather
+   than reporting it. This is PR C, not started: 7 public methods gain an
+   `error`, `pkg/storage/interface.go:43,44,50` changes, `BTreeGraphStorage`
+   follows as the second implementation, and 26 production call sites move
+   across `pkg/graphql` (14), `pkg/query` (6), `pkg/api` (4), `pkg/search` (1)
+   and `pkg/algorithms` (1). It changes a public interface, which the
+   parallel-agent rule says to propose to the user before implementing.
 
 5. **Nothing verifies resource release under OOM.** SQLite runs its leak
    detector *while* the OOM overlay is active, "verifying no leaks occur during

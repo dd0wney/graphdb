@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -433,5 +434,78 @@ func TestMmapSnapshot_MembershipRoundTrip(t *testing.T) {
 	eq("ref", snap.membershipRun(membKindEdgeType, "t", "REF"), []uint64{11})
 	if got := snap.membershipRun(membKindNodeLabel, "t", "Missing"); got != nil {
 		t.Errorf("missing label run = %v want nil", got)
+	}
+}
+
+// membershipContains guards a security decision, so it must never panic and
+// must answer false on every doubtful input. The offset and the count come out
+// of the file as signed int64, and the CRC covers neither the run bytes nor the
+// values a partial write can leave behind — so this test drives the hostile
+// values directly rather than through a snapshot.
+//
+// The -1 offset is the case worth naming. uint64(-1) + 4 wraps to 3, which is a
+// small in-bounds base, so a check written only against the upper bound would
+// binary-search from byte 3 of an arbitrary file.
+func TestMembershipContainsRefusesHostileDirectoryEntries(t *testing.T) {
+	// A real run of {10, 20, 30} at offset 8 in a 40-byte buffer.
+	const runOff = 8
+	buf := make([]byte, runOff)
+	buf = append(buf, appendCSRRun(nil, []uint64{10, 20, 30})...)
+
+	key := string(membFullKey(membKindNodeTenant, "t", ""))
+	snap := func(off, count int64) *mmapSnapshot {
+		return &mmapSnapshot{
+			data:    buf,
+			membDir: &membershipDir{keys: []string{key}, offs: []int64{off}, counts: []int64{count}},
+		}
+	}
+
+	// POSITIVE CONTROL. Without it every case below would pass on a function
+	// that returned false unconditionally.
+	good := snap(runOff, 3)
+	for _, id := range []uint64{10, 20, 30} {
+		if !good.membershipContains(membKindNodeTenant, "t", "", id) {
+			t.Fatalf("a well-formed run must contain %d", id)
+		}
+	}
+	for _, id := range []uint64{0, 9, 11, 29, 31, ^uint64(0)} {
+		if good.membershipContains(membKindNodeTenant, "t", "", id) {
+			t.Fatalf("a well-formed run must not contain %d", id)
+		}
+	}
+
+	cases := []struct {
+		name  string
+		off   int64
+		count int64
+	}{
+		{"offset -1 wraps to a small base when 4 is added", -1, 3},
+		{"offset -4 wraps to base 0", -4, 3},
+		{"most negative offset", math.MinInt64, 3},
+		{"offset past the end of the mapping", int64(len(buf)) + 1, 3},
+		{"offset exactly at the end", int64(len(buf)), 3},
+		{"negative count", runOff, -1},
+		{"most negative count", runOff, math.MinInt64},
+		{"count larger than the bytes that remain", runOff, 1000},
+		{"count at the signed maximum", runOff, math.MaxInt64},
+		{"zero count", runOff, 0},
+	}
+	for _, tc := range cases {
+		m := snap(tc.off, tc.count)
+		for _, id := range []uint64{0, 10, 20, 30, ^uint64(0)} {
+			if m.membershipContains(membKindNodeTenant, "t", "", id) {
+				t.Errorf("%s: must not report containment of %d", tc.name, id)
+			}
+		}
+	}
+
+	// A key the directory does not hold, and a snapshot with no membership
+	// section at all, both answer false.
+	if good.membershipContains(membKindNodeTenant, "other", "", 10) {
+		t.Error("an absent key must not report containment")
+	}
+	var none mmapSnapshot
+	if none.membershipContains(membKindNodeTenant, "t", "", 10) {
+		t.Error("a snapshot with no membership directory must not report containment")
 	}
 }

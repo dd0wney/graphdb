@@ -323,6 +323,75 @@ func (m *mmapSnapshot) membershipRun(kind byte, tenant, name string) []uint64 {
 	return ids
 }
 
+// membershipContains reports whether id is in the (kind, tenant, name) run,
+// WITHOUT copying the run out of the mapping. membershipRun goes through
+// readCSRRun, which allocates a slice of every ID the tenant owns — far too
+// much for a single-record read path. The run is sorted, so a binary search
+// over the mapped bytes answers the same question at O(log n) and zero
+// allocation.
+//
+// Every read is bounds-checked against len(m.data). The offset and the count
+// come from the membership DIRECTORY, which computeCRC does cover; the run
+// bytes this search then reads are NOT covered. Both arrive as a signed int64
+// that the file chose. So the CRC hides a bad directory pair in practice, and
+// hiding is not defending: a partial write that lands on a plausible checksum
+// reaches here with any offset and any count, and no checksum at all stands
+// behind the run. A read that would leave the mapping returns false rather
+// than panicking: this function guards a security decision, and failing closed
+// is the only safe direction.
+func (m *mmapSnapshot) membershipContains(kind byte, tenant, name string, id uint64) bool {
+	if m.membDir == nil {
+		return false
+	}
+	off, idCount, ok := m.membDir.lookup(kind, tenant, name)
+	// off and idCount are int64 read straight out of the file. A negative off
+	// converts to a huge uint64 that the base check below would reject, EXCEPT
+	// near -1, where uint64(off)+4 wraps to a small in-bounds base. Reject the
+	// sign here so no later arithmetic has to survive it.
+	if !ok || off < 0 || idCount <= 0 {
+		return false
+	}
+	size := uint64(len(m.data))
+	// The run is count(4) then count little-endian uint64s, per appendCSRRun.
+	const runHeader = 4
+	// off >= 0, so uint64(off) <= MaxInt64 and this addition cannot wrap.
+	base := uint64(off) + runHeader
+	// Order matters here. Validate base BEFORE it appears in a subtraction:
+	// size - base UNDERFLOWS to a huge number when base is past the end, and
+	// the count check would then pass for any count at all.
+	if base > size {
+		return false
+	}
+	// Reject a count that cannot fit before computing any index from it. After
+	// this, count*8 <= size-base, so every mid*8 below fits in a uint64 and
+	// every base+mid*8 stays inside the mapping.
+	count := uint64(idCount)
+	if count > (size-base)/8 {
+		return false
+	}
+	lo, hi := uint64(0), count
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		p := base + mid*8
+		if p+8 > size {
+			return false
+		}
+		if binary.LittleEndian.Uint64(m.data[p:]) < id {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo >= count {
+		return false
+	}
+	p := base + lo*8
+	if p+8 > size {
+		return false
+	}
+	return binary.LittleEndian.Uint64(m.data[p:]) == id
+}
+
 // membershipKeys returns the `name` components present for (kind,tenant).
 func (m *mmapSnapshot) membershipKeys(kind byte, tenant string) []string {
 	if m.membDir == nil {

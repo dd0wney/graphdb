@@ -127,7 +127,7 @@ func (tx *Transaction) Commit() error {
 		if err != nil {
 			// validateLocked guaranteed existence + ownership; defensive only.
 			tx.gs.mu.Unlock()
-			return fmt.Errorf("commit: update target %d vanished", nodeID) // PR B: wrap err
+			return fmt.Errorf("commit: update target %d vanished: %w", nodeID, err)
 		}
 		var oldNode *Node
 		if haveObservers {
