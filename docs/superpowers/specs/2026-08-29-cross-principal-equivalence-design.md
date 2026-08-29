@@ -138,6 +138,16 @@ intact record passes; a fault test with one principal never compares.
    `X-Tenant-ID` admin-override path, or in tenant-active checks. It covers the
    storage-error-to-HTTP-status mapping for a request that is already
    authenticated and already tenant-resolved, and nothing else.
+6. **Rows 1 and 4 (`GET /nodes/{id}`, `GET /edges/{id}`) are not gates against
+   the class this sweep guards.** `getNode` and `getEdge` in `pkg/api` map
+   every error to 404, so those two rows compare 404 against 404 whatever
+   `pkg/storage` returned underneath. This is measured, not inferred: both
+   rows passed at commit `9a5feb0`, while the leak the rest of this sweep
+   exists to catch was live and six of the other seven rows failed. The fault
+   test's `ownerSeesTheDamage` map records this collapse as today's behaviour,
+   not as a rule the sweep enforces — a handler that starts to distinguish
+   damage from absence for the owner must update that map, and one that starts
+   to distinguish them for the stranger fails the sweep outright.
 
 ## Relationship to `github.com/dd0wney/fault`
 
