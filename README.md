@@ -6,7 +6,30 @@
 [![License](https://img.shields.io/github/license/dd0wney/graphdb)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dd0wney/graphdb)](https://goreportcard.com/report/github.com/dd0wney/graphdb)
 
-A high-performance, feature-rich graph database built from scratch in Go. GraphDB combines modern storage techniques with powerful graph algorithms and multiple query interfaces.
+A graph database written from scratch in Go: LSM-tree storage, a write-ahead log, an
+mmap-backed snapshot format with lazy reopen, Cypher-subset and GraphQL query paths, graph
+algorithms, and multi-tenant isolation carried through every storage method.
+
+**The unusual part is the testing.** 411 test files, ~134k lines of test against ~81k lines
+of source — and the gates are built to catch themselves lying:
+
+- **Mutation testing** and **coupling coverage** ask whether a test would *notice* a change,
+  not merely whether it executed the line.
+- **Per-package coverage floors measured on CI**, never on a developer machine. A floor taken
+  from the wrong host once failed every pull request until it was re-measured.
+- **Every gate ships a self-test** that proves it can report failure. Defects found this way
+  include a coverage floor read from the wrong machine, a tagged CI job that compiled an
+  identical set of files, a metamorphic suite that asserted nothing while appearing to pass,
+  and a crash-recovery test that passed for nearly two months because two nodes shared an ID.
+- **Fault injection, invariant checkers, a property-based JSON↔mmap equivalence oracle, fuzz
+  targets, and consumer-contract tests.**
+
+Every fix lands with a test that was *watched failing* against the pre-fix code, and the pull
+request records what it printed. See [`CLAUDE.md`](CLAUDE.md) for the working rules.
+
+**Open core.** This repository is the OSS core plus the plugin and licence framework. The
+enterprise plugin implementations live in a separate private repository, so `pkg/plugins` is
+an interface with real consumers rather than scaffolding.
 
 ## Releases
 
