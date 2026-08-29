@@ -153,6 +153,21 @@ a track. Test-code-to-source ratio for context: SQLite 590x, graphdb 1.48x.
 | #480 | Replaced the vacuous `-tags nng` CI job with a cgo-free gate |
 | #481 | N-sweep and `pkg/faultsim` |
 
+**Shipped 2026-08-29**
+
+| PR | What |
+|---|---|
+| #503 | Three documents that stopped being correct |
+| #504 | A JSON-mode open that served an empty database now returns an error. Exposed a crash-recovery test passing for nearly two months on an ID collision |
+| #505 | Four incorrect claims: `CLAUDE.md`'s clean-checkout note, the ✅ DONE marker, the README opening, and the 2026-08-28 handoff's first line |
+| #506 | The second snapshot-mode defect entered § E |
+| #507 | **ADR 0002 stage 4.** `pkg/storage` and all three WAL flavours on the `pkg/vfs` driver; `syscall.Mmap` has left `pkg/storage`. Plus a DCCC statement-count floor, two mmap reader fixes, and an OOM sweep over the snapshot read path |
+| #508 | The public write-up, live on GitHub Pages |
+| #509 | Session handoff |
+
+Scorecard after #507: **6 ✓ / 7 ◐ / 4 ✗**, row 11 ◐ → ✓. DCCC baseline
+563/616 → **576/628 over 17 sites**.
+
 **The programme itself is now tracked**, in
 `docs/internals/design/SQLITE_TESTING_SCORECARD.md`: all 15 SQLite techniques
 with state, evidence, and next action, plus the defects each one found. It is a
@@ -194,3 +209,35 @@ list lived only in a chat window.
 sites), crash/power-loss simulation with torn writes and write reordering, and
 `pkg/api` coverage (excluded from the number for the runner reason `test-cover`
 documents).
+
+4. **A refused allocation is indistinguishable from a missing record.**
+   `getNode` returns `(nil, false)` for both "no such node" and "could not
+   allocate one", so under memory pressure a query returns an incomplete result
+   with nothing to signal it.
+   `TestSnapshotReadPathUnderAllocationFailure` measured 1 of 3 nodes vanishing
+   under fail-once and 2 of 3 under fail-all-from (#507).
+   **This is the one place SQLite's design makes the failure impossible and
+   graphdb's makes it the default**: `sqlite3_malloc` failure returns
+   `SQLITE_NOMEM`, an error code that cannot be mistaken for an empty result
+   (sqlite.org/malloc.html). The fix is a reason code instead of a bool across
+   8 internal call sites, reaching the public error boundary. It is a contract
+   change and wants its own PR.
+
+5. **Nothing verifies resource release under OOM.** SQLite runs its leak
+   detector *while* the OOM overlay is active, "verifying no leaks occur during
+   OOM scenarios". graphdb's sweep asserts that returned data is correct and
+   asserts nothing about cleanup. That matters here because the mmap `release()`
+   closure calls `syscall.Munmap`, which the garbage collector does not manage:
+   `openMmapSnapshotWithFS` has **eight** error paths that call `release()` and
+   no test proves any of them fire. A missed one leaks address space until the
+   process exits. Cheap to close — a `vfs.Mapper` test driver counting `Map`
+   against `release`, asserted across the sweep that already exists.
+
+6. **Two SQLite memory behaviours graphdb deliberately does not have.** Record
+   them as choices so a later reader does not log them as gaps. SQLite frees
+   unpinned cache pages and **retries** before returning `SQLITE_NOMEM`, and it
+   has a **soft heap limit** (`sqlite3_soft_heap_limit64`) that triggers that
+   reclaim early. graphdb has neither: a refusal from `alloc.Bytes` is final and
+   there is no memory budget. Defensible for a Go program where the runtime owns
+   the heap, but it means graphdb's OOM behaviour is strictly less forgiving
+   than SQLite's, and the scorecard should say so rather than imply parity.
