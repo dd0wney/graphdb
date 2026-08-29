@@ -509,3 +509,23 @@ func TestMembershipContainsRefusesHostileDirectoryEntries(t *testing.T) {
 		t.Error("a snapshot with no membership directory must not report containment")
 	}
 }
+
+// TestMmapSnapshotVersionIsFour pins mmapSnapshotVersion so a bump is caught
+// here, in the package that owns the format, at build/test time.
+//
+// pkg/storage/storagetest/damage.go cannot read this package's unexported
+// constant across the package boundary, so it keeps a second copy
+// (wantVersion) and refuses any snapshot whose version does not match. That
+// refusal is a runtime failure inside every caller of the fault injector, not
+// a build failure inside the package that made the change. Nothing here fails
+// today when mmapSnapshotVersion moves, so this test exists to make that
+// drift loud at the point of change instead of silent until the injector
+// trips at runtime.
+func TestMmapSnapshotVersionIsFour(t *testing.T) {
+	if mmapSnapshotVersion != 4 {
+		t.Fatalf("mmapSnapshotVersion is %d, not 4: pkg/storage/storagetest/damage.go's "+
+			"wantVersion constant must move to the same value in this change, or the fault "+
+			"injector will refuse every real snapshot at runtime instead of this test "+
+			"failing at build time", mmapSnapshotVersion)
+	}
+}
