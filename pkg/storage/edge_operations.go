@@ -1,10 +1,12 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
 
+	"github.com/dd0wney/graphdb/pkg/tenantid"
 	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
@@ -176,6 +178,12 @@ func (gs *GraphStorage) DeleteEdgeForTenant(edgeID uint64, tenantID string) erro
 func (gs *GraphStorage) getEdgeRefForTenant(edgeID uint64, tenantID string) (*Edge, error) {
 	edge, err := gs.resolveEdgeRefLocked(edgeID)
 	if err != nil {
+		// See GetEdgeForTenant: an unreadable record must not leak its
+		// existence to a caller from another tenant.
+		if errors.Is(err, ErrRecordUnreadable) &&
+			!gs.tenantOwnsUnreadableEdge(edgeID, effectiveTenantID(tenantID)) {
+			return nil, ErrEdgeNotFound
+		}
 		return nil, err
 	}
 	expectedTenant := effectiveTenantID(tenantID).String()
@@ -242,24 +250,32 @@ func (gs *GraphStorage) GetEdgeForTenant(edgeID uint64, tenantID string) (*Edge,
 	defer gs.runlockShard(edgeID)
 	edge, owned, err := gs.resolveEdgeRefOwnedLocked(edgeID)
 	if err != nil {
+		// An unreadable record must not tell a cross-tenant caller that the ID
+		// exists. The record's tenant is inside the record we could not read,
+		// so consult the membership run instead. Not knowable means not found.
+		if errors.Is(err, ErrRecordUnreadable) &&
+			!gs.tenantOwnsUnreadableEdge(edgeID, effectiveTenantID(tenantID)) {
+			return nil, ErrEdgeNotFound
+		}
 		return nil, err
 	}
 	if edge.TenantID != effectiveTenantID(tenantID).String() {
 		// Cross-tenant: same error as missing to avoid existence-leak side channel.
-		//
-		// An UNREADABLE record is the one documented exception to this rule.
-		// Its tenant string lives inside the record, so the failure necessarily
-		// precedes this check, and the error therefore reveals that the edge
-		// directory holds an entry at this ID. The alternative — consulting the
-		// per-tenant membership section first — costs a lookup (~11ms at 937k
-		// nodes) on the single-record read path, which is the cost cheap reopen
-		// exists to avoid. See the spec, "The tenant side-channel".
 		return nil, ErrEdgeNotFound
 	}
 	if !owned {
 		edge = edge.Clone()
 	}
 	return edge, nil
+}
+
+// tenantOwnsUnreadableEdge is tenantOwnsUnreadableNode for edges. See that
+// function for the ordering, the cost and the fail-closed contract.
+func (gs *GraphStorage) tenantOwnsUnreadableEdge(edgeID uint64, tid tenantid.TenantID) bool {
+	if gs.mmapSnap == nil {
+		return false
+	}
+	return gs.mmapSnap.membershipContains(membKindEdgeTenant, string(tid), "", edgeID)
 }
 
 // GetEdge retrieves an edge by ID.

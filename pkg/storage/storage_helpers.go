@@ -100,7 +100,11 @@ func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
 func (gs *GraphStorage) verifyNodeExistsForTenant(nodeID uint64, nodeType string, tenantID string) error {
 	node, err := gs.resolveNodeRefLocked(nodeID)
 	if err != nil {
-		if errors.Is(err, ErrRecordUnreadable) {
+		// See GetNodeForTenant: report an unreadable record only to the tenant
+		// that owns it. CreateEdgeWithTenant reaches here with a caller-supplied
+		// node ID, so this is a cross-tenant probe surface too.
+		if errors.Is(err, ErrRecordUnreadable) &&
+			gs.tenantOwnsUnreadableNode(nodeID, effectiveTenantID(tenantID)) {
 			return fmt.Errorf("%s node %d: %w", nodeType, nodeID, err)
 		}
 		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound)

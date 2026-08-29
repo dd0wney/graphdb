@@ -359,24 +359,42 @@ func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node,
 	defer gs.runlockShard(nodeID)
 	node, owned, err := gs.resolveNodeRefOwnedLocked(nodeID)
 	if err != nil {
+		// An unreadable record must not tell a cross-tenant caller that the ID
+		// exists. The record's tenant is inside the record we could not read,
+		// so consult the membership run instead. Not knowable means not found.
+		if errors.Is(err, ErrRecordUnreadable) &&
+			!gs.tenantOwnsUnreadableNode(nodeID, effectiveTenantID(tenantID)) {
+			return nil, ErrNodeNotFound
+		}
 		return nil, err
 	}
 	if node.TenantID != effectiveTenantID(tenantID).String() {
 		// Cross-tenant: same error as missing to avoid existence-leak side channel.
-		//
-		// An UNREADABLE record is the one documented exception to this rule.
-		// Its tenant string lives inside the record, so the failure necessarily
-		// precedes this check, and the error therefore reveals that the node
-		// directory holds an entry at this ID. The alternative — consulting the
-		// per-tenant membership section first — costs a lookup (~11ms at 937k
-		// nodes) on the single-node read path, which is the cost cheap reopen
-		// exists to avoid. See the spec, "The tenant side-channel".
 		return nil, ErrNodeNotFound
 	}
 	if !owned {
 		node = node.Clone()
 	}
 	return node, nil
+}
+
+// tenantOwnsUnreadableNode reports whether a node ID whose record would not
+// decode belongs to the given tenant, so that a cross-tenant caller cannot
+// learn the ID exists from the error class alone.
+//
+// The ordering is what makes this cheap. The caller consults it ONLY after a
+// decode has already failed, which is rare, so the happy path pays nothing.
+// The search itself is O(log n) over the mapped bytes with no allocation —
+// membershipRun would copy every ID the tenant owns.
+//
+// Returns false whenever the answer is not knowable: no mmap base, no
+// membership section, a damaged run. The caller turns false into
+// ErrNodeNotFound, so an unknowable answer leaks nothing.
+func (gs *GraphStorage) tenantOwnsUnreadableNode(nodeID uint64, tid tenantid.TenantID) bool {
+	if gs.mmapSnap == nil {
+		return false
+	}
+	return gs.mmapSnap.membershipContains(membKindNodeTenant, string(tid), "", nodeID)
 }
 
 // WithNodeRefForTenant invokes fn with the live node pointer for the
@@ -425,6 +443,12 @@ func (gs *GraphStorage) WithNodeRefForTenant(nodeID uint64, tenantID string, fn 
 func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*Node, error) {
 	node, err := gs.resolveNodeRefLocked(nodeID)
 	if err != nil {
+		// See GetNodeForTenant: an unreadable record must not leak its
+		// existence to a caller from another tenant.
+		if errors.Is(err, ErrRecordUnreadable) &&
+			!gs.tenantOwnsUnreadableNode(nodeID, effectiveTenantID(tenantID)) {
+			return nil, ErrNodeNotFound
+		}
 		return nil, err
 	}
 	expectedTenant := effectiveTenantID(tenantID).String()
