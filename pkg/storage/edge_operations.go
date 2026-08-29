@@ -174,9 +174,9 @@ func (gs *GraphStorage) DeleteEdgeForTenant(edgeID uint64, tenantID string) erro
 // (Stage 2c). This helper remains for internal inspection callers (e.g. DeleteEdgeForTenant,
 // UpdateEdgeForTenant).
 func (gs *GraphStorage) getEdgeRefForTenant(edgeID uint64, tenantID string) (*Edge, error) {
-	edge, exists := gs.resolveEdgeRefLocked(edgeID)
-	if !exists {
-		return nil, ErrEdgeNotFound
+	edge, err := gs.resolveEdgeRefLocked(edgeID)
+	if err != nil {
+		return nil, ErrEdgeNotFound // PR B: return err
 	}
 	expectedTenant := effectiveTenantID(tenantID).String()
 	if edge.TenantID != expectedTenant {
@@ -201,10 +201,10 @@ func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
 	// concurrent GetEdge readers see a consistent map. gs.mu.Lock above
 	// excludes other writers; lockShard excludes the readers. A4-edges.
 	gs.lockShard(edgeID)
-	edge, exists := gs.resolveEdgeRefLocked(edgeID)
-	if !exists {
+	edge, err := gs.resolveEdgeRefLocked(edgeID)
+	if err != nil {
 		gs.unlockShard(edgeID)
-		return fmt.Errorf("edge %d not found", edgeID)
+		return fmt.Errorf("edge %d not found", edgeID) // PR B: wrap err
 	}
 	fromID := edge.FromNodeID
 	toID := edge.ToNodeID
@@ -240,9 +240,9 @@ func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
 func (gs *GraphStorage) GetEdgeForTenant(edgeID uint64, tenantID string) (*Edge, error) {
 	gs.rlockShard(edgeID)
 	defer gs.runlockShard(edgeID)
-	edge, owned, exists := gs.resolveEdgeRefOwnedLocked(edgeID)
-	if !exists {
-		return nil, ErrEdgeNotFound
+	edge, owned, err := gs.resolveEdgeRefOwnedLocked(edgeID)
+	if err != nil {
+		return nil, ErrEdgeNotFound // PR B: return err
 	}
 	if edge.TenantID != effectiveTenantID(tenantID).String() {
 		// Cross-tenant: same error as missing to avoid existence-leak side channel.
@@ -271,9 +271,9 @@ func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 	gs.rlockShard(edgeID)
 	defer gs.runlockShard(edgeID)
 
-	edge, owned, exists := gs.resolveEdgeRefOwnedLocked(edgeID)
-	if !exists {
-		return nil, ErrEdgeNotFound
+	edge, owned, err := gs.resolveEdgeRefOwnedLocked(edgeID)
+	if err != nil {
+		return nil, ErrEdgeNotFound // PR B: return err
 	}
 	if !owned {
 		edge = edge.Clone()
@@ -324,9 +324,9 @@ func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, w
 	defer gs.unlockShard(edgeID)
 
 	// mmap mode: promote a base-resident edge into the overlay (CoW) before mutating.
-	edge, exists := gs.materializeEdgeLocked(edgeID)
-	if !exists {
-		return ErrEdgeNotFound
+	edge, err := gs.materializeEdgeLocked(edgeID)
+	if err != nil {
+		return ErrEdgeNotFound // PR B: return err
 	}
 
 	// Update properties (merge with existing)
@@ -483,9 +483,9 @@ func (gs *GraphStorage) findEdgeBetweenLocked(fromID, toID uint64, edgeType stri
 
 	// Search for matching edge
 	for _, edgeID := range edgeIDs {
-		edge, exists := gs.resolveEdgeRefLocked(edgeID)
-		if !exists {
-			continue
+		edge, err := gs.resolveEdgeRefLocked(edgeID)
+		if err != nil {
+			continue // PR B: distinguish unreadable
 		}
 		if edge.ToNodeID == toID && edge.Type == edgeType {
 			return edge.Clone(), nil
@@ -511,9 +511,9 @@ func (gs *GraphStorage) FindAllEdgesBetweenAcrossTenants(fromID, toID uint64) ([
 
 	var result []*Edge
 	for _, edgeID := range edgeIDs {
-		edge, exists := gs.resolveEdgeRefLocked(edgeID)
-		if !exists {
-			continue
+		edge, err := gs.resolveEdgeRefLocked(edgeID)
+		if err != nil {
+			continue // PR B: distinguish unreadable
 		}
 		if edge.ToNodeID == toID {
 			result = append(result, edge.Clone())
@@ -647,10 +647,10 @@ func (gs *GraphStorage) DeleteEdgeBetweenAcrossTenants(fromID, toID uint64, edge
 	var edgeToDelete *Edge
 	for _, edgeID := range edgeIDs {
 		gs.rlockShard(edgeID)
-		edge, exists := gs.resolveEdgeRefLocked(edgeID)
+		edge, err := gs.resolveEdgeRefLocked(edgeID)
 		gs.runlockShard(edgeID)
-		if !exists {
-			continue
+		if err != nil {
+			continue // PR B: distinguish unreadable
 		}
 		if edge.ToNodeID == toID && edge.Type == edgeType {
 			edgeToDelete = edge

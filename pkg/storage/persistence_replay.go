@@ -76,7 +76,7 @@ func (gs *GraphStorage) replayCreateNode(entry *wal.Entry) error {
 	}
 
 	// Skip if node already exists (already in snapshot — overlay or mmap base)
-	if _, exists := gs.resolveNodeRefLocked(node.ID); exists {
+	if _, err := gs.resolveNodeRefLocked(node.ID); err == nil {
 		return nil
 	}
 
@@ -124,9 +124,9 @@ func (gs *GraphStorage) replayUpdateNode(entry *wal.Entry) error {
 	}
 
 	// Skip if node doesn't exist; promote a base-resident node into the overlay.
-	node, exists := gs.materializeNodeLocked(updateInfo.NodeID)
-	if !exists {
-		return nil
+	node, err := gs.materializeNodeLocked(updateInfo.NodeID)
+	if err != nil {
+		return nil // PR B: distinguish unreadable
 	}
 
 	// Update property indexes
@@ -157,9 +157,9 @@ func (gs *GraphStorage) replayUpdateEdge(entry *wal.Entry) error {
 
 	// Skip if the edge doesn't exist (e.g. deleted later in the WAL); promote a
 	// base-resident edge into the overlay before mutating.
-	existing, exists := gs.materializeEdgeLocked(edge.ID)
-	if !exists {
-		return nil
+	existing, err := gs.materializeEdgeLocked(edge.ID)
+	if err != nil {
+		return nil // PR B: distinguish unreadable
 	}
 
 	existing.Properties = edge.Properties
@@ -174,7 +174,7 @@ func (gs *GraphStorage) replayCreateEdge(entry *wal.Entry) error {
 	}
 
 	// Skip if edge already exists (already in snapshot — overlay or mmap base)
-	if _, exists := gs.resolveEdgeRefLocked(edge.ID); exists {
+	if _, err := gs.resolveEdgeRefLocked(edge.ID); err == nil {
 		return nil
 	}
 
@@ -215,8 +215,8 @@ func (gs *GraphStorage) replayDeleteEdge(entry *wal.Entry) error {
 	}
 
 	// Skip if edge doesn't exist (already deleted or never existed)
-	if _, exists := gs.resolveEdgeRefLocked(edge.ID); !exists {
-		return nil
+	if _, err := gs.resolveEdgeRefLocked(edge.ID); err != nil {
+		return nil // PR B: distinguish unreadable
 	}
 
 	// Replay edge deletion
@@ -255,8 +255,8 @@ func (gs *GraphStorage) replayDeleteNode(entry *wal.Entry) error {
 	}
 
 	// Skip if node doesn't exist (already deleted or never existed)
-	if _, exists := gs.resolveNodeRefLocked(node.ID); !exists {
-		return nil
+	if _, err := gs.resolveNodeRefLocked(node.ID); err != nil {
+		return nil // PR B: distinguish unreadable
 	}
 
 	// Get edges to delete (disk-backed or in-memory)

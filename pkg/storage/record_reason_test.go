@@ -94,3 +94,30 @@ func TestMmapSnapshotGetNode_AbsentIsNotUnreadable(t *testing.T) {
 		t.Fatalf("absence must never be reported as unreadable: %v", err)
 	}
 }
+
+func TestResolveNodeRefLocked_AbsentIsNotFound(t *testing.T) {
+	dir := t.TempDir()
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	n, err := gs.CreateNode([]string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+
+	// Positive control: a node that exists resolves with no error.
+	if _, err := gs.resolveNodeRefLocked(n.ID); err != nil {
+		t.Fatalf("existing node must resolve: %v", err)
+	}
+	// Absence is ErrNodeNotFound, never a bare nil or an unreadable.
+	_, err = gs.resolveNodeRefLocked(n.ID + 9999)
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("want ErrNodeNotFound, got %v", err)
+	}
+}
