@@ -160,25 +160,56 @@ The decision is recorded as a comment beside the existing rule, not silently.
 |---|---|
 | `pkg/api` single-record handlers | **none.** They already branch `errors.Is(err, storage.ErrNodeNotFound)` → 404, default → 500 (`handlers_nodes.go:222`, `handlers_edges.go:208`). A new error class routes to 500 with no edit |
 | `pkg/api` list handlers, 4 call sites | accept and map the new `error` return (`handlers_nodes.go:92,94`, `handlers_edges.go:146,148`) |
-| `pkg/query`, `pkg/graphql`, `clients/go`, `workers/graphdb-client` | none. They consume public methods that already return errors |
+| `clients/go`, `workers/graphdb-client` | none. They speak HTTP, not the Go interface |
+| `pkg/graphql` (14 sites), `pkg/query` (6), `pkg/api` (4), `pkg/search` (1), `pkg/algorithms` (1) | **26 production sites** must accept an error, because of the three enumerators below |
 
-The four `*PageForTenant` methods are the only public signatures that must move.
-They return `([]*T, uint64)` with no error channel, so a short page has nowhere to
-report itself (`pkg/storage/pagination.go:69,97,127,155`).
+**Seven public signatures must move, not four.** Corrected 2026-08-29 after
+counting: the first draft of this spec claimed four.
 
-## Track structure: two PRs
+| Method | File | External production callers |
+|---|---|---|
+| `NodesPageForTenant` | `pagination.go:69` | 1 (`pkg/api`) |
+| `NodesByLabelPageForTenant` | `pagination.go:97` | 1 (`pkg/api`) |
+| `EdgesPageForTenant` | `pagination.go:127` | 1 (`pkg/api`) |
+| `EdgesByTypePageForTenant` | `pagination.go:155` | 1 (`pkg/api`) |
+| `GetNodesByLabelForTenant` | `tenant_operations.go:146` | 18 |
+| `GetAllNodesForTenant` | `tenant_operations.go:212` | 4 |
+| `GetAllEdgesForTenant` | `tenant_operations.go:246` | 4 |
+
+The last three are **declared in `pkg/storage/interface.go:43,44,50` and
+implemented twice** — `GraphStorage` and `BTreeGraphStorage`
+(`btree_storage.go:124,150,262`). The user's global `CLAUDE.md` says an
+interface change gets proposed, not implemented unilaterally. So they move in
+their own PR, separate from the single-record work.
+
+## Track structure: three PRs
+
+Corrected 2026-08-29. The first draft said two. The enumerator count above
+forced the split.
 
 **PR A — the mechanism, provably inert.** The decode functions,
 `mmapSnapshot.getNode`/`getEdge`, and the six helpers move to `(T, error)`. All 43
 call sites update. Every public boundary collapses any error back to today's
 answer, so external behaviour does not move. The evidence that it is inert is the
-existing suite, unchanged and green.
+existing suite, unchanged and green. `ErrRecordUnreadable` is defined here but is
+not yet reachable from outside the package.
 
-**PR B — the contract.** The public boundaries stop collapsing. The four page
-methods gain an `error`. The four `pkg/api` list call sites update. A
+**PR B — the single-record contract.** `GetNode`, `GetNodeForTenant`, `GetEdge`,
+`GetEdgeForTenant`, `WithNodeRefForTenant`, `UpdateNode*`, `DeleteNode*` and
+`verifyNodeExists*` stop collapsing. **`pkg/api` needs no edit**, because its
+handlers already branch `ErrNodeNotFound` → 404 and default → 500. A
 `docs/CONSUMER_CONTRACTS.md` row lands. `CheckInvariants` reports a damaged record
 as a violation instead of treating it as missing
 (`pkg/storage/storage_helpers.go:312` currently skips it by design).
+
+**PR C — the enumeration contract.** The seven bare-return methods gain an
+`error`, `pkg/storage/interface.go` changes, `BTreeGraphStorage` follows, and the
+26 production call sites in five packages update. Propose the interface change
+before starting, per the parallel-agent rule.
+
+PR B is small and high value. PR C is large and mechanical. Splitting them stops
+the sharpest defect — a single-record read that lies about existence — from
+waiting on a cross-package interface migration.
 
 ## Red-first evidence
 
@@ -221,3 +252,10 @@ pre-fix code, and the PR body records what it printed.
 4. **`storage_helpers.go:312`'s deliberate skip.** Its comment says the invariant
    checker wants a damaged record to look missing. PR B changes that contract,
    so the invariants doc and `CheckInvariants`' own tests move with it.
+5. **`scanNodeFields` / `scanEdgeFields` are dead.** Their doc comment says the
+   loader uses them to build the in-memory indexes cheaply
+   (`mmap_snapshot_format.go:585,646`). Nothing outside
+   `mmap_snapshot_format_test.go` calls them. They are the only bool-returning
+   decoders that this work leaves in place, so a later reader will trip on the
+   inconsistency. PR A corrects the comment only; deleting them is a separate
+   decision.
