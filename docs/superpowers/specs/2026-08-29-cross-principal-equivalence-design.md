@@ -131,6 +131,13 @@ intact record passes; a fault test with one principal never compares.
    rows 1 and 4 are trivially equal today and will stay green through changes that
    would break the others. They are cheap and they are weak. Keep them, and do not
    read their passing as coverage of the mapping.
+5. **The sweep never runs `requireAuth` or `withTenant`.** The driver dispatches
+   to raw handlers, because every protected route sits behind `requireAuth`,
+   which answers 401 before a context tenant can have any effect. So the sweep
+   proves nothing about leaks that originate in JWT validation, in the
+   `X-Tenant-ID` admin-override path, or in tenant-active checks. It covers the
+   storage-error-to-HTTP-status mapping for a request that is already
+   authenticated and already tenant-resolved, and nothing else.
 
 ## Relationship to `github.com/dd0wney/fault`
 
