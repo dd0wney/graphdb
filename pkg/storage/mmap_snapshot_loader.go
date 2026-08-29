@@ -40,6 +40,18 @@ func mmapEligible(config StorageConfig) bool {
 		!config.UseDiskBackedEdges
 }
 
+// mmapSnapshotStranded reports whether a JSON-path load that found no
+// snapshot.json is a mode mismatch rather than a fresh database. Close() in
+// mmap mode writes snapshot.mmap and truncates the WAL, so a store reopened
+// off the mmap path finds no snapshot and no WAL entries, and would serve an
+// empty database while reporting success.
+//
+// The reverse case is not a mismatch: mmap mode with no snapshot.mmap loads a
+// legacy snapshot.json and migrates on its next Close.
+func mmapSnapshotStranded(config StorageConfig) bool {
+	return !mmapEligible(config) && fileExists(mmapSnapshotPath(config.DataDir))
+}
+
 // loadFromDiskMmap maps the snapshot and rebuilds the in-memory indexes without
 // materializing the full graph. Mirrors the index-building portion of
 // loadFromDisk (persistence.go) but sources fields from a field-scan of the
