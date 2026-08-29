@@ -73,11 +73,24 @@ empty `import ()` block, for one. PR #485 was formatted with `gofmt`, passed the
 on the same commit. Two format gates that disagree cost a round trip every time
 the weaker one is the one you run. The CI step now uses `gofmt -s -l ./pkg ./cmd`.
 
-**`enterprise-plugins/` is outside both gates** — 16 files there are not
-`gofmt -s` clean, `prometheus-metrics` has its own `go.mod`, and `r2-backup`
-does not load because its AWS imports are absent from `go.mod`. `go build ./...`
-fails there on a clean checkout. That is pre-existing; do not read it as a
-regression from your change.
+**`enterprise-plugins/` is not in the repository at all.** `.gitignore:151`
+excludes it, and `git ls-tree -r HEAD` finds zero files under it. A clean
+checkout has no such directory: `git archive HEAD` into an empty tree, then
+`go build ./...`, exits 0 with no output (verified 2026-08-29, with a
+deliberately broken file as the positive control).
+
+The directory exists only in a local working tree, mirrored from
+`dd0wney/graphdb-enterprise`. In such a tree `go build ./...` fails with 7
+errors, because `r2-backup` has no `go.mod` of its own and its AWS imports
+join the root module. 16 files there are not `gofmt -s` clean, and both
+plugins still import the pre-rename path `github.com/dd0wney/cluso-graphdb/...`.
+
+**That failure is an artefact of your worktree, never of the repository.** Do
+not report it as a repo defect, and do not try to repair it here — the path is
+gitignored, so the fix belongs in the enterprise repo. Until 2026-08-29 this
+paragraph said "`go build ./...` fails there on a clean checkout". That was
+wrong, and it cost a session a recommended fix for a problem that does not
+exist.
 
 `/preflight` runs an equivalent set; `/review` checks the diff before commit.
 

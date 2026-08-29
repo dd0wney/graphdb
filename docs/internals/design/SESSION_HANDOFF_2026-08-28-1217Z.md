@@ -10,8 +10,19 @@
 and `pkg/lsm` is the first package where a fault reaches a background worker
 while a foreground reader runs. Then three testing regimes that did not exist
 this morning: mutation testing, coupling coverage, and per-package coverage
-floors. **Nine defects were found, and five of them were in the instruments
-rather than in the system.**
+floors. **Thirteen defects were found, and five existing tests turned out to be
+decoration that passed for the wrong reason.**
+
+> **Correction, 2026-08-29.** This line read "Nine defects were found, and five
+> of them were in the instruments rather than in the system." Both halves
+> misstated the source. The total is **13**, not 9 — the 9 is the *coupling*
+> subset, as the #486 row below says ("9 of 13 defects were coupling defects").
+> #486 sorts the 13 as 9 coupling, 1 inside one component, 3 process or the
+> contract of a test. The **5** is a separate population, not a subset of the
+> 13: § "How to use this handoff" records five *existing tests* that were
+> decoration. Written as one sentence, the two counts read as a ratio, and a
+> later session quoted "13 defects, 5 in the instruments", which is neither
+> source.
 
 ## What's done this session
 

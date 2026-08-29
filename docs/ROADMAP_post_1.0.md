@@ -3,6 +3,11 @@
 **Status:** proposal / living planning doc. Sketches the minor-version line from the
 v1.0.0 GA to the next major (v2.0.0).
 **Current release:** `v1.0.0` (2026-06-23, GA, GPG-signed).
+**What ✅ DONE means here:** the milestone's work is merged to `main`. It does **not**
+mean a tag was cut. `v1.0.0` is still the newest tag in the repository — there is no
+`v1.1.0`, `v1.2.0` or `v1.3.0` tag. Tagging is deliberate rather than pending: a `v*`
+tag starts both `release.yml` (GPG-signed goreleaser artifacts) and `docker-publish.yml`,
+so tags are cut when a release is actually intended, not to record progress.
 **Companion:** [`ROADMAP_v1.md`](./ROADMAP_v1.md) defined what 1.0 means and the path to GA
 (now complete). This doc picks up after it. The live per-track queue continues to live in
 the dated `NEXT_STEPS_<DATE>.md` checkpoints.
