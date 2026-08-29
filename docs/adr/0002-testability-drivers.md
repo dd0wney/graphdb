@@ -135,12 +135,35 @@ Each stage ships on its own and leaves the tree green.
 - 259 call sites, and the mmap path uses `syscall.Mmap` directly, which does not
   fit the `File` interface and needs its own treatment.
 
+  > **Correction, 2026-08-29 (stage 4).** The call-site counts in this document
+  > are inflated by roughly 20x, and they mis-sized the work. They count every
+  > `os.*` token — including `os.O_*` flag constants, `os.File` type references,
+  > `os.Stderr` and `os.Getenv` — across test files as well as production code.
+  >
+  > Measured on the production surface: `pkg/storage` has **8** filesystem
+  > operations, not 179. Of its 24 non-test `os.*` tokens, 11 are `os.Stderr`
+  > in `fmt.Fprintf`, 2 are `os.Getenv` and 2 are the `os.IsNotExist`
+  > predicate. `pkg/wal`'s "67" includes 39 `os.O_*` flags, which stay exactly
+  > as they are because `vfs.Open` takes the same flag argument.
+  >
+  > The risk this section names was the real one, and the volume was not:
+  > stage 4 was one function needing a file descriptor, plus seven mechanical
+  > substitutions. `vfs.Mapper` resolves it — see below.
+
 ### Risks
 
 - **A wrong abstraction is worse than none**: if `File` cannot express what the
   mmap reader needs, the migration stalls half-done. Mitigation: stage 1 ships
   the interface with `pkg/wal` migrated as the proof, before `pkg/storage` is
   touched.
+
+  > **Resolved, 2026-08-29.** `File` could not express it: the reader needs a
+  > descriptor for `syscall.Mmap`, and `File` has no `Fd`. It should not gain
+  > one — a fault driver has no descriptor to return, so an `Fd`-shaped seam
+  > admits the OS driver and excludes every other, which is the test-only seam
+  > this ADR exists to remove. `vfs.Mapper` exposes the operation the reader
+  > actually needs instead, as an OPTIONAL interface so `FileSystem` stays
+  > stable. `syscall.Mmap` has now left `pkg/storage` entirely.
 - **Performance regression on the hot path**: mitigation is the existing
   benchmark suite, run before and after stage 2, with the numbers in the PR.
 - **A published API used in production by mistake**: mitigation is SQLite's —
