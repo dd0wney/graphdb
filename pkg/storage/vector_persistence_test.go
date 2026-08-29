@@ -92,13 +92,26 @@ func TestVectorIndex_SurvivesCrashRecovery_PostSnapshotWrite(t *testing.T) {
 	// (no Close). The default WAL fsyncs per write, so node2 is durable.
 	var id2 uint64
 	{
-		gs := testCrashableStorage(t, dir, StorageConfig{DataDir: dir, EnableEdgeCompression: true})
+		// Same config as sessions 1 and 3 (NewGraphStorage uses
+		// DefaultStorageConfig). This session must differ from them in one
+		// way only: it never calls Close(). A bare StorageConfig literal here
+		// left UseMmapSnapshot at its zero value, so this session opened the
+		// mmap-closed store on the JSON path and got an EMPTY database. That
+		// restarted nextNodeID, node2 was assigned node1's ID, and both
+		// assertions below matched the same single node. The test passed
+		// without ever indexing a post-snapshot node.
+		gs := testCrashableStorage(t, dir, DefaultStorageConfig(dir))
 		n2, err := gs.CreateNodeWithTenant("acme", []string{"Doc"}, map[string]Value{"embedding": VectorValue([]float32{0, 1, 0})})
 		if err != nil {
 			t.Fatalf("create node2: %v", err)
 		}
 		id2 = n2.ID
 		// no Close — simulate crash.
+	}
+
+	if id1 == id2 {
+		t.Fatalf("node1 and node2 share ID %d: session 2 opened an empty store, so this test "+
+			"would pass on a single node and prove nothing", id1)
 	}
 
 	// Session 3: recovery — snapshot (def + node1) + WAL replay (node2). The

@@ -158,6 +158,18 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		loadErr = gs.loadFromDisk()
 	}
 	if loadErr != nil {
+		// A missing snapshot means a fresh database ONLY when no snapshot of
+		// the other format is sitting beside it. Refuse rather than open
+		// empty: the empty store is indistinguishable from a real one, and
+		// the next Close() overwrites the snapshot that still holds the data.
+		if os.IsNotExist(loadErr) && mmapSnapshotStranded(config) {
+			return nil, fmt.Errorf(
+				"data directory %q holds snapshot.mmap, but this store is not configured for the mmap "+
+					"snapshot path, so it would load an empty database. Set GRAPHDB_STORAGE_MODE=mmap "+
+					"(or StorageConfig.UseMmapSnapshot, with encryption and disk-backed edges off), or "+
+					"restore a json-mode archive",
+				config.DataDir)
+		}
 		// If no snapshot exists, that's OK (fresh database)
 		if !os.IsNotExist(loadErr) {
 			return nil, fmt.Errorf("failed to load from disk: %w", loadErr)
