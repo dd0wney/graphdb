@@ -5,18 +5,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // NewCompressedWAL creates a new compressed Write-Ahead Log
 func NewCompressedWAL(dataDir string) (*CompressedWAL, error) {
-	if err := os.MkdirAll(dataDir, walDirPerm); err != nil {
+	return NewCompressedWALWithFS(dataDir, nil)
+}
+
+// NewCompressedWALWithFS is NewCompressedWAL on a filesystem driver. A nil fs
+// means vfs.Default(), which is what ships.
+func NewCompressedWALWithFS(dataDir string, fs vfs.FileSystem) (*CompressedWAL, error) {
+	if fs == nil {
+		fs = vfs.Default()
+	}
+	if err := fs.MkdirAll(dataDir, walDirPerm); err != nil {
 		return nil, fmt.Errorf("failed to create WAL directory: %w", err)
 	}
 
 	walPath := filepath.Join(dataDir, "wal_compressed.log")
 
 	// Open or create WAL file
-	file, err := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm)
+	file, err := fs.Open(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open WAL file: %w", err)
 	}
@@ -25,6 +36,7 @@ func NewCompressedWAL(dataDir string) (*CompressedWAL, error) {
 		file:    file,
 		writer:  bufio.NewWriter(file),
 		dataDir: dataDir,
+		fs:      fs,
 	}
 
 	// Read existing entries to set currentLSN
@@ -76,7 +88,7 @@ func (w *CompressedWAL) Truncate() error {
 	}
 
 	// Create the new file BEFORE closing the old one to ensure we have a valid handle
-	newFile, err := os.OpenFile(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)
+	newFile, err := w.fs.Open(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)
 	if err != nil {
 		return fmt.Errorf("failed to create new WAL file: %w", err)
 	}
@@ -85,11 +97,11 @@ func (w *CompressedWAL) Truncate() error {
 	closeErr := w.file.Close()
 
 	// Rename new file to replace old file (atomic on POSIX)
-	if err := os.Rename(walPath+".new", walPath); err != nil {
+	if err := w.fs.Rename(walPath+".new", walPath); err != nil {
 		// Failed to rename - close new file and return error
 		newFile.Close()
 		// Try to reopen old file to maintain consistent state
-		if oldFile, reopenErr := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm); reopenErr == nil {
+		if oldFile, reopenErr := w.fs.Open(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm); reopenErr == nil {
 			w.file = oldFile
 			w.writer = bufio.NewWriter(oldFile)
 		}

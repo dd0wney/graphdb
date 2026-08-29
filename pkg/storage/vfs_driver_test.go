@@ -70,22 +70,39 @@ func (w *walOnlyFaultFS) Open(name string, flag int, perm os.FileMode) (vfs.File
 	return w.FileSystem.Open(name, flag, perm)
 }
 
-// The WAL must be built on the store's driver, not on vfs.Default().
+// The WAL must be built on the store's driver, not on vfs.Default() — for
+// every WAL flavour, not just the default one. pkg/storage chooses between
+// three constructors, and each is a separate chance to forget the driver.
+// CompressedWAL was in fact the one that was forgotten.
 func TestConstructionRoutesTheWALThroughTheDriver(t *testing.T) {
-	fs := &walOnlyFaultFS{FileSystem: vfs.OS()}
+	cases := []struct {
+		name string
+		tune func(*StorageConfig)
+	}{
+		{"plain", func(*StorageConfig) {}},
+		{"batched", func(c *StorageConfig) { c.EnableBatching = true }},
+		{"compressed", func(c *StorageConfig) { c.EnableCompression = true }},
+	}
 
-	cfg := jsonConfig(t.TempDir())
-	cfg.FS = fs
-	gs, err := NewGraphStorageWithConfig(cfg)
-	if err == nil {
-		_ = gs.Close()
-		t.Fatal("construction succeeded while every WAL Open was failing: the WAL is not going through the driver")
-	}
-	if fs.hits == 0 {
-		t.Fatal("the driver saw no WAL open at all")
-	}
-	if !errors.Is(err, vfstest.ErrInjected) {
-		t.Fatalf("construction failed for some other reason: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fs := &walOnlyFaultFS{FileSystem: vfs.OS()}
+			cfg := jsonConfig(t.TempDir())
+			cfg.FS = fs
+			tc.tune(&cfg)
+
+			gs, err := NewGraphStorageWithConfig(cfg)
+			if err == nil {
+				_ = gs.Close()
+				t.Fatalf("construction succeeded while every WAL Open was failing: the %s WAL is not going through the driver", tc.name)
+			}
+			if fs.hits == 0 {
+				t.Fatal("the driver saw no WAL open at all")
+			}
+			if !errors.Is(err, vfstest.ErrInjected) {
+				t.Fatalf("construction failed for some other reason: %v", err)
+			}
+		})
 	}
 }
 

@@ -113,12 +113,7 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 	// Initialize WAL (compressed, batched, or regular) - skip in bulk import mode
 	if !config.BulkImportMode {
 		if config.EnableCompression {
-			// NOT routed through gs.fs. CompressedWAL holds an *os.File
-			// directly, so putting it on a driver is a pkg/wal change, not a
-			// call-site change. A fault driver therefore does not reach the
-			// WAL when EnableCompression is set. Tracked as the remaining gap
-			// in ADR 0002 stage 4.
-			compressedWAL, err := wal.NewCompressedWAL(filepath.Join(config.DataDir, "wal"))
+			compressedWAL, err := wal.NewCompressedWALWithFS(filepath.Join(config.DataDir, "wal"), gs.fs)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize compressed WAL: %w", err)
 			}
