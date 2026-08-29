@@ -4,6 +4,8 @@ import (
 	"hash/crc32"
 	"sync"
 	"time"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // BatchedWAL wraps WAL with batching capabilities for better write performance
@@ -34,7 +36,14 @@ type pendingEntry struct {
 
 // NewBatchedWAL creates a new batched WAL
 func NewBatchedWAL(dataDir string, batchSize int, flushInterval time.Duration) (*BatchedWAL, error) {
-	wal, err := NewWAL(dataDir)
+	return NewBatchedWALWithFS(dataDir, batchSize, flushInterval, nil)
+}
+
+// NewBatchedWALWithFS is NewBatchedWAL on a filesystem driver. A nil fs means
+// vfs.Default(). The batching layer holds no file of its own, so this forwards
+// the driver to the WAL underneath it.
+func NewBatchedWALWithFS(dataDir string, batchSize int, flushInterval time.Duration, fs vfs.FileSystem) (*BatchedWAL, error) {
+	wal, err := NewWALWithFS(dataDir, fs)
 	if err != nil {
 		return nil, err
 	}

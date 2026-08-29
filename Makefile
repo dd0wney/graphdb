@@ -66,6 +66,12 @@ COVER_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
 	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... \
 	./pkg/graphql/...
 
+# Every package docs/internals/design/couplings.tsv names. Keep these in step:
+# a registry row in a package absent from here reports UNMATCHED, which is a
+# refusal rather than a result.
+DCCC_PKGS := $(COVER_PKGS) ./pkg/vfs/... ./pkg/alloc/... ./pkg/api/...
+PROFILE ?= $(COVERAGE_DIR)/dccc.out
+
 RACE_PKGS := ./pkg/storage/... ./pkg/lsm/... ./pkg/query/... \
 	./pkg/algorithms/... ./pkg/parallel/... ./pkg/wal/... \
 	./pkg/graphql/... ./cmd/...
@@ -138,9 +144,22 @@ mutation:
 ## mutation-selftest: Prove the mutation run can report both outcomes
 mutation-selftest:
 	@bash scripts/mutation-selftest.sh
+## dccc-cover: Coverage profile over every package the coupling registry names
+# dccc cannot measure a coupling in a package the profile does not cover, and
+# COVER_PKGS deliberately omits pkg/api (slow, server-spinning, exit-143-prone
+# on the ubuntu runner). Borrowing that profile silently left 4 of 17 sites
+# UNMATCHED, so the coupling measure gets its own.
+dccc-cover:
+	@mkdir -p $(COVERAGE_DIR)
+	$(GO) test -short -coverprofile=$(PROFILE) $(DCCC_PKGS)
+
 ## dccc: Coverage restricted to the statements that cross a component boundary
 dccc:
 	@bash scripts/dccc.sh $(PROFILE)
+
+## dccc-update: Re-record the statement-count floors from a profile
+dccc-update:
+	@bash scripts/dccc-update.sh $(COVERAGE_DIR)/coverage.out
 
 ## dccc-selftest: Prove the coupling-coverage measure reports what it claims
 dccc-selftest:

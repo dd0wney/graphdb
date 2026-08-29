@@ -3,69 +3,88 @@ package storage
 // Reader for the mmap-able snapshot format. Maps the file read-only, verifies the CRC
 // over the structural sections (header + directories + metadata) at open, and
 // materializes nodes/edges lazily on access (copy-on-read, so results are safe to
-// retain after close). Uses syscall.Mmap (unix) — consistent with the package already
-// being unix-only (graceful.go / verification.go use syscall.SIGUSR1 / Stat_t).
+// retain after close). The bytes come from a vfs driver: the OS driver mmaps
+// (unix), and any driver may supply its own buffer, which is how fault and
+// corruption tests drive this reader instead of a test-only substitute.
 
 import (
 	"encoding/binary"
 	"fmt"
-	"os"
-	"syscall"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 type mmapSnapshot struct {
 	data    []byte
+	release func() error
 	hdr     *mmapSnapshotHeader
 	meta    *mmapMetadata
 	membDir *membershipDir
 }
 
 func openMmapSnapshot(path string) (*mmapSnapshot, error) {
-	f, err := os.Open(path)
+	return openMmapSnapshotWithFS(vfs.Default(), path)
+}
+
+// openMmapSnapshotWithFS maps the snapshot through a filesystem driver.
+//
+// The bytes come from vfs.MapFile, so the OS driver mmaps as before and a fault
+// driver can hand back a buffer it chose. That is the whole point: a truncated
+// or corrupt snapshot now reaches this function — the production reader — with
+// no corrupt file ever written to disk. See ADR 0002 and vfs.Mapper.
+func openMmapSnapshotWithFS(fs vfs.FileSystem, path string) (*mmapSnapshot, error) {
+	data, release, err := vfs.MapFile(fs, path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	size := int(fi.Size())
-	if size < mmapHeaderSize {
-		return nil, fmt.Errorf("mmap snapshot %q too small: %d bytes", path, size)
-	}
-	data, err := syscall.Mmap(int(f.Fd()), 0, size, syscall.PROT_READ, syscall.MAP_SHARED)
-	if err != nil {
-		return nil, fmt.Errorf("mmap %q: %w", path, err)
+	if len(data) < mmapHeaderSize {
+		_ = release()
+		return nil, fmt.Errorf("mmap snapshot %q too small: %d bytes", path, len(data))
 	}
 
 	hdr, err := unmarshalMmapHeader(data)
 	if err != nil {
-		_ = syscall.Munmap(data)
+		_ = release()
 		return nil, err
 	}
 
 	nodeDir, edgeDir, adjDir, membDirBytes, metaBytes, err := sections(data, hdr)
 	if err != nil {
-		_ = syscall.Munmap(data)
+		_ = release()
 		return nil, err
 	}
 	if got := computeCRC(data[:hCRC], nodeDir, edgeDir, adjDir, membDirBytes, metaBytes); got != hdr.crc {
-		_ = syscall.Munmap(data)
+		_ = release()
 		return nil, fmt.Errorf("mmap snapshot %q CRC mismatch: got %08x want %08x", path, got, hdr.crc)
 	}
+	// The ID range and the directory must agree. forEachNodeID/forEachEdgeID
+	// iterate from minID to maxID and index the directory per step, so a header
+	// claiming a range wider than its directory is not a slow read — it is an
+	// unbounded one. FuzzMmapSnapshotCRCRepaired set the top byte of maxEdgeID
+	// to 0xa0 and turned a 3-edge snapshot into 1.15e19 iterations. Adding a
+	// bounds check inside dirEntry alone converted the panic into a hang, which
+	// is the worse failure: a crash stops, a spin does not.
+	if err := checkDirRange(hdr.nodeCount, hdr.minNodeID, hdr.maxNodeID, len(nodeDir), "node"); err != nil {
+		_ = release()
+		return nil, fmt.Errorf("mmap snapshot %q: %w", path, err)
+	}
+	if err := checkDirRange(hdr.edgeCount, hdr.minEdgeID, hdr.maxEdgeID, len(edgeDir), "edge"); err != nil {
+		_ = release()
+		return nil, fmt.Errorf("mmap snapshot %q: %w", path, err)
+	}
+
 	meta, err := unmarshalMmapMetadata(metaBytes)
 	if err != nil {
-		_ = syscall.Munmap(data)
+		_ = release()
 		return nil, err
 	}
 	mdir, err := parseMembershipDir(membDirBytes)
 	if err != nil {
-		_ = syscall.Munmap(data)
+		_ = release()
 		return nil, err
 	}
 
-	return &mmapSnapshot{data: data, hdr: hdr, meta: meta, membDir: mdir}, nil
+	return &mmapSnapshot{data: data, release: release, hdr: hdr, meta: meta, membDir: mdir}, nil
 }
 
 // sliceRange returns data[start:end] when the range is inside data and
@@ -158,7 +177,7 @@ func sections(data []byte, hdr *mmapSnapshotHeader) (nodeDir, edgeDir, adjDir, m
 	return nodeDir, edgeDir, adjDir, membDir, meta, nil
 }
 
-func (m *mmapSnapshot) close() error            { return syscall.Munmap(m.data) }
+func (m *mmapSnapshot) close() error            { return m.release() }
 func (m *mmapSnapshot) nodeCount() int          { return int(m.hdr.nodeCount) }
 func (m *mmapSnapshot) edgeCount() int          { return int(m.hdr.edgeCount) }
 func (m *mmapSnapshot) metadata() *mmapMetadata { return m.meta }
@@ -200,8 +219,40 @@ func (m *mmapSnapshot) edgeOffset(id uint64) (int64, bool) {
 	return off, off != dirAbsent
 }
 
+// checkDirRange rejects a header whose declared ID range cannot fit in the
+// directory the file actually carries. The range drives a loop; the directory
+// bounds the reads. When they disagree the file is malformed, and refusing at
+// open is the only place that costs nothing.
+func checkDirRange(count, minID, maxID uint64, dirLen int, what string) error {
+	if count == 0 {
+		return nil
+	}
+	if maxID < minID {
+		return fmt.Errorf("%s ID range inverted: min %d > max %d", what, minID, maxID)
+	}
+	span := maxID - minID + 1
+	if span > uint64(dirLen)/8 {
+		return fmt.Errorf("%s ID range %d..%d needs %d directory entries, the file carries %d",
+			what, minID, maxID, span, uint64(dirLen)/8)
+	}
+	return nil
+}
+
 func (m *mmapSnapshot) dirEntry(dirOffset, idx uint64) int64 {
+	// idx comes from the header's ID range and dirOffset from the header's
+	// directory pointer. Both are file data. A snapshot whose maxEdgeID says
+	// there are more entries than the directory holds walks this read straight
+	// off the end of the mapping — FuzzMmapSnapshotCRCRepaired found exactly
+	// that: "index out of range [7] with length 3", eight bytes wanted with
+	// three left. The CRC hides it in practice, and hiding is not defending:
+	// a partial write that lands on a plausible checksum reaches here.
+	if idx > (^uint64(0)-dirOffset-8)/8 {
+		return dirAbsent
+	}
 	p := dirOffset + idx*8
+	if p+8 > uint64(len(m.data)) {
+		return dirAbsent
+	}
 	return int64(binary.LittleEndian.Uint64(m.data[p:]))
 }
 

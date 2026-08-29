@@ -10,23 +10,35 @@
 # silently drops a renamed function reports a coverage number for fewer
 # couplings than it claims to cover.
 #
+# Column 5 is a STATEMENT-COUNT FLOOR, not a coverage floor. A resolvable symbol
+# is not the same thing as a symbol that still contains the coupling: stage 4 of
+# ADR 0002 extracted openMmapSnapshot's body into openMmapSnapshotWithFS, and
+# the measure reported the one remaining line as 1/1 = 100%, up from 26/33.
+# dccc.sh refuses when a site holds fewer statements than this floor. Re-record
+# it with 'make dccc-update' when a coupling legitimately changes size. A
+# statement count is a property of the code and not of the machine, which is why
+# this floor may be taken locally and the coverage floor may not.
+#
 # Columns: id	kind	package	symbol	what crosses the boundary
 #
 # NOT YET ENUMERATED: D4, the mmap copy-on-write overlay. A reader materialises
 # from the base while a writer promotes into the shard, and no single symbol is
 # the boundary. Naming the wrong one would be worse than the gap, so the gap is
 # recorded here instead.
-C1	control	pkg/storage	replayEntry	The WAL decides which storage mutation runs
-C2	control	pkg/wal/apply	ApplyWriteOperation	The fail-closed apply gate switches on op type
-C3	control	pkg/api	createNode	A caller decides whether a write takes the atomic unique path
-C4	control	pkg/storage	CreateNodeWithTenant	Node creation drives vector index maintenance
-C5	control	pkg/lsm	flush	A worker decides when a memtable becomes an SSTable
-C5	control	pkg/lsm	compact	A worker replaces the level set a reader is scanning
-D1	data	pkg/storage	openMmapSnapshot	The reader trusts a length the writer wrote
-D1	data	pkg/storage	sections	Section offsets read back from the file
-D2	data	pkg/wal	writeEntryTo	The WAL record format, write side
-D2	data	pkg/wal	readEntry	The WAL record format, read side
-D3	data	pkg/storage	CheckInvariants	Derived indexes against shard ground truth
-D5	data	pkg/lsm	lookupEntry	The cache against the levels it mirrors
-D6	data	pkg/vfs	Resolve	The process-wide filesystem driver
-D6	data	pkg/alloc	Bytes	The process-wide allocator
+C1	control	pkg/storage	replayEntry	20	The WAL decides which storage mutation runs
+C2	control	pkg/wal/apply	ApplyWriteOperation	14	The fail-closed apply gate switches on op type
+C3	control	pkg/api	createNode	38	A caller decides whether a write takes the atomic unique path
+C4	control	pkg/storage	CreateNodeWithTenant	14	Node creation drives vector index maintenance
+C5	control	pkg/lsm	flush	91	A worker decides when a memtable becomes an SSTable
+C5	control	pkg/lsm	compact	55	A worker replaces the level set a reader is scanning
+D1	data	pkg/storage	openMmapSnapshotWithFS	26	The reader trusts a length the writer wrote
+D1	data	pkg/storage	sections	31	Section offsets read back from the file
+D2	data	pkg/wal	writeEntryTo	14	The WAL record format, write side
+D2	data	pkg/wal	readEntry	28	The WAL record format, read side
+D3	data	pkg/storage	CheckInvariants	242	Derived indexes against shard ground truth
+D5	data	pkg/lsm	lookupEntry	10	The cache against the levels it mirrors
+D6	data	pkg/vfs	Resolve	6	The process-wide filesystem driver
+D6	data	pkg/alloc	Bytes	20	The process-wide allocator
+C6	control	pkg/vfs	MapFile	6	An optional Mapper decides whether the snapshot is mapped or read
+D7	data	pkg/storage	writeFileWithFS	7	Storage's writes cross into the installed filesystem driver
+D7	data	pkg/storage	readFileWithFS	6	Storage's reads cross into the installed filesystem driver

@@ -5,7 +5,6 @@ package storage
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"time"
 )
@@ -60,10 +59,10 @@ func (gs *GraphStorage) snapshotMmapLocked(boundary uint64) (uint64, error) {
 
 	finalPath := mmapSnapshotPath(gs.dataDir)
 	tmpPath := finalPath + ".tmp"
-	if err := writeMmapSnapshotData(tmpPath, nodes, edges, meta); err != nil {
+	if err := writeMmapSnapshotDataWithFS(gs.fs, tmpPath, nodes, edges, meta); err != nil {
 		return 0, fmt.Errorf("failed to write mmap snapshot: %w", err)
 	}
-	if err := os.Rename(tmpPath, finalPath); err != nil {
+	if err := gs.fs.Rename(tmpPath, finalPath); err != nil {
 		return 0, fmt.Errorf("failed to rename mmap snapshot: %w", err)
 	}
 	gs.stats.LastSnapshot = time.Now()

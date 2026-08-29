@@ -113,7 +113,7 @@ func (w *CompressedWAL) ReadAll() ([]*Entry, error) {
 // live append handle's offset is undisturbed.
 func (w *CompressedWAL) readAllLocked() ([]*Entry, error) {
 	// Open file for reading
-	file, err := os.Open(filepath.Join(w.dataDir, "wal_compressed.log"))
+	file, err := w.fs.Open(filepath.Join(w.dataDir, "wal_compressed.log"), os.O_RDONLY, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

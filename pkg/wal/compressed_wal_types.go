@@ -2,17 +2,21 @@ package wal
 
 import (
 	"bufio"
-	"os"
 	"sync"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // CompressedWAL is a Write-Ahead Log with snappy compression
 type CompressedWAL struct {
-	file       *os.File
+	file       vfs.File
 	writer     *bufio.Writer
 	currentLSN uint64
 	dataDir    string
-	mu         sync.Mutex
+
+	// fs is the filesystem driver. Never nil after a constructor returns.
+	fs vfs.FileSystem
+	mu sync.Mutex
 
 	// Statistics
 	totalWrites       uint64

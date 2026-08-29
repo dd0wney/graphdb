@@ -21,9 +21,23 @@
 #   0  a number was produced
 #   1  a coupling has no covered statement at all
 #   2  the measure could not run
+#   3  a coupling shrank below its recorded statement floor
 #
-# There is no threshold. A floor set before the number is understood is how the
-# coverage floor was got wrong in #469.
+# There is no COVERAGE threshold. A floor set before the number is understood
+# is how the coverage floor was got wrong in #469.
+#
+# There IS a STATEMENT-COUNT floor, column 5 of the registry, and it exists
+# because of a defect this measure could not see. Stage 4 of ADR 0002 extracted
+# openMmapSnapshot's body into openMmapSnapshotWithFS. The registered symbol
+# still existed, still resolved, and still reported coverage — of the one line
+# that remained. The coupling went from 26/33 (78.8%) to 1/1 (100.0%) and the
+# measure called that an improvement. A gate that rewards you for removing its
+# subject is worse than no gate.
+#
+# Unlike a coverage percentage, a statement count is a property of the code and
+# not of the machine that ran the tests, so this floor may be recorded locally.
+# That is the whole difference from #469. Re-record with --update after a change
+# that legitimately alters a coupling's size.
 
 set -uo pipefail
 
@@ -31,6 +45,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "${1:-}" = "--root" ]; then
   ROOT="$(cd "$2" && pwd)"
   shift 2
+fi
+UPDATE=0
+if [ "${1:-}" = "--update" ]; then
+  UPDATE=1
+  shift
 fi
 REGISTRY="$ROOT/docs/internals/design/couplings.tsv"
 PROFILE="${1:-$ROOT/coverage/coverage.out}"
@@ -53,7 +72,7 @@ trap 'rm -rf "$TMP"' EXIT
 # the next line that is exactly "}".
 UNRESOLVED=0
 : > "$TMP/sites"
-while IFS=$'\t' read -r id kind pkg sym rest; do
+while IFS=$'\t' read -r id kind pkg sym floor rest; do
   case "$id" in ''|'#'*) continue ;; esac
   [ -z "${sym:-}" ] && continue
 
@@ -66,7 +85,7 @@ while IFS=$'\t' read -r id kind pkg sym rest; do
     end="$(awk -v st="$start" 'NR>=st && $0=="}" { print NR; exit }' "$f")"
     [ -z "$end" ] && continue
     found="$f"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$kind" "$pkg" "$sym" "$start" "$end" "$(basename "$f")" >> "$TMP/sites"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$kind" "$pkg" "$sym" "$start" "$end" "$(basename "$f")" "${floor:-0}" >> "$TMP/sites"
     break
   done
 
@@ -86,10 +105,11 @@ if [ ! -s "$TMP/sites" ]; then
 fi
 
 # Sum the profile's statement blocks that fall inside each resolved range.
-awk -v profile="$PROFILE" '
+awk -v profile="$PROFILE" -v update="$UPDATE" '
 BEGIN { FS="\t" }
 {
-  id[NR]=$1; kind[NR]=$2; pkg[NR]=$3; sym[NR]=$4; lo[NR]=$5; hi[NR]=$6; base[NR]=$7; n=NR
+  id[NR]=$1; kind[NR]=$2; pkg[NR]=$3; sym[NR]=$4; lo[NR]=$5; hi[NR]=$6; base[NR]=$7
+  flo[NR]=$8 + 0; n=NR
 }
 END {
   while ((getline line < profile) > 0) {
@@ -112,8 +132,14 @@ END {
     }
   }
 
+  # --update emits the measured counts for the registry rewrite and nothing else.
+  if (update == 1) {
+    for (i = 1; i <= n; i++) printf "%s\t%s\t%d\n", pkg[i], sym[i], total[i] + 0
+    exit 0
+  }
+
   print "  covered/total  coupling"
-  gt = 0; gc = 0; empty = 0; unmatched = 0
+  gt = 0; gc = 0; empty = 0; unmatched = 0; shrunk = 0
   for (i = 1; i <= n; i++) {
     t = total[i] + 0; cv = covered[i] + 0
     gt += t; gc += cv
@@ -128,7 +154,12 @@ END {
       continue
     }
     pct = sprintf("%5.1f%%", 100 * cv / t)
-    printf "  %4d/%-5d %s  %-4s %s %s.%s\n", cv, t, pct, id[i], kind[i], pkg[i], sym[i]
+    flag = ""
+    if (flo[i] > 0 && t < flo[i]) {
+      flag = sprintf("   <- HOLLOWED: %d statements, floor %d", t, flo[i])
+      shrunk++
+    }
+    printf "  %4d/%-5d %s  %-4s %s %s.%s%s\n", cv, t, pct, id[i], kind[i], pkg[i], sym[i], flag
     if (cv == 0) empty++
   }
   printf "\n  %d/%d statements across %d coupling sites", gc, gt, n
@@ -139,6 +170,14 @@ END {
     printf "  That is not a coverage result. Either the profile does not include\n"
     printf "  those packages, or it was read while it was still being written.\n"
     exit 2
+  }
+  if (shrunk > 0) {
+    printf "\n  %d coupling site(s) hold fewer statements than their recorded floor.\n", shrunk
+    printf "  The symbol still resolves, so the percentage above is real — it is just\n"
+    printf "  no longer about the coupling. Something was extracted out from under it.\n"
+    printf "  Point the registry at where the boundary went, or re-record the floor\n"
+    printf "  with make dccc-update if the coupling genuinely shrank.\n"
+    exit 3
   }
   if (empty > 0) {
     printf "\n  %d coupling site(s) have no covered statement at all.\n", empty
