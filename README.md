@@ -25,7 +25,10 @@ of source — and the gates are built to catch themselves lying:
   targets, and consumer-contract tests.**
 
 Every fix lands with a test that was *watched failing* against the pre-fix code, and the pull
-request records what it printed. See [`CLAUDE.md`](CLAUDE.md) for the working rules.
+request records what it printed. See [`CLAUDE.md`](CLAUDE.md) for the working rules, and
+[**One Signal, Two Worlds**](https://dd0wney.github.io/graphdb/one-signal-two-worlds.html) for
+four defects found in a single day — each one an observation that was consistent with two
+different states of the world, including one the author got wrong.
 
 **Open core.** This repository is the OSS core plus the plugin and licence framework. The
 enterprise plugin implementations live in a separate private repository, so `pkg/plugins` is

@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Four defects found in one day in a Go graph database, each one a single observation consistent with two different states of the world.">
+<title>One Signal, Two Worlds</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --paper:     #f4f6f7;
+    --sunk:      #e9eef1;
+    --ink:       #12171c;
+    --ink-soft:  #414d58;
+    --muted:     #6d7b86;
+    --rule:      #dce3e8;
+    --rule-firm: #14202a;
+    --world-a:   #2f5d9e;
+    --world-b:   #1f7a7f;
+    --accent:    #ab4d1c;
+    --code-ink:  #263139;
+
+    --display: "Newsreader", "Iowan Old Style", Georgia, serif;
+    --body: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+    --rail: 11rem;
+    --gutter: 2.75rem;
+    --measure: 33rem;
+    --page: 58rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #0d1216;
+      --sunk:      #141d23;
+      --ink:       #e8eef2;
+      --ink-soft:  #aab8c2;
+      --muted:     #7d8c98;
+      --rule:      #232f38;
+      --rule-firm: #5c6d78;
+      --world-a:   #7fa9e2;
+      --world-b:   #4fbec4;
+      --accent:    #e28c57;
+      --code-ink:  #ccd9e1;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:     #0d1216;
+    --sunk:      #141d23;
+    --ink:       #e8eef2;
+    --ink-soft:  #aab8c2;
+    --muted:     #7d8c98;
+    --rule:      #232f38;
+    --rule-firm: #5c6d78;
+    --world-a:   #7fa9e2;
+    --world-b:   #4fbec4;
+    --accent:    #e28c57;
+    --code-ink:  #ccd9e1;
+  }
+
+  /* Standalone reset — the artifact host used to supply this. */
+  :root { color-scheme: light dark; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; }
+  img { max-width: 100%; height: auto; }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 1.0625rem;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: var(--page);
+    margin: 0 auto;
+    padding: 0 clamp(1.15rem, 4vw, 2.25rem) 7rem;
+  }
+
+  /* ---------- shared rhythm ---------- */
+
+  .rail-grid {
+    display: grid;
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+    column-gap: var(--gutter);
+    min-width: 0;
+  }
+  .rail-grid > .body { min-width: 0; }
+  /* The measure sits on the prose, not the column, so an evidence block can
+     use the full width instead of scrolling inside a 33rem gutter. */
+  .body > *:not(figure) { max-width: var(--measure); }
+
+  .caps {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  p { margin: 0 0 1.1rem; text-wrap: pretty; }
+  p:last-child { margin-bottom: 0; }
+
+  a { color: var(--world-a); text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+  a:focus-visible { outline: 2px solid var(--world-a); outline-offset: 3px; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.855em;
+    color: var(--code-ink);
+    background: var(--sunk);
+    padding: 0.08em 0.3em;
+    border-radius: 2px;
+  }
+  strong { font-weight: 600; }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { border-top: 2px solid var(--rule-firm); padding-top: 1rem; margin-top: 2.5rem; }
+
+  .masthead .kicker {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding-bottom: clamp(2.5rem, 7vw, 5rem);
+  }
+
+  h1 {
+    font-family: var(--display);
+    font-weight: 300;
+    font-size: clamp(3rem, 9.5vw, 6rem);
+    line-height: 0.94;
+    letter-spacing: -0.025em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  h1 em { font-style: normal; color: var(--world-a); }
+  h1 i  { font-style: normal; color: var(--world-b); }
+
+  .standfirst {
+    font-family: var(--display);
+    font-size: clamp(1.2rem, 2.2vw, 1.5rem);
+    font-weight: 400;
+    line-height: 1.42;
+    color: var(--ink-soft);
+    max-width: 36rem;
+    margin: clamp(1.75rem, 4vw, 2.75rem) 0 0;
+    text-wrap: pretty;
+  }
+
+  .colophon {
+    margin-top: 2.5rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--rule);
+  }
+
+  /* ---------- lede ---------- */
+
+  .lede { margin-top: clamp(3rem, 7vw, 4.5rem); }
+  .lede .body p:first-child::first-letter {
+    font-family: var(--display);
+    font-size: 3.1em;
+    line-height: 0.82;
+    float: left;
+    padding: 0.06em 0.09em 0 0;
+    color: var(--ink);
+  }
+
+  /* ---------- a case ---------- */
+
+  .case { margin-top: clamp(3.5rem, 8vw, 5.5rem); }
+
+  .case > h2 {
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: clamp(1.75rem, 3.6vw, 2.4rem);
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+    margin: 0 0 1.5rem;
+    max-width: 22ch;
+    text-wrap: balance;
+  }
+
+  .case-grid { border-top: 1px solid var(--rule-firm); padding-top: 1.15rem; }
+
+  .rail { display: flex; flex-direction: column; gap: 0.4rem; }
+  .rail .signal {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--ink);
+    word-break: break-word;
+  }
+
+  .observed { color: var(--ink-soft); }
+  .observed .caps { display: block; margin-bottom: 0.25rem; }
+
+  /* The two worlds. The coloured rule is the point: the hues read as one
+     colour at a glance and separate only on inspection. */
+  .worlds {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1.75rem;
+    margin: 1.6rem 0;
+  }
+  .world { padding-top: 0.7rem; }
+  .world-a { border-top: 2px solid var(--world-a); }
+  .world-b { border-top: 2px solid var(--world-b); }
+  .world .caps { display: block; margin-bottom: 0.35rem; }
+  .world-a .caps { color: var(--world-a); }
+  .world-b .caps { color: var(--world-b); }
+  .world p { font-size: 0.945rem; line-height: 1.55; }
+
+  .cost {
+    font-size: 0.945rem;
+    color: var(--ink-soft);
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--rule);
+  }
+  .cost b { color: var(--accent); font-weight: 600; letter-spacing: 0.01em; }
+
+  /* ---------- evidence ---------- */
+
+  /* Evidence breaks out across the rail. Transcript lines are ~95 columns and
+     do not fit a 33rem reading measure; the rail is empty at this height. */
+  figure {
+    margin: 1.9rem 0 0 calc(-1 * (var(--rail) + var(--gutter)));
+    width: calc(100% + var(--rail) + var(--gutter));
+    min-width: 0;
+  }
+  .evidence { background: var(--sunk); overflow-x: auto; min-width: 0; }
+  .evidence pre {
+    margin: 0;
+    padding: 1.1rem 1.25rem;
+    font-family: var(--mono);
+    font-size: 0.7875rem;
+    line-height: 1.8;
+    color: var(--code-ink);
+    white-space: pre;
+    font-variant-numeric: tabular-nums;
+  }
+  .evidence .hl { color: var(--accent); font-weight: 500; }
+  .evidence .dim { color: var(--muted); }
+  figcaption {
+    margin-top: 0.55rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--muted);
+    max-width: var(--measure);
+  }
+
+  .after { margin-top: 1.9rem; }
+
+  .pull {
+    font-family: var(--display);
+    font-size: clamp(1.3rem, 2.8vw, 1.7rem);
+    line-height: 1.33;
+    color: var(--ink);
+    margin: 2.25rem 0 0;
+    padding-top: 1.1rem;
+    border-top: 2px solid var(--world-b);
+    max-width: 30rem;
+    text-wrap: pretty;
+  }
+
+  /* ---------- remedy ---------- */
+
+  .remedy { list-style: none; padding: 0; margin: 1.5rem 0 0; }
+  .remedy li {
+    display: grid;
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+    column-gap: var(--gutter);
+    min-width: 0;
+    padding: 1.15rem 0;
+    border-top: 1px solid var(--rule);
+  }
+  .remedy li:last-child { border-bottom: 1px solid var(--rule); }
+  .remedy .k {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.65;
+    color: var(--world-b);
+    font-weight: 500;
+  }
+  .remedy .v { font-size: 0.965rem; color: var(--ink-soft); max-width: var(--measure); }
+  .remedy .v strong { color: var(--ink); }
+
+  /* ---------- coda ---------- */
+
+  .coda {
+    margin-top: clamp(3.5rem, 8vw, 5rem);
+    padding-top: 1.1rem;
+    border-top: 2px solid var(--rule-firm);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--muted);
+    max-width: var(--measure);
+  }
+
+  .footnotes {
+    margin-top: 2.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--muted);
+    max-width: var(--measure);
+  }
+  .footnotes p { margin: 0 0 0.5rem; }
+  .signoff {
+    margin-top: 1.75rem;
+    font-size: 0.875rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  @media (max-width: 46rem) {
+    .rail-grid, .remedy li { grid-template-columns: minmax(0, 1fr); row-gap: 0.75rem; }
+    .rail { flex-direction: row; gap: 0.9rem; align-items: baseline; flex-wrap: wrap; }
+    .worlds { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+    .body > *:not(figure) { max-width: none; }
+    /* No rail to break out of once the grid is one column. */
+    figure { margin-left: 0; width: auto; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="kicker">
+      <span class="caps">Field notes - graphdb</span>
+      <span class="caps">29 August 2026</span>
+    </div>
+
+    <h1>One&nbsp;Signal,<br><em>Two</em> <i>Worlds</i></h1>
+
+    <p class="standfirst">
+      Two days ago I wrote about what LLMs can and cannot do.* Then my own repository
+      handed me four worked examples in a single day.
+    </p>
+
+    <p class="colophon caps">81,284 lines of source · 133,602 lines of test · 411 test files</p>
+  </header>
+
+  <section class="lede rail-grid">
+    <div class="caps">Premise</div>
+    <div class="body">
+      <p>
+        They all have the same shape. Something reports a state that is [technically] true,
+        and there are two different worlds in which that same report makes sense. The code,
+        the document, or the reader picks one of them. Usually the wrong one.
+      </p>
+      <p>
+        None of these are hard bugs. They are all cheap to find once you know to look, and
+        expensive precisely because nothing prompts you to.
+      </p>
+    </div>
+  </section>
+
+  <!-- CASE 1 -->
+  <article class="case">
+    <h2>First, a missing file means two things</h2>
+    <div class="case-grid rail-grid">
+      <div class="rail">
+        <span class="signal">os.IsNotExist(err)</span>
+        <span class="caps">pkg/storage</span>
+      </div>
+      <div class="body">
+        <p class="observed">
+          <span class="caps">Observed</span>
+          On open, <code>snapshot.json</code> is not on disk.
+        </p>
+        <div class="worlds">
+          <div class="world world-a">
+            <span class="caps">World A</span>
+            <p>New database. Nothing written yet. Start empty, report success.</p>
+          </div>
+          <div class="world world-b">
+            <span class="caps">World B</span>
+            <p>The data exists, in the other snapshot format. Starting empty discards all of it.</p>
+          </div>
+        </div>
+        <p class="cost">
+          <b>Cost.</b> The loader picked World A unconditionally. My own deployment guide told
+          operators to roll back with <code>GRAPHDB_STORAGE_MODE=json</code>, which walks them
+          straight into World B - an empty database, reported as a clean start.
+        </p>
+
+        <figure>
+          <div class="evidence"><pre>step 1, mmap close:  [snapshot.mmap (904B)  wal/wal.log (0B)]
+<span class="hl">step 2, json mode sees 0 nodes          &lt;- 3 nodes went in</span>
+step 3, json close:  [snapshot.json (452B)  snapshot.mmap (904B)  wal/wal.log (0B)]
+<span class="hl">step 4, mmap mode sees 3 nodes          &lt;- the node from step 3 is gone</span></pre></div>
+          <figcaption>Exhibit A: three nodes in, zero nodes out, exit code 0</figcaption>
+        </figure>
+
+        <p class="after">
+          The asymmetry is the tell. mmap mode does check for the other format and falls back,
+          so a legacy database migrates upward fine. The JSON path never looked. One direction
+          distinguishes the two worlds and the other does not.
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <!-- CASE 2 -->
+  <article class="case">
+    <h2>Second, a test that agreed with itself</h2>
+    <div class="case-grid rail-grid">
+      <div class="rail">
+        <span class="signal">id1 == id2</span>
+        <span class="caps">crash-recovery test</span>
+      </div>
+      <div class="body">
+        <p class="observed">
+          <span class="caps">Observed</span>
+          Both assertions pass. The node written before the snapshot and the node written
+          after it are each found by vector search.
+        </p>
+        <div class="worlds">
+          <div class="world world-a">
+            <span class="caps">World A</span>
+            <p>The index rebuild ran over the final post-replay node set, which is exactly what the test claims to prove.</p>
+          </div>
+          <div class="world world-b">
+            <span class="caps">World B</span>
+            <p>There is only one node. Both assertions matched it, because both IDs are 1 and <code>k=1</code> returns it either way.</p>
+          </div>
+        </div>
+        <p class="cost">
+          <b>Cost.</b> World B, for nearly two months. The middle session was built from a bare
+          config, so it opened the store on the JSON path - case one, from the inside. It got an
+          empty database, <code>nextNodeID</code> restarted, and the second node was handed the
+          first node's ID.
+        </p>
+
+        <figure>
+          <div class="evidence"><pre>after session1: snapshot.mmap (780 bytes)  wal/wal.log (0 bytes)
+<span class="hl">SESSION 2 OPENED WITH NodeCount=0  &lt;- session1 wrote 1 node</span>
+<span class="hl">id1=1 id2=1  collision=true</span>
+SESSION 3 NodeCount=1
+search[1,0,0] -&gt; [{1 0}]   search[0,1,0] -&gt; [{1 1}]</pre></div>
+          <figcaption>Exhibit B: two node IDs, both of them 1, and a green test</figcaption>
+        </figure>
+
+        <p class="after">
+          This test was not neglected. It was written deliberately, with a comment explaining
+          the subtle thing it existed to catch. It became wrong later, on the day an unrelated
+          default flipped, and nothing announced it. A passing test is the one artefact nobody
+          re-reads.
+        </p>
+
+        <p class="pull">
+          Adding a guard to production code turned out to be the cheapest way to audit a test
+          nobody had watched fail.
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <!-- CASE 3 -->
+  <article class="case">
+    <h2>Third, a build failure that was not the build's</h2>
+    <div class="case-grid rail-grid">
+      <div class="rail">
+        <span class="signal">go build ./... → 7 errors</span>
+        <span class="caps">a working tree</span>
+      </div>
+      <div class="body">
+        <p class="observed">
+          <span class="caps">Observed</span>
+          The project's most basic command fails, in a directory that is unquestionably the project.
+        </p>
+        <div class="worlds">
+          <div class="world world-a">
+            <span class="caps">World A</span>
+            <p>The repository is broken. Anyone who clones it hits this immediately. Fix it before showing anyone.</p>
+          </div>
+          <div class="world world-b">
+            <span class="caps">World B</span>
+            <p>The repository is fine. The working tree holds a gitignored directory that no checkout contains.</p>
+          </div>
+        </div>
+        <p class="cost">
+          <b>Cost.</b> The model picked World A and recommended fixing it as the single most
+          important task before publishing the project. It was World B. The repair would have
+          changed nothing a visitor sees, and could not have been committed at all - the path is
+          in <code>.gitignore</code>.
+        </p>
+
+        <figure>
+          <div class="evidence"><pre>$ git archive HEAD | tar -x -C /tmp/clean
+$ ls /tmp/clean/enterprise-plugins
+<span class="dim">ls: cannot access 'enterprise-plugins': No such file or directory</span>
+$ go build ./...
+<span class="hl">exit 0, no output</span>
+
+<span class="dim"># positive control - can this check report the opposite?</span>
+$ echo 'package main; func main(){}' &gt; cmd/server/zz_control.go &amp;&amp; go build ./cmd/server/
+<span class="hl">exit 1  main redeclared in this block</span></pre></div>
+          <figcaption>Exhibit C: the worktree and the checkout are different artefacts, and they print identical failures</figcaption>
+        </figure>
+
+        <p class="after">
+          Worse, my own orientation file asserted World A in writing, so the false claim was not
+          merely available, it was documented. A wrong note there costs every future reader the
+          same mistake, which is a strictly worse failure mode than a wrong line of code. Code
+          gets tested.
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <!-- CASE 4 -->
+  <article class="case">
+    <h2>Finally, a number that was a subset</h2>
+    <div class="case-grid rail-grid">
+      <div class="rail">
+        <span class="signal">"nine"</span>
+        <span class="caps">a session handoff</span>
+      </div>
+      <div class="body">
+        <p class="observed">
+          <span class="caps">Observed</span>
+          A handoff opens: <em>"Nine defects were found, and five of them were in the
+          instruments rather than in the system."</em>
+        </p>
+        <div class="worlds">
+          <div class="world world-a">
+            <span class="caps">World A</span>
+            <p>Nine is the total, five is a subset of it, and the ratio is the headline - more than half the defects were in the tests.</p>
+          </div>
+          <div class="world world-b">
+            <span class="caps">World B</span>
+            <p>Thirteen is the total. Nine is the <em>coupling</em> subset. Five counts a different population entirely - hollow tests, not defects.</p>
+          </div>
+        </div>
+        <p class="cost">
+          <b>Cost.</b> The model quoted "13 defects, 5 in the instruments" three times in one
+          day - a figure belonging to neither world - and proposed it as the headline of this
+          piece. The source that settles it sat four rows further down the same file: <em>"9 of
+          13 defects were coupling defects."</em>
+        </p>
+
+        <p class="after">
+          The real taxonomy is more interesting than the ratio that nearly got published. Of the
+          thirteen: nine were coupling defects at the seams between components, one was inside a
+          single component, three were in process or in the contract of a test. Separately, five
+          existing tests turned out to be decoration.
+        </p>
+        <p>
+          Note where the error lived. Every claim below that summary line cited a pull request.
+          The summary cited nothing, and it is the line everyone quotes, because it is the line
+          written to be trusted.
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <!-- REMEDY -->
+  <section class="case">
+    <h2>In short, instruments beat diligence</h2>
+    <div class="case-grid rail-grid">
+      <div class="rail"><span class="caps">Practice</span></div>
+      <div class="body">
+        <p>
+          None of these were fixed by looking harder. Each one needed a second, independent
+          observation that the two worlds disagree about, which is a design problem and not a
+          diligence problem. Five things that actually work:
+        </p>
+      </div>
+    </div>
+
+    <ul class="remedy">
+      <li>
+        <span class="k">Refuse, don't guess</span>
+        <span class="v">When one condition carries two meanings and you cannot tell which,
+        <strong>the correct behaviour is an error, not a default.</strong> The loader now
+        refuses a JSON-mode open when the other snapshot is sitting next to it, and names the file.</span>
+      </li>
+      <li>
+        <span class="k">Positive control</span>
+        <span class="v">"No output" and "the instrument is broken" look identical. Before you
+        believe a negative, <strong>make the check report the opposite on purpose.</strong>
+        A deliberately broken file proved the clean build could still fail.</span>
+      </li>
+      <li>
+        <span class="k">Name the artefact</span>
+        <span class="v">A result is about the thing that was actually read - a worktree, an
+        archive, a tag, a suppression list. <strong>Put the artefact in the verdict</strong>,
+        because a pass on the wrong one is indistinguishable from a pass.</span>
+      </li>
+      <li>
+        <span class="k">Watch it fail</span>
+        <span class="v">Every fix lands with a test <strong>seen failing against the pre-fix
+        code</strong>, and the pull request records what it printed. A test that has never been
+        red is an assertion about the world, not evidence of it.</span>
+      </li>
+      <li>
+        <span class="k">Pin the collision</span>
+        <span class="v">The repaired crash-recovery test now asserts <code>id1 != id2</code>.
+        It cannot pass on a single node again - <strong>the shortcut that faked the result is
+        now itself a failure.</strong></span>
+      </li>
+    </ul>
+  </section>
+
+  <!-- CLOSE -->
+  <section class="case">
+    <h2>Anyway</h2>
+    <div class="case-grid rail-grid">
+      <div class="rail"><span class="caps">Closing</span></div>
+      <div class="body">
+        <p>
+          It is tempting to report a tally - we found N bugs, M of them in the tests - and case
+          four is exactly what that instinct earns you. A count compresses away the only part
+          that transfers.
+        </p>
+        <p>
+          What transfers is the shape. Ask it of any check you have: is there a second world in
+          which this same output is fine, or in which it is catastrophic? If there is, the check
+          is not an instrument yet.
+        </p>
+        <p>
+          Three of the four were caught by machinery built for the purpose.** The fourth was
+          caught by reading four rows further down.
+        </p>
+
+        <div class="footnotes">
+          <p>* <a href="[LINKEDIN URL]">The Edge of Reason - What LLMs Can and Cannot Do</a> <strong>[paste the article URL]</strong></p>
+          <p>** mutation testing, coupling coverage, per-package coverage floors measured on CI, invariant checkers, fault injection, and a self-test on every gate</p>
+        </div>
+
+        <p class="signoff">Numbers and transcripts are my own - the defects, unfortunately, also.</p>
+      </div>
+    </div>
+  </section>
+
+  <p class="coda">
+    graphdb is an open-source graph database written from scratch in Go - LSM-tree storage,
+    a write-ahead log, an mmap-backed snapshot format with lazy reopen, and multi-tenant
+    isolation. All four defects above are in the repository, as are the pull requests that
+    closed them.
+  </p>
+
+</div>
+</body>
+</html>
