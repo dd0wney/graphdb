@@ -271,6 +271,57 @@ func TestSweepRoleRejectsANondeterministicScenario(t *testing.T) {
 	}
 }
 
+// A run that stops earlier than the runs before it must fail the sweep, even
+// when every operation it did record matches the established prefix. The
+// stability check must compare against the number of steps the sweep expects
+// by this point, not against whatever length the short run happened to
+// produce, or a shrinking trace passes by shrinking the comparison window
+// along with it.
+func TestSweepRoleRejectsATraceThatGetsShorter(t *testing.T) {
+	fake := &testing.T{}
+	var round int
+	var lastChecked int
+
+	// t.Fatalf calls runtime.Goexit, which would terminate this test's own
+	// goroutine. Run the sweep in its own so only that one ends.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		SweepRole(fake, roleA, 32,
+			func() *RoleFS { return NewRoles(vfs.OS(), "sweep", bySuffix) },
+			func(fs vfs.FileSystem) error {
+				round++
+				dir := t.TempDir()
+				path := filepath.Join(dir, "f.a")
+				if round < 4 {
+					// Rounds 1-3 establish a stable open,write,sync,close
+					// prefix (the fault lands on a different one of those
+					// four each round, but the operation sequence itself
+					// does not change).
+					return writeThrough(t, fs, path)
+				}
+				// Round 4 stops after the open: a true prefix of the
+				// established trace, but a shorter one.
+				_, err := fs.Open(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+				return err
+			},
+			func(t *testing.T, n int, runErr error) { lastChecked = n },
+		)
+	}()
+	<-done
+
+	if !fake.Failed() {
+		t.Fatal("the sweep accepted a run whose trace got shorter than the runs before it")
+	}
+	// Round 4 is where the trace shrinks to a single operation. check must
+	// not run for n=4: the sweep has to fail on the shrink itself, not treat
+	// the short run as an ordinary step.
+	if lastChecked != 3 {
+		t.Errorf("check last ran at n=%d, want 3: the sweep did not stop for the "+
+			"shrinking trace at n=4", lastChecked)
+	}
+}
+
 // A scenario that performs no I/O at all must fail the sweep. A sweep that
 // terminates immediately looks exactly like one that finished its walk.
 func TestSweepRoleRejectsAScenarioThatDoesNothing(t *testing.T) {
