@@ -295,21 +295,26 @@ Operational notes:
 - **Existing deployments migrate transparently.** A data directory holding a legacy
   `snapshot.json` loads via the JSON path on first open, then writes `snapshot.mmap` on
   its next snapshot. Reads work throughout.
-- **⚠️ Rolling back to JSON mode is not safe today.** This guide used to say "roll back by
-  setting `GRAPHDB_STORAGE_MODE=json`". Do not do that on a store that has already shut down
-  cleanly in mmap mode. `Close()` writes `snapshot.mmap` and then **truncates the WAL**, so
-  such a store holds `snapshot.mmap`, a zero-length `wal/wal.log`, and no `snapshot.json`. A
-  JSON-mode open finds no snapshot, replays an empty WAL, and serves an **empty database with
-  no error** — measured 2026-08-28, 3 nodes to 0 nodes, silently. Writing in that state leaves
-  two snapshots that disagree, and reverting the variable restores the older one while
-  discarding the newer writes. Root cause: the loader picks the file from the config flag and
-  never asks which file is newer (`pkg/storage/storage.go:153-158`).
-  **To change mode safely**, stop the server and copy the data directory at the filesystem
-  level first, or restore from a backup archive taken in the target mode. Note that
-  `POST /admin/backup` itself calls `Snapshot()`, so it is not a way to avoid writing
-  `snapshot.mmap`. `graphdb-admin restore` already refuses a mode-mismatched archive for
-  exactly this reason (`cmd/graphdb-admin/backup.go:119`); the plain open path has no
-  equivalent guard yet.
+- **⚠️ Rolling back to JSON mode is still not a supported operation.** This guide used to say
+  "roll back by setting `GRAPHDB_STORAGE_MODE=json`". A store that shut down cleanly in mmap
+  mode holds `snapshot.mmap`, a zero-length `wal/wal.log` (`Close()` writes the snapshot and
+  then **truncates the WAL**), and no `snapshot.json` — so there is nothing for the JSON path
+  to load.
+  - **Now refused, not silent.** Such an open returns an error naming `snapshot.mmap` and
+    telling you how to proceed. Until 2026-08-29 it reported success and served an **empty
+    database** — measured 2026-08-28, 3 nodes to 0. The guard is in
+    `NewGraphStorageWithConfig` and mirrors the one `graphdb-admin restore` has always had
+    (`cmd/graphdb-admin/backup.go`).
+  - **Still unguarded: a directory holding BOTH snapshots.** The loader picks the file from
+    the mode flag and never asks which one is newer. Switching mode there serves the older
+    snapshot silently, and the next `Close()` overwrites the newer one. No ordering marker
+    exists to fix this with: neither format persists the WAL boundary LSN, and the stored
+    `Stats.LastSnapshot` is assigned after serialization, so it records the *previous*
+    snapshot. Closing this gap needs an on-disk format version bump.
+  - **To change mode safely**, stop the server and copy the data directory at the filesystem
+    level first, or restore from a backup archive taken in the target mode. Note that
+    `POST /admin/backup` itself calls `Snapshot()`, so it is not a way to avoid writing
+    `snapshot.mmap`.
 - **Backup/restore is mode-specific.** An archive records its snapshot mode; restoring an
   mmap archive into a JSON-mode target (or vice versa) is **refused up front** to avoid a
   silent empty load. Restore under the mode that matches the archive (set
