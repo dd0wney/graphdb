@@ -176,7 +176,7 @@ func (gs *GraphStorage) DeleteEdgeForTenant(edgeID uint64, tenantID string) erro
 func (gs *GraphStorage) getEdgeRefForTenant(edgeID uint64, tenantID string) (*Edge, error) {
 	edge, err := gs.resolveEdgeRefLocked(edgeID)
 	if err != nil {
-		return nil, ErrEdgeNotFound // PR B: return err
+		return nil, err
 	}
 	expectedTenant := effectiveTenantID(tenantID).String()
 	if edge.TenantID != expectedTenant {
@@ -204,7 +204,7 @@ func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
 	edge, err := gs.resolveEdgeRefLocked(edgeID)
 	if err != nil {
 		gs.unlockShard(edgeID)
-		return fmt.Errorf("edge %d not found", edgeID) // PR B: wrap err
+		return fmt.Errorf("edge %d not found: %w", edgeID, err)
 	}
 	fromID := edge.FromNodeID
 	toID := edge.ToNodeID
@@ -242,10 +242,18 @@ func (gs *GraphStorage) GetEdgeForTenant(edgeID uint64, tenantID string) (*Edge,
 	defer gs.runlockShard(edgeID)
 	edge, owned, err := gs.resolveEdgeRefOwnedLocked(edgeID)
 	if err != nil {
-		return nil, ErrEdgeNotFound // PR B: return err
+		return nil, err
 	}
 	if edge.TenantID != effectiveTenantID(tenantID).String() {
 		// Cross-tenant: same error as missing to avoid existence-leak side channel.
+		//
+		// An UNREADABLE record is the one documented exception to this rule.
+		// Its tenant string lives inside the record, so the failure necessarily
+		// precedes this check, and the error therefore reveals that the edge
+		// directory holds an entry at this ID. The alternative — consulting the
+		// per-tenant membership section first — costs a lookup (~11ms at 937k
+		// nodes) on the single-record read path, which is the cost cheap reopen
+		// exists to avoid. See the spec, "The tenant side-channel".
 		return nil, ErrEdgeNotFound
 	}
 	if !owned {
@@ -273,7 +281,7 @@ func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 
 	edge, owned, err := gs.resolveEdgeRefOwnedLocked(edgeID)
 	if err != nil {
-		return nil, ErrEdgeNotFound // PR B: return err
+		return nil, err
 	}
 	if !owned {
 		edge = edge.Clone()
@@ -326,7 +334,7 @@ func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, w
 	// mmap mode: promote a base-resident edge into the overlay (CoW) before mutating.
 	edge, err := gs.materializeEdgeLocked(edgeID)
 	if err != nil {
-		return ErrEdgeNotFound // PR B: return err
+		return err
 	}
 
 	// Update properties (merge with existing)
@@ -597,7 +605,11 @@ func (gs *GraphStorage) upsertEdgeWithTenantNoVerify(tenantID string, fromID, to
 		// Update existing edge under per-shard lock to exclude
 		// concurrent GetEdge readers. A4-edges.
 		gs.lockShard(existing.ID)
-		edge, _ := gs.materializeEdgeLocked(existing.ID) // mmap mode: promote base edge
+		edge, err := gs.materializeEdgeLocked(existing.ID) // mmap mode: promote base edge
+		if err != nil {
+			gs.unlockShard(existing.ID)
+			return nil, false, nil, fmt.Errorf("upsert edge %d: %w", existing.ID, err)
+		}
 
 		// Merge properties (new values override existing)
 		for k, v := range properties {

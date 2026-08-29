@@ -169,7 +169,7 @@ func (b *Batch) executeUpdateNode(op batchOp) error {
 	node, err := b.graph.materializeNodeLocked(op.nodeID)
 	b.graph.unlockShard(op.nodeID)
 	if err != nil {
-		return fmt.Errorf("node %d not found", op.nodeID) // PR B: wrap err
+		return fmt.Errorf("node %d not found: %w", op.nodeID, err)
 	}
 
 	// Pre-mutation snapshot for the observer (must be captured before the merge).

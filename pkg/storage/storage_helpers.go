@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -80,7 +81,7 @@ func (gs *GraphStorage) checkClosed() error {
 // callers should prefer verifyNodeExistsForTenant.
 func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
 	if _, err := gs.resolveNodeRefLocked(nodeID); err != nil {
-		return fmt.Errorf("%s node %d not found", nodeType, nodeID) // PR B: wrap err
+		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, err)
 	}
 	return nil
 }
@@ -99,7 +100,10 @@ func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
 func (gs *GraphStorage) verifyNodeExistsForTenant(nodeID uint64, nodeType string, tenantID string) error {
 	node, err := gs.resolveNodeRefLocked(nodeID)
 	if err != nil {
-		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound) // PR B: wrap err
+		if errors.Is(err, ErrRecordUnreadable) {
+			return fmt.Errorf("%s node %d: %w", nodeType, nodeID, err)
+		}
+		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound)
 	}
 	expected := effectiveTenantID(tenantID).String()
 	if node.TenantID != expected {

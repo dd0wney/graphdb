@@ -331,7 +331,7 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 	node, owned, err := gs.resolveNodeRefOwnedLocked(nodeID)
 	if err != nil {
 		gs.recordOperation("get_node", "error", start)
-		return nil, ErrNodeNotFound // PR B: return err
+		return nil, err
 	}
 	if !owned {
 		node = node.Clone()
@@ -359,10 +359,18 @@ func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node,
 	defer gs.runlockShard(nodeID)
 	node, owned, err := gs.resolveNodeRefOwnedLocked(nodeID)
 	if err != nil {
-		return nil, ErrNodeNotFound // PR B: return err
+		return nil, err
 	}
 	if node.TenantID != effectiveTenantID(tenantID).String() {
 		// Cross-tenant: same error as missing to avoid existence-leak side channel.
+		//
+		// An UNREADABLE record is the one documented exception to this rule.
+		// Its tenant string lives inside the record, so the failure necessarily
+		// precedes this check, and the error therefore reveals that the node
+		// directory holds an entry at this ID. The alternative — consulting the
+		// per-tenant membership section first — costs a lookup (~11ms at 937k
+		// nodes) on the single-node read path, which is the cost cheap reopen
+		// exists to avoid. See the spec, "The tenant side-channel".
 		return nil, ErrNodeNotFound
 	}
 	if !owned {
@@ -417,7 +425,7 @@ func (gs *GraphStorage) WithNodeRefForTenant(nodeID uint64, tenantID string, fn 
 func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*Node, error) {
 	node, err := gs.resolveNodeRefLocked(nodeID)
 	if err != nil {
-		return nil, ErrNodeNotFound // PR B: return err
+		return nil, err
 	}
 	expectedTenant := effectiveTenantID(tenantID).String()
 	if node.TenantID != expectedTenant {
@@ -464,7 +472,7 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	gs.unlockShard(nodeID)
 	if err != nil {
 		gs.mu.Unlock()
-		return ErrNodeNotFound // PR B: return err
+		return err
 	}
 
 	// R2.1: snapshot pre-update state for observer dispatch. Only allocate
@@ -544,7 +552,7 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	gs.unlockShard(nodeID)
 	if err != nil {
 		gs.mu.Unlock()
-		return ErrNodeNotFound // PR B: return err
+		return err
 	}
 
 	// R2.1: snapshot pre-removal state for observer dispatch. Only
@@ -710,7 +718,7 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	node, err := gs.resolveNodeRefLocked(nodeID)
 	if err != nil {
 		gs.mu.Unlock()
-		return ErrNodeNotFound // PR B: return err
+		return err
 	}
 
 	// Capture for OnNodeDeleted dispatch after unlock. node.TenantID is
