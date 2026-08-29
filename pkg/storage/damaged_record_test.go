@@ -18,6 +18,7 @@ import (
 // SQLite's equivalent cannot happen: sqlite3_malloc failure returns
 // SQLITE_NOMEM and a malformed page returns SQLITE_CORRUPT, neither of which
 // can be mistaken for an empty result (sqlite.org/malloc.html).
+// CONSUMER CONTRACT: CC11-unreadable-not-missing — all readers (PR B)
 func TestDamagedRecordIsNotReportedAsMissing(t *testing.T) {
 	dir := t.TempDir()
 
@@ -392,6 +393,7 @@ func TestDamagedRecordDoesNotLeakThroughEdgeCreate(t *testing.T) {
 // path hunts for. That warning does not apply here. The mmap path this test
 // exercises only exists after a reopen, and the damaged record lives in the
 // base snapshot, so a reopen is the only way to reach the code under test.
+// CONSUMER CONTRACT: CC11-unreadable-not-missing — all readers (PR B)
 func TestCheckInvariantsReportsADamagedRecord(t *testing.T) {
 	dir := t.TempDir()
 
