@@ -503,14 +503,24 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 	}
 
 	// --- ground truth: raw records, base ∪ overlay, shard wins ---------------
+	//
+	// A record the snapshot directory lists but that will not decode is a
+	// violation, not an absence. Reporting it here (rather than silently
+	// excluding it from liveNodes/liveEdges) is what stops a damaged record
+	// from reading as a clean store: forEachNodeUnlocked (the shard-overlay
+	// walk just below) already skips a record that fails to decode, on the
+	// documented understanding that this loop is the place that reports it.
 	liveNodes := make(map[uint64]*Node)
 	gs.mmapSnap.forEachNodeID(func(id uint64, _ int64) {
 		if gs.isNodeDeletedLocked(id) {
 			return
 		}
-		if n, err := gs.mmapSnap.getNode(id); err == nil {
-			liveNodes[id] = n
+		n, err := gs.mmapSnap.getNode(id)
+		if err != nil {
+			report("node %d: the snapshot directory lists it and its record does not decode: %v", id, err)
+			return
 		}
+		liveNodes[id] = n
 	})
 	gs.forEachNodeUnlocked(func(n *Node) bool {
 		liveNodes[n.ID] = n
@@ -522,9 +532,12 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 		if gs.isEdgeDeletedLocked(id) {
 			return
 		}
-		if e, err := gs.mmapSnap.getEdge(id); err == nil {
-			liveEdges[id] = e
+		e, err := gs.mmapSnap.getEdge(id)
+		if err != nil {
+			report("edge %d: the snapshot directory lists it and its record does not decode: %v", id, err)
+			return
 		}
+		liveEdges[id] = e
 	})
 	for i := range gs.edgeShards {
 		for id, e := range gs.edgeShards[i] {

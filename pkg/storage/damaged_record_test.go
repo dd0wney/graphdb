@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -375,5 +377,126 @@ func TestDamagedRecordDoesNotLeakThroughEdgeCreate(t *testing.T) {
 	// nodes, so the reopen worked and the guard refuses only what it should.
 	if _, err := gs2.CreateEdgeWithTenant("stranger", strangerA.ID, strangerB.ID, "LINK", nil, 1); err != nil {
 		t.Fatalf("the stranger's own edge must still create: %v", err)
+	}
+}
+
+// TestCheckInvariantsReportsADamagedRecord is the fifth guard site: the
+// invariant checker itself. checkInvariantsMmap walked every base record and
+// silently dropped the ones that would not decode, so a damaged record read
+// as a missing node to the checker too, and CheckInvariants reported a clean
+// store over a damaged file.
+//
+// This test calls CheckInvariants across a reopen. USAGE CONSTRAINT 3 on
+// CheckInvariants warns against that in general, because a reopen rebuilds
+// the shard-path derived indexes and self-heals drift — the thing the shard
+// path hunts for. That warning does not apply here. The mmap path this test
+// exercises only exists after a reopen, and the damaged record lives in the
+// base snapshot, so a reopen is the only way to reach the code under test.
+func TestCheckInvariantsReportsADamagedRecord(t *testing.T) {
+	dir := t.TempDir()
+
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	target, err := gs.CreateNode([]string{"Thing"}, map[string]Value{"name": StringValue("alpha")})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	path := mmapSnapshotPath(dir)
+	snap, err := openMmapSnapshot(path)
+	if err != nil {
+		t.Fatalf("open snapshot: %v", err)
+	}
+	off, ok := snap.nodeOffset(target.ID)
+	if !ok {
+		t.Fatalf("node %d has no directory entry", target.ID)
+	}
+	_ = snap.close()
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	// Byte 8 of a node record is the tenant-length prefix, as in
+	// TestDamagedRecordIsNotReportedAsMissing.
+	binary.LittleEndian.PutUint16(raw[off+8:], 0xFFFF)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// POSITIVE CONTROL on the corruption. Without it, a test that stopped
+	// corrupting anything would still pass.
+	if _, decErr := decodeNodeRecordAt(raw, off); decErr == nil {
+		t.Fatalf("corruption did not take: record at %d still decodes", off)
+	}
+
+	gs2, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer func() { _ = gs2.Close() }()
+
+	violations, err := CheckInvariants(gs2)
+	if err != nil {
+		t.Fatalf("CheckInvariants refused to run: %v", err)
+	}
+	if len(violations) == 0 {
+		t.Fatal("a damaged record must be an invariant violation, not a missing node")
+	}
+	// A plain ID-in-the-message check is too weak: even before the fix, the
+	// checker already reports a DIFFERENT violation that happens to name the
+	// ID ("membershipNodeIDsForTenant returned id 1, which is not a live
+	// record") — a real finding about ground truth being under-populated,
+	// but not the specific "the record does not decode" report this fix
+	// adds. Require the decode-failure wording so the test cannot pass on
+	// that other violation.
+	idStr := strconv.FormatUint(target.ID, 10)
+	found := false
+	for _, v := range violations {
+		if strings.Contains(v, idStr) && strings.Contains(v, "does not decode") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("no violation reports record %d as undecodable: %v", target.ID, violations)
+	}
+}
+
+// TestCheckInvariantsCleanOnUndamagedStore is the POSITIVE CONTROL for
+// TestCheckInvariantsReportsADamagedRecord. Without it, a checker that
+// reported a violation for every record — damaged or not — would also pass
+// the test above.
+func TestCheckInvariantsCleanOnUndamagedStore(t *testing.T) {
+	dir := t.TempDir()
+
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := gs.CreateNode([]string{"Thing"}, map[string]Value{"name": StringValue("alpha")}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	gs2, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer func() { _ = gs2.Close() }()
+
+	violations, err := CheckInvariants(gs2)
+	if err != nil {
+		t.Fatalf("CheckInvariants refused to run: %v", err)
+	}
+	if len(violations) != 0 {
+		t.Fatalf("an undamaged store must report no violations, got: %v", violations)
 	}
 }

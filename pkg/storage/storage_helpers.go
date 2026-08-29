@@ -319,10 +319,13 @@ func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
 		}
 		n, err := decodeNodeRecordAt(gs.mmapSnap.data, off)
 		if err != nil {
-			// A damaged record is skipped rather than crashing the walk. The
-			// invariant checker sees it as a missing record, which is the
-			// signal we want. PR B revisits this: the checker should report
-			// the damage instead of inferring it.
+			// A damaged record is skipped rather than crashing the walk.
+			// This walk has no way to report a decode failure — fn's
+			// signature is bool-returning, not error-returning. The
+			// invariant checker (checkInvariantsMmap) reports the damage
+			// itself, from its own pass over gs.mmapSnap.forEachNodeID and
+			// getNode, which sees every damaged record directly and does
+			// not depend on this walk to surface it.
 			return
 		}
 		if !fn(n) {
