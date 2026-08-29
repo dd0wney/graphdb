@@ -458,7 +458,7 @@ func TestCheckInvariantsReportsADamagedRecord(t *testing.T) {
 	idStr := strconv.FormatUint(target.ID, 10)
 	found := false
 	for _, v := range violations {
-		if strings.Contains(v, idStr) && strings.Contains(v, "does not decode") {
+		if strings.Contains(v, idStr) && strings.Contains(v, recordDoesNotDecodePhrase) {
 			found = true
 			break
 		}
@@ -472,6 +472,12 @@ func TestCheckInvariantsReportsADamagedRecord(t *testing.T) {
 // TestCheckInvariantsReportsADamagedRecord. Without it, a checker that
 // reported a violation for every record — damaged or not — would also pass
 // the test above.
+//
+// This test alone does not prove the checker inspects anything. A VACUOUS
+// checker that always returns zero violations would also pass it. What
+// rules that out is the sibling test's own assertion, which requires
+// len(violations) != 0 for a damaged store. Read the two tests as one
+// pair; neither proves the checker's behaviour on its own.
 func TestCheckInvariantsCleanOnUndamagedStore(t *testing.T) {
 	dir := t.TempDir()
 

@@ -517,7 +517,7 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 		}
 		n, err := gs.mmapSnap.getNode(id)
 		if err != nil {
-			report("node %d: the snapshot directory lists it and its record does not decode: %v", id, err)
+			report("node %d: the snapshot directory lists it and its record "+recordDoesNotDecodePhrase+": %v", id, err)
 			return
 		}
 		liveNodes[id] = n
@@ -534,7 +534,7 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 		}
 		e, err := gs.mmapSnap.getEdge(id)
 		if err != nil {
-			report("edge %d: the snapshot directory lists it and its record does not decode: %v", id, err)
+			report("edge %d: the snapshot directory lists it and its record "+recordDoesNotDecodePhrase+": %v", id, err)
 			return
 		}
 		liveEdges[id] = e

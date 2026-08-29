@@ -42,6 +42,13 @@ var (
 	errRecordDamaged = errors.New("record did not decode")
 )
 
+// recordDoesNotDecodePhrase is the exact wording CheckInvariants uses to
+// report a record the snapshot directory lists but that failed to decode
+// (see checkInvariantsMmap in invariants.go). damaged_record_test.go asserts
+// on this phrase. Both sides read the same constant so a copy-edit to the
+// message cannot silently break the test.
+const recordDoesNotDecodePhrase = "does not decode"
+
 // validateEdgeWeight rejects non-finite (±Inf/NaN) edge weights, which the WAL
 // cannot JSON-marshal (#328). Returns ErrInvalidEdgeWeight wrapped with the
 // offending value.
