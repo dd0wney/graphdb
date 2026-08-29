@@ -306,15 +306,34 @@ record. So this step proves the teeth a different way, by mutation:
 export SCRATCH=/tmp/claude-1000/-mnt-ssd2-Workspace-github-com-graphdb/4474d5b1-0313-4e31-8e85-7af525dbfaeb/scratchpad
 ```
 
-Temporarily edit `pkg/api/handlers_nodes.go`'s `deleteNode` so a cross-tenant
-delete answers 403 instead of 404:
+**This mutation must be ASYMMETRIC, and the obvious one is not.**
+
+Corrected 2026-08-29, after the first attempt made ZERO rows fail. Changing
+`deleteNode`'s `ErrNodeNotFound` branch from 404 to 403 does nothing, because
+`getNodeRefForTenant` returns the IDENTICAL sentinel for "missing" and for
+"cross-tenant" — that is the security rule working. Both compared probes then
+traverse the same mutated branch and stay equal.
+
+A mutation that both sides of an equivalence comparison traverse is invisible by
+construction. To prove teeth, the mutation must make the two paths DIVERGE.
+
+Reintroduce a tenant-blind existence check inside `deleteNode`, so a node that
+exists but belongs to someone else answers differently from one that never
+existed:
 
 ```go
-		if errors.Is(err, storage.ErrNodeNotFound) {
-			s.respondError(w, http.StatusForbidden, "Node not found") // MUTATION
+	// MUTATION: a tenant-blind existence probe before the tenant-scoped call.
+	// This is the defect class the sweep exists to catch, so it is the right
+	// thing to mutate.
+	if _, blindErr := s.graph.GetNode(nodeID); blindErr == nil {
+		if _, err := s.graph.GetNodeForTenant(nodeID, tenantID); err != nil {
+			s.respondError(w, http.StatusForbidden, "Node not found")
 			return
 		}
+	}
 ```
+
+Adapt to the real surrounding code — read `deleteNode` before pasting.
 
 Then:
 
