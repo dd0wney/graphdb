@@ -326,6 +326,16 @@ func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
 			// itself, from its own pass over gs.mmapSnap.forEachNodeID and
 			// getNode, which sees every damaged record directly and does
 			// not depend on this walk to surface it.
+			//
+			// snapshotMmapLocked (mmap_snapshot_persist.go) also calls this
+			// walk, to collect the live node set for the next snapshot.
+			// There, a skip here is not safe: the damaged record is
+			// dropped from the write, and once it completes the record's
+			// directory entry, and every diagnostic this change adds for
+			// it, are gone. The edge branch of that same function refuses
+			// the write instead of dropping one (mmap_snapshot_persist.go,
+			// "Refuse rather than drop"). The node branch does not. That
+			// asymmetry predates this change and is not fixed here.
 			return
 		}
 		if !fn(n) {

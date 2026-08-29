@@ -228,10 +228,13 @@ documents).
    (sqlite.org/malloc.html).
    **Single-record half: SHIPPED — PR B** (branch
    `fix/storage-unreadable-single-record`, commits `50edf57..64bab7d`).
-   `GetNode`, `GetNodeForTenant`, `GetEdge`, `GetEdgeForTenant`, the update,
-   delete and verify paths, and `CheckInvariants` now return or report
-   `ErrRecordUnreadable` — wrapping `errRecordDamaged` or `alloc.ErrNoMemory` —
-   instead of collapsing to `ErrNodeNotFound`. The fix opened a tenant
+   `GetNode`, `GetNodeForTenant`, `GetEdge`, `GetEdgeForTenant`, the verify
+   path behind edge creation (`verifyNodeExistsForTenant`), and
+   `CheckInvariants` now return or report `ErrRecordUnreadable` — wrapping
+   `errRecordDamaged` or `alloc.ErrNoMemory` — instead of collapsing to
+   `ErrNodeNotFound`. The delete cascade inside `DeleteNode` and the batch
+   executor still collapse an unreadable record to absent; that is not part
+   of this half. The fix opened a tenant
    existence side-channel (a damaged record's tenant string is inside the
    record, so the decode failure precedes the tenant check); a
    `membershipContains` guard on five tenant-scoped sites closes it by binary

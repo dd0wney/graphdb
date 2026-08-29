@@ -42,12 +42,13 @@ The following are present in the codebase but not yet part of a tagged release
   truncated copy) previously read as `ErrNodeNotFound`, because the mmap
   snapshot's CRC covers the header, the directories and the metadata blob, not
   record bodies. `GetNode`, `GetNodeForTenant`, `GetEdge`, `GetEdgeForTenant`,
-  the update/delete/verify paths, and `CheckInvariants` now return or report
-  `ErrRecordUnreadable` instead. **Behaviour change**: a deployment already
-  serving a damaged snapshot will see these reads start failing where they
-  previously returned a silent "not found". Multi-record reads (list and page
-  endpoints) are unaffected and still skip an unreadable record; that is a
-  follow-up change
+  the verify path behind edge creation (`verifyNodeExistsForTenant`), and
+  `CheckInvariants` now return or report `ErrRecordUnreadable` instead.
+  **Behaviour change**: a deployment already serving a damaged snapshot will
+  see these reads start failing where they previously returned a silent "not
+  found". Multi-record reads (list and page endpoints), the delete cascade,
+  and the batch executor are unaffected and still skip an unreadable record;
+  that is a follow-up change.
 - Goroutine leaks in OIDC StateStore and server metrics subsystems
 - Memory leak in JWKS client key cache (unbounded growth on key rotation)
 - Goroutine leaks in crash-simulation tests (LSM worker cleanup)
