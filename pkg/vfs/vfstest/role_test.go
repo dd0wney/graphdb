@@ -452,6 +452,36 @@ func TestFailAllForRoleKeepsFailing(t *testing.T) {
 	}
 }
 
+// opConstName's output is pasted straight into a regression test, so a wrong
+// name gives a pin that compiles, passes, and names a different operation.
+// Mutation testing cannot reach a string literal, so this table is the only
+// check on the literals themselves.
+func TestOpConstNameMatchesConstant(t *testing.T) {
+	tests := []struct {
+		op   Op
+		want string
+	}{
+		{OpOpen, "OpOpen"},
+		{OpRemove, "OpRemove"},
+		{OpRename, "OpRename"},
+		{OpStat, "OpStat"},
+		{OpMkdirAll, "OpMkdirAll"},
+		{OpReadDir, "OpReadDir"},
+		{OpRead, "OpRead"},
+		{OpWrite, "OpWrite"},
+		{OpSync, "OpSync"},
+		{OpTruncate, "OpTruncate"},
+		{OpClose, "OpClose"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := opConstName(tt.op); got != tt.want {
+				t.Errorf("opConstName(%s) = %q, want %q", tt.op, got, tt.want)
+			}
+		})
+	}
+}
+
 // FailAllOpForRole must fail one kind of operation for a role and let the
 // role's other operations through. Failing the whole role would stop the work
 // before it reached the error path that runs after a successful operation of a
