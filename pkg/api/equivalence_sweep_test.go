@@ -77,6 +77,11 @@ var noAuthMuxPatterns = []string{"/nodes/", "/edges/", "/edges"}
 // risk it exists to catch. The idiom matches
 // pkg/cluster/import_guard_test.go, which parses Go source with go/parser for
 // the same reason.
+//
+// Only sees a pattern given as a string literal. server.go's 41
+// mux.HandleFunc( call sites are all string literals today; a future one
+// built from a computed value would parse past this function silently and
+// the control below would stop covering that pattern without failing.
 func productionPatterns(t *testing.T) map[string]bool {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -176,13 +181,28 @@ func TestProbeSeesTheTenant(t *testing.T) {
 
 // sweepRow is one operation that names a caller-supplied resource ID.
 //
-// pathFmt and bodyFmt each take the ID exactly once, through %d. A row puts the
-// ID in one or the other, never both.
+// pathFmt takes the varying ID once, through %d, in the path. bodyFmt takes
+// zero, one, or two %d verbs: zero for a body with no ID (PUT's fixed
+// property update), one for a body naming only the varying ID, two for a
+// POST /edges row, whose body names TWO node IDs — the varying one and a
+// fixed peer that must stay valid so the varying check is the one reached.
+//
+// A row with two %d verbs always fills the FIRST from the caller's id and the
+// SECOND from fixedID, regardless of which JSON key each verb sits under —
+// object key order does not matter to the decoder, so a row is free to put
+// the varying key first in its own literal to keep that convention uniform.
 type sweepRow struct {
 	name    string
 	method  string
 	pathFmt string
 	bodyFmt string
+	// fixedID is the OTHER node id a POST /edges row's body needs — the one
+	// held constant across both the "owned" and "missing" probes of the SAME
+	// row so it keeps passing its own tenant check and execution reaches the
+	// check the row exists to exercise. Set by the test once the fixture that
+	// owns it exists; the zero value is unused by every row whose bodyFmt has
+	// fewer than two %d verbs.
+	fixedID uint64
 }
 
 func (r sweepRow) request(id uint64) (path, body string) {
@@ -190,8 +210,13 @@ func (r sweepRow) request(id uint64) (path, body string) {
 	if strings.Contains(path, "%d") {
 		path = fmt.Sprintf(path, id)
 	}
-	if r.bodyFmt != "" {
+	switch strings.Count(r.bodyFmt, "%d") {
+	case 0:
+		body = r.bodyFmt
+	case 1:
 		body = fmt.Sprintf(r.bodyFmt, id)
+	default:
+		body = fmt.Sprintf(r.bodyFmt, id, r.fixedID)
 	}
 	return path, body
 }
@@ -203,17 +228,37 @@ func (r sweepRow) request(id uint64) (path, body string) {
 // calls (edge_operations.go:61 and :64), and a guard on one is not a guard on
 // the other. Row 7 is also the row a hand-written suite forgets, and it is the
 // one that leaked on 2026-08-29.
+//
+// The fixed peer in each POST row's body is a %d, not a hand-picked constant.
+// A first draft of this table fixed it to the literal 1 — which is exactly
+// the ID a fresh store gives its first node, so row 8's "fixed" source and
+// its "varying" target both named the same node, both probes failed the
+// SOURCE check first (edge_operations.go:61, which returns early), and the
+// target check (:64) was never reached. The row passed while silently
+// re-testing row 7. Fixed by making the fixed peer a real, probing-tenant-
+// owned node (TestCrossPrincipalEquivalence_IntactStore's strangerNode, via
+// sweepRow.fixedID) instead of a guessed number, for both rows — row 7's
+// fixed target had the same latent problem in reverse, saved only by
+// evaluation order.
 var equivalenceRows = []sweepRow{
-	{"GET node", http.MethodGet, "/nodes/%d", ""},
-	{"PUT node", http.MethodPut, "/nodes/%d", `{"properties":{"x":"y"}}`},
-	{"DELETE node", http.MethodDelete, "/nodes/%d", ""},
-	{"GET edge", http.MethodGet, "/edges/%d", ""},
-	{"PUT edge", http.MethodPut, "/edges/%d", `{"properties":{"x":"y"}}`},
-	{"DELETE edge", http.MethodDelete, "/edges/%d", ""},
-	{"POST edge, source position", http.MethodPost, "/edges",
-		`{"from_node_id":%d,"to_node_id":1,"type":"LINKS"}`},
-	{"POST edge, target position", http.MethodPost, "/edges",
-		`{"from_node_id":1,"to_node_id":%d,"type":"LINKS"}`},
+	{name: "GET node", method: http.MethodGet, pathFmt: "/nodes/%d"},
+	{name: "PUT node", method: http.MethodPut, pathFmt: "/nodes/%d",
+		bodyFmt: `{"properties":{"x":"y"}}`},
+	{name: "DELETE node", method: http.MethodDelete, pathFmt: "/nodes/%d"},
+	{name: "GET edge", method: http.MethodGet, pathFmt: "/edges/%d"},
+	{name: "PUT edge", method: http.MethodPut, pathFmt: "/edges/%d",
+		bodyFmt: `{"properties":{"x":"y"}}`},
+	{name: "DELETE edge", method: http.MethodDelete, pathFmt: "/edges/%d"},
+	// Varying source first, so the %d order is (id, fixedID): source varies,
+	// target stays a probing-tenant-owned node.
+	{name: "POST edge, source position", method: http.MethodPost, pathFmt: "/edges",
+		bodyFmt: `{"from_node_id":%d,"to_node_id":%d,"type":"LINKS"}`},
+	// Varying target first, so the %d order is still (id, fixedID) even
+	// though "to_node_id" now leads the JSON — object key order does not
+	// matter to the decoder, and keeping the verb order uniform keeps
+	// sweepRow.request simple.
+	{name: "POST edge, target position", method: http.MethodPost, pathFmt: "/edges",
+		bodyFmt: `{"to_node_id":%d,"from_node_id":%d,"type":"LINKS"}`},
 }
 
 // TestCrossPrincipalEquivalence_IntactStore asserts that for every row, a
@@ -239,11 +284,21 @@ func TestCrossPrincipalEquivalence_IntactStore(t *testing.T) {
 		t.Fatalf("create owner edge: %v", err)
 	}
 
+	// Owned by the PROBING tenant ("stranger"), not by "owner". A POST /edges
+	// row's fixed peer must pass its own tenant check so execution reaches the
+	// check the row exists to test — see the comment on equivalenceRows.
+	strangerNode, err := s.graph.CreateNodeWithTenant("stranger", []string{"Thing"},
+		map[string]storage.Value{"name": storage.StringValue("stranger-own")})
+	if err != nil {
+		t.Fatalf("create stranger node: %v", err)
+	}
+
 	// An ID far beyond anything created. Both probes must agree that it is
 	// absent, which is the reference the comparison is made against.
 	const neverExisted uint64 = 999999
 
 	for _, row := range equivalenceRows {
+		row.fixedID = strangerNode.ID
 		t.Run(row.name, func(t *testing.T) {
 			existing := ownedNode.ID
 			if strings.Contains(row.pathFmt, "/edges/") {
