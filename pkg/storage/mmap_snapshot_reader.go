@@ -57,6 +57,22 @@ func openMmapSnapshotWithFS(fs vfs.FileSystem, path string) (*mmapSnapshot, erro
 		_ = release()
 		return nil, fmt.Errorf("mmap snapshot %q CRC mismatch: got %08x want %08x", path, got, hdr.crc)
 	}
+	// The ID range and the directory must agree. forEachNodeID/forEachEdgeID
+	// iterate from minID to maxID and index the directory per step, so a header
+	// claiming a range wider than its directory is not a slow read — it is an
+	// unbounded one. FuzzMmapSnapshotCRCRepaired set the top byte of maxEdgeID
+	// to 0xa0 and turned a 3-edge snapshot into 1.15e19 iterations. Adding a
+	// bounds check inside dirEntry alone converted the panic into a hang, which
+	// is the worse failure: a crash stops, a spin does not.
+	if err := checkDirRange(hdr.nodeCount, hdr.minNodeID, hdr.maxNodeID, len(nodeDir), "node"); err != nil {
+		_ = release()
+		return nil, fmt.Errorf("mmap snapshot %q: %w", path, err)
+	}
+	if err := checkDirRange(hdr.edgeCount, hdr.minEdgeID, hdr.maxEdgeID, len(edgeDir), "edge"); err != nil {
+		_ = release()
+		return nil, fmt.Errorf("mmap snapshot %q: %w", path, err)
+	}
+
 	meta, err := unmarshalMmapMetadata(metaBytes)
 	if err != nil {
 		_ = release()
@@ -203,8 +219,40 @@ func (m *mmapSnapshot) edgeOffset(id uint64) (int64, bool) {
 	return off, off != dirAbsent
 }
 
+// checkDirRange rejects a header whose declared ID range cannot fit in the
+// directory the file actually carries. The range drives a loop; the directory
+// bounds the reads. When they disagree the file is malformed, and refusing at
+// open is the only place that costs nothing.
+func checkDirRange(count, minID, maxID uint64, dirLen int, what string) error {
+	if count == 0 {
+		return nil
+	}
+	if maxID < minID {
+		return fmt.Errorf("%s ID range inverted: min %d > max %d", what, minID, maxID)
+	}
+	span := maxID - minID + 1
+	if span > uint64(dirLen)/8 {
+		return fmt.Errorf("%s ID range %d..%d needs %d directory entries, the file carries %d",
+			what, minID, maxID, span, uint64(dirLen)/8)
+	}
+	return nil
+}
+
 func (m *mmapSnapshot) dirEntry(dirOffset, idx uint64) int64 {
+	// idx comes from the header's ID range and dirOffset from the header's
+	// directory pointer. Both are file data. A snapshot whose maxEdgeID says
+	// there are more entries than the directory holds walks this read straight
+	// off the end of the mapping — FuzzMmapSnapshotCRCRepaired found exactly
+	// that: "index out of range [7] with length 3", eight bytes wanted with
+	// three left. The CRC hides it in practice, and hiding is not defending:
+	// a partial write that lands on a plausible checksum reaches here.
+	if idx > (^uint64(0)-dirOffset-8)/8 {
+		return dirAbsent
+	}
 	p := dirOffset + idx*8
+	if p+8 > uint64(len(m.data)) {
+		return dirAbsent
+	}
 	return int64(binary.LittleEndian.Uint64(m.data[p:]))
 }
 
