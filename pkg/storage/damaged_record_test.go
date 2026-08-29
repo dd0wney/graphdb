@@ -272,3 +272,108 @@ func TestDamagedEdgeRecordDoesNotLeakAcrossTenants(t *testing.T) {
 		t.Fatalf("the stranger's own edge must still read: %v", err)
 	}
 }
+
+// verifyNodeExistsForTenant is the third guard site and the only one no reader
+// test reaches. CreateEdgeWithTenant calls it with a caller-supplied node ID,
+// and pkg/api/handlers_edges.go branches POST /edges on the error class, so an
+// unguarded site lets tenant "stranger" learn that a node of tenant "owner"
+// exists by sending an edge create and reading 500 instead of 404.
+//
+// The site also inverts the condition against the four readers, because it
+// reports the unreadable error in the POSITIVE branch. An inverted polarity is
+// the easiest error to make in this shape, so both assertions below matter: a
+// blanket ErrNodeNotFound fails the owner case, and an inverted guard fails
+// both.
+func TestDamagedRecordDoesNotLeakThroughEdgeCreate(t *testing.T) {
+	dir := t.TempDir()
+
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	damaged, err := gs.CreateNodeWithTenant("owner", []string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("create damaged: %v", err)
+	}
+	ownerOther, err := gs.CreateNodeWithTenant("owner", []string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("create owner other: %v", err)
+	}
+	// The stranger owns nodes of its own, so its membership run exists and the
+	// refusal below is about the target ID, not about a missing run.
+	strangerA, err := gs.CreateNodeWithTenant("stranger", []string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("create stranger a: %v", err)
+	}
+	strangerB, err := gs.CreateNodeWithTenant("stranger", []string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("create stranger b: %v", err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	path := mmapSnapshotPath(dir)
+
+	snap, err := openMmapSnapshot(path)
+	if err != nil {
+		t.Fatalf("open snapshot: %v", err)
+	}
+	off, ok := snap.nodeOffset(damaged.ID)
+	if !ok {
+		t.Fatalf("node %d has no directory entry", damaged.ID)
+	}
+	_ = snap.close()
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	binary.LittleEndian.PutUint16(raw[off+8:], 0xFFFF)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// POSITIVE CONTROL on the corruption.
+	if _, decErr := decodeNodeRecordAt(raw, off); decErr == nil {
+		t.Fatalf("corruption did not take: record at %d still decodes", off)
+	}
+
+	gs2, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer func() { _ = gs2.Close() }()
+
+	// The OWNING tenant still learns that the endpoint is unreadable. Without
+	// this assertion a blanket ErrNodeNotFound would pass.
+	_, err = gs2.CreateEdgeWithTenant("owner", damaged.ID, ownerOther.ID, "LINK", nil, 1)
+	if !errors.Is(err, ErrRecordUnreadable) {
+		t.Fatalf("the owning tenant must still get ErrRecordUnreadable, got %v", err)
+	}
+
+	// The STRANGER learns nothing about the owner's node.
+	_, err = gs2.CreateEdgeWithTenant("stranger", damaged.ID, strangerA.ID, "LINK", nil, 1)
+	if errors.Is(err, ErrRecordUnreadable) {
+		t.Fatalf("edge create leaked a damaged node across tenants: %v", err)
+	}
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("want ErrNodeNotFound for a cross-tenant endpoint, got %v", err)
+	}
+
+	// The same in the target position, because CreateEdgeWithTenant verifies
+	// the two endpoints in separate calls.
+	_, err = gs2.CreateEdgeWithTenant("stranger", strangerA.ID, damaged.ID, "LINK", nil, 1)
+	if errors.Is(err, ErrRecordUnreadable) {
+		t.Fatalf("edge create leaked a damaged target node across tenants: %v", err)
+	}
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("want ErrNodeNotFound for a cross-tenant target, got %v", err)
+	}
+
+	// NEGATIVE CONTROL: the stranger can still create an edge between its own
+	// nodes, so the reopen worked and the guard refuses only what it should.
+	if _, err := gs2.CreateEdgeWithTenant("stranger", strangerA.ID, strangerB.ID, "LINK", nil, 1); err != nil {
+		t.Fatalf("the stranger's own edge must still create: %v", err)
+	}
+}

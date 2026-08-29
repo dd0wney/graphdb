@@ -387,9 +387,16 @@ func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node,
 // The search itself is O(log n) over the mapped bytes with no allocation —
 // membershipRun would copy every ID the tenant owns.
 //
-// Returns false whenever the answer is not knowable: no mmap base, no
-// membership section, a damaged run. The caller turns false into
-// ErrNodeNotFound, so an unknowable answer leaks nothing.
+// Returns false when there is no mmap base and when the snapshot carries no
+// membership section. The caller turns false into ErrNodeNotFound, so those
+// cases leak nothing.
+//
+// A DAMAGED run is NOT one of those cases, and this guard is not a defence
+// against a corrupt file. The run bytes lie outside computeCRC, so a damaged
+// run can produce either answer: membershipContains refuses a read that would
+// leave the mapping, but a wrong value that is still in range compares like
+// any other and can return true. What this guard defends is a cross-tenant
+// probe against an INTACT file.
 func (gs *GraphStorage) tenantOwnsUnreadableNode(nodeID uint64, tid tenantid.TenantID) bool {
 	if gs.mmapSnap == nil {
 		return false

@@ -331,9 +331,12 @@ func (m *mmapSnapshot) membershipRun(kind byte, tenant, name string) []uint64 {
 // allocation.
 //
 // Every read is bounds-checked against len(m.data). The offset and the count
-// both come from the file, both arrive as a signed int64 that the file chose,
-// and the CRC does not cover record or run bytes — so a corrupt or hostile
-// file reaches here. A read that would leave the mapping returns false rather
+// come from the membership DIRECTORY, which computeCRC does cover; the run
+// bytes this search then reads are NOT covered. Both arrive as a signed int64
+// that the file chose. So the CRC hides a bad directory pair in practice, and
+// hiding is not defending: a partial write that lands on a plausible checksum
+// reaches here with any offset and any count, and no checksum at all stands
+// behind the run. A read that would leave the mapping returns false rather
 // than panicking: this function guards a security decision, and failing closed
 // is the only safe direction.
 func (m *mmapSnapshot) membershipContains(kind byte, tenant, name string, id uint64) bool {
