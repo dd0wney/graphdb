@@ -166,10 +166,10 @@ func (b *Batch) executeCreateEdge(op batchOp) error {
 func (b *Batch) executeUpdateNode(op batchOp) error {
 	// mmap mode: promote a base-resident node into the overlay (CoW) before mutating.
 	b.graph.lockShard(op.nodeID)
-	node, exists := b.graph.materializeNodeLocked(op.nodeID)
+	node, err := b.graph.materializeNodeLocked(op.nodeID)
 	b.graph.unlockShard(op.nodeID)
-	if !exists {
-		return fmt.Errorf("node %d not found", op.nodeID)
+	if err != nil {
+		return fmt.Errorf("node %d not found", op.nodeID) // PR B: wrap err
 	}
 
 	// Pre-mutation snapshot for the observer (must be captured before the merge).
@@ -237,9 +237,9 @@ func (b *Batch) executeUpdateNode(op batchOp) error {
 }
 
 func (b *Batch) executeDeleteNode(op batchOp) error {
-	node, exists := b.graph.resolveNodeRefLocked(op.nodeID)
-	if !exists {
-		return nil // Skip non-existent nodes
+	node, err := b.graph.resolveNodeRefLocked(op.nodeID)
+	if err != nil {
+		return nil // Skip non-existent nodes. PR B: distinguish unreadable
 	}
 
 	// Remove from the global label index (O(1) per label), keeping empty
@@ -278,7 +278,7 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 	// plain maps, behaviour unchanged.
 	outgoing := b.graph.getEdgeIDsForNode(op.nodeID, true)
 	for _, edgeID := range outgoing {
-		if edge, ok := b.graph.resolveEdgeRefLocked(edgeID); ok {
+		if edge, err := b.graph.resolveEdgeRefLocked(edgeID); err == nil {
 			b.graph.removeEdgeFromTenantIndex(edge)
 			removeFromLabelIndexKeepEmpty(b.graph.edgesByType, edge.Type, edgeID)
 			// a->X: drop the edge from X's incoming adjacency overlay.
@@ -291,7 +291,7 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 
 	incoming := b.graph.getEdgeIDsForNode(op.nodeID, false)
 	for _, edgeID := range incoming {
-		if edge, ok := b.graph.resolveEdgeRefLocked(edgeID); ok {
+		if edge, err := b.graph.resolveEdgeRefLocked(edgeID); err == nil {
 			b.graph.removeEdgeFromTenantIndex(edge)
 			removeFromLabelIndexKeepEmpty(b.graph.edgesByType, edge.Type, edgeID)
 			// Y->a: drop the edge from Y's outgoing adjacency.
@@ -338,9 +338,9 @@ func (b *Batch) executeDeleteNode(op batchOp) error {
 }
 
 func (b *Batch) executeDeleteEdge(op batchOp) error {
-	edge, exists := b.graph.resolveEdgeRefLocked(op.edgeID)
-	if !exists {
-		return nil // Skip non-existent edges
+	edge, err := b.graph.resolveEdgeRefLocked(op.edgeID)
+	if err != nil {
+		return nil // Skip non-existent edges. PR B: distinguish unreadable
 	}
 
 	// Remove from the global type index (O(1)), keeping empty buckets so the

@@ -54,9 +54,9 @@ func TestMmapSnapshot_DataRoundTrip(t *testing.T) {
 
 	// Nodes incl. the gap (3, 4 absent).
 	for _, want := range sampleNodes() {
-		got, ok := m.getNode(want.ID)
-		if !ok {
-			t.Fatalf("node %d missing", want.ID)
+		got, err := m.getNode(want.ID)
+		if err != nil {
+			t.Fatalf("node %d missing: %v", want.ID, err)
 		}
 		if got.ID != want.ID || got.TenantID != want.TenantID ||
 			!reflect.DeepEqual(got.Labels, want.Labels) ||
@@ -65,15 +65,15 @@ func TestMmapSnapshot_DataRoundTrip(t *testing.T) {
 			t.Fatalf("node %d mismatch:\n got %+v\nwant %+v", want.ID, got, want)
 		}
 	}
-	if _, ok := m.getNode(3); ok {
+	if _, err := m.getNode(3); err == nil {
 		t.Fatal("node 3 (gap) should be absent")
 	}
 
 	// Edges incl. Weight (a regression vs the prototype, which dropped it).
 	for _, want := range sampleEdges() {
-		got, ok := m.getEdge(want.ID)
-		if !ok {
-			t.Fatalf("edge %d missing", want.ID)
+		got, err := m.getEdge(want.ID)
+		if err != nil {
+			t.Fatalf("edge %d missing: %v", want.ID, err)
 		}
 		if got.Weight != want.Weight || got.FromNodeID != want.FromNodeID ||
 			got.ToNodeID != want.ToNodeID || got.Type != want.Type ||
@@ -139,9 +139,9 @@ func TestMmapSnapshot_CopyOnRead(t *testing.T) {
 	// unaffected — proving Value.Data is copied, not aliased (safe after munmap).
 	buf := encodeNodeRecord(&Node{ID: 1, TenantID: "t", Labels: []string{"L"},
 		Properties: map[string]Value{"k": StringValue("orig")}})
-	n, okDecode := decodeNodeRecordAt(buf, 0)
-	if !okDecode {
-		t.Fatal("decodeNodeRecordAt rejected a valid record")
+	n, err := decodeNodeRecordAt(buf, 0)
+	if err != nil {
+		t.Fatalf("decodeNodeRecordAt rejected a valid record: %v", err)
 	}
 	for i := range buf {
 		buf[i] = 0xFF
@@ -205,7 +205,7 @@ func TestMmapSnapshot_Empty(t *testing.T) {
 	if m.nodeCount() != 0 || m.edgeCount() != 0 {
 		t.Fatalf("empty counts %d/%d", m.nodeCount(), m.edgeCount())
 	}
-	if _, ok := m.getNode(1); ok {
+	if _, err := m.getNode(1); err == nil {
 		t.Fatal("empty store should have no nodes")
 	}
 	if got := m.membershipRun(membKindNodeTenant, "t", ""); got != nil {

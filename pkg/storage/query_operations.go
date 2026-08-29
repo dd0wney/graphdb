@@ -5,7 +5,7 @@ package storage
 func (gs *GraphStorage) buildNodeListFromIDs(nodeIDs []uint64) []*Node {
 	nodes := make([]*Node, 0, len(nodeIDs))
 	for _, nodeID := range nodeIDs {
-		if node, owned, exists := gs.resolveNodeRefOwnedLocked(nodeID); exists {
+		if node, owned, err := gs.resolveNodeRefOwnedLocked(nodeID); err == nil {
 			if !owned {
 				node = node.Clone()
 			}
@@ -20,7 +20,7 @@ func (gs *GraphStorage) buildNodeListFromIDs(nodeIDs []uint64) []*Node {
 func (gs *GraphStorage) buildEdgeListFromIDs(edgeIDs []uint64) []*Edge {
 	edges := make([]*Edge, 0, len(edgeIDs))
 	for _, edgeID := range edgeIDs {
-		if edge, owned, exists := gs.resolveEdgeRefOwnedLocked(edgeID); exists {
+		if edge, owned, err := gs.resolveEdgeRefOwnedLocked(edgeID); err == nil {
 			if !owned {
 				edge = edge.Clone()
 			}

@@ -508,7 +508,7 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 		if gs.isNodeDeletedLocked(id) {
 			return
 		}
-		if n, ok := gs.mmapSnap.getNode(id); ok {
+		if n, err := gs.mmapSnap.getNode(id); err == nil {
 			liveNodes[id] = n
 		}
 	})
@@ -522,7 +522,7 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 		if gs.isEdgeDeletedLocked(id) {
 			return
 		}
-		if e, ok := gs.mmapSnap.getEdge(id); ok {
+		if e, err := gs.mmapSnap.getEdge(id); err == nil {
 			liveEdges[id] = e
 		}
 	})

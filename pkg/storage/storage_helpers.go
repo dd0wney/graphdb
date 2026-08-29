@@ -79,8 +79,8 @@ func (gs *GraphStorage) checkClosed() error {
 // tenant-blind callers (CreateEdge, UpsertEdge). New tenant-aware
 // callers should prefer verifyNodeExistsForTenant.
 func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
-	if _, exists := gs.resolveNodeRefLocked(nodeID); !exists {
-		return fmt.Errorf("%s node %d not found", nodeType, nodeID)
+	if _, err := gs.resolveNodeRefLocked(nodeID); err != nil {
+		return fmt.Errorf("%s node %d not found", nodeType, nodeID) // PR B: wrap err
 	}
 	return nil
 }
@@ -97,9 +97,9 @@ func (gs *GraphStorage) verifyNodeExists(nodeID uint64, nodeType string) error {
 // tenant, enabling tenant-A to write a tenant-A-stamped edge against
 // tenant-B's nodes.
 func (gs *GraphStorage) verifyNodeExistsForTenant(nodeID uint64, nodeType string, tenantID string) error {
-	node, exists := gs.resolveNodeRefLocked(nodeID)
-	if !exists {
-		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound)
+	node, err := gs.resolveNodeRefLocked(nodeID)
+	if err != nil {
+		return fmt.Errorf("%s node %d not found: %w", nodeType, nodeID, ErrNodeNotFound) // PR B: wrap err
 	}
 	expected := effectiveTenantID(tenantID).String()
 	if node.TenantID != expected {
@@ -309,11 +309,12 @@ func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
 		if _, shadowed := gs.lookupNodeShard(id); shadowed || gs.isNodeDeletedLocked(id) {
 			return
 		}
-		n, ok := decodeNodeRecordAt(gs.mmapSnap.data, off)
-		if !ok {
+		n, err := decodeNodeRecordAt(gs.mmapSnap.data, off)
+		if err != nil {
 			// A damaged record is skipped rather than crashing the walk. The
 			// invariant checker sees it as a missing record, which is the
-			// signal we want.
+			// signal we want. PR B revisits this: the checker should report
+			// the damage instead of inferring it.
 			return
 		}
 		if !fn(n) {

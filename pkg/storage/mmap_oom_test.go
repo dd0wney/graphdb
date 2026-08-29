@@ -45,7 +45,7 @@ func readAll(path string) (map[uint64]*Node, int, error) {
 	got := make(map[uint64]*Node)
 	absent := 0
 	snap.forEachNodeID(func(id uint64, _ int64) {
-		if n, ok := snap.getNode(id); ok {
+		if n, err := snap.getNode(id); err == nil {
 			got[id] = n
 		} else {
 			absent++

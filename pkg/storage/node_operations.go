@@ -149,9 +149,9 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 
 	tid := effectiveTenantID(tenantID)
 	for _, existingID := range gs.membershipNodeIDsByLabelLocked(tid, uniqueLabel) {
-		existing, exists := gs.resolveNodeRefLocked(existingID)
-		if !exists {
-			continue
+		existing, err := gs.resolveNodeRefLocked(existingID)
+		if err != nil {
+			continue // PR B: an unreadable record must not be read as "no conflict"
 		}
 		if existingVal, has := existing.Properties[uniquePropertyKey]; has && valuesEqual(existingVal, newVal) {
 			gs.mu.Unlock()
@@ -328,10 +328,10 @@ func (gs *GraphStorage) GetNode(nodeID uint64) (*Node, error) {
 	gs.rlockShard(nodeID)
 	defer gs.runlockShard(nodeID)
 
-	node, owned, exists := gs.resolveNodeRefOwnedLocked(nodeID)
-	if !exists {
+	node, owned, err := gs.resolveNodeRefOwnedLocked(nodeID)
+	if err != nil {
 		gs.recordOperation("get_node", "error", start)
-		return nil, ErrNodeNotFound
+		return nil, ErrNodeNotFound // PR B: return err
 	}
 	if !owned {
 		node = node.Clone()
@@ -357,9 +357,9 @@ func (gs *GraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*Node,
 	// Per-shard read lock (A4) — see GetNode for the rationale.
 	gs.rlockShard(nodeID)
 	defer gs.runlockShard(nodeID)
-	node, owned, exists := gs.resolveNodeRefOwnedLocked(nodeID)
-	if !exists {
-		return nil, ErrNodeNotFound
+	node, owned, err := gs.resolveNodeRefOwnedLocked(nodeID)
+	if err != nil {
+		return nil, ErrNodeNotFound // PR B: return err
 	}
 	if node.TenantID != effectiveTenantID(tenantID).String() {
 		// Cross-tenant: same error as missing to avoid existence-leak side channel.
@@ -415,9 +415,9 @@ func (gs *GraphStorage) WithNodeRefForTenant(nodeID uint64, tenantID string, fn 
 // directly to obtain the `owned` flag and skip the redundant Clone on mmap-base nodes
 // (Stage 2c). This helper remains for internal inspection callers (e.g. WithNodeRefForTenant).
 func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*Node, error) {
-	node, exists := gs.resolveNodeRefLocked(nodeID)
-	if !exists {
-		return nil, ErrNodeNotFound
+	node, err := gs.resolveNodeRefLocked(nodeID)
+	if err != nil {
+		return nil, ErrNodeNotFound // PR B: return err
 	}
 	expectedTenant := effectiveTenantID(tenantID).String()
 	if node.TenantID != expectedTenant {
@@ -460,11 +460,11 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	// mmap mode: promote a base-resident node into the shard overlay (copy-on-write)
 	// before the in-place mutation below. No-op (plain lookup) when mmap is off.
 	gs.lockShard(nodeID)
-	node, exists := gs.materializeNodeLocked(nodeID)
+	node, err := gs.materializeNodeLocked(nodeID)
 	gs.unlockShard(nodeID)
-	if !exists {
+	if err != nil {
 		gs.mu.Unlock()
-		return ErrNodeNotFound
+		return ErrNodeNotFound // PR B: return err
 	}
 
 	// R2.1: snapshot pre-update state for observer dispatch. Only allocate
@@ -540,11 +540,11 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 
 	// mmap mode: promote a base-resident node into the overlay before mutation.
 	gs.lockShard(nodeID)
-	node, exists := gs.materializeNodeLocked(nodeID)
+	node, err := gs.materializeNodeLocked(nodeID)
 	gs.unlockShard(nodeID)
-	if !exists {
+	if err != nil {
 		gs.mu.Unlock()
-		return ErrNodeNotFound
+		return ErrNodeNotFound // PR B: return err
 	}
 
 	// R2.1: snapshot pre-removal state for observer dispatch. Only
@@ -707,10 +707,10 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	gs.mu.Lock()
 
 	// resolve overlay → base; the node's fields drive index removal below.
-	node, exists := gs.resolveNodeRefLocked(nodeID)
-	if !exists {
+	node, err := gs.resolveNodeRefLocked(nodeID)
+	if err != nil {
 		gs.mu.Unlock()
-		return ErrNodeNotFound
+		return ErrNodeNotFound // PR B: return err
 	}
 
 	// Capture for OnNodeDeleted dispatch after unlock. node.TenantID is

@@ -39,9 +39,9 @@ func TestMmapSnapshotFile_RoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetNode(%d): %v", id, err)
 		}
-		got, ok := m.getNode(id)
-		if !ok {
-			t.Fatalf("mmap getNode(%d) missing", id)
+		got, err := m.getNode(id)
+		if err != nil {
+			t.Fatalf("mmap getNode(%d) missing: %v", id, err)
 		}
 		if got.ID != want.ID || got.TenantID != want.TenantID ||
 			!reflect.DeepEqual(got.Labels, want.Labels) ||
@@ -56,13 +56,13 @@ func TestMmapSnapshotFile_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEdge(%d): %v", eMin, err)
 	}
-	gotE, ok := m.getEdge(eMin)
-	if !ok || gotE.FromNodeID != wantE.FromNodeID || gotE.ToNodeID != wantE.ToNodeID || gotE.Type != wantE.Type {
+	gotE, err := m.getEdge(eMin)
+	if err != nil || gotE.FromNodeID != wantE.FromNodeID || gotE.ToNodeID != wantE.ToNodeID || gotE.Type != wantE.Type {
 		t.Fatalf("edge %d mismatch:\n mmap %+v\n live %+v", eMin, gotE, wantE)
 	}
 
 	// Out-of-range / absent lookups must report not-found, not panic.
-	if _, ok := m.getNode(maxID + 1); ok {
+	if _, err := m.getNode(maxID + 1); err == nil {
 		t.Fatalf("getNode(%d) should be absent", maxID+1)
 	}
 	_ = gs.Close()
@@ -129,13 +129,13 @@ func TestMmapReopen_Synthetic(t *testing.T) {
 	measureDecode(t, "mmap touch-all (nodes+edges)", func() int {
 		touched := 0
 		for id := nMin; id <= nMax; id++ {
-			if n, ok := snap.getNode(id); ok {
+			if n, err := snap.getNode(id); err == nil {
 				parseAllocSink += len(n.Properties)
 				touched++
 			}
 		}
 		for id := eMin; id <= eMax; id++ {
-			if e, ok := snap.getEdge(id); ok {
+			if e, err := snap.getEdge(id); err == nil {
 				parseAllocSink += int(e.FromNodeID & 1)
 				touched++
 			}
@@ -150,7 +150,7 @@ func TestMmapReopen_Synthetic(t *testing.T) {
 		hits := 0
 		for i := 0; i < k; i++ {
 			id := nMin + uint64(rng.Int63n(int64(nMax-nMin+1)))
-			if n, ok := snap.getNode(id); ok {
+			if n, err := snap.getNode(id); err == nil {
 				parseAllocSink += len(n.Labels)
 				hits++
 			}
@@ -171,9 +171,9 @@ func TestMmapReopen_Synthetic(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reopened GetNodeForTenant(%d): %v", id, err)
 		}
-		got, ok := snap.getNode(id)
-		if !ok {
-			t.Fatalf("mmap getNode(%d) missing but present in reopen", id)
+		got, err := snap.getNode(id)
+		if err != nil {
+			t.Fatalf("mmap getNode(%d) missing but present in reopen: %v", id, err)
 		}
 		if got.ID != want.ID || got.TenantID != want.TenantID ||
 			!reflect.DeepEqual(got.Labels, want.Labels) ||

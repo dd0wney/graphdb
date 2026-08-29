@@ -122,12 +122,12 @@ func (tx *Transaction) Commit() error {
 		// mmap mode: promote a base-resident node into the overlay (CoW) before
 		// the property-index update + in-place mutation below.
 		tx.gs.lockShard(nodeID)
-		node, exists := tx.gs.materializeNodeLocked(nodeID)
+		node, err := tx.gs.materializeNodeLocked(nodeID)
 		tx.gs.unlockShard(nodeID)
-		if !exists {
+		if err != nil {
 			// validateLocked guaranteed existence + ownership; defensive only.
 			tx.gs.mu.Unlock()
-			return fmt.Errorf("commit: update target %d vanished", nodeID)
+			return fmt.Errorf("commit: update target %d vanished", nodeID) // PR B: wrap err
 		}
 		var oldNode *Node
 		if haveObservers {

@@ -125,9 +125,9 @@ func (gs *GraphStorage) FindNodesByPropertyIndexedForTenant(key string, value Va
 	expected := effectiveTenantID(tenantID).String()
 	out := make([]*Node, 0, len(nodeIDs))
 	for _, nodeID := range nodeIDs {
-		node, exists := gs.resolveNodeRefLocked(nodeID)
-		if !exists {
-			continue
+		node, err := gs.resolveNodeRefLocked(nodeID)
+		if err != nil {
+			continue // PR B: distinguish unreadable
 		}
 		if node.TenantID != expected {
 			continue

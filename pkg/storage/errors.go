@@ -21,6 +21,25 @@ var (
 	// non-finite floats, so such an edge would silently fail to persist and be
 	// lost on crash — reject it at the boundary instead (#328).
 	ErrInvalidEdgeWeight = errors.New("edge weight must be a finite number")
+
+	// ErrRecordUnreadable means a record exists but could not be produced.
+	// It is never a statement about existence: the ID IS in the snapshot
+	// directory. Two causes reach it, and both wrap into it:
+	//
+	//   errRecordDamaged — the bytes did not decode. The snapshot CRC covers
+	//   the header, the directories and the metadata blob, NOT record bodies,
+	//   so bit rot or a partial write survives open and arrives here.
+	//
+	//   alloc.ErrNoMemory — a length-driven buffer was refused.
+	//
+	// errors.Is(err, ErrRecordUnreadable) catches the class.
+	// errors.Is(err, alloc.ErrNoMemory) still separates refusal from damage.
+	ErrRecordUnreadable = errors.New("record unreadable")
+
+	// errRecordDamaged is the cause wrapped into ErrRecordUnreadable when the
+	// record bytes themselves are wrong. Unexported: callers discriminate on
+	// ErrRecordUnreadable, or on alloc.ErrNoMemory for the other cause.
+	errRecordDamaged = errors.New("record did not decode")
 )
 
 // validateEdgeWeight rejects non-finite (±Inf/NaN) edge weights, which the WAL

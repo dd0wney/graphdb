@@ -62,10 +62,10 @@ func (gs *GraphStorage) removeEdgeFromTypeIndex(edgeType string, edgeID uint64) 
 // Caller (DeleteNode) holds gs.mu.Lock; we add lockShard for the edgeShards mutation per A4-edges.
 func (gs *GraphStorage) cascadeDeleteOutgoingEdge(edgeID uint64) error {
 	gs.lockShard(edgeID)
-	edge, exists := gs.resolveEdgeRefLocked(edgeID)
-	if !exists {
+	edge, err := gs.resolveEdgeRefLocked(edgeID)
+	if err != nil {
 		gs.unlockShard(edgeID)
-		return nil
+		return nil // PR B: an unreadable edge must not silently skip its cascade
 	}
 	gs.deleteEdgeShardEntry(edgeID)
 	gs.markEdgeDeletedLocked(edgeID) // mmap mode: mask the base-resident edge
@@ -92,10 +92,10 @@ func (gs *GraphStorage) cascadeDeleteOutgoingEdge(edgeID uint64) error {
 // Caller (DeleteNode) holds gs.mu.Lock; we add lockShard for the edgeShards mutation per A4-edges.
 func (gs *GraphStorage) cascadeDeleteIncomingEdge(edgeID uint64) error {
 	gs.lockShard(edgeID)
-	edge, exists := gs.resolveEdgeRefLocked(edgeID)
-	if !exists {
+	edge, err := gs.resolveEdgeRefLocked(edgeID)
+	if err != nil {
 		gs.unlockShard(edgeID)
-		return nil
+		return nil // PR B: an unreadable edge must not silently skip its cascade
 	}
 	gs.deleteEdgeShardEntry(edgeID)
 	gs.markEdgeDeletedLocked(edgeID) // mmap mode: mask the base-resident edge
