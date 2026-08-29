@@ -63,7 +63,7 @@ doc already uses for decision point B-2.
 - ~~**`origin/main` HEAD**: `dfbac2a`.~~ **`e289ba4`** (2026-08-28). v0.6.0 released; since this doc was written: the file-split refactor landed (#424), and the **v0.7.0 production-hardening track shipped (#427)** closing ROADMAP blockers **B1/B2/B3/B6** (see [`ROADMAP_v1.md`](./ROADMAP_v1.md)).
 - **Open PRs**: none.
 - ~~**GA roadmap**: v0.8.0 and v1.0.0 remain.~~ **Both shipped.** Every v1.0 blocker is closed and **`v1.0.0` was tagged 2026-06-23** (GA, GPG-signed). [`ROADMAP_v1.md`](./ROADMAP_v1.md) (#426) is now history; the live roadmap is [`ROADMAP_post_1.0.md`](./ROADMAP_post_1.0.md), where **v1.1.0** and **v1.2.0** are done (2026-07-01) and **v1.3.0** is partial.
-- ~~**mmap mode**: shipped, **off by default**, no consumer exposed.~~ **On by default since v1.2.0 (#447)**, and `cmd/import-icij` exposes it (#448). `GRAPHDB_STORAGE_MODE=json` is the documented opt-out. **That opt-out is unsafe today** on a store that has already shut down cleanly in mmap mode — it opens an empty database and reports no error. See the warning in [`DEPLOYMENT_GUIDE.md`](./DEPLOYMENT_GUIDE.md); the code repair is not started.
+- ~~**mmap mode**: shipped, **off by default**, no consumer exposed.~~ **On by default since v1.2.0 (#447)**, and `cmd/import-icij` exposes it (#448). `GRAPHDB_STORAGE_MODE=json` is the documented opt-out. **The silent-empty-open case is now guarded (#504)** — a JSON-mode open of a store holding only `snapshot.mmap` returns an error naming the file instead of serving 0 nodes. **A second case is still open**: a data directory holding *both* snapshots, where the mode flag selects the older one silently. See § E and the warning in [`DEPLOYMENT_GUIDE.md`](./DEPLOYMENT_GUIDE.md).
 
 ## Genuinely-outstanding inventory (reconciled)
 
@@ -92,6 +92,7 @@ doc already uses for decision point B-2.
 - **BTree backend C2.1 partial** — `DeleteNode` / `BeginBatch` unimplemented (`pkg/storage/btree_storage.go:486,555`); experimental alt backend.
 - **Coord-domain hardcoded uniqueness constants** → generic uniqueness-rules registry (`pkg/graphql/mutations_resolvers.go:19`, mirrored at `pkg/api/handlers_nodes.go:19`).
 - **Query `physical_plan.go` spike residuals** — CallOperator (C3.x / C6 co-land), edge-direction hardcoded.
+- **Snapshot-mode stale selection** — a data directory can hold both `snapshot.json` and `snapshot.mmap`. The loader picks by the mode flag (`mmapEligible`, `pkg/storage/storage.go`) and never compares which is newer, so switching mode serves the older snapshot with no error, and the next `Close()` overwrites the newer one. **No ordering marker exists to fix this with**: neither format persists the WAL boundary LSN, and `Stats.LastSnapshot` is assigned *after* serialization (`persistence.go:167`, `mmap_snapshot_persist.go:69`), so the stored value records the *previous* snapshot. A repair therefore needs an on-disk format version bump (mmap `GMNP` 4→5 plus the JSON side), which is why #504 guarded only the empty-open case. Documented in [`DEPLOYMENT_GUIDE.md`](./DEPLOYMENT_GUIDE.md).
 - btree tombstone compaction + random eviction; intelligence auto-embed R2.x re-entry.
 
 ### F — Long-horizon architecture (deferred; real but low priority)
