@@ -34,6 +34,8 @@ import (
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/dd0wney/graphdb/pkg/alloc"
 )
 
 var mmapSnapshotMagic = [4]byte{'G', 'M', 'N', 'P'}
@@ -305,11 +307,25 @@ func (c *recordCursor) str(n int) string {
 }
 
 // blob copies n bytes out of the mapping.
+//
+// n is a length read from the file, so this is a length-driven allocation and
+// goes through alloc.Bytes — scorecard row 4. has() has already bounded n by
+// what remains in the buffer, so a corrupt length cannot ask for gigabytes;
+// the allocator is here so that a refusal can be INJECTED and the read path
+// swept, which make() can never be.
+//
+// A refusal marks the cursor not-ok, and the decode fails the same way a
+// damaged record does. See TestSnapshotReadPathUnderAllocationFailure for what
+// that costs.
 func (c *recordCursor) blob(n int) []byte {
 	if !c.has(n) {
 		return nil
 	}
-	v := make([]byte, n)
+	v, err := alloc.Bytes(n)
+	if err != nil {
+		c.ok = false
+		return nil
+	}
 	copy(v, c.buf[c.p:c.p+n])
 	c.p += n
 	return v
