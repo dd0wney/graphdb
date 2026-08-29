@@ -266,6 +266,7 @@ var equivalenceRows = []sweepRow{
 // TestCrossPrincipalEquivalence_IntactStore asserts that for every row, a
 // stranger asking about a resource owned by another tenant sees exactly what a
 // stranger asking about an ID that never existed sees.
+// CONSUMER CONTRACT: CC12-existence-indistinguishable — all REST consumers (PR C)
 func TestCrossPrincipalEquivalence_IntactStore(t *testing.T) {
 	s, cleanup := setupTestServer(t)
 	defer cleanup()
@@ -484,6 +485,7 @@ var ownerSeesTheDamage = map[string]bool{
 //
 // Each row gets its OWN store. A shared one would let an earlier row's write
 // change what a later row reads, and DELETE is a row.
+// CONSUMER CONTRACT: CC12-existence-indistinguishable — all REST consumers (PR C)
 func TestCrossPrincipalEquivalence_UnderFault(t *testing.T) {
 	// An ID far beyond anything created, and beyond the snapshot's own ID
 	// range, so both probes agree that it is absent.
