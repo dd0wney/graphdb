@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/dd0wney/graphdb/pkg/alloc"
 	"github.com/dd0wney/graphdb/pkg/faultsim"
 	"github.com/dd0wney/graphdb/pkg/vfs"
 )
@@ -222,24 +221,67 @@ func (w *WAL) ReadAll() ([]*Entry, error) {
 	return entries, nil
 }
 
+// walDataErrors is the closed list of errors that mean "the record is bad or
+// the log ended". Every one of them is produced by this package's own read
+// path, so the list is knowable and short:
+//
+//   - io.EOF — the log ended on a record boundary. ReadAll breaks on this
+//     before it asks isResourceError, so the row exists to keep the
+//     classification total rather than because the loop needs it.
+//   - io.ErrUnexpectedEOF — a short read inside a record. The writer never
+//     finished it, so nothing beyond that point was ever durable.
+//   - errWALRecordTooLarge — the header claims a length this package never
+//     writes. readEntry rejects it before it allocates.
+//
+// An error that arrives from the vfs driver never belongs here. A driver
+// reports that it could not read the bytes, which says nothing about whether
+// the bytes exist.
+//
+// wal_device_error_test.go holds the table that pins every row of this list and
+// of the classification below.
+var walDataErrors = []error{io.EOF, io.ErrUnexpectedEOF, errWALRecordTooLarge}
+
 // isResourceError reports whether a read stopped because the reader could not
 // obtain something it needed, rather than because the data was bad or ended.
 //
 // A resource failure says nothing about the records that follow it, so
 // recovery cannot treat the last entry it read as the end of the log.
+//
+// The question is asked in this direction on purpose. The list of data errors
+// is closed, because this package produces all of them. The set of resource
+// errors is open, because vfs.FileSystem is a published interface and a driver
+// outside this repository returns whatever error it likes. So an unrecognised
+// error is a resource failure, and a new driver cannot reopen this gap by
+// choosing an error shape nobody here anticipated.
+//
+// The previous version asked the opposite question: it named *os.PathError as
+// the device failure and read everything else as data. That held only for the
+// os driver. pkg/vfs/vfstest's RoleFS reports a failed read as
+// fmt.Errorf("read %s: %w", name, ErrInjected), which is not an *os.PathError,
+// so a device error looked like a torn tail. ReadAll stopped and returned no
+// error, recoverLSN took currentLSN from the last entry it managed to read, and
+// the next Append reused an LSN that a later record on disk already held — a
+// record the NEXT recovery then dropped at the non-advancing-LSN guard above.
+// Injecting a read fault into a 20-record log recovered 7 entries and set
+// currentLSN to 7.
+//
+// The two ways to be wrong cost very different amounts. Calling data a resource
+// failure costs a refused open that names the real error, and an operator can
+// see it. Calling a resource failure data costs a record, silently. So the
+// default is the safe one.
 func isResourceError(err error) bool {
-	if errors.Is(err, alloc.ErrNoMemory) {
-		return true
-	}
-	// A short read at the end of a record is a torn tail, which is data, not a
-	// resource failure.
-	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, errWALRecordTooLarge) {
+	if err == nil {
 		return false
 	}
-	// Anything the underlying file returns that is not an end-of-file is a
-	// device or driver failure.
-	var pathErr *os.PathError
-	return errors.As(err, &pathErr)
+	for _, dataErr := range walDataErrors {
+		if errors.Is(err, dataErr) {
+			return false
+		}
+	}
+	// alloc.ErrNoMemory reaches this code through a data-shaped path — readEntry
+	// sizes the allocation from the record header — and is deliberately absent
+	// from walDataErrors. The size is data. The refusal is not.
+	return true
 }
 
 // recoverLSN recovers the current LSN from existing WAL entries
