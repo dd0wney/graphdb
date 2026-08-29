@@ -139,9 +139,9 @@ func TestMmapSnapshot_CopyOnRead(t *testing.T) {
 	// unaffected — proving Value.Data is copied, not aliased (safe after munmap).
 	buf := encodeNodeRecord(&Node{ID: 1, TenantID: "t", Labels: []string{"L"},
 		Properties: map[string]Value{"k": StringValue("orig")}})
-	n, okDecode := decodeNodeRecordAt(buf, 0)
-	if !okDecode {
-		t.Fatal("decodeNodeRecordAt rejected a valid record")
+	n, err := decodeNodeRecordAt(buf, 0)
+	if err != nil {
+		t.Fatalf("decodeNodeRecordAt rejected a valid record: %v", err)
 	}
 	for i := range buf {
 		buf[i] = 0xFF

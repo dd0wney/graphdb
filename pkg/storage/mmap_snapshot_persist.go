@@ -35,8 +35,8 @@ func (gs *GraphStorage) snapshotMmapLocked(boundary uint64) (uint64, error) {
 			if _, shadowed := gs.lookupEdgeShard(id); shadowed || gs.isEdgeDeletedLocked(id) {
 				return
 			}
-			e, ok := decodeEdgeRecordAt(gs.mmapSnap.data, off)
-			if !ok {
+			e, err := decodeEdgeRecordAt(gs.mmapSnap.data, off)
+			if err != nil {
 				// Refuse rather than drop. Skipping the record here would turn
 				// a damaged byte into permanent data loss at the next
 				// snapshot, and the operator would never see it happen.

@@ -191,8 +191,10 @@ func (m *mmapSnapshot) getNode(id uint64) (*Node, bool) {
 		return nil, false
 	}
 	// A record the CRC does not cover can be damaged. A damaged record reads
-	// as absent rather than crashing the process.
-	return decodeNodeRecordAt(m.data, off)
+	// as absent rather than crashing the process. Task 3 replaces this bool
+	// with the reason the decoder now carries.
+	n, err := decodeNodeRecordAt(m.data, off)
+	return n, err == nil
 }
 
 func (m *mmapSnapshot) getEdge(id uint64) (*Edge, bool) {
@@ -200,7 +202,8 @@ func (m *mmapSnapshot) getEdge(id uint64) (*Edge, bool) {
 	if !ok {
 		return nil, false
 	}
-	return decodeEdgeRecordAt(m.data, off)
+	e, err := decodeEdgeRecordAt(m.data, off)
+	return e, err == nil
 }
 
 func (m *mmapSnapshot) nodeOffset(id uint64) (int64, bool) {

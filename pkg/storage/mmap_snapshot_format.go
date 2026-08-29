@@ -240,12 +240,33 @@ type recordCursor struct {
 	buf []byte
 	p   int
 	ok  bool
+	// err holds the FIRST failure's cause. The cursor is poisoned after it,
+	// so later reads neither overwrite the reason nor add a second one.
+	err error
+}
+
+// fail poisons the cursor and records why. The first cause wins: a bounds
+// failure that follows a refused allocation is a consequence, not a new fact.
+func (c *recordCursor) fail(err error) {
+	if c.ok {
+		c.ok = false
+		c.err = err
+	}
+}
+
+// reason returns the decode failure wrapped for a caller, or nil while the
+// cursor is still good. what names the record for the message.
+func (c *recordCursor) reason(what string, off int64) error {
+	if c.ok {
+		return nil
+	}
+	return fmt.Errorf("%s at offset %d: %w: %w", what, off, ErrRecordUnreadable, c.err)
 }
 
 func newRecordCursor(buf []byte, off int64) *recordCursor {
 	c := &recordCursor{buf: buf, ok: true}
 	if off < 0 || off > int64(len(buf)) {
-		c.ok = false
+		c.fail(errRecordDamaged)
 		return c
 	}
 	c.p = int(off)
@@ -253,8 +274,11 @@ func newRecordCursor(buf []byte, off int64) *recordCursor {
 }
 
 func (c *recordCursor) has(n int) bool {
-	if !c.ok || n < 0 || c.p+n > len(c.buf) {
-		c.ok = false
+	if !c.ok {
+		return false
+	}
+	if n < 0 || c.p+n > len(c.buf) {
+		c.fail(errRecordDamaged)
 		return false
 	}
 	return true
@@ -323,7 +347,7 @@ func (c *recordCursor) blob(n int) []byte {
 	}
 	v, err := alloc.Bytes(n)
 	if err != nil {
-		c.ok = false
+		c.fail(err)
 		return nil
 	}
 	copy(v, c.buf[c.p:c.p+n])
@@ -515,11 +539,11 @@ func appendProps(buf []byte, props map[string]Value) []byte {
 
 // readProps decodes a property bag at buf[p:], COPYING each Value.Data into a fresh
 // heap slice so the returned node is safe to retain after the mapping is closed.
-func readProps(buf []byte, p int) (map[string]Value, int, bool) {
+func readProps(buf []byte, p int) (map[string]Value, int, error) {
 	c := newRecordCursor(buf, int64(p))
 	n := c.u16()
 	if !c.ok {
-		return nil, p, false
+		return nil, p, c.reason("property bag", int64(p))
 	}
 	props := make(map[string]Value, min(n, 64)) // cap the hint: n is untrusted
 	for i := 0; i < n; i++ {
@@ -527,11 +551,11 @@ func readProps(buf []byte, p int) (map[string]Value, int, bool) {
 		vt := ValueType(c.u8())
 		data := c.blob(c.u32()) // copy-on-read: do not alias the mapping
 		if !c.ok {
-			return nil, p, false
+			return nil, p, c.reason("property bag", int64(p))
 		}
 		props[key] = Value{Type: vt, Data: data}
 	}
-	return props, c.p, true
+	return props, c.p, nil
 }
 
 func encodeNodeRecord(n *Node) []byte {
@@ -551,14 +575,14 @@ func encodeNodeRecord(n *Node) []byte {
 }
 
 // decodeNodeRecordAt materializes a fully heap-owned *Node from buf[off:].
-func decodeNodeRecordAt(buf []byte, off int64) (*Node, bool) {
+func decodeNodeRecordAt(buf []byte, off int64) (*Node, error) {
 	c := newRecordCursor(buf, off)
 	n := &Node{}
 	n.ID = c.u64()
 	n.TenantID = c.str(c.u16())
 	if nl := c.u16(); nl > 0 {
 		if !c.has(nl * 2) { // cheapest possible floor: 2 bytes per label prefix
-			return nil, false
+			return nil, c.reason("node record", off)
 		}
 		n.Labels = make([]string, nl)
 		for i := 0; i < nl; i++ {
@@ -566,24 +590,30 @@ func decodeNodeRecordAt(buf []byte, off int64) (*Node, bool) {
 		}
 	}
 	if !c.ok {
-		return nil, false
+		return nil, c.reason("node record", off)
 	}
-	props, p, ok := readProps(buf, c.p)
-	if !ok {
-		return nil, false
+	props, p, err := readProps(buf, c.p)
+	if err != nil {
+		return nil, err
 	}
 	n.Properties = props
 	c.p = p
 	n.CreatedAt = int64(c.u64())
 	n.UpdatedAt = int64(c.u64())
 	if !c.ok {
-		return nil, false
+		return nil, c.reason("node record", off)
 	}
-	return n, true
+	return n, nil
 }
 
-// scanNodeFields reads only the indexed prefix (id, tenant, labels) without allocating
-// the property bag — used by the loader to build the in-memory indexes cheaply.
+// scanNodeFields reads only the indexed prefix (id, tenant, labels) without
+// allocating the property bag.
+//
+// NO PRODUCTION CALLER as of 2026-08-29 — only mmap_snapshot_format_test.go
+// reaches it. The comment that used to say "used by the loader to build the
+// in-memory indexes cheaply" described an intent, not the code. Deleting these
+// two functions is a separate decision; while they stand they are the only
+// bool-returning decoders left in this file.
 func scanNodeFields(buf []byte, off int64) (id uint64, tenant string, labels []string, ok bool) {
 	c := newRecordCursor(buf, off)
 	id = c.u64()
@@ -618,7 +648,7 @@ func encodeEdgeRecord(e *Edge) []byte {
 	return buf
 }
 
-func decodeEdgeRecordAt(buf []byte, off int64) (*Edge, bool) {
+func decodeEdgeRecordAt(buf []byte, off int64) (*Edge, error) {
 	c := newRecordCursor(buf, off)
 	e := &Edge{}
 	e.ID = c.u64()
@@ -627,23 +657,24 @@ func decodeEdgeRecordAt(buf []byte, off int64) (*Edge, bool) {
 	e.ToNodeID = c.u64()
 	e.Type = c.str(c.u16())
 	if !c.ok {
-		return nil, false
+		return nil, c.reason("edge record", off)
 	}
-	props, p, ok := readProps(buf, c.p)
-	if !ok {
-		return nil, false
+	props, p, err := readProps(buf, c.p)
+	if err != nil {
+		return nil, err
 	}
 	e.Properties = props
 	c.p = p
 	e.Weight = math.Float64frombits(c.u64())
 	e.CreatedAt = int64(c.u64())
 	if !c.ok {
-		return nil, false
+		return nil, c.reason("edge record", off)
 	}
-	return e, true
+	return e, nil
 }
 
 // scanEdgeFields reads only the indexed prefix (id, tenant, from, to, type).
+// No production caller — see scanNodeFields.
 func scanEdgeFields(buf []byte, off int64) (id, from, to uint64, tenant, etype string, ok bool) {
 	c := newRecordCursor(buf, off)
 	id = c.u64()

@@ -309,11 +309,12 @@ func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
 		if _, shadowed := gs.lookupNodeShard(id); shadowed || gs.isNodeDeletedLocked(id) {
 			return
 		}
-		n, ok := decodeNodeRecordAt(gs.mmapSnap.data, off)
-		if !ok {
+		n, err := decodeNodeRecordAt(gs.mmapSnap.data, off)
+		if err != nil {
 			// A damaged record is skipped rather than crashing the walk. The
 			// invariant checker sees it as a missing record, which is the
-			// signal we want.
+			// signal we want. PR B revisits this: the checker should report
+			// the damage instead of inferring it.
 			return
 		}
 		if !fn(n) {
