@@ -61,11 +61,13 @@ channel.** The body still enters the comparison, because three distinct 404 stri
 exist ("Node not found", "Edge not found", "Source or target node not found") and
 a future change could make one of them conditional.
 
-Explicitly NOT in the observable: response time. See Limits.
+Explicitly NOT in the observable: response time, and any response header. See
+Limits.
 
 ## The operation table
 
-Seven rows, covering every endpoint that names a resource the caller may not own:
+Eight rows. They do not cover every endpoint that names a resource the caller
+may not own — see the note below the table.
 
 | # | Method | Path | ID source |
 |---|---|---|---|
@@ -83,6 +85,16 @@ Rows 7 and 8 are the same endpoint in each position. They are separate because
 (`edge_operations.go:61` and `:64`), so a guard on one is not a guard on the
 other. Row 7 is also the row a hand-written suite forgets, and it is the one that
 leaked on 2026-08-29.
+
+**Two endpoints sit outside this table.** `POST /traverse` reads a
+caller-supplied start-node ID at `pkg/api/handlers_algorithms_traversal.go:55`,
+and `POST /shortest-path` reads two caller-supplied node IDs at `:247` and
+`:251`. Both call `GetNodeForTenant`, and both map every error from it to 404
+(`handleTraversal`, `handleShortestPath`). That puts them in the same category
+as rows 1 and 4: not gates against the class this sweep guards, because the
+weak-row problem (Limit 6) would apply to them too. Adding them here would add
+two more non-gate rows rather than real coverage. Covering them properly needs
+new fixtures at those call sites and belongs in its own change.
 
 Corrected 2026-08-29: an earlier draft of this table said seven rows and
 described the eighth only in prose.
@@ -123,7 +135,7 @@ intact record passes; a fault test with one principal never compares.
 1. **Timing is an observable and this covers none of it.** A cross-tenant lookup
    that returns faster than a genuine miss is a leak this cannot see.
 2. **It proves indistinguishability for the pairs enumerated, not for all inputs.**
-   Seven rows and two tenants is a table, not a proof.
+   Eight rows and two tenants is a table, not a proof.
 3. **It proves conformance to the model, not that the model is right.** If the
    security rule itself is wrong, both sides agree and the sweep passes. Same
    limit as any two-sided comparison.
@@ -143,11 +155,20 @@ intact record passes; a fault test with one principal never compares.
    every error to 404, so those two rows compare 404 against 404 whatever
    `pkg/storage` returned underneath. This is measured, not inferred: both
    rows passed at commit `9a5feb0`, while the leak the rest of this sweep
-   exists to catch was live and six of the other seven rows failed. The fault
+   exists to catch was live and the other six rows all failed. The fault
    test's `ownerSeesTheDamage` map records this collapse as today's behaviour,
    not as a rule the sweep enforces — a handler that starts to distinguish
    damage from absence for the owner must update that map, and one that starts
    to distinguish them for the stranger fails the sweep outright.
+7. **A response header is an observable this sweep excludes, silently.**
+   `probe` (`pkg/api/equivalence_sweep_test.go:156`) reads only `w.Code` and
+   `w.Body`. `respondError` (`server_helpers.go:124`) sets no header today, so
+   nothing leaks now — but a handler that later sets `Retry-After` or `ETag`
+   on the damaged path would leak through a header while every row still
+   passed. Comparing all of `w.Header()` is not the fix here: it would fold in
+   `Content-Type` and `Content-Length`, and the latter duplicates the body
+   comparison already in place. A targeted comparison of specific headers is
+   the right future change, and is not this one.
 
 ## Relationship to `github.com/dd0wney/fault`
 

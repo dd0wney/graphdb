@@ -12,17 +12,22 @@
 // package beside the package it supports, importable by anyone.
 //
 // The format knowledge below is a SECOND copy of what mmap_snapshot_format.go
-// defines, which is the price of the package boundary. Three checks keep that
-// copy honest, and all three must stay:
+// defines, which is the price of the package boundary. Four checks keep that
+// copy honest, and all four must stay:
 //
+//   - the magic must read "GMNP", so a file that is not an mmap snapshot is
+//     refused instead of misread;
 //   - the version check refuses any snapshot that is not v4, so a format bump
 //     stops this package loudly instead of corrupting the wrong byte;
-//   - the offset comes from the file's own directory, never from a constant;
-//   - the record at that offset must start with the ID that was asked for.
+//   - the record at the offset the directory names must start with the ID
+//     that was asked for;
+//   - a positive control checks the corruption itself, before it is written:
+//     the file must actually be too short to satisfy the claimed tenant
+//     length.
 //
-// Without the last check a wrong offset would damage some other part of the
-// file, the target record would still decode, and every caller's test would
-// pass while injecting no fault at all.
+// Without the record-ID check a wrong offset would damage some other part of
+// the file, the target record would still decode, and every caller's test
+// would pass while injecting no fault at all.
 //
 // The exported entry points take a testing.TB and stop the test. The work
 // happens in an error-returning function underneath, so damage_test.go can
