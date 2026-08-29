@@ -3,8 +3,11 @@ name: Lint
 on:
   push:
     branches: [ main, develop ]
+  # No branch filter on pull_request. A stacked pull request has a base that is
+  # not main, and a filter here means it runs no tests and no lint at all. That
+  # is not a red tick, it is no tick: PR #512 ran 1 check against its stack base
+  # and 10 against main, on the identical commit.
   pull_request:
-    branches: [ main, develop ]
 
 permissions:
   contents: read
