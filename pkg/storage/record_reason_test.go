@@ -62,3 +62,35 @@ func TestDecodeNodeRecordAt_RefusalReportsNoMemory(t *testing.T) {
 		t.Fatal("no allocation was attempted, so this proves nothing")
 	}
 }
+
+func TestMmapSnapshotGetNode_AbsentIsNotUnreadable(t *testing.T) {
+	path := snapshotOnDisk(t) // helper in mmap_oom_test.go
+	snap, err := openMmapSnapshot(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = snap.close() }()
+
+	// Positive control: a node the directory lists must come back.
+	var present uint64
+	snap.forEachNodeID(func(id uint64, _ int64) {
+		if present == 0 {
+			present = id
+		}
+	})
+	if present == 0 {
+		t.Fatal("fixture has no nodes, so this test proves nothing")
+	}
+	if _, err := snap.getNode(present); err != nil {
+		t.Fatalf("node %d must decode: %v", present, err)
+	}
+
+	_, maxID := snap.nodeIDRange()
+	_, err = snap.getNode(maxID + 1000)
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("an ID outside the directory must be ErrNodeNotFound, got %v", err)
+	}
+	if errors.Is(err, ErrRecordUnreadable) {
+		t.Fatalf("absence must never be reported as unreadable: %v", err)
+	}
+}

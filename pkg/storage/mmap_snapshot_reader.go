@@ -185,25 +185,24 @@ func (m *mmapSnapshot) metadata() *mmapMetadata { return m.meta }
 func (m *mmapSnapshot) nodeIDRange() (uint64, uint64) { return m.hdr.minNodeID, m.hdr.maxNodeID }
 func (m *mmapSnapshot) edgeIDRange() (uint64, uint64) { return m.hdr.minEdgeID, m.hdr.maxEdgeID }
 
-func (m *mmapSnapshot) getNode(id uint64) (*Node, bool) {
+// getNode returns the node's record, or ErrNodeNotFound when the directory has
+// no entry for the ID. Any OTHER error means the entry exists and the record
+// could not be produced — see ErrRecordUnreadable. The two must never be
+// confused: one is a fact about the graph, the other about this file.
+func (m *mmapSnapshot) getNode(id uint64) (*Node, error) {
 	off, ok := m.nodeOffset(id)
 	if !ok {
-		return nil, false
+		return nil, ErrNodeNotFound
 	}
-	// A record the CRC does not cover can be damaged. A damaged record reads
-	// as absent rather than crashing the process. Task 3 replaces this bool
-	// with the reason the decoder now carries.
-	n, err := decodeNodeRecordAt(m.data, off)
-	return n, err == nil
+	return decodeNodeRecordAt(m.data, off)
 }
 
-func (m *mmapSnapshot) getEdge(id uint64) (*Edge, bool) {
+func (m *mmapSnapshot) getEdge(id uint64) (*Edge, error) {
 	off, ok := m.edgeOffset(id)
 	if !ok {
-		return nil, false
+		return nil, ErrEdgeNotFound
 	}
-	e, err := decodeEdgeRecordAt(m.data, off)
-	return e, err == nil
+	return decodeEdgeRecordAt(m.data, off)
 }
 
 func (m *mmapSnapshot) nodeOffset(id uint64) (int64, bool) {

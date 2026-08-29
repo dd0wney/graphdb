@@ -165,7 +165,8 @@ func (gs *GraphStorage) resolveNodeRefLocked(id uint64) (*Node, bool) {
 	if gs.mmapSnap == nil || gs.isNodeDeletedLocked(id) {
 		return nil, false
 	}
-	return gs.mmapSnap.getNode(id)
+	n, err := gs.mmapSnap.getNode(id)
+	return n, err == nil
 }
 
 func (gs *GraphStorage) resolveEdgeRefLocked(id uint64) (*Edge, bool) {
@@ -175,7 +176,8 @@ func (gs *GraphStorage) resolveEdgeRefLocked(id uint64) (*Edge, bool) {
 	if gs.mmapSnap == nil || gs.isEdgeDeletedLocked(id) {
 		return nil, false
 	}
-	return gs.mmapSnap.getEdge(id)
+	e, err := gs.mmapSnap.getEdge(id)
+	return e, err == nil
 }
 
 // resolveNodeRefOwnedLocked is resolveNodeRefLocked with an ownership flag:
@@ -193,8 +195,8 @@ func (gs *GraphStorage) resolveNodeRefOwnedLocked(id uint64) (n *Node, owned boo
 	if gs.mmapSnap == nil || gs.isNodeDeletedLocked(id) {
 		return nil, false, false
 	}
-	fresh, hit := gs.mmapSnap.getNode(id) // fresh decode — already owned
-	return fresh, hit, hit
+	fresh, err := gs.mmapSnap.getNode(id) // fresh decode — already owned
+	return fresh, err == nil, err == nil
 }
 
 // resolveEdgeRefOwnedLocked is resolveEdgeRefLocked plus an `owned` flag: owned==true
@@ -208,8 +210,8 @@ func (gs *GraphStorage) resolveEdgeRefOwnedLocked(id uint64) (e *Edge, owned boo
 	if gs.mmapSnap == nil || gs.isEdgeDeletedLocked(id) {
 		return nil, false, false
 	}
-	fresh, hit := gs.mmapSnap.getEdge(id)
-	return fresh, hit, hit
+	fresh, err := gs.mmapSnap.getEdge(id)
+	return fresh, err == nil, err == nil
 }
 
 // materializeNodeLocked returns the node's shard-resident pointer, promoting it
@@ -223,8 +225,8 @@ func (gs *GraphStorage) materializeNodeLocked(id uint64) (*Node, bool) {
 	if gs.mmapSnap == nil || gs.isNodeDeletedLocked(id) {
 		return nil, false
 	}
-	n, ok := gs.mmapSnap.getNode(id)
-	if !ok {
+	n, err := gs.mmapSnap.getNode(id)
+	if err != nil {
 		return nil, false
 	}
 	gs.storeNodeInShard(n) // promote into the overlay
@@ -238,8 +240,8 @@ func (gs *GraphStorage) materializeEdgeLocked(id uint64) (*Edge, bool) {
 	if gs.mmapSnap == nil || gs.isEdgeDeletedLocked(id) {
 		return nil, false
 	}
-	e, ok := gs.mmapSnap.getEdge(id)
-	if !ok {
+	e, err := gs.mmapSnap.getEdge(id)
+	if err != nil {
 		return nil, false
 	}
 	gs.storeEdgeInShard(e)
