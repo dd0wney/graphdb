@@ -12,6 +12,10 @@ A high-performance, feature-rich graph database built from scratch in Go. GraphD
 
 Latest server release: **[v1.0.0](https://github.com/dd0wney/graphdb/releases/latest)** — first GA (single-node), GPG-signed (see [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md)). First-party clients: **[Python SDK v0.1.0](clients/python/)** and **[TypeScript client v1.0.0](workers/graphdb-client/)** (Cloudflare Workers).
 
+`v1.0.0` is the newest tag. Work on the post-1.0 milestones (v1.1 validation/observability,
+v1.2 mmap-by-default, v1.3 deploy-anywhere) is merged to `main` and **not tagged** — see
+[`docs/ROADMAP_post_1.0.md`](docs/ROADMAP_post_1.0.md). Build from `main` for that work.
+
 ## Try it in two minutes
 
 > **New to GraphDB?** The [**Getting Started guide**](docs/GETTING_STARTED.md) walks through running the server, getting a token, and your first query step by step.
