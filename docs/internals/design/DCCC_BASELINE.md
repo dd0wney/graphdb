@@ -45,6 +45,36 @@ the couplings are correct. It says how much of them a test run reaches.
 It was 538/616, 87.3%, when the measure was first written. The difference is
 #500 and nothing else.
 
+## Re-measured 2026-08-29 (#507): 576/628 = 91.7% over 17 sites
+
+Three things moved, and only one of them is a coverage change.
+
+1. **A coupling was hollowed out and the measure did not notice.** ADR 0002
+   stage 4 extracted `openMmapSnapshot`'s body into `openMmapSnapshotWithFS`.
+   The registered symbol still resolved and still reported coverage, of the one
+   line left behind: D1 went **26/33 (78.8%) → 1/1 (100.0%)**, measured on the
+   same profile with only the code changed. The score improved because the
+   measure lost its subject. `couplings.tsv` now carries a statement-count
+   floor per site and `dccc.sh` exits 3 below it.
+2. **Three new sites.** C6 `pkg/vfs.MapFile` (6/6), D7
+   `pkg/storage.writeFileWithFS` (5/7) and `readFileWithFS` (6/6) — the
+   boundaries stage 4 created. `pkg/storage` had no driver coupling before it.
+3. **The measure got its own profile.** It borrowed `COVER_PKGS`, which omits
+   `pkg/api` by design, so 4 of 17 sites reported UNMATCHED. `make dccc-cover`
+   covers every package the registry names.
+
+616 → 628 reconciles exactly, and neither term is a coverage change:
+
+    616  the 2026-08-28 total
+     -7  the reader itself got smaller — one vfs.MapFile call replaced
+         os.Open + f.Stat + syscall.Mmap, so D1 is 26 statements, not 33
+    +19  three new sites: C6 (6), D7 writeFileWithFS (7), D7 readFileWithFS (6)
+    ---
+    628
+
+Coverage of the boundaries is flat. What changed is how much of the boundary
+the registry can see, and whether it can tell when that stops being true.
+
 ## ~~The two at zero~~ — closed by #500
 
 This section is struck through rather than deleted. "How to use this" below

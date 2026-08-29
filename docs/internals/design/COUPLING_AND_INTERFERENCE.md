@@ -51,6 +51,7 @@ enumeration below arbitrary:
 | C3 | `pkg/graphql` and `pkg/api` → `pkg/storage` uniqueness | Two callers decide whether a write takes the atomic unique path or the ordinary one. **This is where #470 lived**: both callers narrowed a guarantee storage made correctly | Tests on both surfaces since #470 |
 | C4 | `pkg/storage` → `pkg/vector` | Node create/update/delete drive vector index maintenance (5 sites in `node_operations.go`) | Metamorphic tests |
 | C5 | Background flush and compaction → foreground readers | A worker decides when a memtable becomes an SSTable, changing which read path a concurrent reader takes | `TestFlushWorkerUnderFaultSweep`, `TestCompactionUnderFaultSweep` (#494) |
+| C6 | `vfs.Mapper` capability dispatch | `MapFile` has three arms - the driver maps, the driver refuses and the Open path runs, or the driver has no `Mapper` at all. Which one runs is decided by the installed driver, not by storage | `TestMapFile_*` (4 cases) |
 
 ### Data coupling
 
@@ -62,6 +63,7 @@ enumeration below arbitrary:
 | D4 | The mmap CoW overlay | A reader materialises from the base while a writer promotes into the shard | `CheckInvariants` mmap path (#474) |
 | D5 | LSM record cache | Shared LRU across readers; one workload evicts another's entries. **Named a block cache here until 2026-08-28, and it is not one**: `BlockCache` is keyed by the record key and holds that record's value (`pkg/lsm/lsm.go`), with no file and no offset in the key. So the hazard the name suggests — a reader serving data from a file compaction removed — cannot occur, because no entry names a file | `TestRecordCacheUnderFaultedCompaction` (#494); `CheckInvariants` I5 (#493) |
 | D6 | `vfs.FileSystem` / `alloc.Allocator` | Process-wide installed drivers | The drivers' own tests |
+| D7 | `pkg/storage` → the installed `vfs.FileSystem` | Since ADR 0002 stage 4 (#507) every file operation in storage crosses into a driver chosen at construction. Before it, storage called `os` directly and there was no boundary here | `writeFileWithFS` / `readFileWithFS`; the fault tests in `vfs_driver_test.go` |
 
 ## Interference
 
@@ -145,10 +147,25 @@ call sites are identifiable. A coverage report filtered to those sites says
 what fraction of the couplings any test run actually exercises.
 
 `make dccc` computes it (#498). `couplings.tsv` names the sites, and the
-measure is statement coverage restricted to them. The baseline is 563/616 =
-91.4% (#501), recorded in `DCCC_BASELINE.md`. There is no threshold, because
-the number came from a developer machine — see the same caveat on the mutation
-baseline.
+measure is statement coverage restricted to them. The baseline is **576/628 =
+91.7%** over 17 sites (#507), recorded in `DCCC_BASELINE.md`. There is no
+COVERAGE threshold, because that number came from a developer machine — see the
+same caveat on the mutation baseline.
+
+There **is** a statement-count floor, column 5 of `couplings.tsv`, and it exists
+because of a defect this measure could not see. Stage 4 extracted
+`openMmapSnapshot`'s body into `openMmapSnapshotWithFS`. The registered symbol
+still resolved and still reported coverage — of the one line left behind. D1
+went from 26/33 (78.8%) to 1/1 (100.0%), and the measure called that an
+improvement. A gate that rewards you for removing its subject is worse than no
+gate. `dccc.sh` now exits 3 when a site holds fewer statements than its floor;
+`make dccc-update` re-records one that legitimately changed size. Unlike a
+coverage percentage, a statement count is a property of the code and not of the
+machine, which is why this floor may be taken locally.
+
+The measure also has its own profile now (`make dccc-cover`). It borrowed
+`COVER_PKGS`, which deliberately omits `pkg/api`, so 4 of 17 sites reported
+UNMATCHED — a refusal, not a result.
 
 ## Open items
 
@@ -156,8 +173,10 @@ baseline.
    Open for `pkg/storage`, which needs ADR 0002 stage 4 first. That is where
    the residual risk now sits, and it is the larger half.
 2. ~~**A DCCC coverage measure** over the interfaces above.~~ Done. `make dccc`
-   (#498), baseline 563/616 = 91.4% (#501). What is left is a threshold, which
-   waits on a CI measurement rather than a developer-machine one.
+   (#498), baseline 576/628 = 91.7% over 17 sites (#507). What is left is a
+   coverage threshold, which waits on a CI measurement rather than a
+   developer-machine one. The statement-count floor is separate and is already
+   enforced.
 3. ~~**D5 and C5 have no evidence at all.**~~ Both have evidence now. D5's
    *description* was also wrong, which is worth keeping in view: the incorrect
    name generated a plausible correctness hazard that cannot occur, and it was
