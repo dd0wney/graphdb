@@ -153,6 +153,79 @@ else
   FAILURES=$((FAILURES + 1))
 fi
 
+# fixture_ambiguous DIR builds a tree with two files that each declare a
+# method named Ambiguous on a DIFFERENT receiver type (TypeA, TypeB). This is
+# the shape of the real C4 defect: pkg/storage/btree_storage.go declares
+# BTreeGraphStorage.CreateNodeWithTenant and pkg/storage/node_operations.go
+# declares GraphStorage.CreateNodeWithTenant. "take the first file that
+# matches, then break" silently measured the wrong one — the note on C4 says
+# node creation drives vector index maintenance, and only the GraphStorage
+# body has any vector code. TypeA's body is fully covered, TypeB's is not, so
+# a qualified lookup that resolves to the wrong file is also detectable.
+fixture_ambiguous() {
+  local d="$1"
+  mkdir -p "$d/docs/internals/design" "$d/pkg/fixture"
+
+  cat > "$d/pkg/fixture/a.go" <<'EOF'
+package fixture
+
+type TypeA struct{}
+
+// Ambiguous occupies lines 6 to 10 on TypeA.
+func (t *TypeA) Ambiguous(n int) int {
+	if n > 0 {
+		return n
+	}
+	return 0
+}
+EOF
+  cat > "$d/pkg/fixture/b.go" <<'EOF'
+package fixture
+
+type TypeB struct{}
+
+// Ambiguous occupies lines 6 to 10 on TypeB, same name, different receiver.
+func (t *TypeB) Ambiguous(n int) int {
+	if n > 0 {
+		return n
+	}
+	return 0
+}
+EOF
+
+  # TypeA.Ambiguous is fully covered, TypeB.Ambiguous has no covered statement.
+  cat > "$d/profile.out" <<'EOF'
+mode: set
+example.com/m/pkg/fixture/a.go:6.24,7.13 1 1
+example.com/m/pkg/fixture/a.go:7.13,9.3 1 1
+example.com/m/pkg/fixture/a.go:10.2,10.10 1 1
+example.com/m/pkg/fixture/b.go:6.24,7.13 1 0
+example.com/m/pkg/fixture/b.go:7.13,9.3 1 0
+example.com/m/pkg/fixture/b.go:10.2,10.10 1 0
+EOF
+}
+
+# 6. THE C4 DEFECT. An unqualified symbol that two files declare (on two
+#    different receiver types) must refuse, naming the row, the symbol, and
+#    every declaring file — never silently pick whichever file the glob
+#    visits first.
+fixture_ambiguous "$WORK/ambiguous"
+registry "$WORK/ambiguous" 'X7	control	pkg/fixture	Ambiguous	0	a symbol two files declare'
+expect "an ambiguous symbol refuses instead of picking one" 2 "$WORK/ambiguous" "ambiguous"
+
+# 7. A Receiver.Method qualifier resolves the ambiguity to the intended file.
+#    Asserting "3/3" (not just exit 0) proves it picked TypeA's body and not
+#    TypeB's — a qualifier that resolved to the wrong file could still exit 0.
+fixture_ambiguous "$WORK/qualified-a"
+registry "$WORK/qualified-a" 'X8	control	pkg/fixture	TypeA.Ambiguous	0	qualified to the covered receiver'
+expect "a qualified symbol resolves to its own receiver's body" 0 "$WORK/qualified-a" "3/3"
+
+# 8. The same qualifier syntax against the OTHER receiver must resolve to that
+#    receiver's own (uncovered) body, not fall back to TypeA's covered one.
+fixture_ambiguous "$WORK/qualified-b"
+registry "$WORK/qualified-b" 'X9	control	pkg/fixture	TypeB.Ambiguous	0	qualified to the uncovered receiver'
+expect "a qualifier does not leak coverage from the other receiver" 1 "$WORK/qualified-b" "0/3"
+
 echo
 if [ "$FAILURES" = "0" ]; then
   echo "dccc-selftest: all $CASES cases behaved"
