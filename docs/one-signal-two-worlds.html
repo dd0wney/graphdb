@@ -90,8 +90,12 @@
     display: grid;
     grid-template-columns: var(--rail) minmax(0, 1fr);
     column-gap: var(--gutter);
+    min-width: 0;
   }
-  .rail-grid > .body { max-width: var(--measure); }
+  .rail-grid > .body { min-width: 0; }
+  /* The measure sits on the prose, not the column, so an evidence block can
+     use the full width instead of scrolling inside a 33rem gutter. */
+  .body > *:not(figure) { max-width: var(--measure); }
 
   .caps {
     font-family: var(--mono);
@@ -203,7 +207,7 @@
      colour at a glance and separate only on inspection. */
   .worlds {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 1.75rem;
     margin: 1.6rem 0;
   }
@@ -225,8 +229,14 @@
 
   /* ---------- evidence ---------- */
 
-  figure { margin: 1.9rem 0 0; }
-  .evidence { background: var(--sunk); overflow-x: auto; }
+  /* Evidence breaks out across the rail. Transcript lines are ~95 columns and
+     do not fit a 33rem reading measure; the rail is empty at this height. */
+  figure {
+    margin: 1.9rem 0 0 calc(-1 * (var(--rail) + var(--gutter)));
+    width: calc(100% + var(--rail) + var(--gutter));
+    min-width: 0;
+  }
+  .evidence { background: var(--sunk); overflow-x: auto; min-width: 0; }
   .evidence pre {
     margin: 0;
     padding: 1.1rem 1.25rem;
@@ -268,6 +278,7 @@
     display: grid;
     grid-template-columns: var(--rail) minmax(0, 1fr);
     column-gap: var(--gutter);
+    min-width: 0;
     padding: 1.15rem 0;
     border-top: 1px solid var(--rule);
   }
@@ -295,9 +306,12 @@
   }
 
   @media (max-width: 46rem) {
-    .rail-grid, .remedy li { grid-template-columns: 1fr; row-gap: 0.75rem; }
+    .rail-grid, .remedy li { grid-template-columns: minmax(0, 1fr); row-gap: 0.75rem; }
     .rail { flex-direction: row; gap: 0.9rem; align-items: baseline; flex-wrap: wrap; }
-    .worlds { grid-template-columns: 1fr; gap: 1.25rem; }
+    .worlds { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+    .body > *:not(figure) { max-width: none; }
+    /* No rail to break out of once the grid is one column. */
+    figure { margin-left: 0; width: auto; }
   }
 
   @media (prefers-reduced-motion: reduce) {
