@@ -14,19 +14,21 @@ package storage
 
 import (
 	"math"
-	"os"
 	"path/filepath"
 	"sync/atomic"
 
 	"github.com/dd0wney/graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 func mmapSnapshotPath(dataDir string) string {
 	return filepath.Join(dataDir, "snapshot.mmap")
 }
 
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
+func fileExists(path string) bool { return fileExistsWithFS(vfs.Default(), path) }
+
+func fileExistsWithFS(fs vfs.FileSystem, path string) bool {
+	_, err := fs.Stat(path)
 	return err == nil
 }
 
@@ -48,8 +50,8 @@ func mmapEligible(config StorageConfig) bool {
 //
 // The reverse case is not a mismatch: mmap mode with no snapshot.mmap loads a
 // legacy snapshot.json and migrates on its next Close.
-func mmapSnapshotStranded(config StorageConfig) bool {
-	return !mmapEligible(config) && fileExists(mmapSnapshotPath(config.DataDir))
+func mmapSnapshotStranded(fs vfs.FileSystem, config StorageConfig) bool {
+	return !mmapEligible(config) && fileExistsWithFS(fs, mmapSnapshotPath(config.DataDir))
 }
 
 // loadFromDiskMmap maps the snapshot and rebuilds the in-memory indexes without
@@ -59,7 +61,7 @@ func mmapSnapshotStranded(config StorageConfig) bool {
 func (gs *GraphStorage) loadFromDiskMmap() error {
 	prof := newLoadProfiler()
 
-	snap, err := openMmapSnapshot(mmapSnapshotPath(gs.dataDir))
+	snap, err := openMmapSnapshotWithFS(gs.fs, mmapSnapshotPath(gs.dataDir))
 	if err != nil {
 		return err
 	}

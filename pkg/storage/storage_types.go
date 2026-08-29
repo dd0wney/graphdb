@@ -8,6 +8,7 @@ import (
 	"github.com/dd0wney/graphdb/pkg/encryption"
 	"github.com/dd0wney/graphdb/pkg/metrics"
 	"github.com/dd0wney/graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/vfs"
 	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
@@ -98,9 +99,13 @@ type GraphStorage struct {
 	// lockShard). All nil/empty when mmap mode is off, so the JSON path is
 	// unchanged. See mmap_snapshot_loader.go.
 	useMmapSnapshot bool // write snapshot.mmap (set from mmapEligible at construction)
-	mmapSnap        *mmapSnapshot
-	deletedNodes    [256]map[uint64]struct{}
-	deletedEdges    [256]map[uint64]struct{}
+
+	// fs is the filesystem driver, resolved once at construction from
+	// StorageConfig.FS. Never nil after NewGraphStorageWithConfig returns.
+	fs           vfs.FileSystem
+	mmapSnap     *mmapSnapshot
+	deletedNodes [256]map[uint64]struct{}
+	deletedEdges [256]map[uint64]struct{}
 
 	// ID generators
 	nextNodeID uint64
@@ -180,8 +185,15 @@ type StorageConfig struct {
 	// #1, Stage 1): the snapshot is written/read as snapshot.mmap and
 	// nodes/edges materialize lazily on access instead of being allocated up
 	// front. Falls back to the JSON path when ineligible (encryption enabled,
-	// disk-backed edges, or no snapshot.mmap present). Off by default.
+	// disk-backed edges, or no snapshot.mmap present). ON by default since
+	// v1.2 (#447); set false to opt out.
 	UseMmapSnapshot bool
+
+	// FS is the filesystem driver every file operation in this package goes
+	// through. Nil means vfs.Default(), which is what ships. Set it to inject
+	// I/O errors, to simulate a power cut, or to serve a store from memory.
+	// See ADR 0002 and the pkg/vfs doc comment.
+	FS vfs.FileSystem
 
 	// EncryptionEngine/KeyManager wire at-rest encryption at CONSTRUCTION
 	// time, so the constructor's loadFromDisk can decrypt an encrypted

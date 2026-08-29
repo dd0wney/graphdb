@@ -9,6 +9,7 @@ import (
 
 	"github.com/dd0wney/graphdb/pkg/metrics"
 	"github.com/dd0wney/graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/vfs"
 	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
@@ -98,8 +99,14 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		gs.edgeShards[i] = make(map[uint64]*Edge)
 	}
 
+	// Resolve the filesystem driver before the first file operation below.
+	gs.fs = config.FS
+	if gs.fs == nil {
+		gs.fs = vfs.Default()
+	}
+
 	// Create data directory if it doesn't exist
-	if err := os.MkdirAll(config.DataDir, dirPermissions); err != nil {
+	if err := gs.fs.MkdirAll(config.DataDir, dirPermissions); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
@@ -152,7 +159,7 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 	// here and writes snapshot.mmap on its next Snapshot.)
 	gs.useMmapSnapshot = mmapEligible(config)
 	loadErr := error(nil)
-	if gs.useMmapSnapshot && fileExists(mmapSnapshotPath(config.DataDir)) {
+	if gs.useMmapSnapshot && fileExistsWithFS(gs.fs, mmapSnapshotPath(config.DataDir)) {
 		loadErr = gs.loadFromDiskMmap()
 	} else {
 		loadErr = gs.loadFromDisk()
@@ -162,7 +169,7 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		// the other format is sitting beside it. Refuse rather than open
 		// empty: the empty store is indistinguishable from a real one, and
 		// the next Close() overwrites the snapshot that still holds the data.
-		if os.IsNotExist(loadErr) && mmapSnapshotStranded(config) {
+		if os.IsNotExist(loadErr) && mmapSnapshotStranded(gs.fs, config) {
 			return nil, fmt.Errorf(
 				"data directory %q holds snapshot.mmap, but this store is not configured for the mmap "+
 					"snapshot path, so it would load an empty database. Set GRAPHDB_STORAGE_MODE=mmap "+

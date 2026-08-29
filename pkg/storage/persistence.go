@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"os"
 	"path/filepath"
 	"sync/atomic"
 	"time"
@@ -154,12 +153,12 @@ func (gs *GraphStorage) snapshotWithBoundary() (uint64, error) {
 	tmpPath := snapshotPath + ".tmp"
 
 	// Write to temporary file first
-	if err := os.WriteFile(tmpPath, data, filePermissions); err != nil {
+	if err := writeFileWithFS(gs.fs, tmpPath, data, filePermissions); err != nil {
 		return 0, fmt.Errorf("failed to write snapshot: %w", err)
 	}
 
 	// Atomic rename
-	if err := os.Rename(tmpPath, snapshotPath); err != nil {
+	if err := gs.fs.Rename(tmpPath, snapshotPath); err != nil {
 		return 0, fmt.Errorf("failed to rename snapshot: %w", err)
 	}
 
@@ -174,11 +173,11 @@ func (gs *GraphStorage) loadFromDisk() error {
 	prof := newLoadProfiler()
 	snapshotPath := filepath.Join(gs.dataDir, "snapshot.json")
 
-	data, err := os.ReadFile(snapshotPath)
+	data, err := readFileWithFS(gs.fs, snapshotPath)
 	if err != nil {
 		return err
 	}
-	prof.mark("os.ReadFile")
+	prof.mark("readFile")
 
 	payload, isEncrypted, legacy, err := decodeSnapshotEnvelope(data)
 	if err != nil {

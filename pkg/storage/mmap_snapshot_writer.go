@@ -10,17 +10,23 @@ import (
 	"os"
 	"sort"
 	"sync/atomic"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // writeMmapSnapshotData writes nodes (sorted ascending by ID), edges, and metadata to
 // path in the mmap-able v4 format with a CRC over the structural sections.
 func writeMmapSnapshotData(path string, nodes []*Node, edges []*Edge, meta *mmapMetadata) error {
+	return writeMmapSnapshotDataWithFS(vfs.Default(), path, nodes, edges, meta)
+}
+
+func writeMmapSnapshotDataWithFS(fs vfs.FileSystem, path string, nodes []*Node, edges []*Edge, meta *mmapMetadata) error {
 	metaBytes, err := meta.marshal()
 	if err != nil {
 		return err
 	}
 
-	f, err := os.Create(path)
+	f, err := fs.Open(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePermissions)
 	if err != nil {
 		return err
 	}
@@ -200,7 +206,7 @@ func directoryBytes(dir []int64) []byte {
 // writeMmapSnapshot serializes a quiescent GraphStorage (caller ensures no concurrent
 // writers, or holds the snapshot RLock) to path in the mmap format.
 func writeMmapSnapshot(path string, gs *GraphStorage) error {
-	return writeMmapSnapshotData(path, collectNodesSorted(gs), collectEdgesSorted(gs), buildMmapMetadata(gs))
+	return writeMmapSnapshotDataWithFS(gs.fs, path, collectNodesSorted(gs), collectEdgesSorted(gs), buildMmapMetadata(gs))
 }
 
 // buildMmapMetadata gathers the small eager tail (property/vector indexes, stats,

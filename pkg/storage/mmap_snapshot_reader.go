@@ -3,69 +3,72 @@ package storage
 // Reader for the mmap-able snapshot format. Maps the file read-only, verifies the CRC
 // over the structural sections (header + directories + metadata) at open, and
 // materializes nodes/edges lazily on access (copy-on-read, so results are safe to
-// retain after close). Uses syscall.Mmap (unix) — consistent with the package already
-// being unix-only (graceful.go / verification.go use syscall.SIGUSR1 / Stat_t).
+// retain after close). The bytes come from a vfs driver: the OS driver mmaps
+// (unix), and any driver may supply its own buffer, which is how fault and
+// corruption tests drive this reader instead of a test-only substitute.
 
 import (
 	"encoding/binary"
 	"fmt"
-	"os"
-	"syscall"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 type mmapSnapshot struct {
 	data    []byte
+	release func() error
 	hdr     *mmapSnapshotHeader
 	meta    *mmapMetadata
 	membDir *membershipDir
 }
 
 func openMmapSnapshot(path string) (*mmapSnapshot, error) {
-	f, err := os.Open(path)
+	return openMmapSnapshotWithFS(vfs.Default(), path)
+}
+
+// openMmapSnapshotWithFS maps the snapshot through a filesystem driver.
+//
+// The bytes come from vfs.MapFile, so the OS driver mmaps as before and a fault
+// driver can hand back a buffer it chose. That is the whole point: a truncated
+// or corrupt snapshot now reaches this function — the production reader — with
+// no corrupt file ever written to disk. See ADR 0002 and vfs.Mapper.
+func openMmapSnapshotWithFS(fs vfs.FileSystem, path string) (*mmapSnapshot, error) {
+	data, release, err := vfs.MapFile(fs, path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	size := int(fi.Size())
-	if size < mmapHeaderSize {
-		return nil, fmt.Errorf("mmap snapshot %q too small: %d bytes", path, size)
-	}
-	data, err := syscall.Mmap(int(f.Fd()), 0, size, syscall.PROT_READ, syscall.MAP_SHARED)
-	if err != nil {
-		return nil, fmt.Errorf("mmap %q: %w", path, err)
+	if len(data) < mmapHeaderSize {
+		_ = release()
+		return nil, fmt.Errorf("mmap snapshot %q too small: %d bytes", path, len(data))
 	}
 
 	hdr, err := unmarshalMmapHeader(data)
 	if err != nil {
-		_ = syscall.Munmap(data)
+		_ = release()
 		return nil, err
 	}
 
 	nodeDir, edgeDir, adjDir, membDirBytes, metaBytes, err := sections(data, hdr)
 	if err != nil {
-		_ = syscall.Munmap(data)
+		_ = release()
 		return nil, err
 	}
 	if got := computeCRC(data[:hCRC], nodeDir, edgeDir, adjDir, membDirBytes, metaBytes); got != hdr.crc {
-		_ = syscall.Munmap(data)
+		_ = release()
 		return nil, fmt.Errorf("mmap snapshot %q CRC mismatch: got %08x want %08x", path, got, hdr.crc)
 	}
 	meta, err := unmarshalMmapMetadata(metaBytes)
 	if err != nil {
-		_ = syscall.Munmap(data)
+		_ = release()
 		return nil, err
 	}
 	mdir, err := parseMembershipDir(membDirBytes)
 	if err != nil {
-		_ = syscall.Munmap(data)
+		_ = release()
 		return nil, err
 	}
 
-	return &mmapSnapshot{data: data, hdr: hdr, meta: meta, membDir: mdir}, nil
+	return &mmapSnapshot{data: data, release: release, hdr: hdr, meta: meta, membDir: mdir}, nil
 }
 
 // sliceRange returns data[start:end] when the range is inside data and
@@ -158,7 +161,7 @@ func sections(data []byte, hdr *mmapSnapshotHeader) (nodeDir, edgeDir, adjDir, m
 	return nodeDir, edgeDir, adjDir, membDir, meta, nil
 }
 
-func (m *mmapSnapshot) close() error            { return syscall.Munmap(m.data) }
+func (m *mmapSnapshot) close() error            { return m.release() }
 func (m *mmapSnapshot) nodeCount() int          { return int(m.hdr.nodeCount) }
 func (m *mmapSnapshot) edgeCount() int          { return int(m.hdr.edgeCount) }
 func (m *mmapSnapshot) metadata() *mmapMetadata { return m.meta }
