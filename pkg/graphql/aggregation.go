@@ -13,7 +13,12 @@ import (
 // generation to discover which property keys become aggregate fields. It is
 // injected so the tenant-scoping decision lives at the entry point where the
 // tenant is known, and the generator never samples across tenant boundaries.
-type nodeSampler func(label string) []*storage.Node
+//
+// The error return carries storage.ErrRecordUnreadable when the underlying
+// enumeration skipped a damaged record. The returned slice is always the
+// usable partial result; see generateSchemaWithAggregationForLabels for how
+// the error is handled.
+type nodeSampler func(label string) ([]*storage.Node, error)
 
 // GenerateSchemaWithAggregation generates a GraphQL schema with
 // aggregation support (tenant-blind). API callers should use
@@ -22,9 +27,8 @@ type nodeSampler func(label string) []*storage.Node
 // Masking is disabled (deps = nil). Property discovery samples across all
 // tenants, which is correct for this tenant-blind / single-tenant schema.
 func GenerateSchemaWithAggregation(gs *storage.GraphStorage) (graphql.Schema, error) {
-	sample := func(label string) []*storage.Node {
-		nodes, _ := gs.FindNodesByLabelAcrossTenants(label)
-		return nodes
+	sample := func(label string) ([]*storage.Node, error) {
+		return gs.FindNodesByLabelAcrossTenants(label)
 	}
 	return generateSchemaWithAggregationForLabels(gs, gs.GetAllLabels(), nil, sample)
 }
@@ -37,7 +41,7 @@ func GenerateSchemaWithAggregation(gs *storage.GraphStorage) (graphql.Schema, er
 // names never surface in this tenant's schema introspection (the schema-side
 // counterpart of the A6c resolver-scoping).
 func GenerateSchemaWithAggregationForTenant(gs *storage.GraphStorage, tenantID string, deps *MaskingDeps) (graphql.Schema, error) {
-	sample := func(label string) []*storage.Node {
+	sample := func(label string) ([]*storage.Node, error) {
 		return gs.GetNodesByLabelForTenant(tenantID, label)
 	}
 	return generateSchemaWithAggregationForLabels(gs, gs.GetLabelsForTenant(tenantID), deps, sample)
@@ -49,7 +53,10 @@ func generateSchemaWithAggregationForLabels(gs *storage.GraphStorage, labels []s
 
 	// Create node types and aggregate types for each label
 	for _, label := range labels {
-		nodeType, aggregateType := buildNodeAggregateTypes(label, deps, sample)
+		nodeType, aggregateType, err := buildNodeAggregateTypes(label, deps, sample)
+		if err != nil {
+			return graphql.Schema{}, fmt.Errorf("sample nodes for label %s: %w", label, err)
+		}
 		nodeTypes[label] = nodeType
 		aggregateTypes[label] = aggregateType
 	}

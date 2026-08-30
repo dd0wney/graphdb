@@ -17,7 +17,7 @@ type failingView struct {
 	failOn uint64
 }
 
-func (v *failingView) AllNodes() []*storage.Node {
+func (v *failingView) AllNodes() ([]*storage.Node, error) {
 	return v.inner.AllNodes()
 }
 

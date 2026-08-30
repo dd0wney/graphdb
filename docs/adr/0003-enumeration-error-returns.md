@@ -1,7 +1,7 @@
 # 3. An error return for the seven enumeration methods
 
 Date: 2026-08-30
-Status: proposed
+Status: accepted
 
 ## Context
 
@@ -79,7 +79,7 @@ is 35 across six packages, plus 99 test sites — 134 edits in total.
 
 ## Decision
 
-**Proposed, and not yet approved. No code moves until the user approves it.**
+**Approved on 2026-08-30.**
 
 Give each of the seven methods an `error` return, in the Go convention of a
 usable partial result beside a non-nil error:
@@ -108,28 +108,112 @@ fails the lint job, so the migration cannot be completed cosmetically by
 assigning to `_`. Each site has to make a decision, and a reviewer can see which
 decision it made.
 
+### What the HTTP layer does with it
+
+The storage decision above does not settle the HTTP one, and the first
+implementation got the HTTP one wrong. It refused with `500` at every
+`pkg/api` site, discarding the partial page that `pkg/storage` had just gone to
+trouble to preserve. That put back, one level up, exactly the outage
+alternative 4 was rejected for: one damaged record made **every** page of that
+tenant's list fail, intact pages included, and the caller never received a
+cursor with which to step past the gap.
+
+**The split is by whether a fragment means anything.**
+
+**Paginated endpoints serve the partial page.** `GET /nodes` and `GET /edges`,
+including their `?label=` and `?type=` variants, answer `200`, serve the
+records that decoded, send the cursor as normal, and set:
+
+```
+X-Enumeration-Incomplete: <count of records that would not decode>
+```
+
+The header is **absent** when the scan was complete, so its presence is the
+signal and a client never parses a zero. A page is already a fragment by
+construction and the caller holds a cursor for the rest, so a short page plus
+an explicit count is a truthful answer rather than a silent one.
+
+**Whole-graph enumerations still refuse with `500`.** The LSA build, the
+search-index build, the index-count that follows one, and the composed
+`?from=`/`?to=` edge filter have no meaningful fragment. A search index built
+from a short corpus answers "no match" for every document the scan skipped, and
+it keeps answering that until somebody rebuilds it. A header does not make that
+answer true.
+
+Three sub-decisions, each of which was argued and could have gone the other
+way:
+
+- **`200`, not `206`.** RFC 9110 defines `206` for a range request and requires
+  a `Content-Range` header with it. A pagination endpoint is not a range
+  request, so a bare `206` is non-conformant, and some client libraries treat
+  `206` specially and expect `Content-Range`. Both are `2xx`, so `resp.ok` is
+  true either way and a client that ignores headers ignores both equally. The
+  signal strength is identical; only the conformance differs.
+- **A header, not a body field.** This endpoint family already signals
+  pagination state through a header — `X-Next-Cursor`, which consumer contract
+  CC8 pins. A body field would also change the response from an array to an
+  object, which breaks every existing client.
+- **A count, and never the IDs.** `pkg/api` keeps record IDs and snapshot byte
+  offsets out of responses; `getNode` and `respondIncompleteEnumeration` log
+  them and send a fixed sentence, a rule PR #526 set deliberately. The count
+  carries the signal without reversing that rule. It is enforced structurally:
+  `storage.IncompleteEnumeration` has no exported field, and
+  `storage.SkippedRecordCount` is the only accessor, so a handler cannot put an
+  ID into a response even by mistake.
+
 ### Migration order
 
-One PR per step, each independently green:
+**The signature change is atomic. It cannot be split into independently green
+steps, and an earlier draft of this section was wrong to say that it could.**
 
-1. **`pkg/storage` internal.** Change the seven bodies and the 5 in-package
-   callers. Add the error to the returns. No other package compiles against the
-   new shape yet, so this step is self-contained.
-2. **`interface.go` and `BTreeGraphStorage`.** Three interface lines, three
-   BTree methods. The second implementation must move with the interface or the
-   build breaks.
-3. **`pkg/api` (8) and `pkg/graphql` (14).** The two HTTP-facing consumers. These
-   decide the user-visible behaviour, so they carry the equivalence-sweep
-   obligation: a stranger must not learn from a 5xx that a record exists. Reuse
-   the `membershipContains` ownership check that PR #512 added.
-4. **`pkg/query` (6), `pkg/search` (1), `pkg/algorithms` (1).** Internal
-   consumers with no direct user surface.
-5. **A fault sweep over the seven methods.** This is the step that proves the
-   change was worth making. Until it exists, the four steps above are unverified
-   in the way this ADR argues they must be.
+That draft proposed five PRs: `pkg/storage` internals first, then
+`interface.go` and `BTreeGraphStorage`, then the HTTP-facing consumers, then
+the internal ones. The first step alone does not compile, so a reader who
+follows that order reaches a broken tree before the second step begins. Two
+compile-time assertions are the reason:
 
-Step 5 is not optional and not a follow-up. If it is dropped, the change buys a
-signature and not a gate.
+```
+pkg/storage/interface.go:156   var _ Storage = (*GraphStorage)(nil)
+pkg/storage/btree_storage.go:665   var _ Storage = (*BTreeGraphStorage)(nil)
+```
+
+Three of the seven methods sit on the `Storage` interface (`interface.go`
+lines 43, 44 and 50). Change the `*GraphStorage` bodies and the first
+assertion fails, because the receiver no longer matches the interface. Change
+the interface to match and the second assertion fails, because
+`BTreeGraphStorage` still carries the old shape. Change both and every
+consumer of the interface fails, because `pkg/algorithms` takes
+`storage.Storage` as a parameter in 32 non-test functions and holds one in a
+struct field twice, at `pkg/algorithms/view.go:48` and
+`pkg/algorithms/view.go:84`:
+
+```
+grep -h '^func .*storage\.Storage' pkg/algorithms/*.go | wc -l   # 32
+```
+
+So one commit must carry all of it:
+
+- the seven method bodies, plus the 5 in-package callers;
+- the three `interface.go` lines and the three `BTreeGraphStorage` methods;
+- all 35 production call sites, across six packages;
+- all 99 test call sites, which must compile even where they do not assert.
+
+The four page methods are NOT on the interface, so only three of the seven
+force the interface edit. That does not help: those three are enough to break
+both assertions, and the page methods are reached through the concrete
+`*storage.GraphStorage` that `pkg/api`, `pkg/graphql` and `pkg/query` already
+hold.
+
+A commit split inside that single PR is still worth having, and is what the
+implementation used: the mechanical migration first, the new gate second.
+That split is readable. It is not independently landable, and the difference
+matters.
+
+**The fault sweep lands separately.** A sweep over the seven methods is purely
+additive: it adds test files and changes no signature, so it does not share
+the atomicity constraint above. It is the step that proves the change was
+worth making — until it exists, the migration buys a signature and not a gate
+— but it is a follow-up PR rather than a step inside this one.
 
 ## Alternatives Considered
 
@@ -204,8 +288,10 @@ failure for a database, and a library that panics on it is unusable in a server.
 - `nil` starts meaning something. A complete enumeration becomes distinguishable
   from an incomplete one, at every one of the 35 sites.
 - The seven methods become reachable by fault injection for the first time.
-- `pkg/api` and `pkg/graphql` can return an honest status instead of a short
-  list.
+- `pkg/api` and `pkg/graphql` can give an honest answer instead of a short list.
+  For the paginated endpoints that answer is the page plus
+  `X-Enumeration-Incomplete`; for the whole-graph enumerations it is a refusal.
+  See "What the HTTP layer does with it" above.
 - `CheckInvariants` gains a second, independent way to observe damage.
 
 **Bad**

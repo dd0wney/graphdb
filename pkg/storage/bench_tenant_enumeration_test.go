@@ -65,7 +65,10 @@ func BenchmarkGetAllNodesForTenant_NoisyNeighbor(b *testing.B) {
 		b.Run(fmt.Sprintf("indexed/background=%d", bg), func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				nodes := gs.GetAllNodesForTenant(targetTenant)
+				nodes, err := gs.GetAllNodesForTenant(targetTenant)
+				if err != nil {
+					b.Fatalf("GetAllNodesForTenant: %v", err)
+				}
 				benchEnumSink.Store(&nodes)
 			}
 		})

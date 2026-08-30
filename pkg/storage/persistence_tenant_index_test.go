@@ -55,7 +55,10 @@ func TestLoadFromDisk_RebuildsTenantIndex(t *testing.T) {
 	}
 	defer func() { _ = gs2.Close() }()
 
-	docs := gs2.GetNodesByLabelForTenant("acme", "Doc")
+	docs, err := gs2.GetNodesByLabelForTenant("acme", "Doc")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(acme, Doc): %v", err)
+	}
 	if len(docs) != 3 {
 		t.Errorf("expected 3 acme:Doc nodes after snapshot load, got %d — tenant index not rebuilt from snapshot.Nodes", len(docs))
 	}
@@ -63,7 +66,10 @@ func TestLoadFromDisk_RebuildsTenantIndex(t *testing.T) {
 	// Negative: queries for a different tenant must still return empty.
 	// Confirms the rebuild iterates correctly and uses each node's own
 	// TenantID — not just dumping everything into the default tenant.
-	other := gs2.GetNodesByLabelForTenant("other-tenant", "Doc")
+	other, err := gs2.GetNodesByLabelForTenant("other-tenant", "Doc")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(other-tenant, Doc): %v", err)
+	}
 	if len(other) != 0 {
 		t.Errorf("expected 0 Doc nodes for other-tenant, got %d — tenant scoping is broken in snapshot load", len(other))
 	}

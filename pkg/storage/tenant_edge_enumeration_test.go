@@ -47,7 +47,10 @@ func TestGetAllEdgesForTenant_TenantIsolationAndOrder(t *testing.T) {
 		}
 	}
 
-	got := gs.GetAllEdgesForTenant("acme")
+	got, err := gs.GetAllEdgesForTenant("acme")
+	if err != nil {
+		t.Fatalf("enumerate edges for acme: %v", err)
+	}
 	if len(got) != 5 {
 		t.Fatalf("expected 5 acme edges, got %d (cross-tenant leak or miss)", len(got))
 	}
@@ -80,7 +83,10 @@ func TestGetAllEdgesForTenant_DeleteRemovesFromEnumeration(t *testing.T) {
 	if err := gs.DeleteEdgeForTenant(e1.ID, "acme"); err != nil {
 		t.Fatalf("delete edge: %v", err)
 	}
-	got := gs.GetAllEdgesForTenant("acme")
+	got, err := gs.GetAllEdgesForTenant("acme")
+	if err != nil {
+		t.Fatalf("enumerate edges for acme: %v", err)
+	}
 	if len(got) != 1 || got[0].ID != e2.ID {
 		t.Fatalf("expected only edge %d after deleting %d, got %v", e2.ID, e1.ID, got)
 	}
@@ -88,7 +94,9 @@ func TestGetAllEdgesForTenant_DeleteRemovesFromEnumeration(t *testing.T) {
 	if err := gs.DeleteEdgeForTenant(e2.ID, "acme"); err != nil {
 		t.Fatalf("delete edge: %v", err)
 	}
-	if got := gs.GetAllEdgesForTenant("acme"); len(got) != 0 {
+	if got, err := gs.GetAllEdgesForTenant("acme"); err != nil {
+		t.Fatalf("enumerate edges for acme: %v", err)
+	} else if len(got) != 0 {
 		t.Fatalf("expected 0 edges after deleting all, got %d", len(got))
 	}
 	gs.mu.RLock()
@@ -127,7 +135,9 @@ func TestGetAllEdgesForTenant_SurvivesRestart(t *testing.T) {
 	}
 	defer func() { _ = gs2.Close() }()
 
-	if got := gs2.GetAllEdgesForTenant("acme"); len(got) != 3 {
+	if got, err := gs2.GetAllEdgesForTenant("acme"); err != nil {
+		t.Fatalf("enumerate edges for acme: %v", err)
+	} else if len(got) != 3 {
 		t.Errorf("expected 3 acme edges after restart, got %d — edge enumeration index not rebuilt from snapshot", len(got))
 	}
 }

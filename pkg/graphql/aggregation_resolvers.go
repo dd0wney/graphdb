@@ -1,6 +1,8 @@
 package graphql
 
 import (
+	"fmt"
+
 	"github.com/graphql-go/graphql"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -18,7 +20,10 @@ func createNodeAggregateResolver(gs *storage.GraphStorage, label string, deps *M
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label lookup.
 		tenantID := tenant.MustFromContext(p.Context)
-		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
+		nodes, err := gs.GetNodesByLabelForTenant(tenantID, label)
+		if err != nil {
+			return nil, fmt.Errorf("aggregate %s nodes: %w", label, err)
+		}
 
 		result := make(map[string]any)
 
@@ -108,7 +113,10 @@ func createEdgeAggregateResolver(gs *storage.GraphStorage) graphql.FieldResolveF
 		// Audit A6c-graphql-resolvers: tenant-scoped edge enumeration
 		// (replaces "1..stats.EdgeCount via GetEdge" cross-tenant scan).
 		tenantID := tenant.MustFromContext(p.Context)
-		edges := gs.GetAllEdgesForTenant(tenantID)
+		edges, err := gs.GetAllEdgesForTenant(tenantID)
+		if err != nil {
+			return nil, fmt.Errorf("aggregate edges: %w", err)
+		}
 
 		result := make(map[string]any)
 

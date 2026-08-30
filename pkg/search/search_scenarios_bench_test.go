@@ -92,7 +92,13 @@ func BenchmarkScenario_ConcurrentReadDuringWrite(b *testing.B) {
 	// Gather the NodeIDs we just created so the writer can rotate over
 	// them with UpdateNode calls.
 	var targets []uint64
-	for _, node := range gs.GetNodesByLabelForTenant("default", "Doc") {
+	docs, err := gs.GetNodesByLabelForTenant("default", "Doc")
+	if err != nil {
+		// A benchmark that measures a partially-enumerated corpus measures the
+		// wrong thing, and it does so silently.
+		b.Fatalf("enumerate Doc nodes: %v", err)
+	}
+	for _, node := range docs {
 		targets = append(targets, node.ID)
 	}
 	if len(targets) == 0 {

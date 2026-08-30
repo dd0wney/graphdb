@@ -1,6 +1,8 @@
 package graphql
 
 import (
+	"fmt"
+
 	"github.com/graphql-go/graphql"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -12,7 +14,10 @@ func createNodesResolverWithSorting(gs *storage.GraphStorage, label string) grap
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label query.
 		tenantID := tenant.MustFromContext(p.Context)
-		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
+		nodes, err := gs.GetNodesByLabelForTenant(tenantID, label)
+		if err != nil {
+			return nil, fmt.Errorf("list %s nodes: %w", label, err)
+		}
 
 		// Apply sorting if specified
 		orderBy := parseOrderBy(p.Args)
@@ -46,7 +51,10 @@ func createEdgesResolverWithSorting(gs *storage.GraphStorage) graphql.FieldResol
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped enumeration.
 		tenantID := tenant.MustFromContext(p.Context)
-		edges := gs.GetAllEdgesForTenant(tenantID)
+		edges, err := gs.GetAllEdgesForTenant(tenantID)
+		if err != nil {
+			return nil, fmt.Errorf("list edges: %w", err)
+		}
 
 		// Apply sorting if specified
 		orderBy := parseOrderBy(p.Args)
@@ -80,7 +88,10 @@ func createNodeConnectionResolverWithSorting(gs *storage.GraphStorage, label str
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label query.
 		tenantID := tenant.MustFromContext(p.Context)
-		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
+		nodes, err := gs.GetNodesByLabelForTenant(tenantID, label)
+		if err != nil {
+			return nil, fmt.Errorf("list %s nodes: %w", label, err)
+		}
 
 		// Apply sorting if specified
 		orderBy := parseOrderBy(p.Args)

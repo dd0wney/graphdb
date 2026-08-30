@@ -150,7 +150,9 @@ func TestCompactWAL_PurgesDeletedTenantData(t *testing.T) {
 			if _, err := gs2.GetNodeForTenant(survivor.ID, "survivor"); err != nil {
 				t.Fatalf("survivor node lost after compaction + crash recovery: %v", err)
 			}
-			if nodes := gs2.GetNodesByLabelForTenant("victim", "Doc"); len(nodes) != 0 {
+			if nodes, err := gs2.GetNodesByLabelForTenant("victim", "Doc"); err != nil {
+				t.Fatalf("GetNodesByLabelForTenant(victim, Doc): %v", err)
+			} else if len(nodes) != 0 {
 				t.Fatalf("victim tenant resurrected after crash recovery: %d nodes", len(nodes))
 			}
 		})

@@ -134,7 +134,10 @@ func TestLabelIndex_SortedAndCorrectAfterReopen(t *testing.T) {
 	assertSameSet(t, "global survivors after reopen", gGlobal, surviving)
 	assertSorted(t, "global order after reopen", gGlobal)
 
-	tenantNodes := gs.GetNodesByLabelForTenant("acme", "Person")
+	tenantNodes, err := gs.GetNodesByLabelForTenant("acme", "Person")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant after reopen: %v", err)
+	}
 	gTenant := idsOfNodes(tenantNodes)
 	assertSameSet(t, "tenant survivors after reopen", gTenant, surviving)
 	assertSorted(t, "tenant order after reopen", gTenant)
@@ -236,7 +239,10 @@ func TestLabelIndex_CrashRecoveryDefaultConfig(t *testing.T) {
 	assertSameSet(t, "global survivors after crash", gGlobal, surviving)
 	assertSorted(t, "global order after crash", gGlobal)
 
-	tenantNodes := gs.GetNodesByLabelForTenant("acme", "Person")
+	tenantNodes, err := gs.GetNodesByLabelForTenant("acme", "Person")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant after crash: %v", err)
+	}
 	gTenant := idsOfNodes(tenantNodes)
 	assertSameSet(t, "tenant survivors after crash", gTenant, surviving)
 	assertSorted(t, "tenant order after crash", gTenant)

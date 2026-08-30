@@ -195,7 +195,10 @@ func createNodesResolver(gs *storage.GraphStorage, label string) graphql.FieldRe
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label query.
 		tenantID := tenant.MustFromContext(p.Context)
-		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
+		nodes, err := gs.GetNodesByLabelForTenant(tenantID, label)
+		if err != nil {
+			return nil, fmt.Errorf("list %s nodes: %w", label, err)
+		}
 
 		// Apply pagination if specified
 		limit, limitOk := p.Args["limit"].(int)

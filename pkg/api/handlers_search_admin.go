@@ -63,9 +63,19 @@ func (s *Server) handleSearchIndex(w http.ResponseWriter, r *http.Request) {
 	// Count indexed nodes by re-iterating the tenant-scoped label lookups.
 	// IndexForTenant doesn't return a count today; counting here is a
 	// fresh lookup, cheap relative to the build itself.
+	// IndexForTenant already refuses when an enumeration is incomplete
+	// (pkg/search/tenant_indexes.go), so reaching here means the BUILD saw
+	// every node. This count is a second, later walk of the same labels, and a
+	// record can rot between the two. Report a count the caller cannot trust
+	// as a failure rather than as a number.
 	count := 0
 	for _, label := range req.Labels {
-		count += len(s.graph.GetNodesByLabelForTenant(tenantID, label))
+		labelNodes, err := s.graph.GetNodesByLabelForTenant(tenantID, label)
+		if err != nil {
+			s.respondIncompleteEnumeration(w, "count indexed nodes", err)
+			return
+		}
+		count += len(labelNodes)
 	}
 
 	s.respondJSON(w, http.StatusOK, SearchIndexResponse{
@@ -128,9 +138,20 @@ func (s *Server) handleLSAIndex(w http.ResponseWriter, r *http.Request) {
 	tenantID := getTenantFromContext(r)
 
 	// Gather tenant-scoped nodes under the requested labels.
+	//
+	// An LSA index built from a partial corpus answers "no match" for every
+	// document the enumeration skipped, and it keeps answering that until
+	// somebody rebuilds it. The build refuses rather than publish an index
+	// that is silently wrong (ADR 0003); the previously registered index, if
+	// any, stays in place and is at worst stale.
 	var nodes []*storage.Node
 	for _, label := range req.Labels {
-		nodes = append(nodes, s.graph.GetNodesByLabelForTenant(tenantID, label)...)
+		labelNodes, err := s.graph.GetNodesByLabelForTenant(tenantID, label)
+		if err != nil {
+			s.respondIncompleteEnumeration(w, "build LSA index", err)
+			return
+		}
+		nodes = append(nodes, labelNodes...)
 	}
 
 	// Build []search.Document from node properties. Skip nodes that

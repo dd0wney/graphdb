@@ -45,7 +45,10 @@ func TestCreateClaimMutation_FirstSucceeds(t *testing.T) {
 	}
 
 	// Confirm the node landed in storage with the right shape.
-	claims := gs.GetNodesByLabelForTenant("default", "Claim")
+	claims, err := gs.GetNodesByLabelForTenant("default", "Claim")
+	if err != nil {
+		t.Fatalf("enumerate claims: %v", err)
+	}
 	if len(claims) != 1 {
 		t.Fatalf("storage holds %d :Claim nodes after first create, want 1", len(claims))
 	}
@@ -72,7 +75,10 @@ func TestCreateClaimMutation_DuplicateRejected(t *testing.T) {
 	}
 
 	// Storage should still hold exactly one Claim.
-	claims := gs.GetNodesByLabelForTenant("default", "Claim")
+	claims, err := gs.GetNodesByLabelForTenant("default", "Claim")
+	if err != nil {
+		t.Fatalf("enumerate claims: %v", err)
+	}
 	if len(claims) != 1 {
 		t.Errorf("storage holds %d :Claim nodes after rejected second create, want 1", len(claims))
 	}
@@ -91,7 +97,10 @@ func TestCreateClaimMutation_DifferentTaskSucceeds(t *testing.T) {
 		t.Fatalf("second claim (different for_task) errored: %v", res.Errors)
 	}
 
-	claims := gs.GetNodesByLabelForTenant("default", "Claim")
+	claims, err := gs.GetNodesByLabelForTenant("default", "Claim")
+	if err != nil {
+		t.Fatalf("enumerate claims: %v", err)
+	}
 	if len(claims) != 2 {
 		t.Errorf("expected 2 :Claim nodes for distinct for_task values, got %d", len(claims))
 	}
@@ -142,7 +151,11 @@ func TestCreateClaimMutation_NonClaimLabelUnaffected(t *testing.T) {
 		t.Errorf("second Person create with same for_task should NOT be rejected: %v", res.Errors)
 	}
 
-	if persons := gs.GetNodesByLabelForTenant("default", "Person"); len(persons) != 2 {
+	persons, err := gs.GetNodesByLabelForTenant("default", "Person")
+	if err != nil {
+		t.Fatalf("enumerate persons: %v", err)
+	}
+	if len(persons) != 2 {
 		t.Errorf("expected 2 Person nodes, got %d", len(persons))
 	}
 }
@@ -201,7 +214,10 @@ func TestCreateClaimMutation_SecondLabelCannotStealAClaim(t *testing.T) {
 		t.Fatal("agent B claimed the same task by adding a label; uniqueness was bypassed")
 	}
 
-	claims := gs.GetNodesByLabelForTenant("default", "Claim")
+	claims, err := gs.GetNodesByLabelForTenant("default", "Claim")
+	if err != nil {
+		t.Fatalf("enumerate claims: %v", err)
+	}
 	if len(claims) != 1 {
 		t.Errorf("storage holds %d :Claim nodes for one task, want 1", len(claims))
 	}

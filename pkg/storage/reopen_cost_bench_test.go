@@ -266,14 +266,17 @@ const coiTenant = "coi-tenant"
 // coiResolve mimics the consumer's Resolve stage: a label-index lookup on
 // "Officer" followed by an in-bucket scan for the named party. Returns the ID and
 // the bucket size scanned (the linear component).
-func coiResolve(gs *GraphStorage, name string) (uint64, int) {
-	officers := gs.GetNodesByLabelForTenant(coiTenant, "Officer")
+func coiResolve(gs *GraphStorage, name string) (uint64, int, error) {
+	officers, err := gs.GetNodesByLabelForTenant(coiTenant, "Officer")
+	if err != nil {
+		return 0, len(officers), err
+	}
 	for _, n := range officers {
 		if s, _ := n.Properties["name"].AsString(); s == name {
-			return n.ID, len(officers)
+			return n.ID, len(officers), nil
 		}
 	}
-	return 0, len(officers)
+	return 0, len(officers), nil
 }
 
 // coiConflict mimics the consumer's Connect stage: a bounded adjacency BFS from
@@ -376,8 +379,14 @@ func TestReopenCost_CoiScreen(t *testing.T) {
 
 		// coi hot path: resolve two parties (label lookup) then connect (adjacency BFS).
 		rs := time.Now()
-		smithID, bucket := coiResolve(gs2, "Robert Smith")
-		doeID, _ := coiResolve(gs2, "Jane Doe")
+		smithID, bucket, err := coiResolve(gs2, "Robert Smith")
+		if err != nil {
+			t.Fatalf("[%s] coiResolve(Smith): %v", mode, err)
+		}
+		doeID, _, err := coiResolve(gs2, "Jane Doe")
+		if err != nil {
+			t.Fatalf("[%s] coiResolve(Doe): %v", mode, err)
+		}
 		resolveDur := time.Since(rs)
 		if smithID != planted.smith || doeID != planted.doe {
 			t.Fatalf("[%s] resolve mismatch: smith=%d/%d doe=%d/%d", mode, smithID, planted.smith, doeID, planted.doe)
@@ -391,7 +400,10 @@ func TestReopenCost_CoiScreen(t *testing.T) {
 
 		// full-graph enumeration: the path coi-screen does NOT use (B-1 contrast).
 		es := time.Now()
-		all := gs2.GetAllNodesForTenant(coiTenant)
+		all, err := gs2.GetAllNodesForTenant(coiTenant)
+		if err != nil {
+			t.Fatalf("[%s] GetAllNodesForTenant: %v", mode, err)
+		}
 		enumDur := time.Since(es)
 
 		return modeResult{mode, buildDur, snapDur, reopenDur, resolveDur, bfsDur, enumDur, bucket, len(all), flagged}

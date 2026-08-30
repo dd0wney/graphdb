@@ -44,11 +44,17 @@ func TestBatchCommit_VisibleToForTenantReaders(t *testing.T) {
 	}
 
 	// 1. Label resolution — coi-screen's linkage.Resolve entry point.
-	entities := gs.GetNodesByLabelForTenant("", "Entity")
+	entities, err := gs.GetNodesByLabelForTenant("", "Entity")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Entity): %v", err)
+	}
 	if len(entities) != 1 {
 		t.Errorf("GetNodesByLabelForTenant(Entity) = %d nodes, want 1 — batch nodes not in tenant label index", len(entities))
 	}
-	officers := gs.GetNodesByLabelForTenant("", "Officer")
+	officers, err := gs.GetNodesByLabelForTenant("", "Officer")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Officer): %v", err)
+	}
 	if len(officers) != 1 {
 		t.Errorf("GetNodesByLabelForTenant(Officer) = %d nodes, want 1", len(officers))
 	}
@@ -114,7 +120,9 @@ func TestBatchCommit_VisibleAfterReopen(t *testing.T) {
 	}
 	defer func() { _ = gs2.Close() }()
 
-	if got := gs2.GetNodesByLabelForTenant("", "Entity"); len(got) != 1 {
+	if got, err := gs2.GetNodesByLabelForTenant("", "Entity"); err != nil {
+		t.Fatalf("after reopen: GetNodesByLabelForTenant(Entity): %v", err)
+	} else if len(got) != 1 {
 		t.Errorf("after reopen: GetNodesByLabelForTenant(Entity) = %d, want 1", len(got))
 	}
 	if _, err := gs2.GetNodeForTenant(acme, ""); err != nil {

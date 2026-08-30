@@ -21,7 +21,13 @@ type predEdge struct {
 // Operates against a graphView so tenant-blind and tenant-scoped
 // callers share the implementation.
 func brandesCentrality(ctx context.Context, view graphView) (nodeBetweenness map[uint64]float64, edgeBetweenness map[uint64]float64, nodeIDs []uint64, err error) {
-	allNodes := view.AllNodes()
+	// An incomplete node set would make the result below confidently wrong,
+	// so ADR 0003's error is fatal here rather than degraded. See the
+	// AllNodes contract in view.go.
+	allNodes, err := view.AllNodes()
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	nodeIDs = make([]uint64, 0, len(allNodes))
 	for _, n := range allNodes {
 		nodeIDs = append(nodeIDs, n.ID)

@@ -1,6 +1,8 @@
 package graphql
 
 import (
+	"fmt"
+
 	"github.com/graphql-go/graphql"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -14,7 +16,7 @@ import (
 // values to the response. Threaded through so the deps reach
 // createNodeAggregateResolver and any future response-emitting
 // resolvers added here.
-func buildNodeAggregateTypes(label string, _ *MaskingDeps, sample nodeSampler) (*graphql.Object, *graphql.Object) {
+func buildNodeAggregateTypes(label string, _ *MaskingDeps, sample nodeSampler) (*graphql.Object, *graphql.Object, error) {
 	// Create regular node type
 	nodeType := graphql.NewObject(graphql.ObjectConfig{
 		Name: label,
@@ -28,7 +30,15 @@ func buildNodeAggregateTypes(label string, _ *MaskingDeps, sample nodeSampler) (
 	// Get sample nodes to discover properties. The sampler is tenant-scoped
 	// for the per-tenant schema (GenerateSchemaWithAggregationForTenant), so a
 	// foreign tenant's property keys never become fields in this schema.
-	sampleNodes := sample(label)
+	//
+	// A non-nil error means the enumeration skipped a damaged record. Schema
+	// generation runs once at startup (or on schema refresh), so an
+	// incomplete sample must not silently produce a schema with missing
+	// aggregate fields — abort and let the caller decide how to proceed.
+	sampleNodes, err := sample(label)
+	if err != nil {
+		return nil, nil, fmt.Errorf("label %s: %w", label, err)
+	}
 	propertyFields := graphql.Fields{}
 
 	// Build a map of property keys to their types
@@ -125,7 +135,7 @@ func buildNodeAggregateTypes(label string, _ *MaskingDeps, sample nodeSampler) (
 		},
 	})
 
-	return nodeType, aggregateType
+	return nodeType, aggregateType, nil
 }
 
 // buildEdgeAggregateType creates the edge aggregate type

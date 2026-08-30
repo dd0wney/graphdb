@@ -38,16 +38,24 @@ import (
 // convention (cross-tenant lookups return ErrNodeNotFound, not a distinct
 // error, to avoid existence-leak side channels).
 type StorageReader interface {
-	// Node retrieval
+	// Node retrieval.
+	//
+	// The two enumerations return a partial result BESIDE their error
+	// (ADR 0003): the slice holds every record that decoded, and the error is
+	// non-nil, wrapping ErrRecordUnreadable, when any record was skipped
+	// because it would not decode. A nil error means the enumeration was
+	// complete. Do not read the error as "the slice is unusable" — one damaged
+	// record must not make a whole tenant unreadable.
 	GetNodeForTenant(nodeID uint64, tenantID string) (*Node, error)
-	GetNodesByLabelForTenant(tenantID string, label string) []*Node
-	GetAllNodesForTenant(tenantID string) []*Node
+	GetNodesByLabelForTenant(tenantID string, label string) ([]*Node, error)
+	GetAllNodesForTenant(tenantID string) ([]*Node, error)
 	CountNodesForTenant(tenantID string) uint64
 
-	// Edge retrieval
+	// Edge retrieval. GetAllEdgesForTenant carries the same partial-result
+	// contract as the node enumerations above.
 	GetEdgeForTenant(edgeID uint64, tenantID string) (*Edge, error)
 	GetEdgesByTypeForTenant(tenantID string, edgeType string) []*Edge
-	GetAllEdgesForTenant(tenantID string) []*Edge
+	GetAllEdgesForTenant(tenantID string) ([]*Edge, error)
 	CountEdgesForTenant(tenantID string) uint64
 
 	// Adjacency

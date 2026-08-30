@@ -45,10 +45,14 @@ func TestTransactionCommit_IndexConsistency(t *testing.T) {
 	}
 
 	// Tenant-scoped indexed reads must see the committed nodes/edges.
-	if got := gs.GetNodesByLabelForTenant("acme", "Doc"); len(got) != 2 {
+	if got, err := gs.GetNodesByLabelForTenant("acme", "Doc"); err != nil {
+		t.Fatalf("GetNodesByLabelForTenant: %v", err)
+	} else if len(got) != 2 {
 		t.Errorf("GetNodesByLabelForTenant=%d, want 2 (commit bypassed tenant label index)", len(got))
 	}
-	if got := gs.GetAllNodesForTenant("acme"); len(got) != 2 {
+	if got, err := gs.GetAllNodesForTenant("acme"); err != nil {
+		t.Fatalf("GetAllNodesForTenant: %v", err)
+	} else if len(got) != 2 {
 		t.Errorf("GetAllNodesForTenant=%d, want 2 (commit bypassed tenant enumeration index)", len(got))
 	}
 	if got := gs.CountNodesForTenant("acme"); got != 2 {
@@ -57,7 +61,9 @@ func TestTransactionCommit_IndexConsistency(t *testing.T) {
 	if got := gs.GetEdgesByTypeForTenant("acme", "LINKS"); len(got) != 1 {
 		t.Errorf("GetEdgesByTypeForTenant=%d, want 1 (commit bypassed tenant edge index)", len(got))
 	}
-	if got := gs.GetAllEdgesForTenant("acme"); len(got) != 1 {
+	if got, err := gs.GetAllEdgesForTenant("acme"); err != nil {
+		t.Fatalf("GetAllEdgesForTenant: %v", err)
+	} else if len(got) != 1 {
 		t.Errorf("GetAllEdgesForTenant=%d, want 1", len(got))
 	}
 }
@@ -133,7 +139,9 @@ func TestTransactionCommit_DurableAcrossCrash(t *testing.T) {
 	}
 	// And the tenant index is rebuilt on replay (the committed nodes are
 	// label-queryable after restart).
-	if got := gs2.GetNodesByLabelForTenant("acme", "Doc"); len(got) != 2 {
+	if got, err := gs2.GetNodesByLabelForTenant("acme", "Doc"); err != nil {
+		t.Fatalf("GetNodesByLabelForTenant: %v", err)
+	} else if len(got) != 2 {
 		t.Errorf("after crash GetNodesByLabelForTenant=%d, want 2", len(got))
 	}
 }

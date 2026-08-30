@@ -73,7 +73,9 @@ func TestReplayDeleteNode_RemovesNodeFromTenantIndex(t *testing.T) {
 	if got := gs.CountNodesForTenant(tn); got != 0 {
 		t.Errorf("CountNodesForTenant = %d after crash recovery, want 0 — replayDeleteNode skipped removeNodeFromTenantIndex", got)
 	}
-	if got := len(gs.GetNodesByLabelForTenant(tn, "Doc")); got != 0 {
+	if byLabel, err := gs.GetNodesByLabelForTenant(tn, "Doc"); err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Doc): %v", err)
+	} else if got := len(byLabel); got != 0 {
 		t.Errorf("GetNodesByLabelForTenant(Doc) = %d after crash recovery, want 0 — tenant label index leaks the replayed-deleted node", got)
 	}
 

@@ -46,7 +46,11 @@ func TestCountNodesByLabelForTenant(t *testing.T) {
 			t.Errorf("CountNodesByLabelForTenant(%q,%q)=%d, want %d", c.tenant, c.label, got, c.want)
 		}
 		// Parity with the path it replaces: len(GetNodesByLabelForTenant).
-		if ref := len(gs.GetNodesByLabelForTenant(c.tenant, c.label)); ref != got {
+		byLabel, err := gs.GetNodesByLabelForTenant(c.tenant, c.label)
+		if err != nil {
+			t.Fatalf("GetNodesByLabelForTenant(%q,%q): %v", c.tenant, c.label, err)
+		}
+		if ref := len(byLabel); ref != got {
 			t.Errorf("count %d disagrees with len(GetNodesByLabelForTenant)=%d for (%q,%q)", got, ref, c.tenant, c.label)
 		}
 	}

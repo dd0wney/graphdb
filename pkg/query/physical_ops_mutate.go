@@ -302,7 +302,10 @@ func (o *MergeOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 		// Optimization: if there are properties, try to use index seek logic
 		// (In a real planner, we'd use the Planner.PlanMatch logic)
 
-		nodes := ctx.graph.GetNodesByLabelForTenant(ctx.tenantID, nodePat.Labels[0]) // Assume at least one label
+		nodes, err := ctx.graph.GetNodesByLabelForTenant(ctx.tenantID, nodePat.Labels[0]) // Assume at least one label
+		if err != nil {
+			return nil, fmt.Errorf("merge label scan %q: %w", nodePat.Labels[0], err)
+		}
 		for _, n := range nodes {
 			match := true
 			for k, v := range nodePat.Properties {

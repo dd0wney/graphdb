@@ -77,7 +77,10 @@ func walkNodes(t *testing.T, gs *GraphStorage, tenantID string, limit int) []uin
 	var all []uint64
 	var afterID uint64
 	for {
-		page, next := gs.NodesPageForTenant(tenantID, afterID, limit)
+		page, next, err := gs.NodesPageForTenant(tenantID, afterID, limit)
+		if err != nil {
+			t.Fatalf("NodesPageForTenant: %v", err)
+		}
 		for _, n := range page {
 			all = append(all, n.ID)
 		}
@@ -95,7 +98,10 @@ func walkNodesByLabel(t *testing.T, gs *GraphStorage, tenantID, label string, li
 	var all []uint64
 	var afterID uint64
 	for {
-		page, next := gs.NodesByLabelPageForTenant(tenantID, label, afterID, limit)
+		page, next, err := gs.NodesByLabelPageForTenant(tenantID, label, afterID, limit)
+		if err != nil {
+			t.Fatalf("NodesByLabelPageForTenant: %v", err)
+		}
 		for _, n := range page {
 			all = append(all, n.ID)
 		}
@@ -113,7 +119,10 @@ func walkEdges(t *testing.T, gs *GraphStorage, tenantID string, limit int) []uin
 	var all []uint64
 	var afterID uint64
 	for {
-		page, next := gs.EdgesPageForTenant(tenantID, afterID, limit)
+		page, next, err := gs.EdgesPageForTenant(tenantID, afterID, limit)
+		if err != nil {
+			t.Fatalf("EdgesPageForTenant: %v", err)
+		}
 		for _, e := range page {
 			all = append(all, e.ID)
 		}
@@ -131,7 +140,10 @@ func walkEdgesByType(t *testing.T, gs *GraphStorage, tenantID, edgeType string, 
 	var all []uint64
 	var afterID uint64
 	for {
-		page, next := gs.EdgesByTypePageForTenant(tenantID, edgeType, afterID, limit)
+		page, next, err := gs.EdgesByTypePageForTenant(tenantID, edgeType, afterID, limit)
+		if err != nil {
+			t.Fatalf("EdgesByTypePageForTenant: %v", err)
+		}
 		for _, e := range page {
 			all = append(all, e.ID)
 		}
@@ -169,7 +181,10 @@ func TestNodesPageForTenant(t *testing.T) {
 	t.Run("seek skips IDs <= afterID", func(t *testing.T) {
 		// afterID = nodeIDs[4] → should return at most `limit` items all > nodeIDs[4]
 		afterID := nodeIDs[4]
-		page, _ := gs.NodesPageForTenant(tenant, afterID, limit)
+		page, _, err := gs.NodesPageForTenant(tenant, afterID, limit)
+		if err != nil {
+			t.Fatalf("NodesPageForTenant: %v", err)
+		}
 		for _, n := range page {
 			if n.ID <= afterID {
 				t.Errorf("got ID %d <= afterID %d; seek failed", n.ID, afterID)
@@ -178,7 +193,10 @@ func TestNodesPageForTenant(t *testing.T) {
 	})
 
 	t.Run("afterID=0 starts from beginning", func(t *testing.T) {
-		page, _ := gs.NodesPageForTenant(tenant, 0, limit)
+		page, _, err := gs.NodesPageForTenant(tenant, 0, limit)
+		if err != nil {
+			t.Fatalf("NodesPageForTenant: %v", err)
+		}
 		if len(page) != limit {
 			t.Errorf("first page len = %d, want %d", len(page), limit)
 		}
@@ -188,14 +206,20 @@ func TestNodesPageForTenant(t *testing.T) {
 	})
 
 	t.Run("returns at most limit", func(t *testing.T) {
-		page, _ := gs.NodesPageForTenant(tenant, 0, limit)
+		page, _, err := gs.NodesPageForTenant(tenant, 0, limit)
+		if err != nil {
+			t.Fatalf("NodesPageForTenant: %v", err)
+		}
 		if len(page) > limit {
 			t.Errorf("page len %d exceeds limit %d", len(page), limit)
 		}
 	})
 
 	t.Run("next = last item ID when more exist", func(t *testing.T) {
-		page, next := gs.NodesPageForTenant(tenant, 0, limit)
+		page, next, err := gs.NodesPageForTenant(tenant, 0, limit)
+		if err != nil {
+			t.Fatalf("NodesPageForTenant: %v", err)
+		}
 		if len(page) < limit {
 			t.Skip("not enough items to test has-more cursor")
 		}
@@ -207,7 +231,10 @@ func TestNodesPageForTenant(t *testing.T) {
 	t.Run("next = 0 on last page", func(t *testing.T) {
 		// Seek past all but the last item.
 		afterID := nodeIDs[total-2]
-		_, next := gs.NodesPageForTenant(tenant, afterID, limit)
+		_, next, err := gs.NodesPageForTenant(tenant, afterID, limit)
+		if err != nil {
+			t.Fatalf("NodesPageForTenant: %v", err)
+		}
 		if next != 0 {
 			t.Errorf("last page next = %d, want 0", next)
 		}
@@ -229,7 +256,10 @@ func TestNodesPageForTenant(t *testing.T) {
 
 		// First page should be full (limit items), next must be 0 because no
 		// live items remain beyond the page.
-		page, next := gs3.NodesPageForTenant("probe-tenant", 0, limit)
+		page, next, err := gs3.NodesPageForTenant("probe-tenant", 0, limit)
+		if err != nil {
+			t.Fatalf("NodesPageForTenant: %v", err)
+		}
 		if len(page) != limit {
 			t.Errorf("page len = %d, want %d", len(page), limit)
 		}
@@ -247,14 +277,21 @@ func TestNodesPageForTenant(t *testing.T) {
 
 	t.Run("equivalence: walk == GetAllNodesForTenant sorted", func(t *testing.T) {
 		walked := walkNodes(t, gs, tenant, limit)
-		all := idsFromNodes(gs.GetAllNodesForTenant(tenant))
+		allNodes, err := gs.GetAllNodesForTenant(tenant)
+		if err != nil {
+			t.Fatalf("GetAllNodesForTenant: %v", err)
+		}
+		all := idsFromNodes(allNodes)
 		if !slicesEqual(walked, all) {
 			t.Errorf("walk %v != GetAll %v", walked, all)
 		}
 	})
 
 	t.Run("empty tenant returns empty + 0", func(t *testing.T) {
-		page, next := gs.NodesPageForTenant("nonexistent-tenant", 0, limit)
+		page, next, err := gs.NodesPageForTenant("nonexistent-tenant", 0, limit)
+		if err != nil {
+			t.Fatalf("NodesPageForTenant: %v", err)
+		}
 		if len(page) != 0 || next != 0 {
 			t.Errorf("empty tenant: got len=%d next=%d, want 0, 0", len(page), next)
 		}
@@ -264,7 +301,10 @@ func TestNodesPageForTenant(t *testing.T) {
 		gs2, ids2, _ := paginationFixture(t, "del-tenant", 15, 0)
 
 		// Walk page 1 (limit=5), then delete an ID from page 2, then walk the rest.
-		page1, next1 := gs2.NodesPageForTenant("del-tenant", 0, 5)
+		page1, next1, err := gs2.NodesPageForTenant("del-tenant", 0, 5)
+		if err != nil {
+			t.Fatalf("NodesPageForTenant: %v", err)
+		}
 		if next1 == 0 {
 			t.Skip("fixture too small for delete-mid-walk test")
 		}
@@ -280,7 +320,10 @@ func TestNodesPageForTenant(t *testing.T) {
 		var rest []uint64
 		afterID := next1
 		for {
-			page, next := gs2.NodesPageForTenant("del-tenant", afterID, 5)
+			page, next, err := gs2.NodesPageForTenant("del-tenant", afterID, 5)
+			if err != nil {
+				t.Fatalf("NodesPageForTenant: %v", err)
+			}
 			for _, n := range page {
 				if n.ID == victim {
 					t.Errorf("deleted node %d appeared in walk", victim)
@@ -311,7 +354,10 @@ func TestNodesByLabelPageForTenant(t *testing.T) {
 
 	t.Run("seek skips IDs <= afterID", func(t *testing.T) {
 		afterID := nodeIDs[4]
-		page, _ := gs.NodesByLabelPageForTenant(tenant, "Pager", afterID, limit)
+		page, _, err := gs.NodesByLabelPageForTenant(tenant, "Pager", afterID, limit)
+		if err != nil {
+			t.Fatalf("NodesByLabelPageForTenant: %v", err)
+		}
 		for _, n := range page {
 			if n.ID <= afterID {
 				t.Errorf("got ID %d <= afterID %d", n.ID, afterID)
@@ -328,21 +374,31 @@ func TestNodesByLabelPageForTenant(t *testing.T) {
 
 	t.Run("equivalence: walk == GetNodesByLabelForTenant sorted", func(t *testing.T) {
 		walked := walkNodesByLabel(t, gs, tenant, "Pager", limit)
-		all := idsFromNodes(gs.GetNodesByLabelForTenant(tenant, "Pager"))
+		byLabel, err := gs.GetNodesByLabelForTenant(tenant, "Pager")
+		if err != nil {
+			t.Fatalf("GetNodesByLabelForTenant: %v", err)
+		}
+		all := idsFromNodes(byLabel)
 		if !slicesEqual(walked, all) {
 			t.Errorf("walk %v != GetAll %v", walked, all)
 		}
 	})
 
 	t.Run("unknown label returns empty + 0", func(t *testing.T) {
-		page, next := gs.NodesByLabelPageForTenant(tenant, "NoSuchLabel", 0, limit)
+		page, next, err := gs.NodesByLabelPageForTenant(tenant, "NoSuchLabel", 0, limit)
+		if err != nil {
+			t.Fatalf("NodesByLabelPageForTenant: %v", err)
+		}
 		if len(page) != 0 || next != 0 {
 			t.Errorf("unknown label: len=%d next=%d, want 0, 0", len(page), next)
 		}
 	})
 
 	t.Run("unknown tenant returns empty + 0", func(t *testing.T) {
-		page, next := gs.NodesByLabelPageForTenant("ghost-tenant", "Pager", 0, limit)
+		page, next, err := gs.NodesByLabelPageForTenant("ghost-tenant", "Pager", 0, limit)
+		if err != nil {
+			t.Fatalf("NodesByLabelPageForTenant: %v", err)
+		}
 		if len(page) != 0 || next != 0 {
 			t.Errorf("unknown tenant: len=%d next=%d, want 0, 0", len(page), next)
 		}
@@ -362,7 +418,10 @@ func TestEdgesPageForTenant(t *testing.T) {
 
 	t.Run("seek skips IDs <= afterID", func(t *testing.T) {
 		afterID := edgeIDs[4]
-		page, _ := gs.EdgesPageForTenant(tenant, afterID, limit)
+		page, _, err := gs.EdgesPageForTenant(tenant, afterID, limit)
+		if err != nil {
+			t.Fatalf("EdgesPageForTenant: %v", err)
+		}
 		for _, e := range page {
 			if e.ID <= afterID {
 				t.Errorf("got ID %d <= afterID %d", e.ID, afterID)
@@ -371,14 +430,20 @@ func TestEdgesPageForTenant(t *testing.T) {
 	})
 
 	t.Run("returns at most limit", func(t *testing.T) {
-		page, _ := gs.EdgesPageForTenant(tenant, 0, limit)
+		page, _, err := gs.EdgesPageForTenant(tenant, 0, limit)
+		if err != nil {
+			t.Fatalf("EdgesPageForTenant: %v", err)
+		}
 		if len(page) > limit {
 			t.Errorf("page len %d exceeds limit %d", len(page), limit)
 		}
 	})
 
 	t.Run("next = last item ID when more exist", func(t *testing.T) {
-		page, next := gs.EdgesPageForTenant(tenant, 0, limit)
+		page, next, err := gs.EdgesPageForTenant(tenant, 0, limit)
+		if err != nil {
+			t.Fatalf("EdgesPageForTenant: %v", err)
+		}
 		if len(page) < limit {
 			t.Skip("not enough items to test has-more cursor")
 		}
@@ -389,7 +454,10 @@ func TestEdgesPageForTenant(t *testing.T) {
 
 	t.Run("next = 0 on last page", func(t *testing.T) {
 		afterID := edgeIDs[total-2]
-		_, next := gs.EdgesPageForTenant(tenant, afterID, limit)
+		_, next, err := gs.EdgesPageForTenant(tenant, afterID, limit)
+		if err != nil {
+			t.Fatalf("EdgesPageForTenant: %v", err)
+		}
 		if next != 0 {
 			t.Errorf("last page next = %d, want 0", next)
 		}
@@ -404,14 +472,21 @@ func TestEdgesPageForTenant(t *testing.T) {
 
 	t.Run("equivalence: walk == GetAllEdgesForTenant sorted", func(t *testing.T) {
 		walked := walkEdges(t, gs, tenant, limit)
-		all := idsFromEdges(gs.GetAllEdgesForTenant(tenant))
+		allEdges, err := gs.GetAllEdgesForTenant(tenant)
+		if err != nil {
+			t.Fatalf("GetAllEdgesForTenant: %v", err)
+		}
+		all := idsFromEdges(allEdges)
 		if !slicesEqual(walked, all) {
 			t.Errorf("walk %v != GetAll %v", walked, all)
 		}
 	})
 
 	t.Run("empty tenant returns empty + 0", func(t *testing.T) {
-		page, next := gs.EdgesPageForTenant("nonexistent-tenant", 0, limit)
+		page, next, err := gs.EdgesPageForTenant("nonexistent-tenant", 0, limit)
+		if err != nil {
+			t.Fatalf("EdgesPageForTenant: %v", err)
+		}
 		if len(page) != 0 || next != 0 {
 			t.Errorf("empty tenant: len=%d next=%d, want 0, 0", len(page), next)
 		}
@@ -420,7 +495,10 @@ func TestEdgesPageForTenant(t *testing.T) {
 	t.Run("deleted-mid-walk edge is omitted and walk still terminates", func(t *testing.T) {
 		gs2, _, eids2 := paginationFixture(t, "del-edge-tenant", 2, 15)
 
-		page1, next1 := gs2.EdgesPageForTenant("del-edge-tenant", 0, 5)
+		page1, next1, err := gs2.EdgesPageForTenant("del-edge-tenant", 0, 5)
+		if err != nil {
+			t.Fatalf("EdgesPageForTenant: %v", err)
+		}
 		if next1 == 0 {
 			t.Skip("fixture too small for delete-mid-walk test")
 		}
@@ -434,7 +512,10 @@ func TestEdgesPageForTenant(t *testing.T) {
 		var rest []uint64
 		afterID := next1
 		for {
-			page, next := gs2.EdgesPageForTenant("del-edge-tenant", afterID, 5)
+			page, next, err := gs2.EdgesPageForTenant("del-edge-tenant", afterID, 5)
+			if err != nil {
+				t.Fatalf("EdgesPageForTenant: %v", err)
+			}
 			for _, e := range page {
 				if e.ID == victim {
 					t.Errorf("deleted edge %d appeared in walk", victim)
@@ -465,7 +546,10 @@ func TestEdgesByTypePageForTenant(t *testing.T) {
 
 	t.Run("seek skips IDs <= afterID", func(t *testing.T) {
 		afterID := edgeIDs[4]
-		page, _ := gs.EdgesByTypePageForTenant(tenant, "PLINK", afterID, limit)
+		page, _, err := gs.EdgesByTypePageForTenant(tenant, "PLINK", afterID, limit)
+		if err != nil {
+			t.Fatalf("EdgesByTypePageForTenant: %v", err)
+		}
 		for _, e := range page {
 			if e.ID <= afterID {
 				t.Errorf("got ID %d <= afterID %d", e.ID, afterID)
@@ -489,14 +573,20 @@ func TestEdgesByTypePageForTenant(t *testing.T) {
 	})
 
 	t.Run("unknown edge type returns empty + 0", func(t *testing.T) {
-		page, next := gs.EdgesByTypePageForTenant(tenant, "NO_SUCH_TYPE", 0, limit)
+		page, next, err := gs.EdgesByTypePageForTenant(tenant, "NO_SUCH_TYPE", 0, limit)
+		if err != nil {
+			t.Fatalf("EdgesByTypePageForTenant: %v", err)
+		}
 		if len(page) != 0 || next != 0 {
 			t.Errorf("unknown type: len=%d next=%d, want 0, 0", len(page), next)
 		}
 	})
 
 	t.Run("unknown tenant returns empty + 0", func(t *testing.T) {
-		page, next := gs.EdgesByTypePageForTenant("ghost-tenant", "PLINK", 0, limit)
+		page, next, err := gs.EdgesByTypePageForTenant("ghost-tenant", "PLINK", 0, limit)
+		if err != nil {
+			t.Fatalf("EdgesByTypePageForTenant: %v", err)
+		}
 		if len(page) != 0 || next != 0 {
 			t.Errorf("unknown tenant: len=%d next=%d, want 0, 0", len(page), next)
 		}
@@ -538,7 +628,10 @@ func BenchmarkNodesPageForTenant(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		page, _ := gs.NodesPageForTenant("", 0, 100)
+		page, _, err := gs.NodesPageForTenant("", 0, 100)
+		if err != nil {
+			b.Fatalf("NodesPageForTenant: %v", err)
+		}
 		if len(page) > 0 {
 			benchNodePageSink.Store(page[0])
 		}
@@ -553,7 +646,10 @@ func BenchmarkNodesGetAllThenPaginate(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		all := gs.GetAllNodesForTenant("")
+		all, err := gs.GetAllNodesForTenant("")
+		if err != nil {
+			b.Fatalf("GetAllNodesForTenant: %v", err)
+		}
 		// Mirror the old GetAll+paginate baseline: take the first 100 items with ID > 0.
 		var page []*Node
 		for _, n := range all {

@@ -712,14 +712,23 @@ func (gs *GraphStorage) RemoveNodePropertiesForTenant(nodeID uint64, keys []stri
 // nodes do not resurrect from the mmap base on reopen (cf. #416/#423). Backs the
 // tenant-scoped DELETE /nodes endpoint. O(tenant size); a bulk path can come
 // later if a consumer needs it.
+// A node the enumeration could not read is a node this method cannot delete,
+// so "cleared" would be a false claim about the tenant's data — the exact
+// claim a compliance erasure request depends on. The deletes still run for
+// every node that DID enumerate, so the caller keeps as much progress as the
+// store can give, and the enumeration error is returned afterwards (ADR 0003).
 func (gs *GraphStorage) DeleteAllNodesForTenant(tenantID string) error {
-	for _, n := range gs.GetAllNodesForTenant(tenantID) { // snapshot before mutating
+	nodes, enumErr := gs.GetAllNodesForTenant(tenantID) // snapshot before mutating
+	for _, n := range nodes {
 		if err := gs.DeleteNodeForTenant(n.ID, tenantID); err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // concurrent delete already removed it — that's the goal
 			}
 			return fmt.Errorf("delete node %d for tenant %s: %w", n.ID, tenantID, err)
 		}
+	}
+	if enumErr != nil {
+		return fmt.Errorf("delete all nodes for tenant %s is incomplete: %w", tenantID, enumErr)
 	}
 	return nil
 }

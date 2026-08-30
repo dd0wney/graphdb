@@ -90,10 +90,21 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 	// results rather than the full unfiltered corpus.
 	var pageItems []*storage.Node
 	var next uint64
+	var err error
 	if label := r.URL.Query().Get("label"); label != "" {
-		pageItems, next = s.graph.NodesByLabelPageForTenant(tenantID, label, page.cursor, page.limit)
+		pageItems, next, err = s.graph.NodesByLabelPageForTenant(tenantID, label, page.cursor, page.limit)
 	} else {
-		pageItems, next = s.graph.NodesPageForTenant(tenantID, page.cursor, page.limit)
+		pageItems, next, err = s.graph.NodesPageForTenant(tenantID, page.cursor, page.limit)
+	}
+	// A short page returned as a bare 200 would be a lie a client cannot
+	// detect, because it looks exactly like a small tenant. The page is served
+	// anyway, with X-Enumeration-Incomplete naming how many records would not
+	// decode, so the answer is truthful AND the caller keeps both the records
+	// that did decode and the cursor to reach the rest (ADR 0003).
+	if err != nil && !s.noteIncompleteEnumeration(w, "list nodes", err) {
+		// Not an incomplete enumeration: there is no partial page to serve.
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "list nodes"))
+		return
 	}
 	writeNextCursor(w, next)
 

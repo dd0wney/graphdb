@@ -416,7 +416,16 @@ func (s *Server) bootstrapIndexesFromEnv() {
 func (s *Server) buildAndRegisterLSA(tenantID string, labels []string, titleProp string, bodyProps []string) error {
 	var nodes []*storage.Node
 	for _, label := range labels {
-		nodes = append(nodes, s.graph.GetNodesByLabelForTenant(tenantID, label)...)
+		// Same refusal as the request-driven build in handlers_search_admin.go:
+		// an index built from a partial corpus is silently wrong for the life
+		// of the index. The bootstrap caller logs this per tenant and carries
+		// on with the other tenants, so one damaged tenant does not stop the
+		// server from starting.
+		labelNodes, err := s.graph.GetNodesByLabelForTenant(tenantID, label)
+		if err != nil {
+			return fmt.Errorf("enumerate label %q: %w", label, err)
+		}
+		nodes = append(nodes, labelNodes...)
 	}
 
 	docs := make([]search.Document, 0, len(nodes))

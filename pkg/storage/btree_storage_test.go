@@ -50,7 +50,8 @@ func TestBTreeGraphStorage_NodeOperations(t *testing.T) {
 	name, _ := retrieved.Properties["name"].AsString()
 	assert.Equal(t, "Alice", name)
 
-	nodes := gs.GetNodesByLabelForTenant(tenantID, "Person")
+	nodes, err := gs.GetNodesByLabelForTenant(tenantID, "Person")
+	assert.NoError(t, err)
 	assert.Len(t, nodes, 1)
 	assert.Equal(t, node.ID, nodes[0].ID)
 
@@ -105,8 +106,10 @@ func TestBTreeGraphStorage_MetadataOperations(t *testing.T) {
 	_, err = gs.CreateNodeWithTenant(tenantID, []string{"Company"}, nil)
 	assert.NoError(t, err)
 
-	persons := gs.GetNodesByLabelForTenant(tenantID, "Person")
-	companies := gs.GetNodesByLabelForTenant(tenantID, "Company")
+	persons, err := gs.GetNodesByLabelForTenant(tenantID, "Person")
+	assert.NoError(t, err)
+	companies, err := gs.GetNodesByLabelForTenant(tenantID, "Company")
+	assert.NoError(t, err)
 	_, err = gs.CreateEdgeWithTenant(tenantID, persons[0].ID, companies[0].ID, "WORKS_AT", nil, 1.0)
 	assert.NoError(t, err)
 
@@ -130,12 +133,14 @@ func TestBTreeGraphStorage_MultiTenancy(t *testing.T) {
 	_, err = gs.CreateNodeWithTenant("tenantB", []string{"User"}, map[string]Value{"name": StringValue("Bob")})
 	assert.NoError(t, err)
 
-	nodesA := gs.GetAllNodesForTenant("tenantA")
+	nodesA, err := gs.GetAllNodesForTenant("tenantA")
+	assert.NoError(t, err)
 	assert.Len(t, nodesA, 1)
 	nameA, _ := nodesA[0].Properties["name"].AsString()
 	assert.Equal(t, "Alice", nameA)
 
-	nodesB := gs.GetAllNodesForTenant("tenantB")
+	nodesB, err := gs.GetAllNodesForTenant("tenantB")
+	assert.NoError(t, err)
 	assert.Len(t, nodesB, 1)
 	nameB, _ := nodesB[0].Properties["name"].AsString()
 	assert.Equal(t, "Bob", nameB)
@@ -248,7 +253,8 @@ func TestBTreeGraphStorage_DeleteNodeForTenantReal(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrNodeNotFound))
 
 	// Label index must be cleaned too.
-	stillByLabel := gs.GetNodesByLabelForTenant(tenantID, "Doomed")
+	stillByLabel, err := gs.GetNodesByLabelForTenant(tenantID, "Doomed")
+	assert.NoError(t, err)
 	assert.Empty(t, stillByLabel)
 
 	// Deleting again is ErrNodeNotFound (idempotent-error semantics).

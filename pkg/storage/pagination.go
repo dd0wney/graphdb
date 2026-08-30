@@ -9,12 +9,22 @@ import "sort"
 // slice".
 //
 // `ids` MUST be sorted ascending. `cloneAt` clones the live entity for an ID
-// under its shard lock, returning ok=false when the entity was deleted between
-// ID collection and clone (the same non-atomic-snapshot tradeoff accepted by
-// GetAllNodesForTenant: a write between the ID collection and the clone loop is
-// simply skipped rather than blocking the reader). When ok=false for an entity
-// that would have been within the page, the page may be shorter than `limit`
-// for that call — callers that need a strict page size should loop.
+// under its shard lock, returning an error when it cannot. A not-found error
+// means the entity was deleted between ID collection and clone (the same
+// non-atomic-snapshot tradeoff accepted by GetAllNodesForTenant: a write
+// between the ID collection and the clone loop is simply skipped rather than
+// blocking the reader). Any other error means the record exists and did not
+// decode. Both are skipped, so a damaged record cannot stall a page, and the
+// second is recorded in `damage` so the caller can report it (ADR 0003). When
+// an entity that would have been within the page is skipped, the page may be
+// shorter than `limit` for that call — callers that need a strict page size
+// should loop.
+//
+// `damage` accumulates across the whole scan, INCLUDING the liveness probe
+// below. A damaged record just beyond the page therefore shows up in this
+// page's error even though it is not in this page's slice. That is deliberate:
+// the scan really did meet a record it could not read, and hiding it until the
+// caller happens to ask for the next page would put the silence back.
 //
 // The +1 liveness probe: cloneAt is called on the candidate item BEFORE
 // checking whether the page is full. When the page fills, we return the
@@ -25,7 +35,7 @@ import "sort"
 // limit < 1 returns an empty page; it is the caller's responsibility to pass a
 // sensible limit (the API layer enforces [1, MaxPageLimit]).
 func pageFromSortedIDs[T any](ids []uint64, afterID uint64, limit int,
-	cloneAt func(uint64) (*T, bool)) ([]*T, uint64) {
+	damage *enumerationDamage, cloneAt func(uint64) (*T, error)) ([]*T, uint64) {
 	if limit < 1 {
 		return nil, 0
 	}
@@ -39,9 +49,11 @@ func pageFromSortedIDs[T any](ids []uint64, afterID uint64, limit int,
 		// Probe liveness before checking page capacity: this ensures that
 		// when we return next != 0 the caller has at least one live item
 		// awaiting them on the next page (matches the REST cursor contract).
-		ent, ok := cloneAt(ids[i])
-		if !ok {
-			// Entity was deleted between ID collection and clone — skip it.
+		ent, err := cloneAt(ids[i])
+		if err != nil {
+			// Deleted between ID collection and clone, or damaged on disk.
+			// note() tells the two apart and tallies only the second.
+			damage.note(ids[i], err)
 			continue
 		}
 		if len(page) == limit {
@@ -66,24 +78,53 @@ func pageFromSortedIDs[T any](ids []uint64, afterID uint64, limit int,
 // means the result is not an atomic snapshot — a node deleted between ID
 // collection and clone is skipped — but the global lock is not held across the
 // clone loop, so writers are not stalled.
-func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limit int) ([]*Node, uint64) {
+//
+// The third return is the ADR 0003 completeness signal: nil when every record
+// the scan touched decoded, and otherwise an error wrapping ErrRecordUnreadable
+// that names the ones that did not. The page itself still holds every node that
+// decoded.
+func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limit int) ([]*Node, uint64, error) {
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
 	ids := gs.membershipNodeIDsForTenantLocked(tid)
 	gs.mu.RUnlock()
 
-	cloneAt := func(id uint64) (*Node, bool) {
-		gs.rlockShard(id)
-		n, owned, err := gs.resolveNodeRefOwnedLocked(id)
-		ok := err == nil
-		if ok && !owned {
-			n = n.Clone()
-		}
-		gs.runlockShard(id)
-		return n, ok
+	var damage enumerationDamage
+	page, next := pageFromSortedIDs(ids, afterID, limit, &damage, gs.cloneNodeAt)
+	return page, next, damage.err("nodes-page")
+}
+
+// cloneNodeAt reads one node under its shard RLock and returns a copy the
+// caller owns. It is the cloneAt closure the four page methods and their
+// by-label variants share, lifted to a method so the four bodies do not each
+// carry an identical literal — the previous four copies drifted apart only by
+// their type.
+func (gs *GraphStorage) cloneNodeAt(id uint64) (*Node, error) {
+	gs.rlockShard(id)
+	defer gs.runlockShard(id)
+	n, owned, err := gs.resolveNodeRefOwnedLocked(id)
+	if err != nil {
+		return nil, err
 	}
-	return pageFromSortedIDs(ids, afterID, limit, cloneAt)
+	if !owned {
+		n = n.Clone()
+	}
+	return n, nil
+}
+
+// cloneEdgeAt is cloneNodeAt for an edge.
+func (gs *GraphStorage) cloneEdgeAt(id uint64) (*Edge, error) {
+	gs.rlockShard(id)
+	defer gs.runlockShard(id)
+	e, owned, err := gs.resolveEdgeRefOwnedLocked(id)
+	if err != nil {
+		return nil, err
+	}
+	if !owned {
+		e = e.Clone()
+	}
+	return e, nil
 }
 
 // NodesByLabelPageForTenant returns up to `limit` nodes belonging to
@@ -94,8 +135,9 @@ func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limi
 //
 // Lock pattern: collect sorted IDs from the label index under gs.mu.RLock,
 // release, then clone each node under its per-shard RLock. Same non-atomic-
-// snapshot tradeoff as NodesPageForTenant and GetAllNodesForTenant.
-func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterID uint64, limit int) ([]*Node, uint64) {
+// snapshot tradeoff as NodesPageForTenant and GetAllNodesForTenant. The third
+// return carries ADR 0003's completeness signal, as on NodesPageForTenant.
+func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterID uint64, limit int) ([]*Node, uint64, error) {
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
@@ -103,20 +145,14 @@ func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterI
 	gs.mu.RUnlock()
 
 	if len(ids) == 0 {
-		return nil, 0
+		// No IDs to walk, so nothing could have been skipped: the enumeration
+		// is complete and the error is nil.
+		return nil, 0, nil
 	}
 
-	cloneAt := func(id uint64) (*Node, bool) {
-		gs.rlockShard(id)
-		n, owned, err := gs.resolveNodeRefOwnedLocked(id)
-		ok := err == nil
-		if ok && !owned {
-			n = n.Clone()
-		}
-		gs.runlockShard(id)
-		return n, ok
-	}
-	return pageFromSortedIDs(ids, afterID, limit, cloneAt)
+	var damage enumerationDamage
+	page, next := pageFromSortedIDs(ids, afterID, limit, &damage, gs.cloneNodeAt)
+	return page, next, damage.err("nodes-by-label-page")
 }
 
 // EdgesPageForTenant returns up to `limit` edges belonging to `tenantID` with
@@ -126,24 +162,17 @@ func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterI
 //
 // Lock pattern mirrors GetAllEdgesForTenant and NodesPageForTenant: collect
 // sorted IDs under gs.mu.RLock, release, then clone under per-shard RLocks.
-func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limit int) ([]*Edge, uint64) {
+// The third return carries ADR 0003's completeness signal.
+func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limit int) ([]*Edge, uint64, error) {
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
 	ids := gs.membershipEdgeIDsForTenantLocked(tid)
 	gs.mu.RUnlock()
 
-	cloneAt := func(id uint64) (*Edge, bool) {
-		gs.rlockShard(id)
-		e, owned, err := gs.resolveEdgeRefOwnedLocked(id)
-		ok := err == nil
-		if ok && !owned {
-			e = e.Clone()
-		}
-		gs.runlockShard(id)
-		return e, ok
-	}
-	return pageFromSortedIDs(ids, afterID, limit, cloneAt)
+	var damage enumerationDamage
+	page, next := pageFromSortedIDs(ids, afterID, limit, &damage, gs.cloneEdgeAt)
+	return page, next, damage.err("edges-page")
 }
 
 // EdgesByTypePageForTenant returns up to `limit` edges belonging to `tenantID`
@@ -154,8 +183,9 @@ func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limi
 //
 // Lock pattern: collect sorted IDs from the type index under gs.mu.RLock,
 // release, then clone each edge under its per-shard RLock. Same non-atomic-
-// snapshot tradeoff as EdgesPageForTenant and GetAllEdgesForTenant.
-func (gs *GraphStorage) EdgesByTypePageForTenant(tenantID, edgeType string, afterID uint64, limit int) ([]*Edge, uint64) {
+// snapshot tradeoff as EdgesPageForTenant and GetAllEdgesForTenant. The third
+// return carries ADR 0003's completeness signal.
+func (gs *GraphStorage) EdgesByTypePageForTenant(tenantID, edgeType string, afterID uint64, limit int) ([]*Edge, uint64, error) {
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
@@ -163,18 +193,11 @@ func (gs *GraphStorage) EdgesByTypePageForTenant(tenantID, edgeType string, afte
 	gs.mu.RUnlock()
 
 	if len(ids) == 0 {
-		return nil, 0
+		// Nothing to walk, so nothing could have been skipped.
+		return nil, 0, nil
 	}
 
-	cloneAt := func(id uint64) (*Edge, bool) {
-		gs.rlockShard(id)
-		e, owned, err := gs.resolveEdgeRefOwnedLocked(id)
-		ok := err == nil
-		if ok && !owned {
-			e = e.Clone()
-		}
-		gs.runlockShard(id)
-		return e, ok
-	}
-	return pageFromSortedIDs(ids, afterID, limit, cloneAt)
+	var damage enumerationDamage
+	page, next := pageFromSortedIDs(ids, afterID, limit, &damage, gs.cloneEdgeAt)
+	return page, next, damage.err("edges-by-type-page")
 }

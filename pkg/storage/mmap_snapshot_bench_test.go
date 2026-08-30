@@ -236,7 +236,9 @@ func TestMmapReopen_EndToEnd(t *testing.T) {
 	// GetAll* call on mr so it measures the Stage-2b persisted-membership path
 	// (Stage 2a: ~2s lazy build; Stage 2b: served from persisted section → ~0).
 	te := time.Now()
-	_ = mr.GetAllNodesForTenant(tenant)
+	if _, err := mr.GetAllNodesForTenant(tenant); err != nil {
+		t.Fatalf("GetAllNodesForTenant: %v", err)
+	}
 	firstEnum := time.Since(te)
 	fmt.Fprintf(os.Stderr, "  mmap first GetAllNodesForTenant           %8s\n", firstEnum.Round(time.Millisecond))
 
@@ -258,7 +260,15 @@ func TestMmapReopen_EndToEnd(t *testing.T) {
 			jr.CountNodesForTenant(tenant), jr.CountEdgesForTenant(tenant),
 			mr.CountNodesForTenant(tenant), mr.CountEdgesForTenant(tenant))
 	}
-	if len(jr.GetNodesByLabelForTenant(tenant, "Entity")) != len(mr.GetNodesByLabelForTenant(tenant, "Entity")) {
+	jEntity, err := jr.GetNodesByLabelForTenant(tenant, "Entity")
+	if err != nil {
+		t.Fatalf("json GetNodesByLabelForTenant(Entity): %v", err)
+	}
+	mEntity, err := mr.GetNodesByLabelForTenant(tenant, "Entity")
+	if err != nil {
+		t.Fatalf("mmap GetNodesByLabelForTenant(Entity): %v", err)
+	}
+	if len(jEntity) != len(mEntity) {
 		t.Errorf("by-label count mismatch")
 	}
 	jOut, _ := jr.GetOutgoingEdgesForTenant(1, tenant)

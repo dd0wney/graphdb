@@ -59,7 +59,13 @@ func PageRankForTenant(graph storage.Storage, opts PageRankOptions, tenantID str
 // graphView so tenant-blind and tenant-scoped public functions can
 // share one implementation — see pkg/algorithms/view.go.
 func pageRankView(view graphView, opts PageRankOptions) (*PageRankResult, error) {
-	allNodes := view.AllNodes()
+	// An incomplete node set would make the result below confidently wrong,
+	// so ADR 0003's error is fatal here rather than degraded. See the
+	// AllNodes contract in view.go.
+	allNodes, err := view.AllNodes()
+	if err != nil {
+		return nil, err
+	}
 
 	if len(allNodes) == 0 {
 		return &PageRankResult{

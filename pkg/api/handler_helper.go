@@ -26,6 +26,81 @@ func sanitizeError(err error, operation string) string {
 	return fmt.Sprintf("%s failed", operation)
 }
 
+// noteIncompleteEnumeration marks a PAGINATED response as incomplete and
+// reports whether it could.
+//
+// It returns false when err is not an incomplete enumeration, which means
+// something else failed and there is no partial page worth serving. The caller
+// then refuses. It returns true after setting the header, and the caller
+// serves the page it already holds.
+//
+// WHY A PAGE IS SERVED HERE AND A WHOLE-GRAPH ENUMERATION IS NOT.
+// ADR 0003 chose a partial result at the storage layer so that one damaged
+// record could not become a total outage for a tenant. Refusing here would put
+// that outage back one level up: every page of the tenant's list would fail,
+// intact ones included, and the caller would never receive a cursor to step
+// past the gap. A page is already a fragment by construction, and the caller
+// holds a cursor for the rest, so a short page plus an explicit count is a
+// truthful answer. A whole-graph enumeration has neither property, and
+// respondIncompleteEnumeration below still refuses for those.
+//
+// The header carries a COUNT and never an ID. storage.SkippedRecordCount is
+// the only accessor storage exposes, so the IDs cannot reach a response even
+// by mistake. They go to the log, with the byte offset, exactly as getNode
+// does for the single-record case.
+func (s *Server) noteIncompleteEnumeration(w http.ResponseWriter, operation string, err error) bool {
+	skipped, ok := storage.SkippedRecordCount(err)
+	if !ok {
+		return false
+	}
+	log.Printf("ERROR [%s]: %d record(s) would not decode for the requesting tenant, "+
+		"serving the partial page: %v", operation, skipped, err)
+	w.Header().Set(IncompleteEnumerationHeader, strconv.Itoa(skipped))
+	return true
+}
+
+// respondIncompleteEnumeration refuses a WHOLE-GRAPH enumeration that skipped a
+// record it could not decode (ADR 0003).
+//
+// Paginated endpoints do not use this. They serve the partial page through
+// noteIncompleteEnumeration above. This one is for the enumerations that have
+// no meaningful fragment: an LSA build, a search-index build, and the
+// index-count that follows one. An index built from a short corpus answers "no
+// match" for every document the scan skipped, and it keeps answering that until
+// somebody rebuilds it, so a partial answer is worse than a refusal.
+//
+// WHY THIS IS SAFE TO TELL THE CALLER, and why it is NOT the leak that PR #513
+// exists to prevent:
+//
+// Every enumeration endpoint is scoped to getTenantFromContext(r), and the ID
+// list it walks comes from the caller's own membership run
+// (membershipNodeIDsForTenantLocked and its by-label variant). No
+// caller-supplied ID names a resource on these paths, so a stranger asking for
+// its own list can never reach another tenant's damaged record: it gets its
+// own list, unchanged, whether or not some other tenant's snapshot section
+// rotted. There is no second principal to compare against here, which is what
+// makes this different from GET /nodes/{id}.
+//
+// Ownership is established in the storage layer, not in the handler — the same
+// property PR #526 relies on for the single-record case. The record's tenant
+// string lives inside the record that would not decode, so the handler could
+// not establish ownership even if it tried; the membership run establishes it
+// before any record is touched.
+//
+// 500, not 503, for the reason getNode gives: 503 tells the caller to retry,
+// and damaged bytes on disk do not repair themselves.
+//
+// The response body is a fixed sentence. The raw error names record IDs and a
+// byte offset into the snapshot file, which belong in the operator's log and
+// not in a response body.
+func (s *Server) respondIncompleteEnumeration(w http.ResponseWriter, operation string, err error) {
+	log.Printf("ERROR [%s]: the enumeration is incomplete for the requesting tenant: %v", operation, err)
+	s.respondError(w, http.StatusInternalServerError, fmt.Sprintf(
+		"%s could not read every stored record, so the result would be incomplete. "+
+			"The data on disk is damaged; restore the affected records from a backup. "+
+			"Retrying will not help.", operation))
+}
+
 // clientError carries a user-safe message in Error() while preserving the
 // original error chain via Unwrap(). Use when the returned error will be
 // serialized into an HTTP response body (so callers cannot leak internals)

@@ -40,7 +40,13 @@ func detectCyclesView(view graphView) ([]Cycle, error) {
 	parent := make(map[uint64]uint64)
 	cycles := make([]Cycle, 0)
 
-	allNodes := view.AllNodes()
+	// An incomplete node set would make the result below confidently wrong,
+	// so ADR 0003's error is fatal here rather than degraded. See the
+	// AllNodes contract in view.go.
+	allNodes, err := view.AllNodes()
+	if err != nil {
+		return nil, err
+	}
 	if len(allNodes) == 0 {
 		return cycles, nil
 	}
@@ -232,7 +238,13 @@ func hasCycleView(view graphView) (bool, error) {
 	const WHITE = 0
 
 	color := make(map[uint64]int)
-	allNodes := view.AllNodes()
+	// An incomplete node set would make the result below confidently wrong,
+	// so ADR 0003's error is fatal here rather than degraded. See the
+	// AllNodes contract in view.go.
+	allNodes, err := view.AllNodes()
+	if err != nil {
+		return false, err
+	}
 	if len(allNodes) == 0 {
 		return false, nil
 	}
