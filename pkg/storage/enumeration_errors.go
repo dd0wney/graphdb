@@ -82,35 +82,76 @@ func (d *enumerationDamage) note(id uint64, err error) {
 // have been able to produce.
 func (d *enumerationDamage) any() bool { return len(d.ids) > 0 }
 
-// err returns nil for a complete enumeration, and otherwise an error that
-// wraps ErrRecordUnreadable and names the records that were skipped. `what`
-// names the enumeration, so a caller reading a log line can tell which of the
-// seven produced it.
+// err returns nil for a complete enumeration, and otherwise an
+// *IncompleteEnumeration naming the records that were skipped. `what` names
+// the enumeration, so a caller reading a log line can tell which of the seven
+// produced it.
 func (d *enumerationDamage) err(what string) error {
 	if !d.any() {
 		return nil
 	}
-	// The sentinel is attached explicitly only when the cause does not already
-	// carry it. Every cause that reaches here through the mmap decoder does
-	// carry it (mmap_snapshot_format.go), and wrapping it twice would print
-	// "record unreadable" twice in one message. The guarantee that
-	// errors.Is(err, ErrRecordUnreadable) holds is the same on both branches;
-	// only the wording differs.
-	if errors.Is(d.cause, ErrRecordUnreadable) {
-		return fmt.Errorf("%s enumeration incomplete: %d record(s) skipped (%s): %w",
-			what, len(d.ids), d.namedIDs(), d.cause)
+	return &IncompleteEnumeration{what: what, ids: d.ids, cause: d.cause}
+}
+
+// IncompleteEnumeration is the error the seven enumeration methods return when
+// they skipped a record they could not decode. It always accompanies a partial
+// result: the slice beside it holds every record that DID decode (ADR 0003).
+//
+// EVERY FIELD IS UNEXPORTED, AND THAT IS THE POINT. The only thing a caller can
+// read out is the COUNT, through SkippedRecordCount. `pkg/api` must put a count
+// and never a record ID into an HTTP response — getNode and
+// respondIncompleteEnumeration log the IDs and the snapshot byte offset but
+// send a fixed sentence, a rule PR #526 set deliberately. Exporting the ID
+// slice would make breaking that rule a one-line mistake in a handler. Keeping
+// it unexported means the rule holds by construction rather than by review.
+//
+// The full detail is still available where it belongs: Error() renders the IDs
+// for a log line, and errors.Is reaches ErrRecordUnreadable and the underlying
+// cause.
+type IncompleteEnumeration struct {
+	what  string
+	ids   []uint64
+	cause error
+}
+
+// Error renders the message for an operator's log. It names the IDs.
+func (e *IncompleteEnumeration) Error() string {
+	return fmt.Sprintf("%s enumeration incomplete: %d record(s) skipped (%s): %v",
+		e.what, len(e.ids), e.namedIDs(), e.cause)
+}
+
+// Unwrap returns both the class sentinel and the underlying cause, so
+// errors.Is(err, ErrRecordUnreadable) holds unconditionally, and
+// errors.Is(err, alloc.ErrNoMemory) still separates a refused allocation from
+// bit rot. Attaching the sentinel here rather than in the message means the
+// guarantee does not depend on how the cause happened to be worded.
+func (e *IncompleteEnumeration) Unwrap() []error {
+	return []error{ErrRecordUnreadable, e.cause}
+}
+
+// SkippedRecordCount reports how many records an enumeration could not decode.
+//
+// It reports (0, false) for any other error, and for nil. A caller uses the
+// boolean to tell "the enumeration was incomplete, and here is a usable partial
+// result" from "something else failed, and there is nothing to serve".
+//
+// The count is what an HTTP or RPC layer may safely pass on to the caller who
+// asked. The IDs are not: see the type comment on IncompleteEnumeration.
+func SkippedRecordCount(err error) (int, bool) {
+	var inc *IncompleteEnumeration
+	if errors.As(err, &inc) {
+		return len(inc.ids), true
 	}
-	return fmt.Errorf("%s enumeration incomplete: %d record(s) skipped (%s): %w: %w",
-		what, len(d.ids), d.namedIDs(), ErrRecordUnreadable, d.cause)
+	return 0, false
 }
 
 // namedIDs formats up to maxNamedUnreadableIDs of the skipped IDs.
-func (d *enumerationDamage) namedIDs() string {
-	shown := d.ids
+func (e *IncompleteEnumeration) namedIDs() string {
+	shown := e.ids
 	var more string
 	if len(shown) > maxNamedUnreadableIDs {
 		shown = shown[:maxNamedUnreadableIDs]
-		more = fmt.Sprintf(", and %d more", len(d.ids)-maxNamedUnreadableIDs)
+		more = fmt.Sprintf(", and %d more", len(e.ids)-maxNamedUnreadableIDs)
 	}
 	parts := make([]string, 0, len(shown))
 	for _, id := range shown {

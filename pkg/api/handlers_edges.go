@@ -149,18 +149,22 @@ func (s *Server) listEdges(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		pageItems, next = paginateEdges(allEdges, page)
+	// Both index-set branches serve the partial page and set
+	// X-Enumeration-Incomplete, for the reason listNodes gives: refusing would
+	// deny the caller the cursor and turn one damaged record into an outage for
+	// the whole tenant list (ADR 0003).
 	case f.edgeType != "":
 		var err error
 		pageItems, next, err = s.graph.EdgesByTypePageForTenant(tenantID, f.edgeType, page.cursor, page.limit)
-		if err != nil {
-			s.respondIncompleteEnumeration(w, "list edges", err)
+		if err != nil && !s.noteIncompleteEnumeration(w, "list edges", err) {
+			s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "list edges"))
 			return
 		}
 	default:
 		var err error
 		pageItems, next, err = s.graph.EdgesPageForTenant(tenantID, page.cursor, page.limit)
-		if err != nil {
-			s.respondIncompleteEnumeration(w, "list edges", err)
+		if err != nil && !s.noteIncompleteEnumeration(w, "list edges", err) {
+			s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "list edges"))
 			return
 		}
 	}

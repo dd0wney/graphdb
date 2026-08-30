@@ -108,6 +108,59 @@ fails the lint job, so the migration cannot be completed cosmetically by
 assigning to `_`. Each site has to make a decision, and a reviewer can see which
 decision it made.
 
+### What the HTTP layer does with it
+
+The storage decision above does not settle the HTTP one, and the first
+implementation got the HTTP one wrong. It refused with `500` at every
+`pkg/api` site, discarding the partial page that `pkg/storage` had just gone to
+trouble to preserve. That put back, one level up, exactly the outage
+alternative 4 was rejected for: one damaged record made **every** page of that
+tenant's list fail, intact pages included, and the caller never received a
+cursor with which to step past the gap.
+
+**The split is by whether a fragment means anything.**
+
+**Paginated endpoints serve the partial page.** `GET /nodes` and `GET /edges`,
+including their `?label=` and `?type=` variants, answer `200`, serve the
+records that decoded, send the cursor as normal, and set:
+
+```
+X-Enumeration-Incomplete: <count of records that would not decode>
+```
+
+The header is **absent** when the scan was complete, so its presence is the
+signal and a client never parses a zero. A page is already a fragment by
+construction and the caller holds a cursor for the rest, so a short page plus
+an explicit count is a truthful answer rather than a silent one.
+
+**Whole-graph enumerations still refuse with `500`.** The LSA build, the
+search-index build, the index-count that follows one, and the composed
+`?from=`/`?to=` edge filter have no meaningful fragment. A search index built
+from a short corpus answers "no match" for every document the scan skipped, and
+it keeps answering that until somebody rebuilds it. A header does not make that
+answer true.
+
+Three sub-decisions, each of which was argued and could have gone the other
+way:
+
+- **`200`, not `206`.** RFC 9110 defines `206` for a range request and requires
+  a `Content-Range` header with it. A pagination endpoint is not a range
+  request, so a bare `206` is non-conformant, and some client libraries treat
+  `206` specially and expect `Content-Range`. Both are `2xx`, so `resp.ok` is
+  true either way and a client that ignores headers ignores both equally. The
+  signal strength is identical; only the conformance differs.
+- **A header, not a body field.** This endpoint family already signals
+  pagination state through a header — `X-Next-Cursor`, which consumer contract
+  CC8 pins. A body field would also change the response from an array to an
+  object, which breaks every existing client.
+- **A count, and never the IDs.** `pkg/api` keeps record IDs and snapshot byte
+  offsets out of responses; `getNode` and `respondIncompleteEnumeration` log
+  them and send a fixed sentence, a rule PR #526 set deliberately. The count
+  carries the signal without reversing that rule. It is enforced structurally:
+  `storage.IncompleteEnumeration` has no exported field, and
+  `storage.SkippedRecordCount` is the only accessor, so a handler cannot put an
+  ID into a response even by mistake.
+
 ### Migration order
 
 **The signature change is atomic. It cannot be split into independently green
@@ -235,8 +288,10 @@ failure for a database, and a library that panics on it is unusable in a server.
 - `nil` starts meaning something. A complete enumeration becomes distinguishable
   from an incomplete one, at every one of the 35 sites.
 - The seven methods become reachable by fault injection for the first time.
-- `pkg/api` and `pkg/graphql` can return an honest status instead of a short
-  list.
+- `pkg/api` and `pkg/graphql` can give an honest answer instead of a short list.
+  For the paginated endpoints that answer is the page plus
+  `X-Enumeration-Incomplete`; for the whole-graph enumerations it is a refusal.
+  See "What the HTTP layer does with it" above.
 - `CheckInvariants` gains a second, independent way to observe damage.
 
 **Bad**

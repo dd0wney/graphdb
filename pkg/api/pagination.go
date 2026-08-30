@@ -21,6 +21,27 @@ const MaxPageLimit = 1000
 // Absent from the response when the current page is the last one.
 const CursorHeader = "X-Next-Cursor"
 
+// IncompleteEnumerationHeader is the response header name a paginated list
+// endpoint sets when the scan that built the page met a record it could not
+// decode (ADR 0003). Its value is the COUNT of such records, as a decimal
+// integer. It is ABSENT when the scan was complete, so its presence is the
+// signal and a caller need not parse a zero.
+//
+// A header rather than a body field, because this endpoint family already
+// signals pagination state that way — CursorHeader above, which consumer
+// contract CC8 pins. A body field would also change the response shape from an
+// array to an object, which is a breaking change for every existing client.
+//
+// A COUNT and never an ID. pkg/api keeps record IDs and snapshot byte offsets
+// out of responses (PR #526); storage.SkippedRecordCount is the only accessor
+// the storage error exposes, so the IDs cannot reach here.
+//
+// The status stays 200. 206 was considered and rejected: RFC 9110 defines it
+// for range requests and requires Content-Range with it, and a pagination
+// endpoint is not a range request. Both are 2xx, so a client that ignores
+// headers ignores either equally — only the conformance differs.
+const IncompleteEnumerationHeader = "X-Enumeration-Incomplete"
+
 // pageRequest captures the parsed ?cursor= and ?limit= query parameters
 // for a paginated list endpoint. Zero-value cursor means "start from the
 // beginning"; zero-value limit is replaced with DefaultPageLimit.
