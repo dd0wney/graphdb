@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -362,42 +363,65 @@ func (gs *GraphStorage) Close() error {
 		return fmt.Errorf("storage already closed")
 	}
 
-	// Save snapshot on close (without holding the lock to avoid deadlock)
-	if err := gs.Snapshot(); err != nil {
-		return err
+	// Snapshot first, and do NOT return early when it refuses. Munmap is not
+	// managed by the garbage collector and the WAL holds a file handle, while
+	// `closed` is already true above — so an early return leaks both and no
+	// second Close can clean up, because it answers "storage already closed".
+	//
+	// snapshotMmapLocked refuses to write when a base record is damaged (#521),
+	// which turned this from a full-disk edge case into something ordinary bit
+	// rot reaches.
+	snapErr := gs.Snapshot()
+	var errs []error
+	if snapErr != nil {
+		errs = append(errs, snapErr)
 	}
 
 	// Unmap the mmap snapshot base. Safe because reads are copy-on-read: any
 	// node/edge already returned to a caller owns its bytes (no alias into the
-	// mapping). The snapshot above captured the merged live state to the new file.
+	// mapping). On success the snapshot above captured the merged live state; on
+	// a refusal the OLD file plus the WAL stay the recovery pair, and neither
+	// needs this mapping.
 	if gs.mmapSnap != nil {
 		if err := gs.mmapSnap.close(); err != nil {
-			return fmt.Errorf("failed to unmap snapshot: %w", err)
+			errs = append(errs, fmt.Errorf("failed to unmap snapshot: %w", err))
 		}
 		gs.mmapSnap = nil
 	}
 
-	// Close EdgeStore if enabled
 	if gs.useDiskBackedEdges && gs.edgeStore != nil {
 		if err := gs.edgeStore.Close(); err != nil {
-			return fmt.Errorf("failed to close EdgeStore: %w", err)
+			errs = append(errs, fmt.Errorf("failed to close EdgeStore: %w", err))
 		}
 	}
 
-	// Close WAL
-	if gs.useBatching && gs.batchedWAL != nil {
-		// Truncate WAL after successful snapshot
-		if err := gs.batchedWAL.Truncate(); err != nil {
-			return err
+	// Truncate ONLY after a snapshot that succeeded. This is the invariant the
+	// refusal depends on: with no new snapshot on disk, the old snapshot and the
+	// WAL together are the only complete copy, so emptying the WAL here would
+	// destroy exactly what the refusal protected.
+	//
+	// The Close runs either way. Skipping it on a truncate failure was the same
+	// leak in a second place.
+	switch {
+	case gs.useBatching && gs.batchedWAL != nil:
+		if snapErr == nil {
+			if err := gs.batchedWAL.Truncate(); err != nil {
+				errs = append(errs, err)
+			}
 		}
-		return gs.batchedWAL.Close()
-	} else if gs.wal != nil {
-		// Truncate WAL after successful snapshot
-		if err := gs.wal.Truncate(); err != nil {
-			return err
+		if err := gs.batchedWAL.Close(); err != nil {
+			errs = append(errs, err)
 		}
-		return gs.wal.Close()
+	case gs.wal != nil:
+		if snapErr == nil {
+			if err := gs.wal.Truncate(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if err := gs.wal.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
