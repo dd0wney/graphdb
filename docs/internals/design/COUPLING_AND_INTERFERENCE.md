@@ -147,8 +147,9 @@ call sites are identifiable. A coverage report filtered to those sites says
 what fraction of the couplings any test run actually exercises.
 
 `make dccc` computes it (#498). `couplings.tsv` names the sites, and the
-measure is statement coverage restricted to them. The baseline is **576/628 =
-91.7%** over 17 sites (#507), recorded in `DCCC_BASELINE.md`. There is no
+measure is statement coverage restricted to them. The baseline is **595/640 =
+93.0%** over 17 sites, measured 2026-08-30 on `ef77e04` and recorded in
+`DCCC_BASELINE.md`. There is no
 COVERAGE threshold, because that number came from a developer machine — see the
 same caveat on the mutation baseline.
 
@@ -173,7 +174,7 @@ UNMATCHED — a refusal, not a result.
    Open for `pkg/storage`, which needs ADR 0002 stage 4 first. That is where
    the residual risk now sits, and it is the larger half.
 2. ~~**A DCCC coverage measure** over the interfaces above.~~ Done. `make dccc`
-   (#498), baseline 576/628 = 91.7% over 17 sites (#507). What is left is a
+   (#498), baseline 595/640 = 93.0% over 17 sites (2026-08-30). What is left is a
    coverage threshold, which waits on a CI measurement rather than a
    developer-machine one. The statement-count floor is separate and is already
    enforced.
