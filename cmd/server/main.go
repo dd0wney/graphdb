@@ -392,7 +392,15 @@ func main() {
 		logger.Error("failed to create graph storage", "error", err)
 		os.Exit(1)
 	}
-	defer graph.Close()
+	// Close snapshots first, and refuses to write when a base record is damaged
+	// (#521). Discarding that error hides the only report the operator gets: the
+	// snapshot did not write, so the WAL will not truncate and will grow on every
+	// restart until the disk fills.
+	defer func() {
+		if err := graph.Close(); err != nil {
+			logger.Error("graph storage did not close cleanly; the snapshot may not have been written", "error", err)
+		}
+	}()
 
 	stats := graph.GetStatistics()
 	logger.Info("graph storage initialized",
@@ -534,7 +542,11 @@ func main() {
 			logger.Error("graceful shutdown failed", "error", err)
 		}
 		licensing.Global().Stop()
-		graph.Close()
+		if err := graph.Close(); err != nil {
+			// Same reason as the deferred Close above. This is the path a real
+			// shutdown takes, because os.Exit below skips the defer.
+			logger.Error("graph storage did not close cleanly; the snapshot may not have been written", "error", err)
+		}
 		logger.Info("server exited")
 		os.Exit(0)
 	}()
