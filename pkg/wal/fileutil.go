@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // FileRotator handles atomic file rotation for WAL files.
@@ -13,14 +15,30 @@ type FileRotator struct {
 	file       *os.File
 	writer     *bufio.Writer
 	bufferSize int
+
+	// fs is the driver the parent-directory sync in Rotate goes through. The
+	// rest of this type calls the os package directly, which predates pkg/vfs.
+	// A fault driver therefore sees the directory sync and not the rename,
+	// which is enough for a test to prove the sync happens.
+	fs vfs.FileSystem
 }
 
 // NewFileRotator creates a new file rotator for the given path.
 // bufferSize controls the bufio.Writer buffer size (0 = default).
 func NewFileRotator(path string, bufferSize int) *FileRotator {
+	return newFileRotatorWithFS(path, bufferSize, vfs.Default())
+}
+
+// newFileRotatorWithFS creates a rotator on a caller-supplied driver, so a
+// test can observe or fail the parent-directory sync.
+func newFileRotatorWithFS(path string, bufferSize int, fs vfs.FileSystem) *FileRotator {
+	if fs == nil {
+		fs = vfs.Default()
+	}
 	return &FileRotator{
 		path:       path,
 		bufferSize: bufferSize,
+		fs:         fs,
 	}
 }
 
@@ -126,6 +144,12 @@ func (fr *FileRotator) Rotate() error {
 		fr.writer = bufio.NewWriterSize(newFile, fr.bufferSize)
 	} else {
 		fr.writer = bufio.NewWriter(newFile)
+	}
+
+	// Publish the new name. The rename is atomic, and the directory entry it
+	// creates is not durable until the parent directory is itself synced.
+	if err := vfs.SyncParentDir(fr.fs, fr.path); err != nil {
+		return fmt.Errorf("failed to sync the directory after rotation: %w", err)
 	}
 
 	return nil
