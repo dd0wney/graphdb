@@ -55,7 +55,15 @@ func SweepRole(
 		trace := fs.Trace(role)
 
 		if prev != nil {
-			limit := min(n-1, min(len(trace), len(prev)))
+			if len(trace) < n-1 {
+				t.Fatalf("the sweep of role %q is unsound: run %d recorded only %d "+
+					"operation(s), fewer than the %d the earlier runs established as "+
+					"stable. The role's operation sequence got shorter, so \"the N-th "+
+					"operation\" no longer names a real step and this sweep proves "+
+					"nothing.", role, n, len(trace), n-1)
+				return
+			}
+			limit := min(n-1, len(prev))
 			for i := 0; i < limit; i++ {
 				if trace[i] == prev[i] {
 					continue
