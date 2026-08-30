@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // LSA snapshot format. The basis is numeric-heavy (dense float32 matrices
@@ -147,29 +149,72 @@ func ReadLSASnapshot(r io.Reader) (*LSAIndex, error) {
 }
 
 // SaveToFile writes the index to path atomically (write to .tmp, then
-// rename). Same idiom as pkg/storage's snapshot to avoid leaving a
-// half-written file if the process is killed mid-write.
+// rename), and syncs both the file and the parent directory.
+//
+// The comment here previously said "Same idiom as pkg/storage's snapshot to
+// avoid leaving a half-written file if the process is killed mid-write". That
+// asserted a safety property by reference to another function, and it went
+// false in two directions: the idiom it copied was itself missing both syncs,
+// and pkg/storage's version was fixed in PR #535 while this one was not. A
+// comment that borrows its correctness from elsewhere goes stale when the
+// elsewhere moves, and nothing points an instrument at it.
 func (i *LSAIndex) SaveToFile(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	return i.SaveToFileWithFS(vfs.Default(), path)
+}
+
+// SaveToFileWithFS is SaveToFile on a caller-supplied driver.
+//
+// The driver exists so a test can observe the publish, and so a fault or crash
+// simulator can reach this path at all. Before it, SaveToFile called the os
+// package directly: no driver saw a single one of its operations, so a crash
+// sweep over graphdb ran, reported, and never observed this function. A path
+// outside the seam produces no signal — "the sweep found nothing" and "the
+// sweep never saw it" render identically.
+func (i *LSAIndex) SaveToFileWithFS(fsys vfs.FileSystem, path string) error {
+	if err := fsys.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("mkdir snapshot dir: %w", err)
 	}
+	// The three temp-file removals below drop their own error on purpose. Each
+	// sits on a path that is already returning the failure that brought us
+	// there, and a second error about the tidying would replace the one that
+	// says what actually went wrong. A removal that does not happen leaves a
+	// .tmp file beside the snapshot, which the next successful save overwrites.
+	//
+	// This was `os.Remove` before the driver was threaded through, and errcheck
+	// did not fire on it: the exclusion is keyed to the os function, not to the
+	// interface method. The rule was always applicable and was simply invisible
+	// while the call went straight to the os package.
 	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := fsys.Open(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("open tmp: %w", err)
 	}
 	if err := i.WriteSnapshot(f); err != nil {
 		_ = f.Close()
-		_ = os.Remove(tmp)
+		_ = fsys.Remove(tmp) //nolint:errcheck // see the paragraph above
 		return err
 	}
+	// Sync before Close. POSIX does not make close(2) flush, so without this
+	// the rename below can publish a name over bytes that never reached the
+	// platter, leaving a file that exists and does not decode.
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = fsys.Remove(tmp) //nolint:errcheck // see the paragraph above
+		return fmt.Errorf("sync tmp: %w", err)
+	}
 	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
+		_ = fsys.Remove(tmp) //nolint:errcheck // see the paragraph above
 		return fmt.Errorf("close tmp: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	if err := fsys.Rename(tmp, path); err != nil {
+		_ = fsys.Remove(tmp) //nolint:errcheck // see the paragraph above
 		return fmt.Errorf("rename: %w", err)
+	}
+	// The rename is atomic, but the directory entry it creates is not durable
+	// until the parent directory is itself synced. Without this a power cut
+	// after the rename loses the publish whole.
+	if err := vfs.SyncParentDir(fsys, path); err != nil {
+		return fmt.Errorf("sync snapshot dir: %w", err)
 	}
 	return nil
 }
