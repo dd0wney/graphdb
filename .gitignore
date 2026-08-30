@@ -187,3 +187,8 @@ __pycache__/
 *.pyc
 
 /import-icij
+
+# Agent worktrees. `Agent(isolation: "worktree")` creates a checkout under this
+# path, so it appears as untracked in the primary checkout and a `git add -A`
+# would commit it. `.claude/skills/` stays tracked — name only the subdirectory.
+.claude/worktrees/
