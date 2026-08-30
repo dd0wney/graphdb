@@ -1,6 +1,6 @@
 # Session handoff — 2026-08-30 03:08 UTC
 
-**Date**: 2026-08-30 (single session, 20 PRs merged, 0 open at close)
+**Date**: 2026-08-30 (single session, 20 PRs merged, 2 open at close)
 **Outgoing model**: Claude Opus 5 (1M context)
 **Format defined in**: `CLAUDE.md` § "Preparing a new session (handoff convention)"
 
@@ -41,6 +41,8 @@ Twenty pull requests, oldest first. #510 predates this session.
 | #530 | `fix(storage,wal)`: sync the parent directory after a publishing rename | Predicted by a peer session; ten rename sites, zero directory syncs |
 | #531 | `feat(storage)!`: an error return for the seven enumeration methods (ADR 0003) | **Breaking.** 35 production + 99 test sites, atomic. Paginated lists serve the partial page with `X-Enumeration-Incomplete` |
 
+**Open at close**: #532 (this handoff) and #533 (`feat(vfs)`: the `extfs` adapter — see §5.4).
+
 **All nine findings from the 2026-08-29 handoff's §5.1 are now closed** — #521, #517,
 #519, #522, #526, #518 (two of them), #523, and the `ste-check` rule 3.4 repair
 (user-level, no PR).
@@ -48,8 +50,8 @@ Twenty pull requests, oldest first. #510 predates this session.
 ## Current state
 
 - **`origin/main`**: `62e53c0`
-- **Open PRs**: none
-- **Open branches**: `main` and `main-prerebase-backup` (pre-existing, not this session's)
+- **Open PRs**: #532 (this handoff) and #533 (`extfs` adapter, CI green-so-far, zero failures)
+- **Open branches**: `main`, `main-prerebase-backup` (pre-existing), plus the two branches behind #532 and #533
 - **Uncommitted**: none
 - **Worktrees**: one (the primary checkout)
 - **Gates on `62e53c0`**: `go build` 0, `go vet` 0, `gofmt -s -l` empty,
@@ -88,6 +90,40 @@ closed items; the live candidates are the findings below plus ADR 0003's step 5.
 declared, and cannot report that one is missing. Recorded in `DCCC_BASELINE.md`.
 Not built. Until it exists, 93.0% should not be quoted outside the project, because
 the denominator is the claim and only the ratio is measured.
+
+### 5.4 `pkg/vfs/extfs` and the crash-simulation collaboration (#533)
+
+A peer session (`github.com/dd0wney/fault`) is building crash and power-loss
+simulation. graphdb is its candidate first consumer, approved by the user
+conditionally: *"only when the library is demonstrably awesome"* and *"it must
+solve more problems than it creates"*.
+
+#533 adds `pkg/vfs/extfs`, which adapts a filesystem graphdb does not own onto
+`pkg/vfs.FileSystem`. The interface is DECLARED there rather than imported, so
+graphdb gains no dependency. `Seek`, `ReadAt` and `WriteAt` refuse with a named
+error rather than approximating, because a recorder that tracks offsets by
+addition would place a header backpatch at the end of a file and every state it
+generated would be fiction.
+
+**Three measured facts it produced, each now pinned by a test:**
+
+    pkg/storage  1 positional call   mmap_snapshot_writer.go:184  WriteAt(hdr, 0)
+    pkg/wal      2 seeks             wal.go:138, wal.go:217
+    pkg/lsm     19 positional calls
+
+So the mmap publish needs `WriteAt` and the WAL paths need `Seek` before an
+external non-positional filesystem can drive them. **The JSON publish path needs
+neither** and runs end to end today — that is the one path a crash sweep can
+reach with no change on either side, and it is pinned by
+`TestJSONPublishIsExpressibleOnANonPositionalFilesystem`.
+
+**Open, and the user's to answer**: a ~15-line wrapper binding a specific
+library's `FS` to `extfs.FS` must import both packages, because Go's structural
+typing is **not covariant in interface-valued returns** (verified by compiling
+the minimal case). As a *test-only* import of a zero-dependency library it is a
+small question, but it is a dependency question and graphdb is open-core.
+
+Nothing in `extfs` depends on that answer.
 
 ## Stale assumptions to retire
 
@@ -156,3 +192,11 @@ Two of the ten were the inverse — a recorded limitation that was never true. T
 session claimed `pkg/vfs` could not fsync a directory, which was false and was about
 to cost the user an interface-change approval they did not need. A one-minute probe
 disproved it. Re-running a number catches drift; nothing re-runs a sentence.
+
+A third shape appeared late, and it has the cheapest countermeasure of the three.
+This session ran `grep -rnE '\.(Seek|ReadAt|WriteAt)\(' pkg/ | head -15`, concluded
+`pkg/storage` had no positional calls, and told a collaborator so. `pkg/lsm` has 19
+matches; they filled the window and `pkg/storage`'s single one fell off the bottom.
+**`grep -c` before `grep | head`. If the count exceeds the window, the window is
+lying to you.** The error was caught not by re-reading the grep but by building
+`extfs` and watching a real store fail on the call the grep had hidden.
