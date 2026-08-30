@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/golang/snappy"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // TruncateUpTo rewrites the WAL keeping only entries with LSN > lsn — the
@@ -97,6 +99,14 @@ func (w *WAL) swapInRewrittenFile(walPath string, newFile *os.File) error {
 
 	if closeErr != nil {
 		fmt.Printf("WARNING: failed to close old WAL file during truncate: %v\n", closeErr)
+	}
+
+	// Publish the new name. See WAL.Truncate for why the rename alone is not
+	// enough. The rename above still goes through the os package, which
+	// predates pkg/vfs; the sync goes through the WAL's own driver, so a fault
+	// driver can observe it and fail it.
+	if err := vfs.SyncParentDir(w.fs, walPath); err != nil {
+		return fmt.Errorf("failed to sync the WAL directory after rewrite: %w", err)
 	}
 	return nil
 }
@@ -196,6 +206,11 @@ func (w *CompressedWAL) TruncateUpTo(lsn uint64) error {
 	w.writer = bufio.NewWriter(newFile)
 	if closeErr != nil {
 		fmt.Printf("WARNING: failed to close old compressed WAL file during truncate: %v\n", closeErr)
+	}
+
+	// Publish the new name. See swapInRewrittenFile above.
+	if err := vfs.SyncParentDir(w.fs, walPath); err != nil {
+		return fmt.Errorf("failed to sync the WAL directory after rewrite: %w", err)
 	}
 	return nil
 }

@@ -349,6 +349,14 @@ func (w *WAL) Truncate() error {
 		fmt.Printf("WARNING: failed to close old WAL file during truncate: %v\n", closeErr)
 	}
 
+	// Publish the new name. The rename is atomic, and the entry it creates in
+	// the data directory is not durable until that directory is itself
+	// synced. This runs after the handles are repointed so a failure leaves a
+	// usable WAL and still reports that the rotation is not on stable storage.
+	if err := vfs.SyncParentDir(w.fs, walPath); err != nil {
+		return fmt.Errorf("failed to sync the WAL directory after rotation: %w", err)
+	}
+
 	return nil
 }
 
