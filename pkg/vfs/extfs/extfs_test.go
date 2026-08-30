@@ -160,6 +160,58 @@ func TestTheWALNeedsSeek(t *testing.T) {
 	}
 }
 
+// The JSON publish path IS expressible today, with no change on either side.
+//
+// This is the one graphdb write path an external filesystem can drive right
+// now: writeFileWithFS opens, writes sequentially and closes, then the caller
+// renames. No Seek, no ReadAt, no WriteAt. With BulkImportMode skipping the
+// WAL, a crash-simulation library whose File is five methods can sweep it
+// without adding a single method.
+//
+// It matters because the alternative is waiting on a breaking change to an
+// external published interface. This path needs nobody's approval.
+//
+// The gate is "it runs end to end", not the operation sequence. What that
+// sequence currently reveals about durability is tracked separately as a
+// graphdb defect; pinning it here would freeze a defect as expected
+// behaviour.
+func TestJSONPublishIsExpressibleOnANonPositionalFilesystem(t *testing.T) {
+	rec := &recordingFS{}
+	cfg := storage.DefaultStorageConfig(t.TempDir())
+	cfg.UseMmapSnapshot = false // the JSON publish path
+	cfg.BulkImportMode = true   // skips the WAL, which needs Seek
+
+	cfg.FS = extfs.New(rec, "json-publish")
+
+	gs, err := storage.NewGraphStorageWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("the JSON path stopped being expressible on a non-positional filesystem, "+
+			"so the one sweepable graphdb path just closed: %v", err)
+	}
+	if _, err := gs.CreateNode([]string{"Thing"}, map[string]storage.Value{
+		"name": storage.StringValue("alpha"),
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatalf("the JSON publish failed on a non-positional filesystem: %v", err)
+	}
+
+	trace := strings.Join(rec.trace(), ",")
+	if !strings.Contains(trace, "rename:snapshot.json") {
+		t.Errorf("the publish did not go through the external filesystem.\ntrace: %s", trace)
+	}
+
+	reopened, err := storage.NewGraphStorageWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("reopen from the JSON snapshot the external filesystem wrote: %v", err)
+	}
+	defer func() { _ = reopened.Close() }()
+	if got := reopened.CountNodesForTenant(storage.DefaultTenantID); got != 1 {
+		t.Errorf("reopened store holds %d nodes, want 1", got)
+	}
+}
+
 // The three refusals must name the operation and wrap ErrUnsupported.
 //
 // This is the property that stops a recorder producing fiction. A silent
