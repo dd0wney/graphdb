@@ -28,7 +28,7 @@ the couplings are correct. It says how much of them a test run reaches.
 | C1 | `pkg/storage.replayEntry` | 19/20, 95.0% |
 | C2 | `pkg/wal/apply.ApplyWriteOperation` | 13/14, 92.9% |
 | C3 | `pkg/api.createNode` | 36/38, 94.7% |
-| C4 | `pkg/storage.CreateNodeWithTenant` | 12/14, 85.7% |
+| C4 | `pkg/storage.GraphStorage.CreateNodeWithTenant` | 20/20, 100.0% |
 | C5 | `pkg/lsm.flush` | 84/91, 92.3% |
 | C5 | `pkg/lsm.compact` | 52/55, 94.5% |
 | D1 | `pkg/storage.openMmapSnapshot` | 26/33, 78.8% |
@@ -45,7 +45,71 @@ the couplings are correct. It says how much of them a test run reaches.
 It was 538/616, 87.3%, when the measure was first written. The difference is
 #500 and nothing else.
 
-## Re-measured 2026-08-29 (#507): 576/628 = 91.7% over 17 sites
+## Re-measured 2026-08-30 (`ef77e04`): 595/640 = 93.0% over 17 sites
+
+Run with `make dccc-cover` then `make dccc`, both exit 0, after the
+2026-08-30 fix wave landed.
+
+**Most of the movement from 576/628 is a repair, not a gain.** Row C4 was
+resolving to the wrong function. `scripts/dccc.sh` took the first file in the
+package that declared the symbol and stopped, and `pkg/storage` declares
+`CreateNodeWithTenant` twice — on `BTreeGraphStorage` in `btree_storage.go`
+and on `GraphStorage` in `node_operations.go`. `btree_storage.go` sorts first,
+so the row measured the BTree body, which contains no vector code, while the
+row's note says node creation drives vector index maintenance.
+
+So the old total carried a wrong numerator AND a wrong denominator for that
+row: 12/14 against a body that was not the one named. #519 made the resolver
+refuse an ambiguous symbol rather than pick one, and qualified the row as
+`GraphStorage.CreateNodeWithTenant`. The floor moved 14 -> 20 because the
+correct body is larger.
+
+Found by the `github.com/dd0wney/fault` session, which read this repository's
+coupling data and reported the mismatch.
+
+**The rest did not move at all.** Six further pull requests landed between
+#519's measurement and this one — two storage fixes, an api fix, a server
+fix, a Close fix and a test-only addition — and the numerator and denominator
+are unchanged. None of this session's changes touched one of the 17 named
+functions. The measure was stable because it was measuring elsewhere, which
+is a fair statement of both its value and its limit.
+
+## The denominator is the claim, not the ratio
+
+A stable number has two causes and they render identically.
+
+Nineteen pull requests landed between #519's measurement and the 2026-08-30
+re-measure without moving 595/640. The section above concludes that none of
+them touched one of the 17 named functions. That is one explanation. The other
+is that one of them CREATED a coupling site and no row exists for it.
+
+Both print 595/640. In the second case the gate stays green while the measured
+fraction of the real coupling surface gets smaller, and nothing in this
+measurement can tell the two apart.
+
+The cause is structural rather than a defect in the script. Coupling coverage
+in the DO-178C 6.4.4.d sense measures the sites you DECLARED. `couplings.tsv`
+is an INPUT. So the measure cannot report a coupling site that nobody wrote a
+row for, and it cannot report that one is missing.
+
+This is the same shape as every other instrument defect this repository has
+found: a grep that printed nothing because it crashed on an unquoted glob, a
+metamorphic test that passed while asserting nothing, a mutation run that
+scored 1.00 because it produced no mutants, and #519's own resolver, which
+picked the first of two matching symbols and measured the wrong function. A
+gate reports on what it examined, and the dangerous case is always the one
+where "examined nothing" and "found nothing wrong" are indistinguishable.
+
+**What would close it** is a registry completeness check rather than a
+coverage number — something that can say "this call crosses a package boundary
+and has no row". Not built. Whether it is worth building for 17 sites is a
+judgement, but the number should not be quoted outside this project until it
+exists, because the denominator is the claim and only the ratio is measured.
+
+Raised by the `github.com/dd0wney/fault` session, 2026-08-30, in response to
+the re-measure above.
+
+## Superseded: 2026-08-29 (#507): 576/628 = 91.7% over 17 sites
 
 Three things moved, and only one of them is a coverage change.
 

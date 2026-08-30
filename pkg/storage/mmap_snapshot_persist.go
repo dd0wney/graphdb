@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // snapshotMmapLocked is the mmap-mode branch of snapshotWithBoundary. Caller holds
@@ -93,6 +95,16 @@ func (gs *GraphStorage) snapshotMmapLocked(boundary uint64) (uint64, error) {
 	}
 	if err := gs.fs.Rename(tmpPath, finalPath); err != nil {
 		return 0, fmt.Errorf("failed to rename mmap snapshot: %w", err)
+	}
+	// The rename is atomic, and that is not the same as durable. The new name
+	// is an entry in the data directory, and syncing the temporary file wrote
+	// the file, not the directory that holds its name. A power cut here can
+	// lose the entry: the snapshot's bytes are on the disk and nothing points
+	// at them. Reporting the error matters as much as making the call — a
+	// caller that checkpoints the WAL on the strength of this snapshot must
+	// not be told the snapshot is durable when the name is not.
+	if err := vfs.SyncParentDir(gs.fs, finalPath); err != nil {
+		return 0, fmt.Errorf("failed to sync the data directory after publishing the mmap snapshot: %w", err)
 	}
 	gs.stats.LastSnapshot = time.Now()
 	return boundary, nil
