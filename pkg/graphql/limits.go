@@ -205,7 +205,10 @@ func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, confi
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label query.
 		tenantID := tenant.MustFromContext(p.Context)
-		nodes := gs.GetNodesByLabelForTenant(tenantID, label)
+		nodes, err := gs.GetNodesByLabelForTenant(tenantID, label)
+		if err != nil {
+			return nil, fmt.Errorf("list %s nodes: %w", label, err)
+		}
 
 		// Apply filtering
 		filterExpr := parseWhere(p.Args)
@@ -254,7 +257,10 @@ func createEdgesResolverWithLimits(gs *storage.GraphStorage, config *LimitConfig
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped enumeration.
 		tenantID := tenant.MustFromContext(p.Context)
-		edges := gs.GetAllEdgesForTenant(tenantID)
+		edges, err := gs.GetAllEdgesForTenant(tenantID)
+		if err != nil {
+			return nil, fmt.Errorf("list edges: %w", err)
+		}
 
 		// Apply filtering
 		filterExpr := parseWhere(p.Args)

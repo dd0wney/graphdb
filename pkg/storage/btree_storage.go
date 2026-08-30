@@ -121,11 +121,20 @@ func (gs *BTreeGraphStorage) GetNodeForTenant(nodeID uint64, tenantID string) (*
 	return &node, nil
 }
 
-func (gs *BTreeGraphStorage) GetNodesByLabelForTenant(tenantID string, label string) []*Node {
+// GetNodesByLabelForTenant carries the same partial-result contract as the
+// *GraphStorage method of the same name (ADR 0003): the slice holds every node
+// that decoded, and the error names the ones that did not.
+//
+// A malformed KEY is not damage and is not reported. The label index is
+// rebuilt from the nodes themselves, so a key this loop cannot parse is a
+// defect in this store's own indexing, not a record the caller asked for.
+// Only a node whose VALUE will not decode reaches the tally.
+func (gs *BTreeGraphStorage) GetNodesByLabelForTenant(tenantID string, label string) ([]*Node, error) {
 	prefix := gs.labelPrefix(tenantID, label)
 	cursor := gs.tree.Cursor(prefix)
 
 	var nodes []*Node
+	var damage enumerationDamage
 	for {
 		k, _, ok := cursor.Next()
 		if !ok || !strings.HasPrefix(string(k), string(prefix)) {
@@ -140,33 +149,64 @@ func (gs *BTreeGraphStorage) GetNodesByLabelForTenant(tenantID string, label str
 		if _, err := fmt.Sscanf(parts[3], "%d", &nodeID); err != nil {
 			continue
 		}
-		if node, err := gs.GetNodeForTenant(nodeID, tenantID); err == nil {
-			nodes = append(nodes, node)
+		node, err := gs.GetNodeForTenant(nodeID, tenantID)
+		if err != nil {
+			damage.note(nodeID, err)
+			continue
 		}
+		nodes = append(nodes, node)
 	}
-	return nodes
+	return nodes, damage.err("btree nodes-by-label")
 }
 
-func (gs *BTreeGraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
+// GetAllNodesForTenant carries the ADR 0003 partial-result contract.
+//
+// The record ID comes from the KEY (n:{tenant}:{id}) rather than from the
+// decoded value, because a value that will not decode has no ID to report.
+// A key whose ID cannot be parsed is skipped without being reported, for the
+// same reason as in GetNodesByLabelForTenant.
+func (gs *BTreeGraphStorage) GetAllNodesForTenant(tenantID string) ([]*Node, error) {
 	prefix := []byte(fmt.Sprintf("n:%s:", tenantID))
 	cursor := gs.tree.Cursor(prefix)
 
 	var nodes []*Node
+	var damage enumerationDamage
 	for {
 		k, v, ok := cursor.Next()
 		if !ok || !strings.HasPrefix(string(k), string(prefix)) {
 			break
 		}
 		var node Node
-		if err := json.Unmarshal(v, &node); err == nil {
-			nodes = append(nodes, &node)
+		if err := json.Unmarshal(v, &node); err != nil {
+			damage.note(btreeRecordID(k), fmt.Errorf("%w: %w", ErrRecordUnreadable, err))
+			continue
 		}
+		nodes = append(nodes, &node)
 	}
-	return nodes
+	return nodes, damage.err("btree all-nodes")
 }
 
+// CountNodesForTenant has no error return of its own (StorageReader in
+// interface.go), so an unreadable record can only be counted here as absent.
+// The count is therefore a LOWER BOUND when the tree holds a record that does
+// not decode. A caller that needs the distinction calls GetAllNodesForTenant
+// and reads its error. Widening the count methods is out of scope for
+// ADR 0003, which names seven enumerations and not these two.
 func (gs *BTreeGraphStorage) CountNodesForTenant(tenantID string) uint64 {
-	return uint64(len(gs.GetAllNodesForTenant(tenantID)))
+	nodes, _ := gs.GetAllNodesForTenant(tenantID)
+	return uint64(len(nodes))
+}
+
+// btreeRecordID pulls the trailing numeric ID out of a BTree record key of the
+// form prefix:{id}. It returns 0 when the key does not end in a number, which
+// only reaches an error message and never a lookup.
+func btreeRecordID(key []byte) uint64 {
+	parts := strings.Split(string(key), ":")
+	var id uint64
+	if _, err := fmt.Sscanf(parts[len(parts)-1], "%d", &id); err != nil {
+		return 0
+	}
+	return id
 }
 
 func (gs *BTreeGraphStorage) GetEdgeForTenant(edgeID uint64, tenantID string) (*Edge, error) {
@@ -259,26 +299,39 @@ func (gs *BTreeGraphStorage) GetEdgesByTypeForTenant(tenantID string, edgeType s
 	return edges
 }
 
-func (gs *BTreeGraphStorage) GetAllEdgesForTenant(tenantID string) []*Edge {
+// GetAllEdgesForTenant carries the ADR 0003 partial-result contract.
+//
+// A skipped edge is reported as unknownRecordID rather than by its edge ID.
+// The primary edge key is e:{tenant}:{fromID}:{type}:{toID}, so it names the
+// endpoints and not the edge, and the edge ID lives inside the value that just
+// failed to decode. The count of skipped records is still exact, which is the
+// part a caller acts on.
+func (gs *BTreeGraphStorage) GetAllEdgesForTenant(tenantID string) ([]*Edge, error) {
 	prefix := []byte(fmt.Sprintf("e:%s:", tenantID))
 	cursor := gs.tree.Cursor(prefix)
 
 	var edges []*Edge
+	var damage enumerationDamage
 	for {
 		k, v, ok := cursor.Next()
 		if !ok || !strings.HasPrefix(string(k), string(prefix)) {
 			break
 		}
 		var edge Edge
-		if err := json.Unmarshal(v, &edge); err == nil {
-			edges = append(edges, &edge)
+		if err := json.Unmarshal(v, &edge); err != nil {
+			damage.note(unknownRecordID, fmt.Errorf("edge key %q: %w: %w", k, ErrRecordUnreadable, err))
+			continue
 		}
+		edges = append(edges, &edge)
 	}
-	return edges
+	return edges, damage.err("btree all-edges")
 }
 
+// CountEdgesForTenant is a LOWER BOUND when a record does not decode, for the
+// same reason as CountNodesForTenant: the interface gives it no error return.
 func (gs *BTreeGraphStorage) CountEdgesForTenant(tenantID string) uint64 {
-	return uint64(len(gs.GetAllEdgesForTenant(tenantID)))
+	edges, _ := gs.GetAllEdgesForTenant(tenantID)
+	return uint64(len(edges))
 }
 
 func (gs *BTreeGraphStorage) GetLabelsForTenant(tenantID string) []string {

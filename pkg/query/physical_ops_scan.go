@@ -21,10 +21,17 @@ func (o *NodeScanOperator) Open(ctx *ExecutionContext) error {
 	_, span := otel.Tracer("query").Start(ctx.context, "NodeScanOperator.Open")
 	defer span.End()
 
+	var err error
 	if o.Label != "" {
-		o.nodes = ctx.graph.GetNodesByLabelForTenant(ctx.tenantID, o.Label)
+		o.nodes, err = ctx.graph.GetNodesByLabelForTenant(ctx.tenantID, o.Label)
+		if err != nil {
+			return fmt.Errorf("node scan label %q: %w", o.Label, err)
+		}
 	} else {
-		o.nodes = ctx.graph.GetAllNodesForTenant(ctx.tenantID)
+		o.nodes, err = ctx.graph.GetAllNodesForTenant(ctx.tenantID)
+		if err != nil {
+			return fmt.Errorf("node scan: %w", err)
+		}
 	}
 	o.index = 0
 	return nil
@@ -210,7 +217,10 @@ func (o *OptionalMatchOperator) Next(ctx *ExecutionContext) (*BindingSet, error)
 			}
 
 			// Try to match the pattern for this input
-			o.matches = o.matchSimplePattern(ctx, o.curInput)
+			o.matches, err = o.matchSimplePattern(ctx, o.curInput)
+			if err != nil {
+				return nil, fmt.Errorf("optional match: %w", err)
+			}
 			if len(o.matches) == 0 {
 				// No match: produce one row with nulls
 				nullBinding := &BindingSet{bindings: make(map[string]any)}
@@ -237,19 +247,26 @@ func (o *OptionalMatchOperator) Next(ctx *ExecutionContext) (*BindingSet, error)
 	}
 }
 
-func (o *OptionalMatchOperator) matchSimplePattern(ctx *ExecutionContext, input *BindingSet) []*BindingSet {
+func (o *OptionalMatchOperator) matchSimplePattern(ctx *ExecutionContext, input *BindingSet) ([]*BindingSet, error) {
 	// Simplified matching for spike: single node
 	if len(o.Pattern.Nodes) != 1 || len(o.Pattern.Relationships) != 0 {
-		return nil
+		return nil, nil
 	}
 	nodePat := o.Pattern.Nodes[0]
 
 	// Scan nodes with label
 	var nodes []*storage.Node
+	var err error
 	if len(nodePat.Labels) > 0 {
-		nodes = ctx.graph.GetNodesByLabelForTenant(ctx.tenantID, nodePat.Labels[0])
+		nodes, err = ctx.graph.GetNodesByLabelForTenant(ctx.tenantID, nodePat.Labels[0])
+		if err != nil {
+			return nil, fmt.Errorf("optional match label scan %q: %w", nodePat.Labels[0], err)
+		}
 	} else {
-		nodes = ctx.graph.GetAllNodesForTenant(ctx.tenantID)
+		nodes, err = ctx.graph.GetAllNodesForTenant(ctx.tenantID)
+		if err != nil {
+			return nil, fmt.Errorf("optional match node scan: %w", err)
+		}
 	}
 
 	var results []*BindingSet
@@ -277,7 +294,7 @@ func (o *OptionalMatchOperator) matchSimplePattern(ctx *ExecutionContext, input 
 			results = append(results, &BindingSet{bindings: newBindings})
 		}
 	}
-	return results
+	return results, nil
 }
 
 func (o *OptionalMatchOperator) Close(ctx *ExecutionContext) error {

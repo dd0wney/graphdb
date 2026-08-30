@@ -110,11 +110,17 @@ func TestA6c_Query_CreateLandsInCallerTenant(t *testing.T) {
 	}
 
 	// The CREATE'd node must be visible to tenant-A (and only A).
-	aNodes := server.graph.GetNodesByLabelForTenant("tenant-A", "User")
+	aNodes, err := server.graph.GetNodesByLabelForTenant("tenant-A", "User")
+	if err != nil {
+		t.Fatalf("enumerate tenant-A User nodes: %v", err)
+	}
 	if len(aNodes) != 1 {
 		t.Errorf("tenant-A User count: want 1 (the just-created), got %d", len(aNodes))
 	}
-	defaultNodes := server.graph.GetNodesByLabelForTenant("default", "User")
+	defaultNodes, err := server.graph.GetNodesByLabelForTenant("default", "User")
+	if err != nil {
+		t.Fatalf("enumerate default User nodes: %v", err)
+	}
 	if len(defaultNodes) != 0 {
 		t.Errorf("default User count: want 0 (must not leak), got %d — CREATE landed in default tenant", len(defaultNodes))
 	}

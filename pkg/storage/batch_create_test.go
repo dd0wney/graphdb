@@ -25,7 +25,11 @@ func TestCreateNodesAndEdgesWithTenant(t *testing.T) {
 	if _, err := gs.GetNodeForTenant(ids[0], tenant); err != nil {
 		t.Errorf("node 0 not found: %v", err)
 	}
-	if got := len(gs.GetNodesByLabelForTenant(tenant, "A")); got != 2 {
+	labelA, err := gs.GetNodesByLabelForTenant(tenant, "A")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(A): %v", err)
+	}
+	if got := len(labelA); got != 2 {
 		t.Errorf("label A count = %d, want 2", got)
 	}
 

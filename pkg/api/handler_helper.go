@@ -26,6 +26,41 @@ func sanitizeError(err error, operation string) string {
 	return fmt.Sprintf("%s failed", operation)
 }
 
+// respondIncompleteEnumeration answers a request whose storage enumeration
+// skipped a record it could not decode (ADR 0003).
+//
+// WHY THIS IS SAFE TO TELL THE CALLER, and why it is NOT the leak that PR #513
+// exists to prevent:
+//
+// Every enumeration endpoint is scoped to getTenantFromContext(r), and the ID
+// list it walks comes from the caller's own membership run
+// (membershipNodeIDsForTenantLocked and its by-label variant). No
+// caller-supplied ID names a resource on these paths, so a stranger asking for
+// its own list can never reach another tenant's damaged record: it gets its
+// own list, unchanged, whether or not some other tenant's snapshot section
+// rotted. There is no second principal to compare against here, which is what
+// makes this different from GET /nodes/{id}.
+//
+// Ownership is established in the storage layer, not in the handler — the same
+// property PR #526 relies on for the single-record case. The record's tenant
+// string lives inside the record that would not decode, so the handler could
+// not establish ownership even if it tried; the membership run establishes it
+// before any record is touched.
+//
+// 500, not 503, for the reason getNode gives: 503 tells the caller to retry,
+// and damaged bytes on disk do not repair themselves.
+//
+// The response body is a fixed sentence. The raw error names record IDs and a
+// byte offset into the snapshot file, which belong in the operator's log and
+// not in a response body.
+func (s *Server) respondIncompleteEnumeration(w http.ResponseWriter, operation string, err error) {
+	log.Printf("ERROR [%s]: the enumeration is incomplete for the requesting tenant: %v", operation, err)
+	s.respondError(w, http.StatusInternalServerError, fmt.Sprintf(
+		"%s could not read every stored record, so the result would be incomplete. "+
+			"The data on disk is damaged; restore the affected records from a backup. "+
+			"Retrying will not help.", operation))
+}
+
 // clientError carries a user-safe message in Error() while preserving the
 // original error chain via Unwrap(). Use when the returned error will be
 // serialized into an HTTP response body (so callers cannot leak internals)

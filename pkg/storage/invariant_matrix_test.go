@@ -179,7 +179,11 @@ func TestInvariantMatrix_Batch(t *testing.T) {
 
 	// Delete everything else; the graph must bottom out clean.
 	dn := gs.BeginBatch()
-	for _, n := range gs.GetAllNodesForTenant(DefaultTenantID) {
+	remaining, err := gs.GetAllNodesForTenant(DefaultTenantID)
+	if err != nil {
+		t.Fatalf("enumerate nodes for default tenant: %v", err)
+	}
+	for _, n := range remaining {
 		dn.DeleteNode(n.ID)
 	}
 	if err := dn.Commit(); err != nil {

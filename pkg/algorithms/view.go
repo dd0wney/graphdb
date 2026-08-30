@@ -18,7 +18,17 @@ import (
 // keep the interface minimal so adaptors stay shallow.
 type graphView interface {
 	// AllNodes returns every node visible to this view.
-	AllNodes() []*storage.Node
+	//
+	// The error is ADR 0003's completeness signal, threaded up from
+	// storage.GetAllNodesForTenant. The slice holds every node that could be
+	// read either way, so an adaptor never returns nil beside a non-nil error.
+	// Every algorithm body treats a non-nil error as fatal and returns it:
+	// an algorithm that ran on a silently short node set would report a
+	// confident wrong answer, which is worse than no answer. That is a
+	// stronger reaction than the per-edge degrade branches in scc.go,
+	// triangles.go and node_similarity.go, and deliberately so — a missing
+	// node removes a vertex from the graph, not one of its edges.
+	AllNodes() ([]*storage.Node, error)
 
 	// Node returns a single node by ID. Returns ErrNodeNotFound for
 	// missing or out-of-view nodes (tenant-scoped views collapse the
@@ -52,13 +62,19 @@ func newTenantBlindView(g storage.Storage) *tenantBlindView {
 	return &tenantBlindView{g: g}
 }
 
-func (v *tenantBlindView) AllNodes() []*storage.Node {
+func (v *tenantBlindView) AllNodes() ([]*storage.Node, error) {
 	// GetAllNodesAcrossTenants is the deliberately-named tenant-blind
 	// enumerator (see pkg/storage/node_operations.go). Algorithms
 	// running through tenantBlindView are CLI / single-tenant /
 	// admin paths — not API-reachable, so the cross-tenant
 	// "everything" view is the correct semantic.
-	return v.g.GetAllNodesAcrossTenants()
+	//
+	// The error is always nil here. GetAllNodesAcrossTenants was not one of
+	// ADR 0003's seven methods and keeps its single return, so this adaptor
+	// has nothing to report. Both adaptors satisfy the same interface, so the
+	// algorithm bodies stay identical; the tenant-scoped one below is the half
+	// that can actually fail.
+	return v.g.GetAllNodesAcrossTenants(), nil
 }
 
 func (v *tenantBlindView) Node(id uint64) (*storage.Node, error) {
@@ -89,7 +105,7 @@ func newTenantScopedView(g storage.Storage, tenantID string) *tenantScopedView {
 	return &tenantScopedView{g: g, tenantID: tenantID}
 }
 
-func (v *tenantScopedView) AllNodes() []*storage.Node {
+func (v *tenantScopedView) AllNodes() ([]*storage.Node, error) {
 	return v.g.GetAllNodesForTenant(v.tenantID)
 }
 

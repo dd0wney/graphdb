@@ -27,7 +27,10 @@ func TestGetAllNodesForTenant_IncludesUnlabeledNodes(t *testing.T) {
 		t.Fatalf("create unlabeled: %v", err)
 	}
 
-	got := gs.GetAllNodesForTenant("acme")
+	got, err := gs.GetAllNodesForTenant("acme")
+	if err != nil {
+		t.Fatalf("enumerate nodes for acme: %v", err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2 nodes (1 labeled + 1 unlabeled), got %d", len(got))
 	}
@@ -68,7 +71,10 @@ func TestGetAllNodesForTenant_TenantIsolationAndOrder(t *testing.T) {
 		}
 	}
 
-	got := gs.GetAllNodesForTenant("acme")
+	got, err := gs.GetAllNodesForTenant("acme")
+	if err != nil {
+		t.Fatalf("enumerate nodes for acme: %v", err)
+	}
 	if len(got) != 5 {
 		t.Fatalf("expected 5 acme nodes, got %d (cross-tenant leak or miss)", len(got))
 	}
@@ -101,7 +107,10 @@ func TestGetAllNodesForTenant_DeleteRemovesFromEnumeration(t *testing.T) {
 		t.Fatalf("delete: %v", err)
 	}
 
-	got := gs.GetAllNodesForTenant("acme")
+	got, err := gs.GetAllNodesForTenant("acme")
+	if err != nil {
+		t.Fatalf("enumerate nodes for acme: %v", err)
+	}
 	if len(got) != 1 || got[0].ID != n2.ID {
 		t.Fatalf("expected only node %d after deleting %d, got %v", n2.ID, n1.ID, got)
 	}
@@ -109,7 +118,9 @@ func TestGetAllNodesForTenant_DeleteRemovesFromEnumeration(t *testing.T) {
 	if err := gs.DeleteNodeForTenant(n2.ID, "acme"); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if got := gs.GetAllNodesForTenant("acme"); len(got) != 0 {
+	if got, err := gs.GetAllNodesForTenant("acme"); err != nil {
+		t.Fatalf("enumerate nodes for acme: %v", err)
+	} else if len(got) != 0 {
 		t.Fatalf("expected 0 nodes after deleting all, got %d", len(got))
 	}
 	// Tenant set should be cleaned up, not left as an empty map.
@@ -184,7 +195,9 @@ func TestGetAllNodesForTenant_SurvivesRestart(t *testing.T) {
 	}
 	defer func() { _ = gs2.Close() }()
 
-	if got := gs2.GetAllNodesForTenant("acme"); len(got) != 2 {
+	if got, err := gs2.GetAllNodesForTenant("acme"); err != nil {
+		t.Fatalf("enumerate nodes for acme: %v", err)
+	} else if len(got) != 2 {
 		t.Errorf("expected 2 acme nodes after restart, got %d — enumeration index not rebuilt from snapshot", len(got))
 	}
 }

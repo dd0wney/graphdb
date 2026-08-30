@@ -371,7 +371,10 @@ func searchHandles(t *testing.T, gs *GraphStorage, rev map[uint64]string, k int)
 // (order-independent membership).
 func labelHandleSet(t *testing.T, gs *GraphStorage, rev map[uint64]string, label string) []string {
 	t.Helper()
-	nodes := gs.GetNodesByLabelForTenant(DefaultTenantID, label)
+	nodes, err := gs.GetNodesByLabelForTenant(DefaultTenantID, label)
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(%s): %v", label, err)
+	}
 	out := make([]string, 0, len(nodes))
 	for _, n := range nodes {
 		out = append(out, handleFor(rev, n.ID))

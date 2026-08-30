@@ -75,7 +75,12 @@ func (s *Server) filteredEdgesForTenant(tenantID string, f edgeFilter) ([]*stora
 	case f.edgeType != "":
 		allEdges = s.graph.GetEdgesByTypeForTenant(tenantID, f.edgeType)
 	default:
-		allEdges = s.graph.GetAllEdgesForTenant(tenantID)
+		// The enumeration error joins the adjacency errors above in the single
+		// `err` this function already returns, so a caller that maps a storage
+		// error to a status maps this one the same way. Composing a filter on
+		// top of an incomplete edge set would answer a "which edges join A and
+		// B" question with a confident wrong list.
+		allEdges, err = s.graph.GetAllEdgesForTenant(tenantID)
 	}
 	if err != nil {
 		return nil, err
@@ -145,9 +150,19 @@ func (s *Server) listEdges(w http.ResponseWriter, r *http.Request) {
 		}
 		pageItems, next = paginateEdges(allEdges, page)
 	case f.edgeType != "":
-		pageItems, next = s.graph.EdgesByTypePageForTenant(tenantID, f.edgeType, page.cursor, page.limit)
+		var err error
+		pageItems, next, err = s.graph.EdgesByTypePageForTenant(tenantID, f.edgeType, page.cursor, page.limit)
+		if err != nil {
+			s.respondIncompleteEnumeration(w, "list edges", err)
+			return
+		}
 	default:
-		pageItems, next = s.graph.EdgesPageForTenant(tenantID, page.cursor, page.limit)
+		var err error
+		pageItems, next, err = s.graph.EdgesPageForTenant(tenantID, page.cursor, page.limit)
+		if err != nil {
+			s.respondIncompleteEnumeration(w, "list edges", err)
+			return
+		}
 	}
 	writeNextCursor(w, next)
 	edges := make([]*EdgeResponse, 0, len(pageItems))

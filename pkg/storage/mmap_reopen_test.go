@@ -138,16 +138,28 @@ func fingerprintTenant(t *testing.T, gs *GraphStorage, tenant string) fingerprin
 		inEdgeSig:  map[uint64]string{},
 	}
 	// Populate legacy label-bucket IDs for backward-compat assertions.
-	for _, n := range gs.GetNodesByLabelForTenant(tenant, "Person") {
+	persons, err := gs.GetNodesByLabelForTenant(tenant, "Person")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Person): %v", err)
+	}
+	for _, n := range persons {
 		fp.personIDs = append(fp.personIDs, n.ID)
 	}
-	for _, n := range gs.GetNodesByLabelForTenant(tenant, "Org") {
+	orgs, err := gs.GetNodesByLabelForTenant(tenant, "Org")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Org): %v", err)
+	}
+	for _, n := range orgs {
 		fp.orgIDs = append(fp.orgIDs, n.ID)
 	}
 	sort.Slice(fp.personIDs, func(i, j int) bool { return fp.personIDs[i] < fp.personIDs[j] })
 	sort.Slice(fp.orgIDs, func(i, j int) bool { return fp.orgIDs[i] < fp.orgIDs[j] })
 
-	for _, n := range gs.GetAllNodesForTenant(tenant) {
+	allNodes, err := gs.GetAllNodesForTenant(tenant)
+	if err != nil {
+		t.Fatalf("GetAllNodesForTenant: %v", err)
+	}
+	for _, n := range allNodes {
 		got, err := gs.GetNodeForTenant(n.ID, tenant)
 		if err != nil {
 			t.Fatalf("GetNodeForTenant(%d): %v", n.ID, err)
@@ -581,17 +593,29 @@ func TestMmapStage2_LazyMembershipParity(t *testing.T) {
 		t.Errorf("CountNodesForTenant=%d want 10 (must not need membership build)", got)
 	}
 	// Enumeration is served from the persisted membership section; results match.
-	if got := len(mr.GetNodesByLabelForTenant(tenant, "Alpha")); got != 5 {
+	alpha, err := mr.GetNodesByLabelForTenant(tenant, "Alpha")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Alpha): %v", err)
+	}
+	if got := len(alpha); got != 5 {
 		t.Errorf("Alpha=%d want 5", got)
 	}
-	if got := len(mr.GetNodesByLabelForTenant(tenant, "Beta")); got != 3 {
+	beta, err := mr.GetNodesByLabelForTenant(tenant, "Beta")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Beta): %v", err)
+	}
+	if got := len(beta); got != 3 {
 		t.Errorf("Beta=%d want 3", got)
 	}
 	// A post-open create is reflected (overlay indexed at write time).
 	if _, err := mr.CreateNodeWithTenant(tenant, []string{"Alpha"}, map[string]Value{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(mr.GetNodesByLabelForTenant(tenant, "Alpha")); got != 6 {
+	alpha2, err := mr.GetNodesByLabelForTenant(tenant, "Alpha")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Alpha) after create: %v", err)
+	}
+	if got := len(alpha2); got != 6 {
 		t.Errorf("Alpha after create=%d want 6", got)
 	}
 	// Edge type-membership: the 2 LINK edges written before close must be visible
@@ -742,7 +766,11 @@ func TestMmapStage2_UpdatedBaseNodeStillEnumerated(t *testing.T) {
 	}
 	// Enumeration (served from the persisted section + overlay) must still
 	// index the updated base node under its (immutable) label.
-	if got := len(mr.GetNodesByLabelForTenant(tenant, "Widget")); got != 1 {
+	widgets, err := mr.GetNodesByLabelForTenant(tenant, "Widget")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Widget): %v", err)
+	}
+	if got := len(widgets); got != 1 {
 		t.Errorf("Widget=%d want 1 (updated base node dropped from membership)", got)
 	}
 }
@@ -852,19 +880,35 @@ func TestMmapStage2b_EnumerationAtOpenNoBuild(t *testing.T) {
 	defer mr.Close()
 
 	// Enumerate with NO prior call — results come from the persisted section.
-	if got := len(mr.GetNodesByLabelForTenant(tenant, "Alpha")); got != 3 {
+	alpha, err := mr.GetNodesByLabelForTenant(tenant, "Alpha")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Alpha): %v", err)
+	}
+	if got := len(alpha); got != 3 {
 		t.Errorf("Alpha=%d want 3", got)
 	}
-	if got := len(mr.GetNodesByLabelForTenant(tenant, "Beta")); got != 3 {
+	beta, err := mr.GetNodesByLabelForTenant(tenant, "Beta")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Beta): %v", err)
+	}
+	if got := len(beta); got != 3 {
 		t.Errorf("Beta=%d want 3", got)
 	}
-	if got := len(mr.GetAllNodesForTenant(tenant)); got != 8 {
+	allNodes, err := mr.GetAllNodesForTenant(tenant)
+	if err != nil {
+		t.Fatalf("GetAllNodesForTenant: %v", err)
+	}
+	if got := len(allNodes); got != 8 {
 		t.Errorf("all-nodes=%d want 8", got)
 	}
 	if got := len(mr.GetEdgesByTypeForTenant(tenant, "LINK")); got != 2 {
 		t.Errorf("LINK edges=%d want 2", got)
 	}
-	if got := len(mr.GetAllEdgesForTenant(tenant)); got != 2 {
+	allEdges, err := mr.GetAllEdgesForTenant(tenant)
+	if err != nil {
+		t.Fatalf("GetAllEdgesForTenant: %v", err)
+	}
+	if got := len(allEdges); got != 2 {
 		t.Errorf("all-edges=%d want 2", got)
 	}
 }
@@ -897,7 +941,10 @@ func TestMmapStage2c_ReturnedNodeIsOwnedCopy(t *testing.T) {
 	defer mr.Close()
 
 	// Enumerate (mmap-base node, served without Clone after this change).
-	nodes := mr.GetNodesByLabelForTenant(tenant, "Widget")
+	nodes, err := mr.GetNodesByLabelForTenant(tenant, "Widget")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Widget): %v", err)
+	}
 	if len(nodes) != 1 {
 		t.Fatalf("got %d nodes want 1", len(nodes))
 	}
@@ -921,7 +968,10 @@ func TestMmapStage2c_ReturnedNodeIsOwnedCopy(t *testing.T) {
 		t.Errorf("store labels corrupted: %v", got.Labels)
 	}
 	// And a fresh enumeration still sees the original.
-	again := mr.GetNodesByLabelForTenant(tenant, "Widget")
+	again, err := mr.GetNodesByLabelForTenant(tenant, "Widget")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Widget) second enumeration: %v", err)
+	}
 	if len(again) != 1 || string(again[0].Properties["k"].Data) != "orig" {
 		t.Errorf("second enumeration corrupted")
 	}
@@ -1284,7 +1334,9 @@ func TestMmapReopen_DeleteAllNodesClears(t *testing.T) {
 		if c := mr.CountEdgesForTenant(tenant); c != 0 {
 			t.Errorf("mmap CountEdgesForTenant(%s) = %d after DeleteAllNodes, want 0", tenant, c)
 		}
-		if n := mr.GetAllNodesForTenant(tenant); len(n) != 0 {
+		if n, err := mr.GetAllNodesForTenant(tenant); err != nil {
+			t.Errorf("mmap GetAllNodesForTenant(%s): %v", tenant, err)
+		} else if len(n) != 0 {
 			t.Errorf("mmap GetAllNodesForTenant(%s) = %d nodes after DeleteAllNodes, want 0", tenant, len(n))
 		}
 		assertFingerprintEqual(t, fingerprintTenant(t, jr, tenant), fingerprintTenant(t, mr, tenant), "live-after-deleteall "+tenant)
@@ -1412,7 +1464,10 @@ func TestMmapReopen_ValueTypeParity(t *testing.T) {
 			// Non-vacuity guard: the property must actually survive the reopen with
 			// its exact type + bytes. Without this, a value silently dropped by BOTH
 			// stores would make the parity assertion pass trivially (empty == empty).
-			nodes := mr.GetNodesByLabelForTenant(tenant, "T")
+			nodes, err := mr.GetNodesByLabelForTenant(tenant, "T")
+			if err != nil {
+				t.Fatalf("GetNodesByLabelForTenant(T): %v", err)
+			}
 			if len(nodes) != 1 {
 				t.Fatalf("want 1 node after reopen, got %d", len(nodes))
 			}

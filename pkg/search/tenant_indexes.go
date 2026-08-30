@@ -60,12 +60,23 @@ func (ti *TenantIndexes) Get(tenantID string) *FullTextIndex {
 // that match the given labels AND belong to that tenant. Cross-tenant
 // nodes are never passed to the index because the caller uses the
 // tenant-scoped storage accessor.
+// An index built from an incomplete enumeration is a search index that says a
+// document does not exist. That is silent and long-lived: the build reports
+// success, and every later query answers "no match" for the records the
+// enumeration skipped. So the build refuses (ADR 0003) rather than publishing
+// a partial index, and the caller decides whether to retry or repair the
+// store. Refusing keeps whatever index was already registered for the tenant,
+// which is at worst stale rather than newly and silently wrong.
 func (ti *TenantIndexes) IndexForTenant(tenantID string, labels, properties []string) error {
 	idx := ti.Get(tenantID)
 
 	var nodes []*storage.Node
 	for _, label := range labels {
-		nodes = append(nodes, ti.gs.GetNodesByLabelForTenant(tenantID, label)...)
+		labelNodes, err := ti.gs.GetNodesByLabelForTenant(tenantID, label)
+		if err != nil {
+			return fmt.Errorf("index tenant %q: enumerate label %q: %w", tenantID, label, err)
+		}
+		nodes = append(nodes, labelNodes...)
 	}
 	if err := idx.IndexPrepared(nodes, labels, properties); err != nil {
 		return fmt.Errorf("index tenant %q: %w", tenantID, err)

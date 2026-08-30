@@ -42,7 +42,10 @@ func createEdgesResolver(gs *storage.GraphStorage) graphql.FieldResolveFn {
 		// (which leaked edges across tenants) with a single
 		// tenant-scoped enumeration.
 		tenantID := tenant.MustFromContext(p.Context)
-		edges := gs.GetAllEdgesForTenant(tenantID)
+		edges, err := gs.GetAllEdgesForTenant(tenantID)
+		if err != nil {
+			return nil, fmt.Errorf("list edges: %w", err)
+		}
 
 		// Apply pagination if specified
 		limit, limitOk := p.Args["limit"].(int)

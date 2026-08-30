@@ -90,10 +90,19 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 	// results rather than the full unfiltered corpus.
 	var pageItems []*storage.Node
 	var next uint64
+	var err error
 	if label := r.URL.Query().Get("label"); label != "" {
-		pageItems, next = s.graph.NodesByLabelPageForTenant(tenantID, label, page.cursor, page.limit)
+		pageItems, next, err = s.graph.NodesByLabelPageForTenant(tenantID, label, page.cursor, page.limit)
 	} else {
-		pageItems, next = s.graph.NodesPageForTenant(tenantID, page.cursor, page.limit)
+		pageItems, next, err = s.graph.NodesPageForTenant(tenantID, page.cursor, page.limit)
+	}
+	// A short page returned as 200 OK is a lie a client cannot detect: it looks
+	// exactly like a small tenant. Refuse instead (ADR 0003). The partial page
+	// is deliberately NOT served — a paging client would follow the cursor past
+	// the gap and never learn that it skipped a record.
+	if err != nil {
+		s.respondIncompleteEnumeration(w, "list nodes", err)
+		return
 	}
 	writeNextCursor(w, next)
 

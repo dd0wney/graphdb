@@ -90,7 +90,13 @@ func PredictLinksForForTenant(graph storage.Storage, sourceNodeID uint64, opts L
 }
 
 func predictLinksForView(view graphView, sourceNodeID uint64, opts LinkPredictionOptions) (*LinkPredictionResult, error) {
-	allNodes := view.AllNodes()
+	// An incomplete node set would make the result below confidently wrong,
+	// so ADR 0003's error is fatal here rather than degraded. See the
+	// AllNodes contract in view.go.
+	allNodes, err := view.AllNodes()
+	if err != nil {
+		return nil, err
+	}
 	nodeIDs := make([]uint64, 0, len(allNodes))
 	for _, n := range allNodes {
 		nodeIDs = append(nodeIDs, n.ID)

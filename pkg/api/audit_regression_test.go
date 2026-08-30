@@ -243,11 +243,17 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status %d body=%s", rr.Code, rr.Body.String())
 		}
-		aTags := fix.server.graph.GetNodesByLabelForTenant("tenant-A", "Tag")
+		aTags, err := fix.server.graph.GetNodesByLabelForTenant("tenant-A", "Tag")
+		if err != nil {
+			t.Fatalf("enumerate tenant-A Tag nodes: %v", err)
+		}
 		if len(aTags) != 1 {
 			t.Errorf("tenant-A Tag count after CREATE: want 1, got %d", len(aTags))
 		}
-		defaultTags := fix.server.graph.GetNodesByLabelForTenant("default", "Tag")
+		defaultTags, err := fix.server.graph.GetNodesByLabelForTenant("default", "Tag")
+		if err != nil {
+			t.Fatalf("enumerate default Tag nodes: %v", err)
+		}
 		if len(defaultTags) != 0 {
 			t.Errorf("CREATE leaked into default tenant: %d Tags", len(defaultTags))
 		}
@@ -521,11 +527,17 @@ func TestAuditRegressionSuite_CrossTenantIsolation(t *testing.T) {
 			t.Fatalf("ApplyWriteOperation: %v", err)
 		}
 
-		inA := fix.server.graph.GetNodesByLabelForTenant("tenant-A", "A8WireSentinel")
+		inA, err := fix.server.graph.GetNodesByLabelForTenant("tenant-A", "A8WireSentinel")
+		if err != nil {
+			t.Fatalf("enumerate tenant-A A8WireSentinel nodes: %v", err)
+		}
 		if len(inA) != 1 {
 			t.Errorf("tenant-A A8WireSentinel: want 1, got %d", len(inA))
 		}
-		inDefault := fix.server.graph.GetNodesByLabelForTenant("default", "A8WireSentinel")
+		inDefault, err := fix.server.graph.GetNodesByLabelForTenant("default", "A8WireSentinel")
+		if err != nil {
+			t.Fatalf("enumerate default A8WireSentinel nodes: %v", err)
+		}
 		if len(inDefault) != 0 {
 			t.Errorf("apply leaked into default tenant: %d node(s) with A8WireSentinel", len(inDefault))
 		}

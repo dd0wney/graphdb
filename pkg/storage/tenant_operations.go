@@ -142,24 +142,36 @@ func (gs *GraphStorage) removeEdgeFromTenantIndex(edge *Edge) {
 	gs.decrementTenantEdgeCount(tenantID)
 }
 
-// GetNodesByLabelForTenant returns all nodes with the given label for a specific tenant.
-func (gs *GraphStorage) GetNodesByLabelForTenant(tenantID, label string) []*Node {
+// GetNodesByLabelForTenant returns all nodes with the given label for a
+// specific tenant, plus an error naming any record it could not produce.
+//
+// The two returns are independent (ADR 0003): the slice always holds every
+// node that DID decode, and the error is non-nil only when the enumeration was
+// incomplete. A caller that wants best-effort data uses the slice; a caller
+// that must know whether it saw the whole label bucket reads the error. A nil
+// error now means "complete", which is a claim the old signature could not
+// make.
+func (gs *GraphStorage) GetNodesByLabelForTenant(tenantID, label string) ([]*Node, error) {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()
 
 	tid := effectiveTenantID(tenantID)
 	nodeIDs := gs.membershipNodeIDsByLabelLocked(tid, label)
 	nodes := make([]*Node, 0, len(nodeIDs))
+	var damage enumerationDamage
 	for _, id := range nodeIDs {
-		if node, owned, err := gs.resolveNodeRefOwnedLocked(id); err == nil {
-			if !owned {
-				node = node.Clone()
-			}
-			nodes = append(nodes, node)
+		node, owned, err := gs.resolveNodeRefOwnedLocked(id)
+		if err != nil {
+			damage.note(id, err)
+			continue
 		}
+		if !owned {
+			node = node.Clone()
+		}
+		nodes = append(nodes, node)
 	}
 
-	return nodes
+	return nodes, damage.err("nodes-by-label")
 }
 
 // CountNodesByLabelForTenant returns how many nodes a tenant has with the
@@ -209,7 +221,13 @@ func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Ed
 // of the tenant at a single instant — a node deleted between the ID
 // collection and its clone is simply skipped (same tradeoff A4 accepted for
 // GetNode). IDs are returned in ascending order for deterministic pagination.
-func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
+//
+// A node that is ABSENT and a node that will not DECODE are now separated
+// (ADR 0003). The first is the tradeoff above and is skipped silently; the
+// second is damage on disk, is still skipped so one bad record cannot make the
+// whole tenant unreadable, and is named in the returned error. The slice holds
+// every node that decoded either way.
+func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) ([]*Node, error) {
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
@@ -217,6 +235,7 @@ func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
 	gs.mu.RUnlock()
 
 	nodes := make([]*Node, 0, len(ids))
+	var damage enumerationDamage
 	for _, id := range ids {
 		gs.rlockShard(id)
 		node, owned, err := gs.resolveNodeRefOwnedLocked(id)
@@ -228,10 +247,12 @@ func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
 		gs.runlockShard(id)
 		if exists {
 			nodes = append(nodes, node)
+			continue
 		}
+		damage.note(id, err)
 	}
 
-	return nodes
+	return nodes, damage.err("all-nodes")
 }
 
 // GetAllEdgesForTenant returns all edges belonging to a specific tenant.
@@ -244,7 +265,12 @@ func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) []*Node {
 // cloned under per-shard RLocks after release. Same non-atomic-snapshot
 // tradeoff as GetAllNodesForTenant: an edge deleted between collection and
 // clone is skipped.
-func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) []*Edge {
+//
+// Edge analogue of GetAllNodesForTenant for the error return too (ADR 0003):
+// an absent edge is skipped silently, an edge that will not decode is skipped
+// and named in the returned error, and the slice holds every edge that did
+// decode.
+func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) ([]*Edge, error) {
 	tid := effectiveTenantID(tenantID)
 
 	gs.mu.RLock()
@@ -252,6 +278,7 @@ func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) []*Edge {
 	gs.mu.RUnlock()
 
 	edges := make([]*Edge, 0, len(ids))
+	var damage enumerationDamage
 	for _, id := range ids {
 		gs.rlockShard(id)
 		edge, owned, err := gs.resolveEdgeRefOwnedLocked(id)
@@ -263,10 +290,12 @@ func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) []*Edge {
 		gs.runlockShard(id)
 		if exists {
 			edges = append(edges, edge)
+			continue
 		}
+		damage.note(id, err)
 	}
 
-	return edges
+	return edges, damage.err("all-edges")
 }
 
 // GetTenantStats returns usage statistics for a tenant.
@@ -397,12 +426,20 @@ func (gs *GraphStorage) CountEdgesForTenant(tenantID string) uint64 {
 //
 // Cost is O(nodes+edges) individually-locked deletes; acceptable for a
 // correctness fix. A bulk in-storage purge is a future optimization.
+//
+// A record the enumeration cannot read is a record this method cannot delete.
+// Reporting the tenant as deleted while such a record survives on disk is the
+// failure mode a tenant offboarding must not have, so both enumeration errors
+// are collected and returned after the passes run (ADR 0003). The counts still
+// describe what WAS deleted, so a caller can log real progress beside the
+// refusal.
 func (gs *GraphStorage) DeleteTenant(tenantID string) (nodesDeleted, edgesDeleted int, err error) {
 	if effectiveTenantID(tenantID) == tenantid.Default {
 		return 0, 0, fmt.Errorf("cannot delete the default tenant")
 	}
 
-	for _, n := range gs.GetAllNodesForTenant(tenantID) {
+	nodes, nodeEnumErr := gs.GetAllNodesForTenant(tenantID)
+	for _, n := range nodes {
 		if derr := gs.DeleteNodeForTenant(n.ID, tenantID); derr != nil {
 			if errors.Is(derr, ErrNodeNotFound) {
 				continue // already removed via another node's edge cascade
@@ -413,7 +450,8 @@ func (gs *GraphStorage) DeleteTenant(tenantID string) (nodesDeleted, edgesDelete
 	}
 
 	// Defensive sweep: any edges the node pass didn't cascade.
-	for _, e := range gs.GetAllEdgesForTenant(tenantID) {
+	edges, edgeEnumErr := gs.GetAllEdgesForTenant(tenantID)
+	for _, e := range edges {
 		if derr := gs.DeleteEdgeForTenant(e.ID, tenantID); derr != nil {
 			if errors.Is(derr, ErrEdgeNotFound) {
 				continue
@@ -427,6 +465,15 @@ func (gs *GraphStorage) DeleteTenant(tenantID string) (nodesDeleted, edgesDelete
 	// a concurrently-dropped index just surfaces as an error we can ignore.
 	for _, prop := range gs.ListVectorIndexesForTenant(tenantID) {
 		_ = gs.DropVectorIndexForTenant(tenantID, prop)
+	}
+
+	// Reported last, so the counts above describe every delete that did run.
+	// errors.Join keeps both enumerations visible: a store can have a damaged
+	// node record AND a damaged edge record, and naming only the first would
+	// send an operator back for a second pass.
+	if enumErr := errors.Join(nodeEnumErr, edgeEnumErr); enumErr != nil {
+		return nodesDeleted, edgesDeleted,
+			fmt.Errorf("delete tenant is incomplete, records survive that could not be read: %w", enumErr)
 	}
 
 	return nodesDeleted, edgesDeleted, nil

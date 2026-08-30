@@ -35,7 +35,13 @@ func CountTrianglesForTenant(ctx context.Context, graph storage.Storage, tenantI
 // per participating node, so GlobalCount = sum(PerNode) / 3.
 // Clustering coefficients are computed in the same pass.
 func countTrianglesView(ctx context.Context, view graphView) (*TriangleCountResult, error) {
-	allNodes := view.AllNodes()
+	// An incomplete node set would make the result below confidently wrong,
+	// so ADR 0003's error is fatal here rather than degraded. See the
+	// AllNodes contract in view.go.
+	allNodes, err := view.AllNodes()
+	if err != nil {
+		return nil, err
+	}
 	nodeIDs := make([]uint64, 0, len(allNodes))
 	for _, n := range allNodes {
 		nodeIDs = append(nodeIDs, n.ID)

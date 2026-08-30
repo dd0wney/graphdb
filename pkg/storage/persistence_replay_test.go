@@ -58,7 +58,10 @@ func TestReplayCreateNode_PopulatesTenantIndex(t *testing.T) {
 	}
 	defer func() { _ = gs2.Close() }()
 
-	docs := gs2.GetNodesByLabelForTenant("acme", "Doc")
+	docs, err := gs2.GetNodesByLabelForTenant("acme", "Doc")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(acme, Doc): %v", err)
+	}
 	if len(docs) != 3 {
 		t.Errorf("expected 3 acme:Doc nodes after replay, got %d — tenant index not populated by replayCreateNode", len(docs))
 	}
@@ -66,7 +69,10 @@ func TestReplayCreateNode_PopulatesTenantIndex(t *testing.T) {
 	// Negative: queries for a different tenant must still return empty.
 	// Confirms replayCreateNode populates the *correct* tenant slot, not
 	// just the default one.
-	other := gs2.GetNodesByLabelForTenant("other-tenant", "Doc")
+	other, err := gs2.GetNodesByLabelForTenant("other-tenant", "Doc")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(other-tenant, Doc): %v", err)
+	}
 	if len(other) != 0 {
 		t.Errorf("expected 0 Doc nodes for other-tenant, got %d — tenant scoping is broken in replay", len(other))
 	}

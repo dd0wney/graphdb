@@ -58,7 +58,10 @@ func TestCreateNode_TypeMismatchedIndexedProperty_NoPartialApply(t *testing.T) {
 	if _, err := gs.GetNodeForTenant(node.ID, tenant); err != nil {
 		t.Errorf("GetNodeForTenant(%d): %v — node not retrievable after create", node.ID, err)
 	}
-	byLabel := gs.GetNodesByLabelForTenant(tenant, "Person")
+	byLabel, err := gs.GetNodesByLabelForTenant(tenant, "Person")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Person): %v", err)
+	}
 	if len(byLabel) != 1 {
 		t.Errorf("GetNodesByLabelForTenant(Person) = %d, want 1", len(byLabel))
 	}

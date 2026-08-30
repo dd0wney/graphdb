@@ -225,7 +225,10 @@ func TestCreateNodeWithUniquePropertyForTenant_Concurrent(t *testing.T) {
 	}
 
 	// Verify the storage actually contains exactly one Claim node.
-	claims := gs.GetNodesByLabelForTenant("default", "Claim")
+	claims, err := gs.GetNodesByLabelForTenant("default", "Claim")
+	if err != nil {
+		t.Fatalf("GetNodesByLabelForTenant(Claim): %v", err)
+	}
 	if len(claims) != 1 {
 		t.Errorf("storage holds %d :Claim nodes, want 1", len(claims))
 	}
