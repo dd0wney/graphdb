@@ -321,21 +321,23 @@ func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
 		if err != nil {
 			// A damaged record is skipped rather than crashing the walk.
 			// This walk has no way to report a decode failure — fn's
-			// signature is bool-returning, not error-returning. The
-			// invariant checker (checkInvariantsMmap) reports the damage
-			// itself, from its own pass over gs.mmapSnap.forEachNodeID and
-			// getNode, which sees every damaged record directly and does
-			// not depend on this walk to surface it.
+			// signature is bool-returning, not error-returning.
 			//
-			// snapshotMmapLocked (mmap_snapshot_persist.go) also calls this
-			// walk, to collect the live node set for the next snapshot.
-			// There, a skip here is not safe: the damaged record is
-			// dropped from the write, and once it completes the record's
-			// directory entry, and every diagnostic this change adds for
-			// it, are gone. The edge branch of that same function refuses
-			// the write instead of dropping one (mmap_snapshot_persist.go,
-			// "Refuse rather than drop"). The node branch does not. That
-			// asymmetry predates this change and is not fixed here.
+			// The invariant checker (checkInvariantsMmap) reports the
+			// damage, from its own pass over gs.mmapSnap.forEachNodeID and
+			// getNode. That report is a diagnostic: it tells an operator
+			// that a record is bad, and it changes nothing on disk. So it
+			// does not make a skip here safe for a caller that WRITES. A
+			// destructive caller must refuse, not report.
+			//
+			// snapshotMmapLocked (mmap_snapshot_persist.go) is such a
+			// caller, and for that reason it no longer uses this walk. It
+			// walks the shards and gs.mmapSnap.forEachNodeID inline, and it
+			// returns an error that names the node when a record does not
+			// decode. Its edge branch always did the same. Any future
+			// caller that writes the result of this walk back to disk must
+			// do likewise: a skip here silently drops the record from what
+			// it writes.
 			return
 		}
 		if !fn(n) {
