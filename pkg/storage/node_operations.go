@@ -151,7 +151,18 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 	for _, existingID := range gs.membershipNodeIDsByLabelLocked(tid, uniqueLabel) {
 		existing, err := gs.resolveNodeRefLocked(existingID)
 		if err != nil {
-			continue // PR B: an unreadable record must not be read as "no conflict"
+			if errors.Is(err, ErrNodeNotFound) {
+				// Legitimately absent (e.g. a tombstone the membership run
+				// has not dropped yet) — not a conflict.
+				continue
+			}
+			// An unreadable record must not be read as "no conflict": the
+			// store cannot tell whether existingID holds newVal, so it must
+			// not answer "no conflict" for it. Abort the whole create and
+			// wrap ErrRecordUnreadable so the caller can tell this apart
+			// from both success and a real *UniqueConstraintError.
+			gs.mu.Unlock()
+			return nil, fmt.Errorf("uniqueness scan for %s.%s: node %d: %w", uniqueLabel, uniquePropertyKey, existingID, err)
 		}
 		if existingVal, has := existing.Properties[uniquePropertyKey]; has && valuesEqual(existingVal, newVal) {
 			gs.mu.Unlock()
