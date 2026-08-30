@@ -70,29 +70,72 @@ trap 'rm -rf "$TMP"' EXIT
 # Resolve each symbol to a file and a line range. gofmt puts the closing brace
 # of a top-level func at column 0, so the body runs from "func ... Name(" to
 # the next line that is exactly "}".
+#
+# A symbol may be written bare ("CreateNodeWithTenant") or qualified with its
+# receiver type ("GraphStorage.CreateNodeWithTenant"). Qualification exists
+# because two files in the same package can declare a same-named method on
+# different receivers (C4: pkg/storage/btree_storage.go's
+# BTreeGraphStorage.CreateNodeWithTenant and
+# pkg/storage/node_operations.go's GraphStorage.CreateNodeWithTenant). Taking
+# "the first file that matches, then break" silently measured whichever file
+# the glob visited first — BTreeGraphStorage's body, which holds no vector
+# code, against a row whose note says node creation drives vector index
+# maintenance. Every matching file is now collected before a verdict: more
+# than one match is a refusal naming each file, never a silent pick.
 UNRESOLVED=0
 : > "$TMP/sites"
 while IFS=$'\t' read -r id kind pkg sym floor rest; do
   case "$id" in ''|'#'*) continue ;; esac
   [ -z "${sym:-}" ] && continue
 
-  found=""
+  recv=""
+  method="$sym"
+  case "$sym" in
+    *.*) recv="${sym%%.*}"; method="${sym#*.}" ;;
+  esac
+
+  matches=()
+  declare -A match_start=() match_end=()
   for f in "$ROOT/$pkg"/*.go; do
     case "$f" in *_test.go) continue ;; esac
     [ -e "$f" ] || continue
-    start="$(awk -v s="$sym" '$0 ~ "^func .*[ .*)]" s "\\(" || $0 ~ "^func " s "\\(" { print NR; exit }' "$f")"
+    if [ -n "$recv" ]; then
+      # Anchored on the receiver type: "func (<name> *Recv) Method(" or the
+      # value-receiver form without "*". This is what keeps "GraphStorage"
+      # from also matching "BTreeGraphStorage" — the literal must follow
+      # directly after the optional "*", so a longer type name that merely
+      # ends in the same substring cannot satisfy it.
+      start="$(awk -v r="$recv" -v m="$method" \
+        '$0 ~ "^func \\([a-zA-Z_][a-zA-Z0-9_]*[ \t]+\\*?" r "\\)[ \t]+" m "\\(" { print NR; exit }' "$f")"
+    else
+      start="$(awk -v s="$method" '$0 ~ "^func .*[ .*)]" s "\\(" || $0 ~ "^func " s "\\(" { print NR; exit }' "$f")"
+    fi
     [ -z "$start" ] && continue
     end="$(awk -v st="$start" 'NR>=st && $0=="}" { print NR; exit }' "$f")"
     [ -z "$end" ] && continue
-    found="$f"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$kind" "$pkg" "$sym" "$start" "$end" "$(basename "$f")" "${floor:-0}" >> "$TMP/sites"
-    break
+    matches+=("$f")
+    match_start["$f"]="$start"
+    match_end["$f"]="$end"
   done
 
-  if [ -z "$found" ]; then
+  if [ "${#matches[@]}" -gt 1 ]; then
+    echo "dccc: $id names $pkg.$sym, which is ambiguous — declared in:" >&2
+    for f in "${matches[@]}"; do
+      echo "dccc:   $f" >&2
+    done
+    echo "dccc: qualify the registry row as Receiver.Method to pick one" >&2
+    UNRESOLVED=1
+    continue
+  fi
+
+  if [ "${#matches[@]}" -eq 0 ]; then
     echo "dccc: $id names $pkg.$sym, which no file in that package defines" >&2
     UNRESOLVED=1
+    continue
   fi
+
+  found="${matches[0]}"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$kind" "$pkg" "$sym" "${match_start[$found]}" "${match_end[$found]}" "$(basename "$found")" "${floor:-0}" >> "$TMP/sites"
 done < "$REGISTRY"
 
 if [ "$UNRESOLVED" = "1" ]; then

@@ -21,6 +21,16 @@
 #
 # Columns: id	kind	package	symbol	what crosses the boundary
 #
+# Column 4 may be qualified as Receiver.Method (e.g. GraphStorage.Foo) when a
+# package declares more than one same-named method on different receivers.
+# dccc.sh refuses a bare symbol that resolves to more than one file rather
+# than silently measuring whichever file its directory glob visits first —
+# that silent pick is how C4 measured BTreeGraphStorage.CreateNodeWithTenant
+# (no vector code) instead of GraphStorage.CreateNodeWithTenant (the row's own
+# note: node creation drives vector index maintenance) until this comment was
+# added. Qualify a row the moment a second file declares its symbol; do not
+# wait for dccc.sh to catch it.
+#
 # NOT YET ENUMERATED: D4, the mmap copy-on-write overlay. A reader materialises
 # from the base while a writer promotes into the shard, and no single symbol is
 # the boundary. Naming the wrong one would be worse than the gap, so the gap is
@@ -28,7 +38,7 @@
 C1	control	pkg/storage	replayEntry	20	The WAL decides which storage mutation runs
 C2	control	pkg/wal/apply	ApplyWriteOperation	14	The fail-closed apply gate switches on op type
 C3	control	pkg/api	createNode	38	A caller decides whether a write takes the atomic unique path
-C4	control	pkg/storage	CreateNodeWithTenant	14	Node creation drives vector index maintenance
+C4	control	pkg/storage	GraphStorage.CreateNodeWithTenant	20	Node creation drives vector index maintenance
 C5	control	pkg/lsm	flush	91	A worker decides when a memtable becomes an SSTable
 C5	control	pkg/lsm	compact	55	A worker replaces the level set a reader is scanning
 D1	data	pkg/storage	openMmapSnapshotWithFS	26	The reader trusts a length the writer wrote
