@@ -1,7 +1,7 @@
 # 3. An error return for the seven enumeration methods
 
 Date: 2026-08-30
-Status: proposed
+Status: accepted
 
 ## Context
 
@@ -79,7 +79,7 @@ is 35 across six packages, plus 99 test sites — 134 edits in total.
 
 ## Decision
 
-**Proposed, and not yet approved. No code moves until the user approves it.**
+**Approved on 2026-08-30.**
 
 Give each of the seven methods an `error` return, in the Go convention of a
 usable partial result beside a non-nil error:
