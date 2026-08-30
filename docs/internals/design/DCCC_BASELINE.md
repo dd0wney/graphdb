@@ -74,6 +74,41 @@ are unchanged. None of this session's changes touched one of the 17 named
 functions. The measure was stable because it was measuring elsewhere, which
 is a fair statement of both its value and its limit.
 
+## The denominator is the claim, not the ratio
+
+A stable number has two causes and they render identically.
+
+Nineteen pull requests landed between #519's measurement and the 2026-08-30
+re-measure without moving 595/640. The section above concludes that none of
+them touched one of the 17 named functions. That is one explanation. The other
+is that one of them CREATED a coupling site and no row exists for it.
+
+Both print 595/640. In the second case the gate stays green while the measured
+fraction of the real coupling surface gets smaller, and nothing in this
+measurement can tell the two apart.
+
+The cause is structural rather than a defect in the script. Coupling coverage
+in the DO-178C 6.4.4.d sense measures the sites you DECLARED. `couplings.tsv`
+is an INPUT. So the measure cannot report a coupling site that nobody wrote a
+row for, and it cannot report that one is missing.
+
+This is the same shape as every other instrument defect this repository has
+found: a grep that printed nothing because it crashed on an unquoted glob, a
+metamorphic test that passed while asserting nothing, a mutation run that
+scored 1.00 because it produced no mutants, and #519's own resolver, which
+picked the first of two matching symbols and measured the wrong function. A
+gate reports on what it examined, and the dangerous case is always the one
+where "examined nothing" and "found nothing wrong" are indistinguishable.
+
+**What would close it** is a registry completeness check rather than a
+coverage number — something that can say "this call crosses a package boundary
+and has no row". Not built. Whether it is worth building for 17 sites is a
+judgement, but the number should not be quoted outside this project until it
+exists, because the denominator is the claim and only the ratio is measured.
+
+Raised by the `github.com/dd0wney/fault` session, 2026-08-30, in response to
+the re-measure above.
+
 ## Superseded: 2026-08-29 (#507): 576/628 = 91.7% over 17 sites
 
 Three things moved, and only one of them is a coverage change.
