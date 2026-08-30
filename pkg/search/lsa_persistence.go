@@ -174,6 +174,16 @@ func (i *LSAIndex) SaveToFileWithFS(fsys vfs.FileSystem, path string) error {
 	if err := fsys.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("mkdir snapshot dir: %w", err)
 	}
+	// The three temp-file removals below drop their own error on purpose. Each
+	// sits on a path that is already returning the failure that brought us
+	// there, and a second error about the tidying would replace the one that
+	// says what actually went wrong. A removal that does not happen leaves a
+	// .tmp file beside the snapshot, which the next successful save overwrites.
+	//
+	// This was `os.Remove` before the driver was threaded through, and errcheck
+	// did not fire on it: the exclusion is keyed to the os function, not to the
+	// interface method. The rule was always applicable and was simply invisible
+	// while the call went straight to the os package.
 	tmp := path + ".tmp"
 	f, err := fsys.Open(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
@@ -181,7 +191,7 @@ func (i *LSAIndex) SaveToFileWithFS(fsys vfs.FileSystem, path string) error {
 	}
 	if err := i.WriteSnapshot(f); err != nil {
 		_ = f.Close()
-		_ = fsys.Remove(tmp)
+		_ = fsys.Remove(tmp) //nolint:errcheck // see the paragraph above
 		return err
 	}
 	// Sync before Close. POSIX does not make close(2) flush, so without this
@@ -189,15 +199,15 @@ func (i *LSAIndex) SaveToFileWithFS(fsys vfs.FileSystem, path string) error {
 	// platter, leaving a file that exists and does not decode.
 	if err := f.Sync(); err != nil {
 		_ = f.Close()
-		_ = fsys.Remove(tmp)
+		_ = fsys.Remove(tmp) //nolint:errcheck // see the paragraph above
 		return fmt.Errorf("sync tmp: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		_ = fsys.Remove(tmp)
+		_ = fsys.Remove(tmp) //nolint:errcheck // see the paragraph above
 		return fmt.Errorf("close tmp: %w", err)
 	}
 	if err := fsys.Rename(tmp, path); err != nil {
-		_ = fsys.Remove(tmp)
+		_ = fsys.Remove(tmp) //nolint:errcheck // see the paragraph above
 		return fmt.Errorf("rename: %w", err)
 	}
 	// The rename is atomic, but the directory entry it creates is not durable
