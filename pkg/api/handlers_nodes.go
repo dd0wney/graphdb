@@ -2,6 +2,8 @@ package api
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strconv"
@@ -179,6 +181,35 @@ func (s *Server) getNode(w http.ResponseWriter, r *http.Request, nodeID uint64) 
 	tenantID := getTenantFromContext(r)
 	node, err := s.graph.GetNodeForTenant(nodeID, tenantID)
 	if err != nil {
+		// ErrRecordUnreadable is a THIRD condition, and it is not about
+		// existence: the snapshot directory lists the ID, but the record bytes
+		// did not decode. Only the tenant that owns the record can act on that,
+		// and only the owner ever sees this error class here.
+		//
+		// The ordering that makes it safe is NOT in this handler. The record's
+		// tenant string lives inside the record that would not decode, so
+		// ownership cannot be read from the record body. GetNodeForTenant
+		// establishes it from the mmap membership run instead
+		// (tenantOwnsUnreadableNode, node_operations.go), BEFORE it chooses
+		// which error to return, and it fails closed: no mmap base, no
+		// membership section, or a run that does not list the ID all collapse
+		// to ErrNodeNotFound. So reaching this branch already means "the
+		// caller owns this ID", and a stranger falls through to the 404 below
+		// exactly as it did for a record that never existed.
+		//
+		// 500, not 503. 503 tells the caller to retry later; damaged bytes on
+		// disk do not repair themselves, so 503 would state something untrue.
+		if errors.Is(err, storage.ErrRecordUnreadable) {
+			// The raw error names a byte offset into the snapshot file, and a
+			// future decode failure could wrap a cause built from the record's
+			// own bytes. Log it for the operator; send a fixed sentence.
+			log.Printf("ERROR [get node]: node %d is unreadable for its owning tenant: %v", nodeID, err)
+			s.respondError(w, http.StatusInternalServerError, fmt.Sprintf(
+				"Node %d exists but its stored record could not be decoded. The data on "+
+					"disk is damaged; restore this record from a backup. Retrying will not help.",
+				nodeID))
+			return
+		}
 		// ErrNodeNotFound covers both "doesn't exist" and "exists in
 		// another tenant" — the unified error is intentional (no
 		// existence-leak side channel). 404 is the right status either way.

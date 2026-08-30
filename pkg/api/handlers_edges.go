@@ -2,6 +2,8 @@ package api
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -239,6 +241,21 @@ func (s *Server) getEdge(w http.ResponseWriter, r *http.Request, edgeID uint64) 
 	tenantID := getTenantFromContext(r)
 	edge, err := s.graph.GetEdgeForTenant(edgeID, tenantID)
 	if err != nil {
+		// ErrRecordUnreadable is a THIRD condition and says nothing about
+		// existence — see the long note in getNode (handlers_nodes.go) for the
+		// ownership ordering that makes this branch safe. In short:
+		// GetEdgeForTenant establishes ownership from the mmap membership run
+		// (tenantOwnsUnreadableEdge, edge_operations.go) BEFORE choosing the
+		// error, and fails closed to ErrEdgeNotFound whenever it cannot, so
+		// only the owning tenant ever reaches here.
+		if errors.Is(err, storage.ErrRecordUnreadable) {
+			log.Printf("ERROR [get edge]: edge %d is unreadable for its owning tenant: %v", edgeID, err)
+			s.respondError(w, http.StatusInternalServerError, fmt.Sprintf(
+				"Edge %d exists but its stored record could not be decoded. The data on "+
+					"disk is damaged; restore this record from a backup. Retrying will not help.",
+				edgeID))
+			return
+		}
 		// ErrEdgeNotFound covers both "doesn't exist" and "exists in
 		// another tenant" — unified error to avoid existence-leak.
 		s.respondError(w, http.StatusNotFound, "Edge not found")

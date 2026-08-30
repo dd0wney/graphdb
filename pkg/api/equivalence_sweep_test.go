@@ -446,19 +446,23 @@ func newDamagedFixture(t *testing.T) damagedFixture {
 // tell a damaged record from an ID that never existed. It is measured
 // behaviour, not endorsed behaviour.
 //
-// Six rows answer 500 for the damaged record and 404 for the missing one. The
-// two GET rows answer 404 for both, because getNode and getEdge map EVERY
-// error to 404 (handlers_nodes.go, handlers_edges.go). That is not a leak —
-// the stranger's two answers still match, which is what the row above asserts
-// — but it does cost the owner the diagnostic that pkg/storage went to some
-// trouble to produce. It is recorded here rather than hidden, and the
-// assertion runs in both directions: a row that starts to differ fails too, so
-// the change has to be deliberate.
+// Every row now answers 500 for the damaged record and 404 for the missing
+// one. The two GET rows were `false` until 2026-08-30: getNode and getEdge
+// mapped EVERY error to 404, which was not a leak — the stranger's two answers
+// still matched, which is what the row above asserts — but it cost the owner
+// the diagnostic that pkg/storage went to some trouble to produce. Those two
+// handlers now report ErrRecordUnreadable as 500 to the OWNING tenant only, and
+// this ledger records the improvement (see get_unreadable_test.go).
+//
+// The assertion runs in both directions, so flipping a row to true does not
+// relax it: a row marked true that stops differing fails on the first branch of
+// the switch below. These two entries are now what stops that fix from being
+// silently reverted.
 var ownerSeesTheDamage = map[string]bool{
-	"GET node":                   false,
+	"GET node":                   true,
 	"PUT node":                   true,
 	"DELETE node":                true,
-	"GET edge":                   false,
+	"GET edge":                   true,
 	"PUT edge":                   true,
 	"DELETE edge":                true,
 	"POST edge, source position": true,
