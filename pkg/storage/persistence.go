@@ -11,6 +11,7 @@ import (
 
 	"github.com/dd0wney/graphdb/pkg/encryption"
 	"github.com/dd0wney/graphdb/pkg/tenantid"
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // PropertyIndexSnapshot is a serializable representation of a PropertyIndex
@@ -161,6 +162,15 @@ func (gs *GraphStorage) snapshotWithBoundary() (uint64, error) {
 	// Atomic rename
 	if err := gs.fs.Rename(tmpPath, snapshotPath); err != nil {
 		return 0, fmt.Errorf("failed to rename snapshot: %w", err)
+	}
+
+	// The rename is atomic, but the directory entry it creates is not durable
+	// until the parent directory is itself synced. Without this a power cut
+	// after the rename loses the publish whole: the bytes are on the disk and
+	// no name points at them. PR #530 did this for the mmap path; this path
+	// kept the gap until a crash sweep generated the states it produces.
+	if err := vfs.SyncParentDir(gs.fs, snapshotPath); err != nil {
+		return 0, fmt.Errorf("failed to sync the data directory after the snapshot rename: %w", err)
 	}
 
 	// Update LastSnapshot timestamp (safe to modify after releasing lock)
