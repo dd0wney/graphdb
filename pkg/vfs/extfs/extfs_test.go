@@ -247,6 +247,15 @@ func TestUnsupportedOperationsRefuseAndNameThemselves(t *testing.T) {
 				t.Errorf("%s error does not wrap ErrUnsupported, so a caller cannot tell "+
 					"the boundary from a real I/O failure: %v", c.op, err)
 			}
+			// The reflex check. A Go programmer reaches for the standard
+			// sentinel, because it is what os and io/fs consumers use. If this
+			// fails, the boundary is invisible to everyone who does not already
+			// know this package exists — which defeats the point of it.
+			if !errors.Is(err, errors.ErrUnsupported) {
+				t.Errorf("%s error does not satisfy errors.Is(err, errors.ErrUnsupported). "+
+					"A caller writing the standard check gets false and concludes the "+
+					"operation succeeded: %v", c.op, err)
+			}
 			if !strings.Contains(err.Error(), c.op) {
 				t.Errorf("%s error does not name the operation, so the caller cannot tell "+
 					"which call site needs support: %v", c.op, err)
@@ -277,5 +286,36 @@ func TestAdapterSuppliesTheNamesTheExternalFilesystemLacks(t *testing.T) {
 func TestEmptyNameFallsBack(t *testing.T) {
 	if got := extfs.New(&recordingFS{}, "").Name(); got != "extfs" {
 		t.Errorf("Name = %q, want the %q fallback", got, "extfs")
+	}
+}
+
+// nilFS is an external filesystem that breaks its own contract: a nil File
+// beside a nil error. The adapter must report it, not wrap it.
+type nilFS struct{ recordingFS }
+
+func (n *nilFS) OpenFile(string, int, os.FileMode) (extfs.File, error) { return nil, nil }
+
+// A misbehaving external filesystem must fail at construction, not panic later.
+//
+// Wrapping a nil File unconditionally moves the failure to the first Read,
+// deep inside graphdb's storage code, where it reads as a graphdb defect
+// rather than as a defect in code this package does not control.
+func TestANilFileFromTheExternalFilesystemIsReportedNotWrapped(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Open panicked instead of returning an error: %v", r)
+		}
+	}()
+	f, err := extfs.New(&nilFS{}, "misbehaving").Open("/tmp/whatever", os.O_RDONLY, 0)
+	if err == nil {
+		_ = f
+		t.Fatal("Open accepted a nil File beside a nil error. The panic would land on the " +
+			"first Read, inside graphdb's storage code, looking like a graphdb defect")
+	}
+	for _, want := range []string{"misbehaving", "nil File"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not mention %q, so it does not say which driver "+
+				"misbehaved: %v", want, err)
+		}
 	}
 }

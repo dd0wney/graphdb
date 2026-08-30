@@ -91,7 +91,20 @@ type File interface {
 // cannot model correctly. It is not a defect in graphdb and it is not a defect
 // in the library — it is the boundary between them, reported at the call site
 // rather than hidden behind a wrong answer.
-var ErrUnsupported = errors.New("extfs: the external filesystem cannot perform this operation")
+// It WRAPS errors.ErrUnsupported, and that is load-bearing rather than tidy.
+// The standard sentinel's own documentation says a function "should instead
+// return an error including appropriate context that satisfies
+// errors.Is(err, errors.ErrUnsupported)", and that is the check a Go
+// programmer writes by reflex, because it is what os and io/fs consumers use.
+//
+// An earlier version of this package did not wrap it. A caller writing the
+// reflex check got FALSE for every refusal here, and would have concluded the
+// operation succeeded or that some unrelated failure occurred. This package
+// exists to make the boundary visible at the call site, so the one idiom that
+// made it invisible was the worst possible defect for it to carry.
+var ErrUnsupported = fmt.Errorf(
+	"extfs: the external filesystem cannot perform this operation: %w",
+	errors.ErrUnsupported)
 
 type adapter struct {
 	fs   FS
@@ -114,6 +127,13 @@ func (a *adapter) Open(name string, flag int, perm os.FileMode) (vfs.File, error
 	f, err := a.fs.OpenFile(name, flag, perm)
 	if err != nil {
 		return nil, err
+	}
+	// An external FS is code this package does not control. One returning a
+	// nil File beside a nil error would otherwise be wrapped unconditionally,
+	// and the panic would land on the first Read — deep inside graphdb's
+	// storage code, far from the cause, looking like a graphdb defect.
+	if f == nil {
+		return nil, fmt.Errorf("extfs: driver %q returned a nil File and a nil error for %q", a.name, name)
 	}
 	return &file{File: f, name: name}, nil
 }
