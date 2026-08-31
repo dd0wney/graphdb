@@ -12,6 +12,18 @@ import (
 	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
+// On the six discarded errors from w.fs.Remove below.
+//
+// Each removal sits on a path that is already returning the failure that
+// brought us there, and a second error about the tidying would replace the one
+// that says what actually went wrong. A removal that does not happen leaves a
+// .new file beside the WAL, which the next successful truncate overwrites.
+//
+// These were os.Remove until the driver was threaded through, and errcheck did
+// not fire on them: its exclusion is keyed to the os function, not to the
+// interface method. The rule was always applicable and was invisible while the
+// call went straight to the os package. pkg/search's SaveToFileWithFS records
+// the identical surprise, for the identical reason.
 // TruncateUpTo rewrites the WAL keeping only entries with LSN > lsn — the
 // checkpoint primitive behind GraphStorage.CompactWAL (M-1, WAL remanence:
 // purge a deleted tenant's records mid-flight without losing concurrent
@@ -46,7 +58,7 @@ func (w *WAL) TruncateUpTo(lsn uint64) error {
 	}
 
 	walPath := filepath.Join(w.dataDir, "wal.log")
-	newFile, err := os.OpenFile(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)
+	newFile, err := w.fs.Open(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)
 	if err != nil {
 		return fmt.Errorf("failed to create new WAL file: %w", err)
 	}
@@ -58,18 +70,18 @@ func (w *WAL) TruncateUpTo(lsn uint64) error {
 		}
 		if err := writeEntryTo(newWriter, entry); err != nil {
 			newFile.Close()
-			os.Remove(walPath + ".new")
+			_ = w.fs.Remove(walPath + ".new") //nolint:errcheck // tidying a temp file on a path already returning a failure
 			return fmt.Errorf("failed to rewrite WAL entry LSN=%d: %w", entry.LSN, err)
 		}
 	}
 	if err := newWriter.Flush(); err != nil {
 		newFile.Close()
-		os.Remove(walPath + ".new")
+		_ = w.fs.Remove(walPath + ".new") //nolint:errcheck // tidying a temp file on a path already returning a failure
 		return fmt.Errorf("failed to flush rewritten WAL: %w", err)
 	}
 	if err := newFile.Sync(); err != nil {
 		newFile.Close()
-		os.Remove(walPath + ".new")
+		_ = w.fs.Remove(walPath + ".new") //nolint:errcheck // tidying a temp file on a path already returning a failure
 		return fmt.Errorf("failed to sync rewritten WAL: %w", err)
 	}
 
@@ -82,12 +94,12 @@ func (w *WAL) TruncateUpTo(lsn uint64) error {
 // Note newFile was opened without O_APPEND: its offset sits at EOF after
 // the rewrite and persists through the rename (rename changes the name,
 // not the open descriptor), so subsequent appends land correctly.
-func (w *WAL) swapInRewrittenFile(walPath string, newFile *os.File) error {
+func (w *WAL) swapInRewrittenFile(walPath string, newFile vfs.File) error {
 	closeErr := w.file.Close()
 
-	if err := os.Rename(walPath+".new", walPath); err != nil {
+	if err := w.fs.Rename(walPath+".new", walPath); err != nil {
 		newFile.Close()
-		if oldFile, reopenErr := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm); reopenErr == nil {
+		if oldFile, reopenErr := w.fs.Open(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm); reopenErr == nil {
 			w.file = oldFile
 			w.writer = bufio.NewWriter(oldFile)
 		}
@@ -102,9 +114,16 @@ func (w *WAL) swapInRewrittenFile(walPath string, newFile *os.File) error {
 	}
 
 	// Publish the new name. See WAL.Truncate for why the rename alone is not
-	// enough. The rename above still goes through the os package, which
-	// predates pkg/vfs; the sync goes through the WAL's own driver, so a fault
-	// driver can observe it and fail it.
+	// enough.
+	//
+	// The rename above used to call the os package directly while this sync
+	// went through the driver — a parent-directory sync guarding a rename that
+	// happened on a different filesystem. That was recorded as deliberate
+	// ("predates pkg/vfs") and it had two costs beyond testability: a caller
+	// serving a store from memory got wal.log.new renamed on the real disk,
+	// and a crash harness that rebuilt a state into a temporary directory had
+	// this function writing over the directory it had copied FROM. Both halves
+	// now take the same filesystem.
 	if err := vfs.SyncParentDir(w.fs, walPath); err != nil {
 		return fmt.Errorf("failed to sync the WAL directory after rewrite: %w", err)
 	}
@@ -158,7 +177,7 @@ func (w *CompressedWAL) TruncateUpTo(lsn uint64) error {
 	}
 
 	walPath := filepath.Join(w.dataDir, "wal_compressed.log")
-	newFile, err := os.OpenFile(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)
+	newFile, err := w.fs.Open(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)
 	if err != nil {
 		return fmt.Errorf("failed to create new WAL file: %w", err)
 	}
@@ -178,25 +197,25 @@ func (w *CompressedWAL) TruncateUpTo(lsn uint64) error {
 		}
 		if err := writeCompressedEntryTo(newWriter, &rewritten); err != nil {
 			newFile.Close()
-			os.Remove(walPath + ".new")
+			_ = w.fs.Remove(walPath + ".new") //nolint:errcheck // tidying a temp file on a path already returning a failure
 			return fmt.Errorf("failed to rewrite WAL entry LSN=%d: %w", entry.LSN, err)
 		}
 	}
 	if err := newWriter.Flush(); err != nil {
 		newFile.Close()
-		os.Remove(walPath + ".new")
+		_ = w.fs.Remove(walPath + ".new") //nolint:errcheck // tidying a temp file on a path already returning a failure
 		return fmt.Errorf("failed to flush rewritten WAL: %w", err)
 	}
 	if err := newFile.Sync(); err != nil {
 		newFile.Close()
-		os.Remove(walPath + ".new")
+		_ = w.fs.Remove(walPath + ".new") //nolint:errcheck // tidying a temp file on a path already returning a failure
 		return fmt.Errorf("failed to sync rewritten WAL: %w", err)
 	}
 
 	closeErr := w.file.Close()
-	if err := os.Rename(walPath+".new", walPath); err != nil {
+	if err := w.fs.Rename(walPath+".new", walPath); err != nil {
 		newFile.Close()
-		if oldFile, reopenErr := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm); reopenErr == nil {
+		if oldFile, reopenErr := w.fs.Open(walPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, walFilePerm); reopenErr == nil {
 			w.file = oldFile
 			w.writer = bufio.NewWriter(oldFile)
 		}
