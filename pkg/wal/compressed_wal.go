@@ -2,6 +2,7 @@ package wal
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,19 +61,30 @@ func (w *CompressedWAL) Flush() error {
 }
 
 // Close closes the WAL
+// Close flushes, syncs and closes, and reports every failure among them.
+//
+// All three run unconditionally. Returning early on the flush or the sync
+// skipped file.Close and leaked the handle, which a sweep measured at 9 of 24
+// injected failure points — every one of them a WAL that had opened and
+// appended successfully and been closed by its owner.
+//
+// WAL.Close had this right and this did not: two implementations of one idea
+// that had come apart. persistence.go states the same rule for the store's own
+// Close, "The Close runs either way", after the identical defect was fixed
+// there.
+//
+// The descriptor is what cannot be recovered. A flush error is reported to a
+// caller that can act on it; a leaked handle is unreclaimable for the life of
+// the process, and on Windows it blocks removal of the directory holding it.
 func (w *CompressedWAL) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if err := w.writer.Flush(); err != nil {
-		return err
-	}
+	flushErr := w.writer.Flush()
+	syncErr := w.file.Sync()
+	closeErr := w.file.Close()
 
-	if err := w.file.Sync(); err != nil {
-		return err
-	}
-
-	return w.file.Close()
+	return errors.Join(flushErr, syncErr, closeErr)
 }
 
 // Truncate truncates the WAL (used after successful snapshot)

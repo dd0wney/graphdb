@@ -422,6 +422,19 @@ func (gs *GraphStorage) Close() error {
 		if err := gs.batchedWAL.Close(); err != nil {
 			errs = append(errs, err)
 		}
+	// The compressed WAL had no case here at all, so CompressedWAL.Close was
+	// called nowhere in this package and every store opened with
+	// EnableCompression leaked its handle on an ORDINARY shutdown. Not an error
+	// path: the happy one.
+	case gs.useCompression && gs.compressedWAL != nil:
+		if snapErr == nil {
+			if err := gs.compressedWAL.Truncate(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if err := gs.compressedWAL.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	case gs.wal != nil:
 		if snapErr == nil {
 			if err := gs.wal.Truncate(); err != nil {
