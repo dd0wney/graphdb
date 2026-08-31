@@ -219,6 +219,71 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 	// plaintext entries. Checkpoint once (the snapshot is encrypted; WAL
 	// entries ≤ boundary are dropped) so the plaintext leaves the disk
 	// instead of lingering next to new ciphertext.
+	//
+	// MEASURED, not argued. A crash sweep by the github.com/dd0wney/fault
+	// session (harness fault-graphdb-sweep, beside this repository and not
+	// in it), pinned at graphdb b7f904f:
+	//
+	//	states 25, reopened 25, reopen failures 0
+	//	states that held plaintext before the reopen 12
+	//	violations 0
+	//
+	// Conditions, because a figure without them is the defect this comment
+	// exists to prevent.
+	//
+	// MODEL. crash.Model{}, the zero value: exhaustive cover, whole-Write
+	// loss (Sector 0, so no sector tearing), metadata pending until the
+	// parent directory is synced. The same model the mmap publish sweep
+	// used, NOT the Cover: Prefixes the LSA sweep needed.
+	//
+	// SCENARIO, two phases, because this branch needs a WAL written
+	// WITHOUT encryption and then replayed WITH it.
+	//
+	//	phase 1  unencrypted store, 3 nodes, each with one property
+	//	         holding a canary. ABANDONED, not closed.
+	//	phase 2  record the crash over the real directory, reopen WITH
+	//	         an engine, Close. Then run every state, reopen each
+	//	         rebuilt state with the engine, and scan.
+	//
+	// Phase 1 is abandoned rather than closed because a clean Close
+	// snapshots successfully and truncates the WAL (persistence.go, the
+	// Close truncate path, gated on that success), which would destroy
+	// the very plaintext this branch exists to purge.
+	//
+	// THE SCANNER, and this is the most important condition on the
+	// figure. It reads the RAW BYTES of every file under the data
+	// directory and matches three forms of the canary: the literal,
+	// base64.StdEncoding, and base64.RawStdEncoding. graphdb stores
+	// property values base64-encoded, so a scanner checking only for
+	// literal ASCII would report "no plaintext" for data one base64 -d
+	// from readable. Base64 is an encoding, not encryption.
+	//
+	// FOUR CONTROLS gate the figure above:
+	//
+	//	the canary must be findable BEFORE the toggle, or the sweep
+	//	  refuses to run
+	//	the UNCRASHED toggle must leave none, or the invariant is wrong
+	//	  rather than the code
+	//	the original directory must be byte-identical across the sweep,
+	//	  or the run is VOID
+	//	at least one state must have held plaintext when its reopen
+	//	  began. 12 did — a reachability control, not a claim that 12 is
+	//	  an interesting number.
+	//
+	// What the number does NOT say. It walks the toggle path, not every
+	// route by which plaintext reaches a disk: nothing here scans the
+	// LSM, the btree, backups, logs, swap, or core dumps. One fixture — 3
+	// nodes, one tenant, one property, one key — is not a size or shape
+	// argument. Sector 0 means whole writes are lost or kept; it says
+	// nothing about a torn write inside one. This was a single process,
+	// with no concurrent writer and no second store on the same
+	// directory. It says nothing about a deployment where the toggle
+	// never runs because encryption was on from the start; that is a
+	// different path and it is unmeasured. 25 states is what this model
+	// yields for THIS scenario — a longer scenario has more crash points
+	// and this result does not extend to them. A reader who takes "the
+	// encryption toggle is crash-safe" to mean "plaintext cannot survive
+	// on this disk" would be wrong.
 	if gs.encryptionEngine != nil && gs.walReplaySawPlaintext {
 		if err := gs.CompactWAL(); err != nil {
 			return nil, fmt.Errorf("failed to purge plaintext WAL entries after enabling encryption: %w", err)
