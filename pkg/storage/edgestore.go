@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/dd0wney/graphdb/pkg/lsm"
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
 // makeEdgeStoreKey generates edge storage key more efficiently than fmt.Sprintf
@@ -30,8 +31,27 @@ type EdgeStore struct {
 	cacheSize int
 }
 
-// NewEdgeStore creates a new disk-backed edge storage
+// NewEdgeStore creates a new disk-backed edge storage on the default driver.
 func NewEdgeStore(dataDir string, cacheSize int) (*EdgeStore, error) {
+	return NewEdgeStoreWithFS(vfs.Default(), dataDir, cacheSize)
+}
+
+// NewEdgeStoreWithFS creates a new disk-backed edge storage on fsys.
+//
+// The driver has to be threaded because lsm.LSMOptions.FS defaults to
+// vfs.Default(). Until it was, this constructor built its LSM without setting
+// that field, so a store opened with StorageConfig.FS ran its WAL, its snapshot
+// and its btree on the caller's driver and every EDGE on the real disk. Two
+// filesystems at once, and nothing reported it.
+//
+// That is a correctness bug before it is a testability one. StorageConfig.FS
+// offers to "serve a store from memory", and a caller doing that wrote edges to
+// a disk it had asked the store not to touch.
+//
+// It also made the edge store unreachable by any fault or crash driver, which
+// is how it survived: a path outside the seam produces no signal, and a sweep
+// that never saw it reports the same silence as a sweep that found it clean.
+func NewEdgeStoreWithFS(fsys vfs.FileSystem, dataDir string, cacheSize int) (*EdgeStore, error) {
 	// Create LSM storage for edges
 	lsmPath := filepath.Join(dataDir, "edges-lsm")
 	lsmOpts := lsm.LSMOptions{
@@ -39,6 +59,7 @@ func NewEdgeStore(dataDir string, cacheSize int) (*EdgeStore, error) {
 		MemTableSize:         64 * 1024 * 1024, // 64MB memtable (reduces SSTable count 16x)
 		CompactionStrategy:   lsm.DefaultLeveledCompaction(),
 		EnableAutoCompaction: true,
+		FS:                   fsys,
 	}
 
 	lsmStore, err := lsm.NewLSMStorage(lsmOpts)

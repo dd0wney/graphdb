@@ -146,7 +146,7 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		}
 
 		edgeStoreDir := filepath.Join(config.DataDir, "edgestore")
-		edgeStore, err := NewEdgeStore(edgeStoreDir, cacheSize)
+		edgeStore, err := NewEdgeStoreWithFS(gs.fs, edgeStoreDir, cacheSize)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize EdgeStore: %w", err)
 		}
