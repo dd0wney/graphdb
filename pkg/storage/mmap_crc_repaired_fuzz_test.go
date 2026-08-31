@@ -97,7 +97,7 @@ func FuzzMmapSnapshotCRCRepaired(f *testing.F) {
 		}
 		defer func() { _ = snap.close() }()
 
-		exerciseSnapshot(snap)
+		_ = exerciseSnapshot(snap)
 	})
 }
 
@@ -139,7 +139,7 @@ func TestCRCRepairedTargetReachesTheReadPaths(t *testing.T) {
 			continue
 		}
 		opened++
-		exerciseSnapshot(snap)
+		_ = exerciseSnapshot(snap)
 		_ = snap.close()
 	}
 
@@ -150,5 +150,53 @@ func TestCRCRepairedTargetReachesTheReadPaths(t *testing.T) {
 	// this target is decoration too.
 	if opened < samples/10 {
 		t.Fatalf("only %d of %d mutations reached the read paths; this target is near-vacuous, like the truncation one it replaces", opened, samples)
+	}
+}
+
+// TestExerciseSnapshotReachesMembershipContains is a gate on the TARGET, like
+// TestCRCRepairedTargetReachesTheReadPaths above, at function grain.
+//
+// FuzzMmapSnapshotCRCRepaired exists to manufacture one specific state: bytes
+// damaged, checksum recomputed so the file still loads. The run bytes lie
+// outside computeCRC (mmap_snapshot_format.go:185 takes the directories and the
+// metadata, and no records or runs), so that state is exactly a damaged
+// membership run behind a valid CRC.
+//
+// membershipContains is the function that state corrupts. tenantOwnsUnreadableNode
+// calls it to decide tenant membership, and node_operations.go:405 already says
+// in words that a damaged run "can return true". The target built the state and
+// then never asked the question — it reached the door and turned around.
+//
+// Reported by the github.com/dd0wney/fault session, which went looking for this
+// gap before building a harness to cover it and found the harness already here.
+func TestExerciseSnapshotReachesMembershipContains(t *testing.T) {
+	base := validSnapshotBytes(t)
+	if len(base) == 0 {
+		t.Skip("no corpus")
+	}
+	path := filepath.Join(t.TempDir(), "snapshot.mmap")
+	if err := os.WriteFile(path, base, 0o600); err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	snap, err := openMmapSnapshot(path)
+	if err != nil {
+		t.Fatalf("the untouched corpus snapshot must open, or this gate proves nothing: %v", err)
+	}
+	defer func() { _ = snap.close() }()
+
+	counts := exerciseSnapshot(snap)
+
+	// The control. If the fixture carries no membership runs at all then a zero
+	// below means "nothing to reach", not "reached nothing", and the gate would
+	// be the vacuous kind it exists to catch.
+	if counts.membershipRuns == 0 {
+		t.Fatalf("the fixture has no membership runs, so this gate cannot distinguish " +
+			"an unreached function from an absent one")
+	}
+	if counts.membershipContains == 0 {
+		t.Errorf("exerciseSnapshot drove %d membership runs and never called "+
+			"membershipContains, so both corruption targets manufacture a damaged run "+
+			"behind a valid CRC and never ask the tenant question it corrupts",
+			counts.membershipRuns)
 	}
 }
