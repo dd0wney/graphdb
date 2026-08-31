@@ -1,6 +1,10 @@
 package query
 
-import "github.com/dd0wney/graphdb/pkg/storage"
+import (
+	"fmt"
+
+	"github.com/dd0wney/graphdb/pkg/storage"
+)
 
 // matchPath matches a pattern with relationships (path traversal)
 func (ms *MatchStep) matchPath(ctx *ExecutionContext, pattern *Pattern, existingBinding *BindingSet) ([]*BindingSet, error) {
@@ -24,8 +28,14 @@ func (ms *MatchStep) matchPath(ctx *ExecutionContext, pattern *Pattern, existing
 			continue
 		}
 
-		pathResults := ms.traversePath(ctx, startNode, pattern, 0, startBinding)
+		pathResults, err := ms.traversePath(ctx, startNode, pattern, 0, startBinding)
 		results = append(results, pathResults...)
+		if err != nil {
+			// Results travel WITH the error, never instead of it: a truncated
+			// answer is still an answer, and withholding it would make the cap
+			// useless rather than honest. ADR 0003's enumeration rule.
+			return results, err
+		}
 	}
 
 	return results, nil
@@ -33,10 +43,10 @@ func (ms *MatchStep) matchPath(ctx *ExecutionContext, pattern *Pattern, existing
 
 // traversePath recursively traverses relationships in a pattern.
 // Dispatches to traverseVariablePath when the relationship has variable-length hops.
-func (ms *MatchStep) traversePath(ctx *ExecutionContext, currentNode *storage.Node, pattern *Pattern, relIndex int, currentBinding *BindingSet) []*BindingSet {
+func (ms *MatchStep) traversePath(ctx *ExecutionContext, currentNode *storage.Node, pattern *Pattern, relIndex int, currentBinding *BindingSet) ([]*BindingSet, error) {
 	// Base case: no more relationships
 	if relIndex >= len(pattern.Relationships) {
-		return []*BindingSet{currentBinding}
+		return []*BindingSet{currentBinding}, nil
 	}
 
 	rel := pattern.Relationships[relIndex]
@@ -53,7 +63,7 @@ func (ms *MatchStep) traversePath(ctx *ExecutionContext, currentNode *storage.No
 }
 
 // traverseFixedPath handles single-hop relationship traversal (the original logic).
-func (ms *MatchStep) traverseFixedPath(ctx *ExecutionContext, currentNode *storage.Node, pattern *Pattern, relIndex int, currentBinding *BindingSet) []*BindingSet {
+func (ms *MatchStep) traverseFixedPath(ctx *ExecutionContext, currentNode *storage.Node, pattern *Pattern, relIndex int, currentBinding *BindingSet) ([]*BindingSet, error) {
 	results := make([]*BindingSet, 0)
 	rel := pattern.Relationships[relIndex]
 	targetNodePattern := pattern.Nodes[relIndex+1]
@@ -79,11 +89,14 @@ func (ms *MatchStep) traverseFixedPath(ctx *ExecutionContext, currentNode *stora
 			newBinding.bindings[targetNodePattern.Variable] = targetNode
 		}
 
-		pathResults := ms.traversePath(ctx, targetNode, pattern, relIndex+1, newBinding)
+		pathResults, err := ms.traversePath(ctx, targetNode, pattern, relIndex+1, newBinding)
 		results = append(results, pathResults...)
+		if err != nil {
+			return results, err
+		}
 	}
 
-	return results
+	return results, nil
 }
 
 // bfsEntry tracks BFS state for variable-length path traversal.
@@ -97,15 +110,34 @@ type bfsEntry struct {
 // traverseVariablePath uses BFS to find all paths within [MinHops, MaxHops].
 // Cycle detection is per-path (a single path can't revisit a node, but different
 // paths can reach the same node). Relationship variables are bound as []*storage.Edge.
-func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *storage.Node, pattern *Pattern, relIndex int, currentBinding *BindingSet) []*BindingSet {
+func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *storage.Node, pattern *Pattern, relIndex int, currentBinding *BindingSet) ([]*BindingSet, error) {
 	results := make([]*BindingSet, 0)
 	rel := pattern.Relationships[relIndex]
 	targetNodePattern := pattern.Nodes[relIndex+1]
 
+	// An explicit request above the cap is a caller asking for something the
+	// engine will not do. Refuse it, exactly as ValidateTraversalOptions
+	// refuses the same request on the BFS/DFS surface — the rule already
+	// existed here and was applied on one path only.
+	if rel.MaxHops > MaxAllowedTraversalDepth {
+		return nil, fmt.Errorf("%w: got %d (max %d)", ErrInvalidTraversalDepth, rel.MaxHops, MaxAllowedTraversalDepth)
+	}
+
+	// An unbounded request is different: the caller asked for "all", and both
+	// available answers are bad. Erroring makes the pattern unusable on any
+	// graph; the silent clamp this replaces answered a question nobody asked.
+	// So run to the cap and report having reached it.
+	// Only an ENGINE-imposed cap is incompleteness. A caller who asked for
+	// *1..2 and got two hops received exactly what they requested, and
+	// reporting that as truncated would make the signal meaningless — it would
+	// fire on nearly every bounded pattern and readers would learn to ignore
+	// it. The distinction is whether the caller named the bound.
+	engineCapped := rel.MaxHops == -1
 	maxHops := rel.MaxHops
-	if maxHops == -1 || maxHops > MaxAllowedTraversalDepth {
+	if engineCapped {
 		maxHops = MaxAllowedTraversalDepth
 	}
+	truncated := false
 
 	// BFS queue with per-path visited tracking
 	startVisited := map[uint64]bool{currentNode.ID: true}
@@ -114,7 +146,7 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 	for len(queue) > 0 {
 		// Periodic cancellation check to respect query timeouts
 		if ctx.IsCancelled() {
-			return results
+			return results, nil
 		}
 
 		entry := queue[0]
@@ -132,16 +164,44 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 					newBinding.bindings[targetNodePattern.Variable] = entry.node
 				}
 
-				pathResults := ms.traversePath(ctx, entry.node, pattern, relIndex+1, newBinding)
+				pathResults, err := ms.traversePath(ctx, entry.node, pattern, relIndex+1, newBinding)
 				results = append(results, pathResults...)
+				if err != nil {
+					return results, err
+				}
+
+				// This path had NO result limit at all, so a caller could not
+				// even ask for one. The set grows with the number of ROUTES,
+				// not the number of nodes, because the visited set is cloned
+				// per branch — so a node reachable twenty ways costs twenty
+				// bindings. MaxAllowedResults is the existing constant for
+				// exactly this ("the absolute maximum to prevent memory
+				// exhaustion"); reaching it is truncation and is reported.
+				if len(results) >= MaxAllowedResults {
+					ctx.noteTruncation(fmt.Errorf("%w: stopped after %d results (max %d)",
+						ErrTraversalTruncated, len(results), MaxAllowedResults))
+					return results, nil
+				}
 			}
 		}
 
+		edges := ms.getEdges(ctx, entry.node, rel)
+
 		if entry.depth >= maxHops {
+			// At the cap. The answer is incomplete only if something here would
+			// actually have been expanded — a frontier node whose neighbours are
+			// all already visited on this path costs the caller nothing.
+			if engineCapped {
+				for _, edge := range edges {
+					if !entry.visited[ms.targetNodeID(edge, rel, entry.node)] {
+						truncated = true
+						break
+					}
+				}
+			}
 			continue
 		}
 
-		edges := ms.getEdges(ctx, entry.node, rel)
 		for _, edge := range edges {
 			neighborID := ms.targetNodeID(edge, rel, entry.node)
 
@@ -175,7 +235,14 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 		}
 	}
 
-	return results
+	// A nil error here is the positive assertion that the traversal ran out of
+	// graph rather than out of budget. That is the whole point of the change:
+	// a caller must be able to tell a complete answer from a capped one.
+	if truncated {
+		ctx.noteTruncation(fmt.Errorf("%w: reached the depth cap of %d with unexplored neighbours remaining",
+			ErrTraversalTruncated, maxHops))
+	}
+	return results, nil
 }
 
 // getEdges returns edges from a node filtered by relationship type and direction.
