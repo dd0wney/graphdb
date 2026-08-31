@@ -23,6 +23,17 @@ const (
 	MaxAllowedResults = 1000000
 )
 
+// ErrTraversalTruncated reports that a traversal stopped at an engine limit
+// rather than because it ran out of graph.
+//
+// It travels BESIDE the results, never instead of them: a caller gets what was
+// found plus this error, and a nil error is the positive assertion that the
+// answer is complete. That is ADR 0003's enumeration rule extended to
+// traversal, and it exists because the alternative is a limit that acts and
+// does not tell the caller — an answer to a question nobody asked, indistinguishable
+// from an answer to the one they did.
+var ErrTraversalTruncated = fmt.Errorf("traversal stopped at an engine limit; the result is incomplete")
+
 // ErrInvalidTraversalDepth is returned when depth is out of valid range
 var ErrInvalidTraversalDepth = fmt.Errorf("traversal depth out of valid range [%d, %d]", MinTraversalDepth, MaxAllowedTraversalDepth)
 

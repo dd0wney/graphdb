@@ -34,6 +34,22 @@ type ExecutionContext struct {
 	tenantID string         // Snapshotted from context at construction.
 	bindings map[string]any // Variable bindings
 	results  []*BindingSet
+
+	// truncation records that a step stopped at an engine limit rather than at
+	// the edge of the graph. It is NOT returned as a step error, because a step
+	// error collapses the whole ResultSet — and a truncated answer is still an
+	// answer. The executor surfaces it BESIDE the built results, so a nil error
+	// is the positive assertion that the answer is complete. ADR 0003's
+	// enumeration rule, applied to traversal.
+	truncation error
+}
+
+// noteTruncation records the first limit a query ran into. The first is kept
+// rather than the last: it is the one that shaped everything downstream of it.
+func (ctx *ExecutionContext) noteTruncation(err error) {
+	if ctx.truncation == nil {
+		ctx.truncation = err
+	}
 }
 
 // newExecutionContext constructs an ExecutionContext, snapshotting
@@ -199,9 +215,10 @@ func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPl
 		return nil, fmt.Errorf("cancelled before building results: %w", err)
 	}
 
-	// Build final result set
+	// Build final result set. execCtx.truncation travels WITH the results,
+	// never instead of them.
 	if query.Return != nil {
-		return e.buildResultSet(execCtx, query.Return, query.Limit, query.Skip), nil
+		return e.buildResultSet(execCtx, query.Return, query.Limit, query.Skip), execCtx.truncation
 	}
 
 	// For write queries, return count
@@ -209,5 +226,5 @@ func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPl
 		Columns: []string{"affected"},
 		Rows:    []map[string]any{{"affected": len(execCtx.results)}},
 		Count:   len(execCtx.results),
-	}, nil
+	}, execCtx.truncation
 }
