@@ -105,6 +105,25 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		gs.fs = vfs.Default()
 	}
 
+	// Everything below can acquire a WAL handle, an EdgeStore and an mmap
+	// mapping, and every error return after that point used to abandon them.
+	// The caller receives no store on a failure, so it has nothing to Close and
+	// the resources are unreclaimable for the life of the process. CERT
+	// FIO42-C, and the shape that rule predicts: violated on the error paths,
+	// because the happy path closes.
+	//
+	// A fault sweep counted the reach — 4 leaking points on an ordinary open,
+	// 6 with disk-backed edges, and 17 on the encryption-toggle path, which
+	// does the most work after the WAL opens. One defer, rather than a close
+	// beside every return, is what keeps that count at zero as returns are
+	// added.
+	opened := false
+	defer func() {
+		if !opened {
+			gs.releaseAfterFailedOpen()
+		}
+	}()
+
 	// Create data directory if it doesn't exist
 	if err := gs.fs.MkdirAll(config.DataDir, dirPermissions); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
@@ -206,7 +225,44 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		}
 	}
 
+	opened = true
 	return gs, nil
+}
+
+// releaseAfterFailedOpen closes everything the constructor acquired, for a
+// construction that is about to return an error instead of a store.
+//
+// Each error is discarded on purpose. The constructor is already returning the
+// failure that brought us here, and a cleanup error would replace the one that
+// says what actually went wrong. The handle is the point, not the report.
+//
+// Independent ifs rather than a switch: only one WAL flavour is ever set today,
+// and a guard that depends on that staying true is a guard that stops working
+// the day it does not.
+func (gs *GraphStorage) releaseAfterFailedOpen() {
+	// The mapping first. Munmap is not managed by the garbage collector, so a
+	// leaked mapping is address space nothing will ever reclaim — worse than a
+	// leaked descriptor, and mmap mode is on by default since v1.2.
+	if gs.mmapSnap != nil {
+		_ = gs.mmapSnap.close()
+		gs.mmapSnap = nil
+	}
+	if gs.edgeStore != nil {
+		_ = gs.edgeStore.Close()
+		gs.edgeStore = nil
+	}
+	if gs.batchedWAL != nil {
+		_ = gs.batchedWAL.Close()
+		gs.batchedWAL = nil
+	}
+	if gs.compressedWAL != nil {
+		_ = gs.compressedWAL.Close()
+		gs.compressedWAL = nil
+	}
+	if gs.wal != nil {
+		_ = gs.wal.Close()
+		gs.wal = nil
+	}
 }
 
 // NOTE: Parallel traversal methods (BFS, DFS, shortest path) are available
