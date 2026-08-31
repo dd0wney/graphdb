@@ -7,6 +7,7 @@ package storage
 import (
 	"bufio"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"sort"
 	"sync/atomic"
@@ -43,6 +44,9 @@ func writeMmapSnapshotDataWithFS(fs vfs.FileSystem, path string, nodes []*Node, 
 
 	if len(nodes) > 0 {
 		hdr.minNodeID, hdr.maxNodeID = nodes[0].ID, nodes[len(nodes)-1].ID
+		if err := checkDirectorySpan(uint64(len(nodes)), hdr.minNodeID, hdr.maxNodeID, "node"); err != nil {
+			return err
+		}
 		dir := newDirectory(hdr.minNodeID, hdr.maxNodeID)
 		for _, n := range nodes {
 			dir[n.ID-hdr.minNodeID] = offset
@@ -62,6 +66,9 @@ func writeMmapSnapshotDataWithFS(fs vfs.FileSystem, path string, nodes []*Node, 
 
 	if len(edges) > 0 {
 		hdr.minEdgeID, hdr.maxEdgeID = edges[0].ID, edges[len(edges)-1].ID
+		if err := checkDirectorySpan(uint64(len(edges)), hdr.minEdgeID, hdr.maxEdgeID, "edge"); err != nil {
+			return err
+		}
 		dir := newDirectory(hdr.minEdgeID, hdr.maxEdgeID)
 		for _, e := range edges {
 			dir[e.ID-hdr.minEdgeID] = offset
@@ -216,6 +223,61 @@ func writeMmapSnapshotDataWithFS(fs vfs.FileSystem, path string, nodes []*Node, 
 		return err
 	}
 	return f.Sync()
+}
+
+// maxDenseDirectorySpan and denseDirectoryFillRatio bound the dense directory
+// the writer builds. See checkDirectorySpan.
+const (
+	maxDenseDirectorySpan   uint64 = 1 << 26 // 67,108,864 entries, a 512 MiB directory
+	denseDirectoryFillRatio uint64 = 64      // refuse below about 1.6% occupancy
+)
+
+// checkDirectorySpan refuses a snapshot whose dense directory would be both
+// enormous and almost entirely holes.
+//
+// This is the write-side counterpart to checkDirRange in the reader, which
+// refuses a snapshot whose declared span disagrees with the directory the file
+// carries. Until this existed the span was validated coming OFF the disk and
+// not going back on: the writer took nodes[len-1].ID on trust, and newDirectory
+// allocated and filled maxID-minID+1 entries from it.
+//
+// A crash sweep reached that. The record area lies outside computeCRC, so one
+// flipped byte in an ID field passes the checksum, loads, sorts last, and
+// becomes maxID. The next ordinary Close re-publishes and fills a directory
+// sized by the garbage.
+//
+// The measured case: one flipped byte gave minNodeID 2 and maxNodeID
+// 4278190081, a span of 4,278,190,080. newDirectory fills at 3.8 ns/entry, so
+// that span is 16.3 seconds of CPU. It allocates make([]int64, span) at 34 GB,
+// and directoryBytes then allocates a SECOND buffer of len(dir)*8 — peak demand
+// is about 69 GB, not 34. Both runs ended in the OOM killer, one of them in
+// this repository's own test suite before the guard existed.
+//
+// TWO conditions, and both are required. An absolute cap alone would refuse a
+// large healthy store for being large, which trades a rare hang for a routine
+// outage. The occupancy test is what separates "big" from "wrong": a dense
+// directory earns its shape only while it is mostly full, so a store whose IDs
+// are dense is never refused at any size.
+//
+// Refusing is safe. persistence.go:408 truncates the WAL ONLY after a snapshot
+// that succeeded, so on a refusal the old snapshot and the WAL remain the
+// recovery pair. The damaged-record refusal (#521) already relies on that
+// invariant, and this reuses its wording so the two read alike in a log.
+func checkDirectorySpan(count, minID, maxID uint64, what string) error {
+	if count == 0 {
+		return nil
+	}
+	if maxID < minID {
+		return fmt.Errorf("refusing to write a snapshot: %s ID range inverted, min %d > max %d",
+			what, minID, maxID)
+	}
+	span := maxID - minID + 1
+	if span <= maxDenseDirectorySpan || span/count <= denseDirectoryFillRatio {
+		return nil
+	}
+	return fmt.Errorf("refusing to write a snapshot: %d %s records span IDs %d..%d, so a dense "+
+		"directory needs %d entries and would be %d%% empty; the snapshot on disk and the WAL "+
+		"remain the recovery pair", count, what, minID, maxID, span, 100-(count*100/span))
 }
 
 func newDirectory(minID, maxID uint64) []int64 {
