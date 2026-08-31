@@ -178,6 +178,37 @@ func writeMmapSnapshotDataWithFS(fs vfs.FileSystem, path string, nodes []*Node, 
 
 	hdr.crc = computeCRC(hdr.marshal()[:hCRC], nodeDirBytes, edgeDirBytes, adjDirBytes, membDirBytes, metaBytes)
 
+	// The header goes in last, out of order, because its CRC and its section
+	// offsets are only known once the body is written. Flush, back-patch the
+	// reserved header at offset 0, then one Sync covers both.
+	//
+	// THIS FUNCTION DOES NOT MAKE THAT SAFE, AND IT CANNOT. The safety comes
+	// from the caller: snapshotMmapLocked passes a .tmp path and renames only
+	// after this returns. A power cut anywhere in the window above leaves a
+	// torn temporary file that nothing ever publishes. Hand this function a
+	// FINAL path and the protection is gone whole — writeMmapSnapshot below
+	// does exactly that, which is why its only callers are benchmarks.
+	//
+	// MEASURED. The github.com/dd0wney/fault session (v0.1.0) went looking for
+	// a torn published header on this path and could not build one, for the
+	// reason above. crash.Model{Sector: 4096, Cover: crash.Prefixes}, 400 nodes
+	// so the body spans more than one sector, 107 states:
+	//
+	//	states: map[0:21 200:47 400:39]   0 violations, 0 reopen failures
+	//
+	// Every state holds nothing, the first batch, or both. No published
+	// snapshot failed to decode.
+	//
+	// Two limits it stated. Prefixes was necessary: 14 pending units give 16384
+	// states against a cap of 4096, so the sweep does not visit every legal
+	// subset. And the check reopens and counts nodes, so a torn snapshot that
+	// reopens with the right count is invisible to it.
+	//
+	// STILL UNMEASURED: whether hdr.crc DETECTS a torn header. No crash on this
+	// path can produce one, so a crash sweep is the wrong instrument. vfs.Mapper
+	// is the right one — a driver that implements Map hands the reader bytes it
+	// chose, so a bad CRC reaches the production read path with no corrupt file
+	// on any disk. Nobody has run that yet.
 	if err := w.Flush(); err != nil {
 		return err
 	}
