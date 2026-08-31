@@ -1,6 +1,7 @@
 package query
 
 import (
+	"errors"
 	"fmt"
 	"log"
 
@@ -123,14 +124,21 @@ func (t *Traverser) GetNeighborhood(nodeID uint64, hops int, direction Direction
 		Direction:   direction,
 		EdgeTypes:   []string{},
 		MaxDepth:    hops,
-		MaxResults:  DefaultMaxResults,
+		// MaxResults is left at 0 on purpose. Naming DefaultMaxResults here
+		// would make BFS read this as a caller-chosen bound rather than an
+		// engine limit, which suppresses ErrTraversalTruncated. This function's
+		// own callers never get a chance to name a limit, so the bound BFS
+		// applies is the engine's, and the signal must reach them.
 	})
 
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrTraversalTruncated) {
 		return nil, err
 	}
 
-	return result.Nodes, nil
+	// A truncated answer is still an answer: give back the nodes found so far
+	// together with the error, so a nil error stays the positive assertion
+	// that the neighbourhood is complete.
+	return result.Nodes, err
 }
 
 // getNeighbors gets neighboring node IDs based on direction

@@ -257,3 +257,53 @@ func TestDFS_EngineDefaultLimitReached_ReturnsTruncatedError(t *testing.T) {
 		t.Fatalf("expected exactly the engine default of %d nodes, got %d", DefaultMaxResults, len(result.Nodes))
 	}
 }
+
+// --- GetNeighborhood must not swallow the signal it inherits from BFS ------
+//
+// GetNeighborhood used to pass MaxResults: DefaultMaxResults explicitly into
+// TraversalOptions. That non-zero value made BFS read the bound as
+// caller-named, so BFS's engine-truncation signal could never fire for this
+// caller, no matter how large the neighbourhood was. GetNeighborhood also
+// discarded any non-nil error's results outright (`if err != nil { return
+// nil, err }`), so even a signal that did fire would have thrown the nodes
+// away. Both had to change: leave MaxResults at 0 so BFS reads the bound as
+// the engine's, and give back the nodes together with the error when that
+// error wraps ErrTraversalTruncated.
+
+func TestGetNeighborhood_CompleteNeighborhood_ReturnsNilError(t *testing.T) {
+	gs, rootID, cleanup := starGraph(t, 5)
+	defer cleanup()
+
+	traverser := NewTraverser(gs)
+	nodes, err := traverser.GetNeighborhood(rootID, 1, DirectionOutgoing)
+
+	if err != nil {
+		t.Fatalf("expected nil error for a complete neighbourhood, got: %v", err)
+	}
+	// Positive control: the graph and the driver are real, not an empty stub.
+	if len(nodes) != 6 {
+		t.Fatalf("expected 6 nodes (root + 5 children), got %d", len(nodes))
+	}
+}
+
+func TestGetNeighborhood_EngineDefaultLimitReached_ReturnsNodesAndTruncatedError(t *testing.T) {
+	const childCount = DefaultMaxResults + 5
+	gs, rootID, cleanup := starGraph(t, childCount)
+	defer cleanup()
+
+	traverser := NewTraverser(gs)
+	nodes, err := traverser.GetNeighborhood(rootID, 1, DirectionOutgoing)
+
+	if err == nil {
+		t.Fatalf("expected a truncation error: neighbourhood has %d reachable nodes, engine default caps at %d",
+			childCount+1, DefaultMaxResults)
+	}
+	if !errors.Is(err, ErrTraversalTruncated) {
+		t.Errorf("expected error to wrap ErrTraversalTruncated, got: %v", err)
+	}
+	// The nodes must travel WITH the error, not be thrown away: a truncated
+	// answer is still an answer.
+	if len(nodes) != DefaultMaxResults {
+		t.Fatalf("expected the nodes found before truncation (%d), got %d", DefaultMaxResults, len(nodes))
+	}
+}
