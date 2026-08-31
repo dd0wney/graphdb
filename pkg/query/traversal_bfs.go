@@ -9,6 +9,12 @@ import (
 
 // BFS performs breadth-first search traversal
 func (t *Traverser) BFS(opts TraversalOptions) (*TraversalResult, error) {
+	// The caller's original MaxResults, read before ValidateTraversalOptions
+	// applies the engine default. Only that default counts as an engine-imposed
+	// limit: a caller who names a limit and reaches it received exactly what
+	// was requested, not an incomplete answer.
+	engineLimit := opts.MaxResults == 0
+
 	// Validate and normalize options
 	if err := ValidateTraversalOptions(&opts); err != nil {
 		return nil, fmt.Errorf("invalid traversal options: %w", err)
@@ -84,6 +90,18 @@ func (t *Traverser) BFS(opts TraversalOptions) (*TraversalResult, error) {
 	// Log summary if errors occurred
 	if len(result.Errors) > 0 {
 		log.Printf("WARNING: BFS traversal completed with %d errors (%d nodes skipped)", len(result.Errors), len(result.SkippedIDs))
+	}
+
+	// The queue can still hold visited duplicates once it stops being drained,
+	// so truncation is real only when something UNvisited remains: that is
+	// graph the traversal would have reached next, not already-counted work.
+	if engineLimit && len(result.Nodes) >= opts.MaxResults {
+		for _, id := range queue {
+			if !visited[id] {
+				return result, fmt.Errorf("%w: stopped after %d nodes (engine default %d) with more graph left to visit",
+					ErrTraversalTruncated, len(result.Nodes), opts.MaxResults)
+			}
+		}
 	}
 
 	return result, nil

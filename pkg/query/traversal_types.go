@@ -2,7 +2,6 @@ package query
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
@@ -60,13 +59,14 @@ func ValidateTraversalOptions(opts *TraversalOptions) error {
 	if opts.MaxResults < 0 {
 		return ErrInvalidMaxResults
 	}
+	if opts.MaxResults > MaxAllowedResults {
+		return fmt.Errorf("%w: got %d (max %d)", ErrInvalidMaxResults, opts.MaxResults, MaxAllowedResults)
+	}
 
-	// Apply default MaxResults if not set
+	// Apply default MaxResults if not set (0 has no other valid meaning here,
+	// unlike MaxDepth=0, so defaulting it is safe and the owner asked to keep it).
 	if opts.MaxResults == 0 {
 		opts.MaxResults = DefaultMaxResults
-	} else if opts.MaxResults > MaxAllowedResults {
-		opts.MaxResults = MaxAllowedResults
-		log.Printf("Warning: MaxResults capped to %d", MaxAllowedResults)
 	}
 
 	return nil
