@@ -197,6 +197,22 @@ func (i *LSAIndex) SaveToFileWithFS(fsys vfs.FileSystem, path string) error {
 	// Sync before Close. POSIX does not make close(2) flush, so without this
 	// the rename below can publish a name over bytes that never reached the
 	// platter, leaving a file that exists and does not decode.
+	//
+	// MEASURED. A crash sweep by the github.com/dd0wney/fault session (v0.1.0,
+	// harness fault-graphdb-sweep, beside this repository and not in it) drove
+	// this path and reopened every state it produced:
+	//
+	//	main 6686def                        190 absent, 156 decoded,   0 torn
+	//	the same, with this Sync removed    205 absent, 171 decoded, 255 torn
+	//
+	// A torn state holds a file that is present and does not decode:
+	// "decode snapshot: unexpected EOF". That is a rename publishing a name
+	// over bytes that never reached the platter, which is exactly what the
+	// paragraph above claims and what nothing measured until now.
+	//
+	// The second row is what gives the first one a meaning. A sweep that only
+	// ever ran against correct code reports a pass it cannot distinguish from
+	// never having looked.
 	if err := f.Sync(); err != nil {
 		_ = f.Close()
 		_ = fsys.Remove(tmp) //nolint:errcheck // see the paragraph above

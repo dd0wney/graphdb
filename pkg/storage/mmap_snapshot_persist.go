@@ -103,6 +103,32 @@ func (gs *GraphStorage) snapshotMmapLocked(boundary uint64) (uint64, error) {
 	// at them. Reporting the error matters as much as making the call — a
 	// caller that checkpoints the WAL on the strength of this snapshot must
 	// not be told the snapshot is durable when the name is not.
+	//
+	// MEASURED, not argued. A crash sweep by the github.com/dd0wney/fault
+	// session (v0.1.0, harness fault-graphdb-sweep, beside this repository and
+	// not in it) generated the on-disk states a power cut can leave here:
+	//
+	//	e418768 (#529), before #530 added this call   204 states,  45 violations
+	//	2df539b (#535) and main 6686def                74 states,   0 violations
+	//
+	// One failing state, named structurally:
+	//
+	//	after=marker|first-publish-returned:create1/lost=data|snapshot.mmap.tmp:rename1
+	//
+	// Conditions, because a figure without them is the defect this comment
+	// exists to prevent. crash.Model{}, so a unit is a whole Write call and no
+	// sector splitting applies. Two publishes, with a marker written between
+	// them in its OWN directory; the harness syncs the marker's directory and
+	// deliberately not this one, because syncing this one would make the rename
+	// durable and hide the defect. The rule is: if the marker is durable then
+	// the first publish returned before the crash, so the store must hold at
+	// least the first batch.
+	//
+	// What the numbers do NOT say. Two publishes alone do not discriminate. The
+	// same session measured that with the marker rule off and everything else
+	// unchanged, e418768 PASSES. The rule does the work; the second publish
+	// only makes the rule expressible. Copying this shape without the marker
+	// rule produces a sweep that cannot fail.
 	if err := vfs.SyncParentDir(gs.fs, finalPath); err != nil {
 		return 0, fmt.Errorf("failed to sync the data directory after publishing the mmap snapshot: %w", err)
 	}
