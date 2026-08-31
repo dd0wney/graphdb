@@ -9,6 +9,12 @@ import (
 
 // DFS performs depth-first search traversal
 func (t *Traverser) DFS(opts TraversalOptions) (*TraversalResult, error) {
+	// The caller's original MaxResults, read before ValidateTraversalOptions
+	// applies the engine default. Only that default counts as an engine-imposed
+	// limit: a caller who names a limit and reaches it received exactly what
+	// was requested, not an incomplete answer.
+	engineLimit := opts.MaxResults == 0
+
 	// Validate and normalize options
 	if err := ValidateTraversalOptions(&opts); err != nil {
 		return nil, fmt.Errorf("invalid traversal options: %w", err)
@@ -22,7 +28,8 @@ func (t *Traverser) DFS(opts TraversalOptions) (*TraversalResult, error) {
 		Errors:     make([]TraversalError, 0),
 	}
 
-	if err := t.dfsRecursive(opts.StartNodeID, 0, opts, visited, result); err != nil {
+	truncated := false
+	if err := t.dfsRecursive(opts.StartNodeID, 0, opts, visited, result, &truncated); err != nil {
 		return result, err
 	}
 
@@ -31,18 +38,37 @@ func (t *Traverser) DFS(opts TraversalOptions) (*TraversalResult, error) {
 		log.Printf("WARNING: DFS traversal completed with %d errors (%d nodes skipped)", len(result.Errors), len(result.SkippedIDs))
 	}
 
+	// truncated is set only when an unvisited, in-depth node was turned away
+	// purely because the result count had already reached the cap — that is
+	// real graph the traversal never got to look at.
+	if engineLimit && truncated {
+		return result, fmt.Errorf("%w: stopped after %d nodes (engine default %d) with more graph left to visit",
+			ErrTraversalTruncated, len(result.Nodes), opts.MaxResults)
+	}
+
 	return result, nil
 }
 
-// dfsRecursive is the recursive DFS implementation
+// dfsRecursive is the recursive DFS implementation. truncated is set to true
+// when a node is turned away solely because the result count reached
+// opts.MaxResults, while it was otherwise unvisited and within depth — that
+// is, real graph the traversal never got to look at.
 func (t *Traverser) dfsRecursive(
 	nodeID uint64,
 	depth int,
 	opts TraversalOptions,
 	visited map[uint64]bool,
 	result *TraversalResult,
+	truncated *bool,
 ) error {
-	if visited[nodeID] || depth > opts.MaxDepth || len(result.Nodes) >= opts.MaxResults {
+	if visited[nodeID] {
+		return nil
+	}
+	if depth > opts.MaxDepth {
+		return nil
+	}
+	if len(result.Nodes) >= opts.MaxResults {
+		*truncated = true
 		return nil
 	}
 
@@ -81,7 +107,7 @@ func (t *Traverser) dfsRecursive(
 	}
 
 	for _, neighborID := range neighbors {
-		if err := t.dfsRecursive(neighborID, depth+1, opts, visited, result); err != nil {
+		if err := t.dfsRecursive(neighborID, depth+1, opts, visited, result, truncated); err != nil {
 			return err // Propagate error in strict mode
 		}
 	}
