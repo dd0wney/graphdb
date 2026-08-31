@@ -24,6 +24,61 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# --- Working-tree guard ------------------------------------------------------
+#
+# gremlins mutates *.go files in place and reverts them when it finishes. A
+# crash mid-run, a kill, or a background run that overlaps a `git add -A` can
+# catch a mutant in a commit with fault injection silently disabled — that
+# happened to a sibling project, and only a `gh` warning about an uncommitted
+# change caught it. Nothing in this script checked for it before.
+#
+# Scoped to tracked *.go files only, both the refusal check and the restore.
+# This is not an optimisation. The sibling project's first guard keyed on the
+# whole working tree, and its own selftest writes a temporary file beside its
+# fixtures — so the guard refused the project's own documented workflow. A
+# guard with a wider blast radius than its hazard is one that gets disabled.
+# graphdb has no in-tree mutation baseline today, so this is precautionary
+# rather than solving a live problem here. Scope it narrowly anyway: the
+# narrowness will look unnecessary to whoever reads this next, and this
+# comment is the reason it must survive that.
+if ! command -v git >/dev/null 2>&1; then
+  echo "mutation: git is not installed — cannot guard the working tree against gremlins' in-place mutations, refusing to run unguarded" >&2
+  exit 2
+fi
+if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "mutation: '$ROOT' is not a git repository — cannot guard the working tree, refusing to run unguarded" >&2
+  exit 2
+fi
+
+DIRTY_GO="$(
+  { git -C "$ROOT" diff --name-only -- '*.go'
+    git -C "$ROOT" diff --cached --name-only -- '*.go'
+  } | LC_ALL=C sort -u
+)"
+if [ -n "$DIRTY_GO" ]; then
+  echo "mutation: tracked *.go files are dirty — refusing to run, gremlins mutates them in place:" >&2
+  printf '%s\n' "$DIRTY_GO" | sed 's/^/mutation:   /' >&2
+  exit 2
+fi
+
+# Restore tracked *.go files gremlins may have left mutated, on every exit
+# path. The tree was proven clean above, so a plain checkout of the index is
+# always the correct restore, not just a best effort.
+restore_go() {
+  local dirty
+  dirty="$(git -C "$ROOT" diff --name-only -- '*.go' 2>/dev/null)"
+  if [ -n "$dirty" ]; then
+    echo "mutation: restoring tracked *.go files gremlins left mutated" >&2
+    git -C "$ROOT" checkout -- '*.go' >/dev/null 2>&1 || true
+  fi
+}
+trap restore_go EXIT
+# INT/TERM need their own traps, not just EXIT added to the list: a trap that
+# catches a signal without calling exit lets the script continue running
+# instead of stopping, so Ctrl-C would restore the files and then keep going.
+trap 'restore_go; trap - EXIT; exit 130' INT
+trap 'restore_go; trap - EXIT; exit 143' TERM
+
 # Two packages, not the repository. A full run is minutes per package and the
 # value is concentrated where the fault-injection machinery lives.
 TARGETS=("./pkg/vfs/vfstest/" "./pkg/lsm/")
