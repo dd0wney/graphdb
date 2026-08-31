@@ -25,87 +25,21 @@ package storage
 // in a vfstest trace. That is wrong, and it was wrong in the direction that
 // invents defects: an Open that FAILS is traced and produces no handle and so
 // no Close, so a fresh store looking for an absent snapshot reads as a leak.
-// It reported an imbalance against already-fixed code. A handle tracker is the
-// only correct instrument here, because the question is about handles and not
-// about calls.
+// It reported an imbalance against already-fixed code. vfstest.Handles exists
+// because of that, and its doc comment carries the reasoning.
 
 import (
 	"os"
-	"sort"
-	"sync"
 	"testing"
 
 	"github.com/dd0wney/graphdb/pkg/vfs"
+	"github.com/dd0wney/graphdb/pkg/vfs/vfstest"
 )
-
-// trackingFS records the handles Open actually returned and Close took back.
-// A count alone can fail a sweep and cannot help fix one, so this keeps names.
-type trackingFS struct {
-	vfs.FileSystem
-	mu   sync.Mutex
-	open map[*trackedFile]string
-}
-
-type trackedFile struct {
-	vfs.File
-	owner *trackingFS
-}
-
-func newTrackingFS(base vfs.FileSystem) *trackingFS {
-	return &trackingFS{FileSystem: base, open: make(map[*trackedFile]string)}
-}
-
-func (t *trackingFS) Open(name string, flag int, perm os.FileMode) (vfs.File, error) {
-	f, err := t.FileSystem.Open(name, flag, perm)
-	if err != nil {
-		return nil, err // no handle was created, so there is nothing to track
-	}
-	tf := &trackedFile{File: f, owner: t}
-	t.mu.Lock()
-	t.open[tf] = name
-	t.mu.Unlock()
-	return tf, nil
-}
-
-// Close removes the handle even when the underlying Close fails. The descriptor
-// is gone either way, which is the same reason vfstest's CrashFS releases it.
-func (f *trackedFile) Close() error {
-	f.owner.mu.Lock()
-	delete(f.owner.open, f)
-	f.owner.mu.Unlock()
-	return f.File.Close()
-}
-
-func (t *trackingFS) outstanding() []string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	names := make([]string, 0, len(t.open))
-	for _, n := range t.open {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// opened reports how many handles were ever handed out, so a zero-outstanding
-// result cannot be confused with a driver that was never consulted.
-type countingFS struct {
-	*trackingFS
-	total int
-}
-
-func (c *countingFS) Open(name string, flag int, perm os.FileMode) (vfs.File, error) {
-	f, err := c.trackingFS.Open(name, flag, perm)
-	if err == nil {
-		c.total++
-	}
-	return f, err
-}
 
 // The happy path, with compression on. No fault and no corruption: open a
 // store, write to it, close it.
 func TestCloseReleasesTheCompressedWAL(t *testing.T) {
-	fs := &countingFS{trackingFS: newTrackingFS(vfs.OS())}
+	fs := vfstest.NewHandles(vfs.OS())
 
 	gs, err := NewGraphStorageWithConfig(StorageConfig{
 		DataDir:           t.TempDir(),
@@ -123,13 +57,13 @@ func TestCloseReleasesTheCompressedWAL(t *testing.T) {
 	}
 
 	// The control. Zero outstanding means nothing if nothing was ever opened.
-	if fs.total == 0 {
+	if fs.Opened() == 0 {
 		t.Fatalf("the driver handed out no handle at all, so it is not installed and a " +
 			"clean result here says nothing")
 	}
-	if left := fs.outstanding(); len(left) > 0 {
+	if left := fs.Outstanding(); len(left) > 0 {
 		t.Errorf("%d of %d handles are still open after an ordinary Close: %v",
-			len(left), fs.total, left)
+			len(left), fs.Opened(), left)
 	}
 }
 
@@ -141,7 +75,7 @@ func TestConstructorReleasesWhatItAcquired(t *testing.T) {
 	leaks := map[int][]string{}
 
 	for n := 1; n <= 40; n++ {
-		tracker := newTrackingFS(vfs.OS())
+		tracker := vfstest.NewHandles(vfs.OS())
 		fs := &failNthOpenFS{FileSystem: tracker, n: n}
 
 		gs, err := NewGraphStorageWithConfig(StorageConfig{DataDir: t.TempDir(), FS: fs})
@@ -150,7 +84,7 @@ func TestConstructorReleasesWhatItAcquired(t *testing.T) {
 			continue
 		}
 		failed++
-		if left := tracker.outstanding(); len(left) > 0 {
+		if left := tracker.Outstanding(); len(left) > 0 {
 			leaks[n] = left
 		}
 	}
