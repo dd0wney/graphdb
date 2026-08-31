@@ -162,6 +162,12 @@ func (p *Parser) parseRelationship(fromNode *NodePattern) (*RelationshipPattern,
 						rel.MaxHops = val
 					}
 				}
+			} else {
+				// A bare star, e.g. [:TYPE*], means "one or more hops" in
+				// Cypher. -1 is this codebase's encoding for unbounded (see
+				// the "..3" branch above).
+				rel.MinHops = 1
+				rel.MaxHops = -1 // unlimited
 			}
 		}
 
