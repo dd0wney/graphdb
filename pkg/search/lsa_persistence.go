@@ -219,15 +219,50 @@ func (i *LSAIndex) SaveToFileWithFS(fsys vfs.FileSystem, path string) error {
 	return nil
 }
 
-// LoadLSAFromFile reads an LSA index from path. Returns nil, os.ErrNotExist
-// (wrapped) if the file is absent — callers should treat that as "no
-// snapshot for this tenant yet" and fall through to the build path.
+// LoadLSAFromFile reads an LSA index from path on the default driver.
+// Returns nil, os.ErrNotExist (wrapped) if the file is absent — callers should
+// treat that as "no snapshot for this tenant yet" and fall through to the
+// build path.
 func LoadLSAFromFile(path string) (*LSAIndex, error) {
-	f, err := os.Open(path)
+	return LoadLSAFromFileWithFS(vfs.Default(), path)
+}
+
+// LoadLSAFromFileWithFS reads an LSA index from path through fsys.
+//
+// It is the reload counterpart to SaveToFileWithFS, and it exists for the same
+// reason: a path that calls the os package directly is invisible to every
+// driver. The publish was threaded first, which left the two halves asymmetric.
+// A crash sweep could then write a scenario's states through its driver and had
+// no way to read them back through it. A check that reopened with
+// LoadLSAFromFile read the real directory instead, found every state intact,
+// and passed. It was not measuring the file the scenario had built.
+//
+// The absent contract is the caller-visible one and it is unchanged: a driver
+// must return an error satisfying errors.Is(err, os.ErrNotExist) when the file
+// is not there, because LoadAll tells "no snapshot yet" from a fault by that
+// test alone.
+//
+// Every other failure must NOT satisfy it, and that is the whole requirement.
+// A refusal that read as absent would make LoadAll drop a tenant's index and
+// rebuild it from nothing. Refusals do not share one sentinel: a CAPABILITY
+// refusal satisfies errors.ErrUnsupported (#534, ADR 0003), and a driver may
+// refuse for reasons that are not about capability at all — the fault driver
+// this function was added for refuses a path outside its recorded root, which
+// matches neither sentinel. Do not test refusals by matching one error. Test
+// absence, and treat the rest as a fault.
+//
+// The Close error is dropped on purpose. This is a read-only handle, so there
+// are no buffered bytes for Close to lose, and the decoded index is already in
+// hand. Note the explicit discard rather than a bare `defer f.Close()`:
+// errcheck's exclusion is keyed to the os function, not to the interface
+// method, so the rule that was invisible here becomes visible the moment the
+// driver is threaded. SaveToFileWithFS records the same surprise above.
+func LoadLSAFromFileWithFS(fsys vfs.FileSystem, path string) (*LSAIndex, error) {
+	f, err := fsys.Open(path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err // wrap-via-return; callers check errors.Is(err, os.ErrNotExist)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return ReadLSASnapshot(f)
 }
 
