@@ -51,6 +51,17 @@ nothing. The hard part is `archive.go:70`'s `filepath.Walk`, which must be rebui
 **with an explicit sort** — `filepath.Walk` visits lexically and `ReadDir` does not promise to, and
 changing the order changes the archive for the same input. Archives are customer-data-equivalent.
 
+**Its state as of 10:17Z, measured not assumed**: `pkg/backup/archive.go` modified,
+`archive_vfs_test.go` and `extract_vfs_test.go` untracked, **zero commits**, and
+`go build ./pkg/backup/` exits clean. So the work is real, uncommitted, and compiles. It is on
+disk in that worktree and survives a restart. Nothing has been pushed and no PR exists for it.
+
+A late addition to its brief, which it may or may not have applied: the byte-identical equivalence
+test needs its own control. As first specified it passes when the archives match, when the
+comparison is broken, AND when both sides are empty. Require it to REPORT A DIFFERENCE on two
+deliberately different inputs, use a fixture whose names do not sort in creation order, and assert
+both archives are non-empty. Otherwise "identical" and "cannot tell" are the same output.
+
 Four agent worktrees remain under `.claude/worktrees/`. Remove the three whose PRs merge; the
 `feat/backup-vfs` one is locked and in use.
 

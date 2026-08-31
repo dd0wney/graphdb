@@ -10,7 +10,9 @@ end. The standing instruction was "merge in order on green". Read #551 before me
 deliberate behaviour change on the versioned REST surface, recorded in `CHANGELOG.md`.
 
 Second: **check whether the `pkg/backup` subagent finished.** Branch `feat/backup-vfs`, worktree
-`.claude/worktrees/agent-a9b23df5b4d5e78fc`. RESUME it, do not restart. The hazard in it is
+`.claude/worktrees/agent-a9b23df5b4d5e78fc`. RESUME it, do not restart —
+as of 10:17Z it had uncommitted work that COMPILES but zero commits and no PR, so `git status`
+in that worktree is the first thing to read. The hazard in it is
 `archive.go:70`'s `filepath.Walk` rebuilt on `fs.ReadDir`: sort explicitly, and prove the
 equivalence test can REPORT A DIFFERENCE, or "identical" and "cannot tell" are the same output.
 When it merges, tell the `github.com/dd0wney/fault` session — it has agreed to sweep that package.
