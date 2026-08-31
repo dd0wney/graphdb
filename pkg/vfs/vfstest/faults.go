@@ -144,6 +144,28 @@ func (f *FaultFS) countOp() bool {
 	return false
 }
 
+// record is the one place that may set f.fired. Every arming site funnels
+// through it. Caller holds f.mu.
+//
+// It exists because only countOp set that flag, so Fired() stayed false for
+// FailOpen, FailWrite, FailSync and FailClose — every per-method mode there is
+// — while the doc on Fired called it "the negative control for any single
+// fault test". A control that cannot report the thing it watches for is the
+// exact defect it was put there to catch.
+//
+// The flag means "an armed fault fired", not "the N-th-op fault fired". That
+// is what RoleFS.step already does one file over: it sets r.fired inside a
+// single `if fail` that covers all four of its arming modes, and sweep_role.go
+// reads it for exactly the stop condition sweep.go uses. The two sibling
+// drivers now agree, and Sweep is unaffected either way — it builds a fresh
+// driver each iteration and arms FailNthOp alone.
+func (f *FaultFS) record(shouldFail bool) bool {
+	if shouldFail {
+		f.fired = true
+	}
+	return shouldFail
+}
+
 // fire reports whether an armed mode fires now, consuming a Once.
 func fire(m *Mode) bool {
 	switch *m {
@@ -159,7 +181,7 @@ func fire(m *Mode) bool {
 
 func (f *FaultFS) Open(name string, flag int, perm os.FileMode) (vfs.File, error) {
 	f.mu.Lock()
-	shouldFail := f.countOp() || fire(&f.openMode)
+	shouldFail := f.record(f.countOp() || fire(&f.openMode))
 	f.mu.Unlock()
 	if shouldFail {
 		return nil, fmt.Errorf("open %s: %w", name, ErrInjected)
@@ -178,7 +200,7 @@ func (f *FaultFS) MkdirAll(p string, m os.FileMode) error { return f.base.MkdirA
 
 func (f *FaultFS) ReadDir(name string) ([]os.DirEntry, error) {
 	f.mu.Lock()
-	shouldFail := f.countOp()
+	shouldFail := f.record(f.countOp())
 	f.mu.Unlock()
 	if shouldFail {
 		return nil, fmt.Errorf("readdir %s: %w", name, ErrInjected)
@@ -195,8 +217,8 @@ type faultFile struct {
 func (ff *faultFile) Write(p []byte) (int, error) {
 	ff.fs.mu.Lock()
 	ff.fs.writes++
-	shouldFail := ff.fs.countOp() ||
-		(ff.fs.writes > ff.fs.writeAfter && fire(&ff.fs.writeMode))
+	shouldFail := ff.fs.record(ff.fs.countOp() ||
+		(ff.fs.writes > ff.fs.writeAfter && fire(&ff.fs.writeMode)))
 	ff.fs.mu.Unlock()
 	if shouldFail {
 		return 0, fmt.Errorf("write %s: %w", ff.Name(), ErrInjected)
@@ -207,7 +229,7 @@ func (ff *faultFile) Write(p []byte) (int, error) {
 func (ff *faultFile) Sync() error {
 	ff.fs.mu.Lock()
 	ff.fs.syncs++
-	shouldFail := ff.fs.countOp() || fire(&ff.fs.syncMode)
+	shouldFail := ff.fs.record(ff.fs.countOp() || fire(&ff.fs.syncMode))
 	ff.fs.mu.Unlock()
 	if shouldFail {
 		return fmt.Errorf("sync %s: %w", ff.Name(), ErrInjected)
@@ -217,7 +239,7 @@ func (ff *faultFile) Sync() error {
 
 func (ff *faultFile) Close() error {
 	ff.fs.mu.Lock()
-	shouldFail := ff.fs.countOp() || fire(&ff.fs.closeMode)
+	shouldFail := ff.fs.record(ff.fs.countOp() || fire(&ff.fs.closeMode))
 	ff.fs.mu.Unlock()
 	if shouldFail {
 		// The descriptor is still released. A fault driver that leaked one
