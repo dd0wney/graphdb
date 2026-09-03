@@ -9,7 +9,7 @@ This directory contains Packer templates for building pre-configured GraphDB ima
 **Purpose:** Lightweight, native Go binary deployment optimized for Syntopica integration.
 
 **Features:**
-- Native Go 1.21+ binary (no Docker overhead)
+- Native Go 1.27+ binary (no Docker overhead)
 - Pre-compiled GraphDB server
 - Cloudflared tunnel support
 - Optimized for 2GB RAM droplets + 100GB volume

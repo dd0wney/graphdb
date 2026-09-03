@@ -169,16 +169,16 @@ ufw enable
 
 ## Phase 2: Install GraphDB
 
-### 2.1 Install Go 1.21+
+### 2.1 Install Go 1.27+
 
 ```bash
 # Download Go
 cd /tmp
-wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.27.0.linux-amd64.tar.gz
 
 # Install
 rm -rf /usr/local/go
-tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
+tar -C /usr/local -xzf go1.27.0.linux-amd64.tar.gz
 
 # Configure environment
 cat >> /etc/profile.d/go.sh <<'EOF'
