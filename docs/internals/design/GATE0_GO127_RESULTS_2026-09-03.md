@@ -93,25 +93,21 @@ goos: linux
 goarch: amd64
 pkg: github.com/dd0wney/graphdb/pkg/vector
 cpu: AMD Ryzen 9 5950X 16-Core Processor            
-              │ bench_old_hnsw.txt │       bench_new_hnsw.txt        │
-              │       sec/op       │    sec/op     vs base           │
-HNSWSearch-32         905.6µ ± 64%   848.0µ ± ∞ ¹  ~ (p=0.126 n=6+5)
-¹ need >= 6 samples for confidence interval at level 0.95
+              │ bench_old_hnsw.txt │      bench_new_hnsw.txt       │
+              │       sec/op       │    sec/op     vs base         │
+HNSWSearch-32         905.6µ ± 64%   845.0µ ± 11%  ~ (p=0.093 n=6)
 
-              │ bench_old_hnsw.txt │        bench_new_hnsw.txt        │
-              │        B/op        │     B/op       vs base           │
-HNSWSearch-32         10.51Ki ± 1%   10.52Ki ± ∞ ¹  ~ (p=0.900 n=6+5)
-¹ need >= 6 samples for confidence interval at level 0.95
+              │ bench_old_hnsw.txt │      bench_new_hnsw.txt       │
+              │        B/op        │     B/op      vs base         │
+HNSWSearch-32         10.51Ki ± 1%   10.50Ki ± 1%  ~ (p=1.000 n=6)
 
-              │ bench_old_hnsw.txt │       bench_new_hnsw.txt       │
-              │     allocs/op      │  allocs/op   vs base           │
-HNSWSearch-32          19.00 ± 11%   19.00 ± ∞ ¹  ~ (p=1.000 n=6+5)
-¹ need >= 6 samples for confidence interval at level 0.95
+              │ bench_old_hnsw.txt │      bench_new_hnsw.txt      │
+              │     allocs/op      │  allocs/op   vs base         │
+HNSWSearch-32          19.00 ± 11%   18.50 ± 24%  ~ (p=0.896 n=6)
 ```
 
 Raw samples, µs/op — baseline go1.26.4: 953, 1268, 840, 1483, 859, 852;
-after go1.27.0: 848, 854, 938, 826, 835 (the sixth after-sample had not finished
-when the box's shutdown deadline forced this document to close; `n=6+5`).
+after go1.27.0: 848, 854, 938, 826, 835, 842.
 
 ### benchstat: go1.26.4 → go1.27.0, `pkg/storage` reads (best-effort)
 
@@ -153,13 +149,13 @@ comparison is A-vs-B under the same load, and benchstat calls all three `~`.
 ### Verdict (honest)
 
 **Within noise on both toolchains, on every metric.** benchstat reports `~` for
-sec/op (p=0.126), B/op (p=0.900) and allocs/op (p=1.000). No regression; no
+sec/op (p=0.093), B/op (p=1.000) and allocs/op (p=0.896). No regression; no
 measurable win.
 
 Read the baseline's ±64% honestly: two of its six runs (1268 µs and 1483 µs)
 overlapped the full test suite, golangci-lint and govulncheck, which ran on
 the same box during the baseline. The other four baseline samples (840–953 µs)
-sit exactly where the five after-samples sit (826–938 µs). The after-run
+sit exactly where the six after-samples sit (826–938 µs, ±11%). The after-run
 executed alone. A load confound that only inflates the *baseline* could
 manufacture a false win for 1.27; it did not — benchstat still calls the
 comparison `~`, and the unloaded samples of A and B are indistinguishable.
