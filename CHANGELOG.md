@@ -24,6 +24,9 @@ The following are present in the codebase but not yet part of a tagged release
 - Plugin config loading from environment variables (`PLUGIN_<NAME>_<KEY>=<VALUE>`)
 - License key checksum validation (SHA256-based, backward compatible)
 
+### Security
+- Closed four reachable `govulncheck` dependency advisories: `github.com/jackc/pgx/v5` v5.7.6 → v5.9.2 (GO-2026-5004, SQL injection via placeholder confusion), `go.opentelemetry.io/otel` v1.43.0 → v1.44.0 (GO-2026-5158, unbounded baggage-header parsing), `google.golang.org/grpc` v1.80.0 → v1.82.1 (GO-2026-6061, xDS RBAC and HTTP/2 transport issues, indirect via the OTLP gRPC exporter), and `golang.org/x/text` v0.35.0 → v0.39.0 (GO-2026-5970, infinite loop on invalid input, indirect).
+
 ### Changed
 - **mmap-backed lazy reopen is now the DEFAULT snapshot mode** (v1.2). Reopen after a
   restart is near-instant (~6 ms at ~1M nodes vs ~8 s for the JSON path), byte-identical
