@@ -59,6 +59,17 @@ The following are present in the codebase but not yet part of a tagged release
   wrapping `ErrTraversalTruncated` alongside its results if it reaches that
   cap — an endpoint that never returned an error for this pattern before can
   now return one.
+- `POST /query` no longer answers `500` and discards the rows when a
+  traversal stops at the engine's depth or result cap. `ErrTraversalTruncated`
+  travels beside the results, never instead of them, and the handler treated
+  every non-nil execution error as a failure — so a query that legitimately
+  hit `MaxAllowedTraversalDepth` lost both the rows it had already found and
+  the reason. The endpoint now answers `200` with those rows and sets
+  `X-Traversal-Truncated: true`.
+  **Behaviour change** (`docs/STABILITY_POLICY.md` covers the REST API): this
+  changes the status code from `500` to `200` for a query that stops at an
+  engine traversal limit. A caller that treated that `500` as a hard failure
+  must now check the new header instead.
 - A single-record read no longer reports a damaged record as a missing node.
   A record that exists on disk but fails to decode (bit rot, a partial write, a
   truncated copy) previously read as `ErrNodeNotFound`, because the mmap
