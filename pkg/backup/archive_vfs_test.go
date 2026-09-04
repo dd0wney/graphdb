@@ -110,8 +110,12 @@ func goldenOrder() []string {
 // wal/quarantine.tmp/inner.log exercises the subtle case archive.go's doc
 // comment on walkFilesWithFS claims to preserve: the walk excludes a
 // .tmp-suffixed FILE from the archive, but a .tmp-suffixed DIRECTORY is
-// still recursed into, so a regular file inside it is still archived. See
-// CHECK 2 in the pull request's review record.
+// still recursed into, so a regular file inside it is still archived. The
+// pre-change filepath.Walk callback (pkg/backup/archive.go at commit
+// a980270, this branch's parent) skips a .tmp-suffixed entry as an archive
+// member but never returns filepath.SkipDir, so it still descends into a
+// .tmp-named directory and archives the regular files inside it. Verify
+// directly: `git show a980270:pkg/backup/archive.go`.
 //
 // lsa/emptydir is not an oversight left unarchived: neither the pre-change
 // nor the new walk ever emits an archive member for a directory itself, and
