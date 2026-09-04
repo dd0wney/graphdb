@@ -60,6 +60,14 @@ The following are present in the codebase but not yet part of a tagged release
   cancelled mid-traversal now sees the cancellation error surface from the
   traversal Step itself, rather than only from the executor's next
   step-boundary check.
+- An inline relationship property filter (`[r:KNOWS {since: 2020}]`) in a
+  `MATCH` pattern now filters edges by that property, instead of matching
+  every edge of the given type regardless of the property. The fix also
+  covers a pattern with properties and no type (`[{since: 2020}]`), and the
+  variable-length traversal path (`[:KNOWS*1..2 {since: 2020}]`).
+  **Behaviour change**: this is visible through the REST API's raw-Cypher
+  endpoints. A query with an inline relationship property filter now
+  returns fewer rows than before, because the filter now works.
 - A bare-star variable-length relationship pattern (`[:TYPE*]`, with no hop
   count) now traverses one or more hops, matching Cypher semantics, instead
   of silently traversing exactly one hop. `*1..N`, `*N..M`, and `*N..` forms
@@ -71,6 +79,17 @@ The following are present in the codebase but not yet part of a tagged release
   wrapping `ErrTraversalTruncated` alongside its results if it reaches that
   cap — an endpoint that never returned an error for this pattern before can
   now return one.
+- `POST /query` no longer answers `500` and discards the rows when a
+  traversal stops at the engine's depth or result cap. `ErrTraversalTruncated`
+  travels beside the results, never instead of them, and the handler treated
+  every non-nil execution error as a failure — so a query that legitimately
+  hit `MaxAllowedTraversalDepth` lost both the rows it had already found and
+  the reason. The endpoint now answers `200` with those rows and sets
+  `X-Traversal-Truncated: true`.
+  **Behaviour change** (`docs/STABILITY_POLICY.md` covers the REST API): this
+  changes the status code from `500` to `200` for a query that stops at an
+  engine traversal limit. A caller that treated that `500` as a hard failure
+  must now check the new header instead.
 - A single-record read no longer reports a damaged record as a missing node.
   A record that exists on disk but fails to decode (bit rot, a partial write, a
   truncated copy) previously read as `ErrNodeNotFound`, because the mmap
