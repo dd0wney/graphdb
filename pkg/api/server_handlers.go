@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -96,6 +97,18 @@ const (
 	maxQueryTimeoutSeconds = 300 // 5 minutes
 )
 
+// TraversalTruncatedHeader is the response header handleQuery sets when a
+// traversal stopped at an engine limit (query.ErrTraversalTruncated) rather
+// than running out of graph. Its value is the fixed string "true", and it is
+// ABSENT when the answer is complete, so its presence is the signal.
+//
+// This is a new header, not a reuse of IncompleteEnumerationHeader (CC14,
+// pkg/api/pagination.go): CC14's value is the COUNT of records a scan could
+// not decode, and a traversal that stops at a depth cap has no such count to
+// report. The two headers follow CC14's SHAPE — 200, the rows that were
+// found, plus a header — and not its name.
+const TraversalTruncatedHeader = "X-Traversal-Truncated"
+
 func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -162,15 +175,32 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 	} else {
 		results, err = s.executor.ExecuteWithContext(ctx, parsedQuery)
 	}
+	truncated := false
 	if err != nil {
-		// Check if it was a timeout
+		// Check if it was a timeout. The deadline check stays first: a request
+		// whose context deadline passed is a timeout, and 408 is the right
+		// answer for it regardless of what else the error wraps.
 		if ctx.Err() == context.DeadlineExceeded {
 			s.respondError(w, http.StatusRequestTimeout,
 				fmt.Sprintf("Query timed out after %v", timeout))
 			return
 		}
-		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "query execution"))
-		return
+		// query.ErrTraversalTruncated travels BESIDE results, never instead of
+		// them (pkg/query/traversal_types.go): a traversal that stopped at the
+		// engine's depth cap still returns the rows it found before stopping.
+		// Answering 500 here discarded an answer the caller already had, and
+		// the caller lost both the rows and the reason.
+		//
+		// Guard on results != nil even on this branch: a nil result set
+		// wrapped in a 200 would be a worse lie than the 500 it replaces, and
+		// pkg/query does return nil results for a step that fails outright
+		// (as opposed to noting truncation on results it still built).
+		if errors.Is(err, query.ErrTraversalTruncated) && results != nil {
+			truncated = true
+		} else {
+			s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "query execution"))
+			return
+		}
 	}
 
 	response := QueryResponse{
@@ -184,6 +214,12 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 		Time:  time.Since(start).String(),
 	}
 
+	// Set before respondJSON writes the status: a header set after the body
+	// is written is dropped. Absent (never "false") when the answer is
+	// complete, so its presence is the whole signal.
+	if truncated {
+		w.Header().Set(TraversalTruncatedHeader, "true")
+	}
 	s.respondJSON(w, http.StatusOK, response)
 }
 
