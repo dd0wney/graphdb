@@ -49,20 +49,30 @@ gofmt -s -l ./pkg ./cmd                                # MUST be empty; plain `g
 make contract-guard                                    # consumer registry vs the tests that enforce it
 ```
 
-**The local `golangci-lint` is partly usable, not useless.** `golangci-lint run
-./...` fails to typecheck a Go 1.26 standard library file, and a typecheck
-failure suppresses the analysers, so it reports an environment error and nothing
-about the code. Only **govet and staticcheck** trip it. The other nine linters CI
-runs work here with CI's own settings. `make lint-local` runs them, and
-`make lint-local-selftest` proves it can report a finding.
+**The local `golangci-lint` must be built with a Go at least as new as the
+`go.mod` floor (1.27.0 since 2026-09-03).** A golangci-lint built with an older
+Go refuses the module before any analyser runs:
+`can't load config: the Go language version (go1.26) used to build golangci-lint
+is lower than the targeted Go version (1.27.0)`. `make lint-local` dies the same
+way, exit 2. That is an environment error, not a result about the code. CI pins
+v2.13.2 (`lint.yml`); v2.13.0 was the first release built against go1.27.
+Either install it, `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2`,
+or run CI's exact linter without installing:
+`go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run ./pkg/... ./cmd/...`
+(the path list, not `./...`, keeps the gitignored `enterprise-plugins` tree
+out of it). Built with go1.27 it typechecks the whole module, so all eleven CI
+linters run locally, govet and staticcheck included. See
+`docs/internals/design/GATE0_GO127_RESULTS_2026-09-03.md`.
 
-Two things it will not do, both deliberate:
+`make lint-local` still runs nine of the eleven: `scripts/lint-local.sh`
+generates a config from `.golangci.yml` with govet and staticcheck removed from
+the `linters.enable` block, a leftover from when a build-Go-vs-target-Go gap
+made those two fail to typecheck. `make lint-local-selftest` proves it can
+report a finding. Two things it will not do, both deliberate:
 
-- It never claims to be CI. govet and staticcheck are not covered.
+- It never claims to be CI. Run the pinned version above for that.
 - A package that fails to load exits 2, not 1. The analysers did not run on it,
-  so that is not a result about the code. `pkg/storage` is such a package here:
-  it imports `math/rand/v2`, which this golangci-lint cannot resolve, while
-  `go build` and `go vet` are clean on the same file.
+  so that is not a result about the code.
 
 The errcheck finding that failed PR #494 would have been caught by this.
 

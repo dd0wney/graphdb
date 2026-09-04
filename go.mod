@@ -1,12 +1,10 @@
 module github.com/dd0wney/graphdb
 
-go 1.26.0
-
-// Pin the build toolchain to 1.26.4: 1.26.3's crypto/x509 and
-// net/textproto carry govulncheck-reachable advisories (GO-2026-5037 +
-// the ListenAndServe ReadMIMEHeader vuln), fixed in 1.26.4. CI workflows
-// pin go-version: '1.26.4' to match (setup-go v6 sets GOTOOLCHAIN=local).
-toolchain go1.26.4
+// Build floor 1.27.0. CI workflows pin go-version: '1.27.0' to match
+// (setup-go sets GOTOOLCHAIN=local). This replaces the 1.26.4 pin that
+// closed GO-2026-5037 and the ReadMIMEHeader advisory; govulncheck was
+// re-run under 1.27.0 (docs/internals/design/GATE0_GO127_RESULTS_2026-09-03.md).
+go 1.27.0
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0

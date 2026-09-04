@@ -24,20 +24,21 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v7
       with:
-        go-version: '1.26.4'
+        go-version: '1.27.0'
         # setup-go's cache stays on: golangci-lint-action v5+ caches only
         # its own analysis data and delegates Go module/build caching here.
 
     - name: Run golangci-lint
       # @v4-@v6 only support golangci-lint v1. The repo's
       # .golangci.yml is v2 format, so we need @v7+ which added
-      # golangci-lint v2 support. Pin to v2.11.4 — the dev
-      # environment's version, verified with `config verify`
-      # locally. "latest" bumps to v2.x.y with stricter schema
-      # validation that rejects fields the repo's config uses.
+      # golangci-lint v2 support. Pin to v2.13.2: v2.13.0 is the
+      # first release built against go1.27, and a golangci-lint built
+      # with an older Go cannot typecheck a `go 1.27.0` module.
+      # Verified with `config verify` locally. "latest" is avoided so
+      # a schema change cannot break the gate silently.
       uses: golangci/golangci-lint-action@v9
       with:
-        version: v2.11.4
+        version: v2.13.2
         args: --timeout=5m
         only-new-issues: false
         skip-cache: false
@@ -53,7 +54,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v7
       with:
-        go-version: '1.26.4'
+        go-version: '1.27.0'
 
     - name: Check if go.mod is tidy
       run: |
@@ -77,7 +78,7 @@ jobs:
     - name: Run Gosec Security Scanner
       # Pinned: @master is a mutable ref (upstream pushes change CI
       # behavior with no diff here to bisect against).
-      uses: securego/gosec@v2.28.0
+      uses: securego/gosec@v2.29.0
       with:
         args: '-no-fail -fmt=json -out=results.json ./...'
 

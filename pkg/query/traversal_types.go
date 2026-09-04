@@ -86,10 +86,29 @@ func WithDefaultDepth(depth int) int {
 
 // TraversalOptions configures graph traversal
 type TraversalOptions struct {
-	StartNodeID   uint64
-	Direction     Direction
-	EdgeTypes     []string                 // Filter by edge types (empty = all types)
-	MaxDepth      int                      // Maximum traversal depth
+	StartNodeID uint64
+	Direction   Direction
+	EdgeTypes   []string // Filter by edge types (empty = all types)
+	MaxDepth    int      // Maximum traversal depth
+	// MaxResults bounds the nodes returned. LEAVE IT AT ZERO unless you
+	// intend to detect saturation yourself.
+	//
+	// Zero carries two meanings at once, and that is the trap. It means
+	// "apply DefaultMaxResults", and it also means "I did not choose this
+	// bound, so tell me if you hit it". BFS and DFS report ErrTraversalTruncated
+	// only for a bound the ENGINE chose, because a caller who names a limit and
+	// reaches it received exactly what was requested.
+	//
+	// So naming a bound BUYS SILENCE. The careful-looking move — set it
+	// explicitly rather than rely on a default — is the one that switches the
+	// signal off. Two independent designs made that move before this comment
+	// existed: GetNeighborhood in this package passed DefaultMaxResults by
+	// name and suppressed the signal for every one of its callers, and a
+	// downstream consumer wrote the same rule into its specification from the
+	// constants alone, without seeing GetNeighborhood. Neither was careless.
+	//
+	// If you genuinely need a bound for memory, name it AND check saturation
+	// yourself. The engine will not do it for you once you have named one.
 	MaxResults    int                      // Maximum nodes to return
 	Predicate     func(*storage.Node) bool // Node filter function
 	EdgePredicate func(*storage.Edge) bool // Edge filter function (for temporal/property filtering)
