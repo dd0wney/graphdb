@@ -40,6 +40,26 @@ The following are present in the codebase but not yet part of a tagged release
 - Zero-allocation `Contains()` for compressed edge lists (sequential scan with early termination)
 
 ### Fixed
+- A cancelled variable-length traversal, a `PROFILE` query, and the first
+  segment of a `WITH` chain each reported a complete answer that was not
+  true. `traverseVariablePath` checked for cancellation but always returned
+  a nil error; it now returns the wrapped context error from
+  `ctx.CheckCancellation()` (`context.Canceled` or
+  `context.DeadlineExceeded`) beside its partial results.
+  `executeWithProfiling` never read the execution context's recorded
+  truncation, so a `PROFILE` query that hit the depth cap reported success;
+  it now returns that truncation, wrapping `ErrTraversalTruncated`, beside
+  the profiled results. `executeWithChain` discarded the first segment's
+  execution context — and the truncation recorded on it — before running
+  the next segment; it now joins that truncation with the next segment's
+  own error via `errors.Join`, so a `WITH` chain whose first segment
+  truncated now returns `ErrTraversalTruncated` beside the final rows.
+  **Behaviour change**: a `PROFILE` query and a `WITH` chain that used to
+  return a nil error alongside a truncated answer can now return
+  `ErrTraversalTruncated` beside the same rows. A caller whose query is
+  cancelled mid-traversal now sees the cancellation error surface from the
+  traversal Step itself, rather than only from the executor's next
+  step-boundary check.
 - An inline relationship property filter (`[r:KNOWS {since: 2020}]`) in a
   `MATCH` pattern now filters edges by that property, instead of matching
   every edge of the given type regardless of the property. The fix also
