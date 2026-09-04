@@ -108,5 +108,8 @@ func (e *Executor) executeWithProfiling(ctx context.Context, plan *ExecutionPlan
 	}
 
 	result.Profile = profiles
-	return result, nil
+	// execCtx.truncation travels WITH the results, never instead of them —
+	// the same rule executePlanWithContext already follows. A PROFILE query
+	// that hit an engine limit must say so, not just the un-profiled path.
+	return result, execCtx.truncation
 }
