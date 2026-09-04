@@ -8,25 +8,39 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
-// Extract unpacks a backup archive into destDir, reconstructing the store's
-// dataDir layout. The manifest.json metadata entry is skipped — only the
-// store's own files are written. destDir is created if absent.
+// Extract unpacks a backup archive into destDir, on the default filesystem
+// driver. See ExtractWithFS.
+func Extract(r io.Reader, destDir string) error {
+	return ExtractWithFS(vfs.Default(), r, destDir)
+}
+
+// ExtractWithFS unpacks a backup archive into destDir, through fsys,
+// reconstructing the store's dataDir layout. The manifest.json metadata
+// entry is skipped — only the store's own files are written. destDir is
+// created if absent.
 //
 // Each entry's destination is constrained to destDir: an entry whose path
-// escapes the directory (a "zip-slip" traversal) aborts the extraction with an
-// error. Callers should Verify the archive first; Extract performs no integrity
-// checking of its own.
-func Extract(r io.Reader, destDir string) error {
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
+// escapes the directory (a "zip-slip" traversal) aborts the extraction with
+// an error. Callers should Verify the archive first; ExtractWithFS performs
+// no integrity checking of its own.
+//
+// The driver exists so a test can observe the write, and so a fault or crash
+// simulator can reach this path at all — the same reason WriteArchiveWithFS
+// has one. Before it, Extract called the os package directly: no driver saw
+// a restore ever happen.
+func ExtractWithFS(fsys vfs.FileSystem, r io.Reader, destDir string) error {
+	if err := fsys.MkdirAll(destDir, 0o755); err != nil {
 		return fmt.Errorf("create dest: %w", err)
 	}
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return fmt.Errorf("open archive (gzip): %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }() //nolint:errcheck // read-only decompressor, nothing buffered to lose
 
 	tr := tar.NewReader(gz)
 	for {
@@ -44,10 +58,10 @@ func Extract(r io.Reader, destDir string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		if err := fsys.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return fmt.Errorf("create dir for %s: %w", hdr.Name, err)
 		}
-		if err := writeFile(dst, tr, hdr.Size); err != nil {
+		if err := writeFileWithFS(fsys, dst, tr, hdr.Size); err != nil {
 			return fmt.Errorf("write %s: %w", hdr.Name, err)
 		}
 	}
@@ -69,15 +83,24 @@ func safeJoin(destDir, name string) (string, error) {
 	return dst, nil
 }
 
-func writeFile(dst string, r io.Reader, size int64) error {
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+func writeFileWithFS(fsys vfs.FileSystem, dst string, r io.Reader, size int64) error {
+	f, err := fsys.Open(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
 	// Bound the write to the entry's declared size (tar enforces it) so a
 	// crafted archive can't stream an unbounded decompression bomb to disk.
 	if _, err := io.CopyN(f, r, size); err != nil {
-		f.Close()
+		// Discarded on purpose: the copy already failed, and a second error
+		// from cleaning up the partially-written file would replace the one
+		// that says what actually went wrong.
+		//
+		// Explicit because f is now a vfs.File and not an *os.File directly —
+		// errcheck's exclusion for Close is keyed to the concrete os
+		// function, not the interface method. See the same note in
+		// writeTarFromFileWithFS (archive.go) and
+		// pkg/search/lsa_persistence.go's SaveToFileWithFS.
+		_ = f.Close() //nolint:errcheck // write already failed; see the paragraph above
 		return err
 	}
 	return f.Close()
