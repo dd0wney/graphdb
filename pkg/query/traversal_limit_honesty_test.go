@@ -177,3 +177,51 @@ func TestProfileCompleteVariablePathReportsNoError(t *testing.T) {
 		t.Errorf("expected 5 reachable nodes, got %v", rs)
 	}
 }
+
+// executeWithChain (executor.go:200) ended with "return
+// e.ExecuteWithContext(ctx, query.Next)", discarding the execCtx built for
+// the FIRST segment (executor.go:130) — the one whose steps wrote their
+// truncation into it. A WITH chain whose first segment truncated reported
+// success anyway, because the second segment's fresh ExecutionContext knows
+// nothing about the first segment's limit.
+//
+// Against the unfixed code the error is nil even though the first segment's
+// traversal stopped at the depth cap.
+func TestWithChainReportsFirstSegmentTruncation(t *testing.T) {
+	_, e, cleanup := chainGraph(t, MaxAllowedTraversalDepth+2)
+	defer cleanup()
+
+	rs, err := runQuery(t, e,
+		"MATCH (a:Root)-[:LINK*1..]->(b:Node) WITH b LIMIT 5 RETURN b.name")
+
+	if rs == nil || len(rs.Rows) == 0 {
+		t.Fatalf("no rows came back, so this test cannot distinguish a truncation "+
+			"signal from a broken query: rs=%v err=%v", rs, err)
+	}
+	if err == nil {
+		t.Errorf("the WITH chain's first segment stopped at the depth cap of %d on a "+
+			"chain of %d and the chain reported success; a caller cannot tell this "+
+			"answer from a complete one", MaxAllowedTraversalDepth, MaxAllowedTraversalDepth+2)
+	}
+	if err != nil && !errors.Is(err, ErrTraversalTruncated) {
+		t.Errorf("the error does not wrap ErrTraversalTruncated: %v", err)
+	}
+}
+
+// Control: a WITH chain whose first segment does not truncate returns a nil
+// error. It must pass before and after the fix.
+func TestWithChainCompleteFirstSegmentReportsNoError(t *testing.T) {
+	_, e, cleanup := chainGraph(t, 5)
+	defer cleanup()
+
+	rs, err := runQuery(t, e,
+		"MATCH (a:Root)-[:LINK*1..]->(b:Node) WITH b LIMIT 5 RETURN b.name")
+	if err != nil {
+		t.Errorf("a chain of 5 is well inside the cap of %d, and the WITH chain reported "+
+			"an error; a nil error must be the positive assertion of completeness: %v",
+			MaxAllowedTraversalDepth, err)
+	}
+	if rs == nil || len(rs.Rows) != 5 {
+		t.Errorf("expected 5 reachable nodes, got %v", rs)
+	}
+}

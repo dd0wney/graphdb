@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"runtime/debug"
@@ -195,9 +196,13 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 		projectedBindings = filtered
 	}
 
-	// Execute the next query segment with projected bindings as initial state
+	// Execute the next query segment with projected bindings as initial state.
+	// execCtx.truncation (from THIS segment's steps) and the next segment's
+	// own error travel together: errors.Join(nil, nil) is nil, so a complete
+	// chain still asserts completeness, and errors.Is sees through the join.
 	query.Next.InitialBindings = projectedBindings
-	return e.ExecuteWithContext(ctx, query.Next)
+	result, err := e.ExecuteWithContext(ctx, query.Next)
+	return result, errors.Join(execCtx.truncation, err)
 }
 
 // ExecuteWithParams executes a parameterized query. Parameters are provided as a map
