@@ -20,8 +20,9 @@ package backup_test
 //
 // RED-FIRST. These tests were written and run against the pre-change
 // archive.go, which has no WriteArchiveWithFS at all. What that run printed
-// is in the pull request body — a compile failure, which is the correct red
-// state for a test exercising a function that does not yet exist.
+// is in the pull request body, under "Golden data provenance" — a compile
+// failure, which is the correct red state for a test exercising a function
+// that does not yet exist.
 
 import (
 	"archive/tar"
@@ -58,14 +59,16 @@ type goldenFile struct {
 	sha256 string
 }
 
-// preChangeGolden was captured by literally running the PRE-CHANGE
-// backup.WriteArchive (filepath.Walk, os.Open, os.Stat — none of it
-// threaded) against buildVFSFixture, before any line in archive.go or
-// extract.go was touched. It is not a value this session predicted and then
-// wrote code to satisfy; it is what the old code actually produced, via
-// `go run` against pkg/backup as it stood on main at commit a980270. See the
-// pull request body for the exact command and full captured output,
-// including the pre-change manifest.json.
+// preChangeGolden was captured by running the PRE-CHANGE backup.WriteArchive
+// (filepath.Walk, os.Open, os.Stat — none of it threaded) against the
+// fixture buildVFSFixture builds, before any line in archive.go or
+// extract.go on this branch was touched. It is not a value predicted and
+// then satisfied by writing code to match; it is what the old code actually
+// produced. archive.go and extract.go have not changed on main since this
+// branch's parent commit (a980270), so origin/main's copies of those two
+// files are the pre-change code. See the pull request body, under "Golden
+// data provenance", for the exact command sequence and the full captured
+// output, including the pre-change manifest.json.
 //
 // Comparing against this — rather than comparing two runs of the new code
 // against each other — is what makes the equivalence test below mean
@@ -75,6 +78,7 @@ var preChangeGolden = []goldenFile{
 	{path: "snapshot.json", size: 15, sha256: "1568fe64257987cf2b6d6daa773460ab3e8c22ca6c0167afe5bfae43b16160b8"},
 	{path: "wal/a.log", size: 5, sha256: "5582158026680fc71d5d802b2c5a05456f436637a0099aa91f25a20c53ae2df6"},
 	{path: "wal/b.log", size: 5, sha256: "11a2a79ceb45d906ede0e7b28bbb4ea0c82ade1dbc7e5642c911ae796eebd6fd"},
+	{path: "wal/quarantine.tmp/inner.log", size: 20, sha256: "12643d4e6e86f3a7667ee43e5e8607059f3b35ec56b3fa3e870ac61aded21f5e"},
 	{path: "wal/sub/a.log", size: 9, sha256: "d3ed41267818636d95b5363496e792cd258e3323ed56157d50e0c5a9e148e849"},
 	{path: "wal/sub/z.log", size: 9, sha256: "15cb47a801503ffeaa4a69696346a5a4d4753cc74e9ee2c2597d70f0890bb5f9"},
 	{path: "auth/roles.json", size: 10, sha256: "91d404e96d7fce710bb9b50109c1943c97faf5fa72f7ce4efed28ac84e9164d8"},
@@ -98,7 +102,22 @@ func goldenOrder() []string {
 // from: files under wal/, auth/, lsa/ and edgestore/ whose names do NOT sort
 // in creation order (b.log before a.log; shard10.dat before shard2.dat,
 // where lexical order and numeric order disagree), one nested directory
-// (wal/sub, edgestore/nested), and one .tmp file that must be excluded.
+// (wal/sub, edgestore/nested), one .tmp file that must be excluded
+// (wal/ignore.tmp), one directory whose NAME ends in .tmp and holds a
+// regular file (wal/quarantine.tmp/inner.log), and one empty directory
+// (lsa/emptydir).
+//
+// wal/quarantine.tmp/inner.log exercises the subtle case archive.go's doc
+// comment on walkFilesWithFS claims to preserve: the walk excludes a
+// .tmp-suffixed FILE from the archive, but a .tmp-suffixed DIRECTORY is
+// still recursed into, so a regular file inside it is still archived. See
+// CHECK 2 in the pull request's review record.
+//
+// lsa/emptydir is not an oversight left unarchived: neither the pre-change
+// nor the new walk ever emits an archive member for a directory itself, and
+// an empty directory has no files under it to recurse into, so it correctly
+// contributes zero members to the archive either way — the omission is
+// deliberate and matches on both sides of this change.
 //
 // A single-file or already-sorted fixture would make the ordering tests
 // below vacuous: an unsorted walk and a correctly-sorted walk produce the
@@ -115,14 +134,22 @@ func buildVFSFixture(t *testing.T, dir string) {
 			t.Fatalf("fixture: write %s: %v", rel, err)
 		}
 	}
+	mkdirEmpty := func(rel string) {
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(full, 0o755); err != nil {
+			t.Fatalf("fixture: mkdir %s: %v", rel, err)
+		}
+	}
 	write("snapshot.json", "snap-json-bytes")
 	write("wal/b.log", "wal-b")
 	write("wal/a.log", "wal-a")
 	write("wal/ignore.tmp", "should be excluded")
 	write("wal/sub/z.log", "wal-sub-z")
 	write("wal/sub/a.log", "wal-sub-a")
+	write("wal/quarantine.tmp/inner.log", "wal-quarantine-inner")
 	write("auth/roles.json", "auth-roles")
 	write("lsa/tenant1.lsa", "lsa-tenant1")
+	mkdirEmpty("lsa/emptydir")
 	write("edgestore/shard10.dat", "edge-shard10")
 	write("edgestore/shard2.dat", "edge-shard2")
 	write("edgestore/nested/shard1.dat", "edge-nested-shard1")
