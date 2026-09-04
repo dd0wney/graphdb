@@ -26,7 +26,7 @@ import (
 // header's value is a COUNT of skipped records, and a depth-capped traversal
 // has no such count to report.
 //
-// CONSUMER CONTRACT: CC15-truncated-query-serves-partial-result — all REST consumers (this PR)
+// CONSUMER CONTRACT: CC15-truncated-query-serves-partial-result — all REST consumers (#561)
 func TestTruncatedTraversalServesPartialResult(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
@@ -64,7 +64,7 @@ func TestTruncatedTraversalServesPartialResult(t *testing.T) {
 // present carries no information. Without this test, an implementation that
 // set X-Traversal-Truncated on every response would pass the row above while
 // telling the caller nothing.
-// CONSUMER CONTRACT: CC15-truncated-query-serves-partial-result — all REST consumers (this PR)
+// CONSUMER CONTRACT: CC15-truncated-query-serves-partial-result — all REST consumers (#561)
 func TestCompleteTraversalOmitsTheHeader(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
@@ -103,7 +103,6 @@ func TestCompleteTraversalOmitsTheHeader(t *testing.T) {
 // it (executePlanWithContext returns (nil, err) when a step itself fails,
 // as opposed to noting truncation on results it still built) — a real
 // failure, not a partial answer.
-// CONSUMER CONTRACT: CC15-truncated-query-serves-partial-result — all REST consumers (this PR)
 func TestTraversalRealFailureStillFails(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
