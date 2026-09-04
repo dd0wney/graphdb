@@ -144,9 +144,14 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 	queue := []bfsEntry{{node: currentNode, depth: 0, edges: nil, visited: startVisited}}
 
 	for len(queue) > 0 {
-		// Periodic cancellation check to respect query timeouts
-		if ctx.IsCancelled() {
-			return results, nil
+		// Periodic cancellation check to respect query timeouts.
+		//
+		// The error travels BESIDE the partial results, never instead of
+		// them (traversal_types.go:26-34): a cancelled context stopped the
+		// traversal before it ran out of graph, so a nil error here would
+		// wrongly assert the answer is complete.
+		if err := ctx.CheckCancellation(); err != nil {
+			return results, err
 		}
 
 		entry := queue[0]
