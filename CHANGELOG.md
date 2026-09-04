@@ -40,6 +40,17 @@ The following are present in the codebase but not yet part of a tagged release
 - Zero-allocation `Contains()` for compressed edge lists (sequential scan with early termination)
 
 ### Fixed
+- A cancelled variable-length traversal, a `PROFILE` query, and the first
+  segment of a `WITH` chain each reported a complete answer even when the
+  traversal was truncated at an engine limit. `traverseVariablePath` returned
+  a nil error on a cancelled context; `executeWithProfiling` never read the
+  execution context's recorded truncation; `executeWithChain` discarded the
+  first segment's execution context, along with the truncation it had
+  recorded, before running the next segment. All three now return the
+  truncation error, wrapping `ErrTraversalTruncated`, beside the results.
+  **Behaviour change**: a `PROFILE` query and a `WITH` chain that used to
+  return a nil error alongside a truncated answer can now return
+  `ErrTraversalTruncated` beside the same rows.
 - A bare-star variable-length relationship pattern (`[:TYPE*]`, with no hop
   count) now traverses one or more hops, matching Cypher semantics, instead
   of silently traversing exactly one hop. `*1..N`, `*N..M`, and `*N..` forms
