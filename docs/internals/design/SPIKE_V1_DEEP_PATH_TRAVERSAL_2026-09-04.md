@@ -231,6 +231,15 @@ interrogate wants it ("how far is this employee from that directory"). The cheap
 surface is the existing relationship binding — `length(r)` already yields it — so no new
 column is needed in v1.
 
+**Scope of "once".** The visited set lives for one `traverseVariablePath` call, and
+`matchPath` makes one such call per start node (`match_path.go:21-38`). So `DistinctNodes`
+means "once per start node", not "once per query": `MATCH (a:Root)-[:LINK*]->(b:Sink)` with
+three `:Root` nodes returns `b` up to three times, once per `a`. That is the correct
+reading, because each row is a distinct `(a, b)` binding, and it is what the consumer's
+single-start-node question needs. A query-wide set would have to live on the
+`ExecutionContext` and would silently merge rows across different `a` bindings. Say this in
+the doc comment.
+
 ### 3.2 Interaction with `MinHops`
 
 This is the sharp edge. With one shared visited set, a node is admitted at its **minimum**
@@ -557,6 +566,16 @@ the cache stays correct with no key change. Under P2 it also stays correct, beca
 cache stores the plan while the `*Query` still arrives from the caller. Under P1 it is
 correct and process-wide, which is the objection to P1 rather than a cache problem. Say
 this in the PR, because it is the first question a reviewer will ask.
+
+**A fourth execution path.** §5.1 lists three internal executors, but `ExecuteWithText`
+(`executor.go:470`) is a fourth: it reads or fills the plan cache and then calls
+`e.executePlan(plan, query)` (`executor.go:489`) directly, so it never passes through
+`ExecuteWithContext`. Under P3 it therefore never sees a `PathOptions` value. Either add an
+`ExecuteWithTextOptions` sibling, or document that a caller who wants the options parses
+first and calls `ExecuteWithOptions`, giving up the plan cache. The consumer parses in
+process, so the second is acceptable for v1, but the choice must be written down, or the
+cached path will silently run `AllSimplePaths`. R2's negative control must cover this path
+as well.
 
 ---
 
