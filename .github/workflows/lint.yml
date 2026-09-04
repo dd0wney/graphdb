@@ -77,7 +77,7 @@ jobs:
     - name: Run Gosec Security Scanner
       # Pinned: @master is a mutable ref (upstream pushes change CI
       # behavior with no diff here to bisect against).
-      uses: securego/gosec@v2.28.0
+      uses: securego/gosec@v2.29.0
       with:
         args: '-no-fail -fmt=json -out=results.json ./...'
 
