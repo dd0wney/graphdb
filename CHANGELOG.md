@@ -37,6 +37,17 @@ The following are present in the codebase but not yet part of a tagged release
 - Zero-allocation `Contains()` for compressed edge lists (sequential scan with early termination)
 
 ### Fixed
+- A bare-star variable-length relationship pattern (`[:TYPE*]`, with no hop
+  count) now traverses one or more hops, matching Cypher semantics, instead
+  of silently traversing exactly one hop. `*1..N`, `*N..M`, and `*N..` forms
+  were already correct; only the bare star was wrong.
+  **Behaviour change**: this is visible through the REST API's raw-Cypher
+  endpoints (`docs/STABILITY_POLICY.md`). A query using `[:TYPE*]` now
+  returns up to `MaxAllowedTraversalDepth` hops of results instead of one,
+  and, since the unbounded-traversal-honesty fix, can return a non-nil error
+  wrapping `ErrTraversalTruncated` alongside its results if it reaches that
+  cap — an endpoint that never returned an error for this pattern before can
+  now return one.
 - A single-record read no longer reports a damaged record as a missing node.
   A record that exists on disk but fails to decode (bit rot, a partial write, a
   truncated copy) previously read as `ErrNodeNotFound`, because the mmap
