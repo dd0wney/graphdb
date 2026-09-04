@@ -19,11 +19,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # go.mod declares `go 1.26.0` (build floor) and pins
-        # `toolchain go1.26.4` to close two reachable stdlib advisories
-        # (security audit H-9). Pin the runner to match so setup-go v6's
-        # GOTOOLCHAIN=local is satisfied without a toolchain download.
-        go-version: ['1.26.4']
+        # go.mod declares `go 1.27.0` (build floor). Pin the runner to
+        # match so setup-go's GOTOOLCHAIN=local is satisfied without a
+        # toolchain download. The earlier 1.26.4 pin closed two reachable
+        # stdlib advisories (security audit H-9); 1.27.0 carries those
+        # fixes, re-checked with govulncheck in the 1.27 adoption gate.
+        go-version: ['1.27.0']
         # Ubuntu runners hit external-SIGTERM exit-143 on test-verbose/test-race
         # consistently (CLAUDE.md § "Known infra patterns"; NEXT_STEPS_2026-05-13.md
         # § Track H). macOS-only matrix until the contention root cause is addressed.
@@ -89,7 +90,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v7
       with:
-        go-version: '1.26.4'
+        go-version: '1.27.0'
         cache: true
 
     - name: Run tests with coverage, and enforce the floor
@@ -146,7 +147,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v7
       with:
-        go-version: '1.26.4'
+        go-version: '1.27.0'
         cache: true
 
     - name: Run benchmarks
@@ -171,7 +172,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v7
       with:
-        go-version: '1.26.4'
+        go-version: '1.27.0'
         cache: true
 
     - name: Build all binaries
@@ -212,7 +213,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v7
       with:
-        go-version: '1.26.4'
+        go-version: '1.27.0'
         cache: true
 
     - name: No package may import "C"
@@ -257,7 +258,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v7
       with:
-        go-version: '1.26.4'
+        go-version: '1.27.0'
         cache: true
 
     # Gate 0 de-risk: confirm the experimental amd64-only simd/archsimd path

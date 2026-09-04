@@ -14,7 +14,7 @@
 
 - Linux server (Ubuntu 22.04+ or equivalent) with systemd
 - 4 CPU cores, 8GB RAM, 100GB SSD (sized for your corpus — see Scale Considerations below)
-- Go 1.23+ if building from source
+- Go 1.27+ if building from source
 - Network access on port 8080 (HTTP API) and whatever other ports you expose
 
 ## Step 1: Build the binary

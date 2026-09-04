@@ -24,18 +24,15 @@ Our CI/CD pipeline is split into multiple specialized workflows:
 **Jobs:**
 
 #### a) Matrix Testing
-- Tests across **3 Go versions** (1.23, 1.24, 1.25)
-- Tests on **2 operating systems** (Ubuntu, macOS)
-- Total: **6 test combinations**
+- Tests on **one Go version**, pinned to the `go.mod` floor (1.27.0)
+- Tests on **one operating system** (macOS; the Ubuntu matrix legs were
+  dropped in PR #181 after persistent external-SIGTERM exits, see
+  `CLAUDE.md` § Known infra patterns)
+- Total: **1 test combination**
 
 ```yaml
 Strategy:
-  - Go 1.23 + Ubuntu
-  - Go 1.23 + macOS
-  - Go 1.24 + Ubuntu
-  - Go 1.24 + macOS
-  - Go 1.25 + Ubuntu
-  - Go 1.25 + macOS
+  - Go 1.27.0 + macOS
 ```
 
 **Steps:**

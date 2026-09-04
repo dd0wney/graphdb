@@ -251,7 +251,7 @@ openssl x509 -in server.crt -text -noout
 ### Docker Deployment
 
 ```dockerfile
-FROM golang:1.21-alpine AS builder
+FROM golang:1.27-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN go build -o /bin/graphdb ./cmd/server
