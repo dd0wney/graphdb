@@ -245,7 +245,11 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 	return results, nil
 }
 
-// getEdges returns edges from a node filtered by relationship type and direction.
+// getEdges returns edges from a node filtered by relationship type,
+// direction, and inline pattern properties (for example
+// [r:KNOWS {since: 2020}]). A pattern with no type and no properties
+// matches every edge, so that case returns the fetched slice unfiltered
+// rather than allocating a copy of it.
 func (ms *MatchStep) getEdges(ctx *ExecutionContext, node *storage.Node, rel *RelationshipPattern) []*storage.Edge {
 	var edges []*storage.Edge
 
@@ -263,15 +267,19 @@ func (ms *MatchStep) getEdges(ctx *ExecutionContext, node *storage.Node, rel *Re
 		edges = append(edges, incoming...)
 	}
 
-	// Filter by edge type
-	if rel.Type == "" {
+	if rel.Type == "" && len(rel.Properties) == 0 {
 		return edges
 	}
+
 	filtered := make([]*storage.Edge, 0, len(edges))
 	for _, edge := range edges {
-		if edge.Type == rel.Type {
-			filtered = append(filtered, edge)
+		if rel.Type != "" && edge.Type != rel.Type {
+			continue
 		}
+		if !ms.matchProperties(edge.Properties, rel.Properties) {
+			continue
+		}
+		filtered = append(filtered, edge)
 	}
 	return filtered
 }

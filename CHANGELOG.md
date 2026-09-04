@@ -40,6 +40,14 @@ The following are present in the codebase but not yet part of a tagged release
 - Zero-allocation `Contains()` for compressed edge lists (sequential scan with early termination)
 
 ### Fixed
+- An inline relationship property filter (`[r:KNOWS {since: 2020}]`) in a
+  `MATCH` pattern now filters edges by that property, instead of matching
+  every edge of the given type regardless of the property. The fix also
+  covers a pattern with properties and no type (`[{since: 2020}]`), and the
+  variable-length traversal path (`[:KNOWS*1..2 {since: 2020}]`).
+  **Behaviour change**: this is visible through the REST API's raw-Cypher
+  endpoints. A query with an inline relationship property filter now
+  returns fewer rows than before, because the filter now works.
 - A bare-star variable-length relationship pattern (`[:TYPE*]`, with no hop
   count) now traverses one or more hops, matching Cypher semantics, instead
   of silently traversing exactly one hop. `*1..N`, `*N..M`, and `*N..` forms
