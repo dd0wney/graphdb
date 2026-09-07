@@ -497,10 +497,12 @@ func TestCheckInvariantsMmap_TeethTenantStatsMissing(t *testing.T) {
 // loadFromDiskMmap registers a sticky KEY (possibly with an empty bucket) for
 // every label/type live at the last Close (meta.StickyNodeLabels /
 // StickyEdgeTypes); writes made after open add real members through the same
-// addToLabelIndex the shard path uses. Either way, GetAllLabels and
-// GetAllEdgeTypes (query_operations.go) read gs.nodesByLabel/gs.edgesByType
-// directly, on both representations — so a key dropped there is invisible to
-// the membership-section checks above, which never look at that index.
+// addToLabelIndex the shard path uses. gs.nodesByLabel backs GetAllLabels
+// (query_operations.go), read directly on both representations. gs.edgesByType
+// has no direct external reader today — its only reader is
+// mmap_snapshot_writer.go, which uses it to build the sticky-type list for the
+// next snapshot write. Either way a key dropped from either map is invisible
+// to the membership-section checks above, which never look at these maps.
 
 // TestCheckInvariantsMmap_TeethStickyLabelKeyDropped deletes a live label's
 // key from the global index that backs GetAllLabels.
@@ -518,7 +520,8 @@ func TestCheckInvariantsMmap_TeethStickyLabelKeyDropped(t *testing.T) {
 }
 
 // TestCheckInvariantsMmap_TeethStickyTypeKeyDropped is the same corruption for
-// the global edge-type index that backs GetAllEdgeTypes.
+// the global edge-type index that the mmap snapshot writer reads to build the
+// sticky-type list for the next write.
 func TestCheckInvariantsMmap_TeethStickyTypeKeyDropped(t *testing.T) {
 	gs := mmapStoreWithData(t)
 
