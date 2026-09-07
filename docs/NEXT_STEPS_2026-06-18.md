@@ -198,10 +198,19 @@ list lived only in a chat window.
 1. ~~**No invariant checker for the mmap representation.**~~ **SHIPPED — #474.**
    Ground truth is `shard records ∪ (mmap base records − tombstones)`, shard
    winning, built from raw records rather than the membership helpers.
-   **What remains, and is the live item: the vector index and the adjacency
-   lists have no mmap ground truth.** A clean mmap result is therefore a weaker
-   statement than a clean JSON result, and `CheckInvariants`' doc says so.
-   Closing that gap is the follow-on task.
+   ~~**What remains, and is the live item: the vector index and the adjacency
+   lists have no mmap ground truth.**~~ **CLOSED 2026-09-07 — #569.** The three
+   shard-path checks (adjacency lists, vector-index count, property indexes)
+   became helpers that take ground truth as an argument, and the mmap path
+   feeds them its raw-record set. Seven teeth tests corrupt each structure by
+   hand and were seen to fail against the pre-#569 checker. The property
+   indexes were never named in the gap but had the same shape, so they went in
+   too. **Still unchecked on the mmap path**, and said so in the doc comment:
+   the count chains (`stats`, `tenantStats`) and the sticky global label/type
+   keys behind `GetAllLabels`. Neither is queued; each is a short check plus a
+   teeth test if anyone wants it. One more thing #569 surfaced: the metamorphic
+   driver (`invariant_metamorphic_test.go`) still runs on the JSON path for a
+   reason that stopped being true at #474, so it can now run on mmap as well.
 
 2. **Coverage moves with the machine, by ~4 points.** CI measured 75.5% where a
    developer machine measured 79.5% on the same commit: wal 70.2 vs 79.1, lsm
