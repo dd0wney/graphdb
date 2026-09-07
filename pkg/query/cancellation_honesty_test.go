@@ -65,7 +65,7 @@ func TestVariablePathReportsCancellationInsteadOfClaimingCompletion(t *testing.T
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	execCtx := newExecutionContext(ctx, gs)
+	execCtx := newExecutionContext(ctx, gs, PathOptions{})
 	execCtx.results = []*BindingSet{{bindings: make(map[string]any)}}
 
 	ms := &MatchStep{match: cancellationTestPattern()}
@@ -89,7 +89,7 @@ func TestVariablePathOnLiveContextReportsNoError(t *testing.T) {
 	gs, _, cleanup := chainGraph(t, 3)
 	defer cleanup()
 
-	execCtx := newExecutionContext(context.Background(), gs)
+	execCtx := newExecutionContext(context.Background(), gs, PathOptions{})
 	execCtx.results = []*BindingSet{{bindings: make(map[string]any)}}
 
 	ms := &MatchStep{match: cancellationTestPattern()}

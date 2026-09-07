@@ -42,6 +42,12 @@ type ExecutionContext struct {
 	// is the positive assertion that the answer is complete. ADR 0003's
 	// enumeration rule, applied to traversal.
 	truncation error
+
+	// pathOpts is the per-call variable-length traversal policy. The zero
+	// value is today's behaviour, so a caller that does not opt in is
+	// unchanged by construction. Read by traverseVariablePath and nowhere
+	// else.
+	pathOpts PathOptions
 }
 
 // noteTruncation records the first limit a query ran into. The first is kept
@@ -55,13 +61,36 @@ func (ctx *ExecutionContext) noteTruncation(err error) {
 // newExecutionContext constructs an ExecutionContext, snapshotting
 // the tenant ID from ctx so step executions can call *ForTenant
 // graph methods without re-parsing ctx on every call.
-func newExecutionContext(ctx context.Context, graph *storage.GraphStorage) *ExecutionContext {
+func newExecutionContext(ctx context.Context, graph *storage.GraphStorage, opts PathOptions) *ExecutionContext {
 	return &ExecutionContext{
 		context:  ctx,
 		graph:    graph,
 		tenantID: tenant.MustFromContext(ctx),
 		bindings: make(map[string]any),
 		results:  make([]*BindingSet, 0),
+		pathOpts: opts,
+	}
+}
+
+// subContext returns a context for a nested step: the same graph, the same
+// tenant and the same traversal policy, with fresh bindings and one empty
+// result.
+//
+// MergeStep built this by struct literal and dropped pathOpts, so a MERGE ran a
+// traversal the caller had not asked for. Changing newExecutionContext's
+// signature does not prevent that, because a struct literal bypasses the
+// constructor. Every nested step goes through here instead, so a new policy
+// field is carried in one place rather than remembered in several.
+func (ec *ExecutionContext) subContext() *ExecutionContext {
+	return &ExecutionContext{
+		context:  ec.context,
+		graph:    ec.graph,
+		tenantID: ec.tenantID,
+		pathOpts: ec.pathOpts,
+		bindings: make(map[string]any),
+		results: []*BindingSet{
+			{bindings: make(map[string]any)},
+		},
 	}
 }
 
@@ -182,12 +211,12 @@ func (e *Executor) buildExecutionPlan(query *Query) *ExecutionPlan {
 
 // executePlan executes an execution plan (without context - for backwards compatibility)
 func (e *Executor) executePlan(plan *ExecutionPlan, query *Query) (*ResultSet, error) {
-	return e.executePlanWithContext(context.Background(), plan, query)
+	return e.executePlanWithContext(context.Background(), plan, query, PathOptions{})
 }
 
 // executePlanWithContext executes an execution plan with context support
-func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPlan, query *Query) (*ResultSet, error) {
-	execCtx := newExecutionContext(ctx, e.graph)
+func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPlan, query *Query, opts PathOptions) (*ResultSet, error) {
+	execCtx := newExecutionContext(ctx, e.graph, opts)
 
 	// Use initial bindings if provided (from WITH chaining), otherwise start with empty binding
 	if query.InitialBindings != nil {

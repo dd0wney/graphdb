@@ -375,18 +375,16 @@ func (ms *MergeStep) Execute(ctx *ExecutionContext) error {
 	// parent ctx (audit A6c-query) — sub-context must scope to the
 	// same tenant.
 	savedResults := ctx.results
-	matchCtx := &ExecutionContext{
-		context:  ctx.context,
-		graph:    ctx.graph,
-		tenantID: ctx.tenantID,
-		bindings: make(map[string]any),
-		results: []*BindingSet{
-			{bindings: make(map[string]any)},
-		},
-	}
+	matchCtx := ctx.subContext()
 
 	if err := matchStep.Execute(matchCtx); err != nil {
 		return err
+	}
+
+	// The match half's truncation belongs to the caller. Dropping it made a
+	// MERGE whose match stopped at an engine limit report a complete answer.
+	if matchCtx.truncation != nil {
+		ctx.noteTruncation(matchCtx.truncation)
 	}
 
 	if len(matchCtx.results) > 0 {

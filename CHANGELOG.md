@@ -15,6 +15,25 @@ The following are present in the codebase but not yet part of a tagged release
 `pkg/cluster/doc.go`):
 
 ### Added
+- **Opt-in variable-length traversal policy: `Executor.ExecuteWithOptions` and `query.PathOptions`.**
+  Two capabilities for consumers that import graphdb as a Go library.
+  `PathOptions{Semantics: DistinctNodes}` admits each node at most once per start node, so a
+  node reachable by twenty routes produces one row instead of twenty, and cost grows with the
+  reachable subgraph (`O(N+E)`) instead of with the number of routes (`O(b^d)`); the
+  relationship variable binds the BFS discovery path, which is *a* shortest path in edge count
+  (ties are unspecified — do not depend on which one comes back). `PathOptions.Expand` is a Go
+  predicate that runs at expansion time, so a rejected node is never queued and its neighbours
+  are never read from storage. The two are orthogonal, and `DistinctNodes` refuses `MinHops >= 2`
+  with `query.ErrDistinctNodesMinHops` rather than silently dropping rows it cannot find.
+  **The zero `PathOptions` is today's behaviour exactly**, on the plain, `PROFILE`, `WITH`-chain
+  and `OPTIONAL MATCH` surfaces alike. `ExecuteWithText` has no options parameter and always runs
+  the default — a caller who wants the options parses first and gives up the plan cache.
+  A wrong `PathSemantics` value is refused with `query.ErrUnknownPathSemantics`, and both
+  refusals happen before the query reads any data, so a start label that matches nothing cannot
+  turn a refusal into an empty success. The filter reaches variable-length patterns only —
+  a single hop, `[:T*1..1]` included, takes the fixed path.
+  No REST or GraphQL surface: a Go closure cannot cross HTTP, and `pkg/api` shares one executor
+  across every request.
 - Multi-node/replication groundwork: node listing on replicas (`/nodes` GET), datacenter-link parsing in ZMQ/NNG primaries, snapshot-transfer handling, and primary-mode transition with `PromotionCallback` for HA failover
 - Generic OIDC authentication support for enterprise identity providers
 - Modularity calculation for community detection (ConnectedComponents, LabelPropagation)
@@ -40,6 +59,11 @@ The following are present in the codebase but not yet part of a tagged release
 - Zero-allocation `Contains()` for compressed edge lists (sequential scan with early termination)
 
 ### Fixed
+- A `MERGE` whose match half stopped at an engine limit reported a complete answer.
+  `MergeStep.Execute` built its sub-context as a struct literal and discarded
+  `matchCtx.truncation`, so `ErrTraversalTruncated` from the match pattern never reached the
+  caller. Nested steps now derive their context through `ExecutionContext.subContext`, which
+  carries the traversal policy and lets the truncation signal back out.
 - A cancelled variable-length traversal, a `PROFILE` query, and the first
   segment of a `WITH` chain each reported a complete answer that was not
   true. `traverseVariablePath` checked for cancellation but always returned
