@@ -172,7 +172,7 @@ The OSS repo defines `pkg/plugins/EnterprisePlugin` + specialised sub-interfaces
 | (none) | Python | missing | No first-party Python SDK. Customers go via REST. |
 | (none) | Java | missing | No first-party Java SDK. |
 | (none) | Rust | missing | No first-party Rust SDK. |
-| Direct `pkg/` import | Go | mature | Embedding graphdb as a Go library is supported via direct `pkg/storage` etc. import. Not packaged separately. |
+| Direct `pkg/` import | Go | works, **unversioned** | Embedding graphdb as a Go library works via direct `pkg/storage` / `pkg/query` import, and `oit-cyber/interrogate` does exactly that. It carries **no stability guarantee** — [`STABILITY_POLICY.md`](./STABILITY_POLICY.md) lists internal Go packages under "Not covered", so a minor release may change these signatures. This row said "mature" and "is supported" until 2026-09-07, which contradicted that policy outright. Library-only API such as `query.PathOptions` and `Executor.ExecuteWithOptions` (#563) is unversioned for the same reason. Not packaged separately. |
 
 ---
 

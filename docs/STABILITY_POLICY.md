@@ -43,7 +43,7 @@ Every on-disk format carries an explicit version (`GSNP` / `GMNP` / WAL / `manif
 
 ## Not covered (no stability guarantee)
 
-- **Internal Go packages.** Importing GraphDB as a library is not a supported, versioned API; only the binaries, REST/GraphQL APIs, and on-disk formats are.
+- **Internal Go packages.** Importing GraphDB as a library is not a supported, versioned API; only the binaries, REST/GraphQL APIs, and on-disk formats are. This includes API that *only* a library importer can reach, such as `query.PathOptions`, `query.Expansion`, `query.ExpandFilter` and `Executor.ExecuteWithOptions` (#563): they have no REST or GraphQL surface by design, and they are unversioned. A consumer that depends on them — `oit-cyber/interrogate` today — should pin a commit, not a minor version.
 - **`pkg/cluster` / replication.** Marked EXPERIMENTAL and not wired into the server (single-node by design for 1.0).
 - **Benchmark/demo binaries** (`cmd/benchmark*`, `cmd/graphdb` demo) and anything documented as experimental or preview.
 - Exact performance numbers, log lines, and metric label *values* (metric *names* follow Prometheus conventions but are not part of the SemVer contract).
