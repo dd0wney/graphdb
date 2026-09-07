@@ -94,6 +94,37 @@ func (ec *ExecutionContext) subContext() *ExecutionContext {
 	}
 }
 
+// aggregationContext returns a context for computing aggregates over one group
+// of bindings.
+//
+// It carries graph, tenantID and results, and nothing else, because those are
+// exactly the three fields the aggregation path reads. Audit A6c-query is why
+// tenantID is one of them: aggregation must not run cross-tenant.
+//
+// The absences are deliberate, and each has a reason:
+//
+//	context   ComputeAggregates runs no cancellation check and no traversal, so
+//	          there is nothing for a context to cancel.
+//	pathOpts  it never reaches traverseVariablePath, so traversal policy is
+//	          meaningless here.
+//	bindings  nothing writes to it. A nil map reads fine and panics on write, so
+//	          if that changes, it must be set.
+//
+// This is NOT subContext, and must not become it: subContext seeds one fresh
+// empty binding, and a group needs its own.
+//
+// If ComputeAggregates ever grows a traversal or a cancellation check, this
+// function is where the missing fields go. The MERGE defect that #563 closed
+// was this exact shape one level up — a sub-context built by struct literal,
+// correct until the code below it started needing a field nobody had carried.
+func (ec *ExecutionContext) aggregationContext(results []*BindingSet) *ExecutionContext {
+	return &ExecutionContext{
+		graph:    ec.graph,
+		tenantID: ec.tenantID,
+		results:  results,
+	}
+}
+
 // IsCancelled checks if the execution context has been cancelled
 func (ec *ExecutionContext) IsCancelled() bool {
 	if ec.context == nil {
