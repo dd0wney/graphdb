@@ -5,7 +5,14 @@ package query
 // PathOptions travels from ExecuteWithOptions through four internal executors:
 // the plain path, PROFILE, both segments of a WITH chain, and each segment of a
 // UNION. OPTIONAL MATCH builds its own MatchStep and joins at matchPattern, so
-// it inherits whichever ExecutionContext was built above it.
+// it inherits whichever ExecutionContext was built above it. MERGE does NOT
+// inherit it that way — it builds a sub-context of its own.
+//
+// The table below drives the first three tests and holds the four surfaces whose
+// row counts match fanGraph directly. UNION and MERGE need different assertions,
+// so each has its own test lower down. An earlier version of this comment
+// claimed UNION was in the table when it was not, which is why the code review
+// caught an untested surface.
 //
 // Two failures are possible on each of those surfaces and this file gates both:
 //
@@ -22,6 +29,7 @@ package query
 // and this file makes it a fact rather than a comment.
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -148,5 +156,102 @@ func TestExecuteWithTextAlwaysRunsTheDefaultSemantics(t *testing.T) {
 	if len(rs.Rows) != fanRoutes {
 		t.Errorf("ExecuteWithText returned %d rows, want %d. It has no PathOptions "+
 			"parameter, so it must run the default semantics.", len(rs.Rows), fanRoutes)
+	}
+}
+
+// MERGE is a fifth surface, and it was missed.
+//
+// MergeStep.Execute builds its sub-context as a struct literal rather than
+// through newExecutionContext, so it copied context, graph, tenantID and
+// bindings and dropped pathOpts. A caller that uses Expand as a visibility rule
+// got rows for nodes that rule excludes, and ON MATCH SET then wrote to them.
+//
+// Changing the constructor signature does not prevent this. A struct literal
+// bypasses the constructor, so the guarantee has to live on a helper that every
+// sub-context uses.
+func TestMergeCarriesPathOptions(t *testing.T) {
+	f := gateGraph(t)
+	defer f.cleanup()
+
+	offered := 0
+	opts := PathOptions{Expand: func(x Expansion) bool {
+		offered++
+		return x.To.ID != f.ids["gate"]
+	}}
+
+	rs, err := runQueryWithOptions(t, f.e,
+		"MERGE (a:Root)-[:LINK*1..4]->(b:Hidden) RETURN b.name", opts)
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if offered == 0 {
+		t.Fatalf("the filter was never called, so MERGE ran a traversal with no options at "+
+			"all. rows=%v", rs.Rows)
+	}
+
+	// Everything labelled :Hidden sits behind the rejected gate, so the match
+	// half must find none of it.
+	for _, row := range rs.Rows {
+		v := row[rs.Columns[0]]
+		for _, hidden := range []string{"s1", "s2", "s3"} {
+			if v == hidden {
+				t.Errorf("MERGE returned %q from behind the rejected gate; a caller using "+
+					"the filter as a visibility rule sees a node that rule excludes, and "+
+					"ON MATCH SET would write to it", hidden)
+			}
+		}
+	}
+}
+
+// A MERGE whose match half stops at an engine limit must say so.
+//
+// MergeStep.Execute discards matchCtx.truncation. This is not caused by
+// PathOptions — it predates them — but it is the same defect the repository
+// keeps closing: a limit that acts and does not tell the caller.
+func TestMergeReportsTruncationFromItsMatchHalf(t *testing.T) {
+	_, e, cleanup := chainGraph(t, MaxAllowedTraversalDepth+2)
+	defer cleanup()
+
+	rs, err := runQueryWithOptions(t, e,
+		"MERGE (a:Root)-[:LINK*]->(b:Node) RETURN b.name", PathOptions{})
+	if rs == nil || len(rs.Rows) == 0 {
+		t.Fatalf("no rows came back, so this test cannot tell a lost signal from a broken "+
+			"query: rs=%v err=%v", rs, err)
+	}
+	if !errors.Is(err, ErrTraversalTruncated) {
+		t.Errorf("the MERGE match half stopped at the depth cap of %d on a chain of %d and "+
+			"reported success: %v", MaxAllowedTraversalDepth, MaxAllowedTraversalDepth+2, err)
+	}
+}
+
+// Each segment of a UNION must carry the options.
+//
+// UNION ALL, not UNION: plain UNION removes duplicate rows, so twenty identical
+// sink rows collapse to one on their own. A test over plain UNION cannot tell
+// "DistinctNodes worked" from "UNION removed the duplicates", which is the trap
+// this test exists to avoid.
+func TestUnionCarriesPathOptionsInEverySegment(t *testing.T) {
+	const unionAll = fanSinkQuery + " UNION ALL " + fanSinkQuery
+
+	_, e, cleanup := fanGraph(t, fanRoutes)
+	defer cleanup()
+
+	distinct, err := runQueryWithOptions(t, e, unionAll, PathOptions{Semantics: DistinctNodes})
+	if err != nil {
+		t.Fatalf("DistinctNodes: %v", err)
+	}
+	if len(distinct.Rows) != 2 {
+		t.Errorf("UNION ALL of two DistinctNodes segments returned %d rows, want 2. A "+
+			"segment that dropped the options contributed %d rows of its own.",
+			len(distinct.Rows), fanRoutes)
+	}
+
+	zero, err := runQueryWithOptions(t, e, unionAll, PathOptions{})
+	if err != nil {
+		t.Fatalf("zero value: %v", err)
+	}
+	if len(zero.Rows) != 2*fanRoutes {
+		t.Errorf("UNION ALL under the zero PathOptions returned %d rows, want %d",
+			len(zero.Rows), 2*fanRoutes)
 	}
 }

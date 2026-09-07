@@ -54,12 +54,21 @@ func (ms *MatchStep) traversePath(ctx *ExecutionContext, currentNode *storage.No
 	// Variable-length path: dispatch to BFS traversal.
 	// MinHops=1,MaxHops=1 is the default single-hop. MinHops=0,MaxHops=0 is the
 	// Go zero value (unset) — also treat as single-hop for backward compatibility.
-	isVariableLength := (rel.MinHops != 1 || rel.MaxHops != 1) && (rel.MinHops != 0 || rel.MaxHops != 0)
-	if isVariableLength {
+	if isVariableLengthRel(rel) {
 		return ms.traverseVariablePath(ctx, currentNode, pattern, relIndex, currentBinding)
 	}
 
 	return ms.traverseFixedPath(ctx, currentNode, pattern, relIndex, currentBinding)
+}
+
+// isVariableLengthRel reports whether rel dispatches to traverseVariablePath.
+//
+// traversePath and the PathOptions validator must agree on this. If they came
+// apart, a refusal would fire for a pattern the traversal never sees, or a
+// pattern the traversal does see would escape validation. Note that MinHops >= 2
+// implies true, which is what lets the validator test MinHops alone.
+func isVariableLengthRel(rel *RelationshipPattern) bool {
+	return (rel.MinHops != 1 || rel.MaxHops != 1) && (rel.MinHops != 0 || rel.MaxHops != 0)
 }
 
 // traverseFixedPath handles single-hop relationship traversal (the original logic).
@@ -191,9 +200,14 @@ func (f *frontier) admit(entry bfsEntry, node *storage.Node, edge *storage.Edge)
 }
 
 // pathTo returns the edge path to bind to the relationship variable for entry.
-func (f *frontier) pathTo(entry bfsEntry) []*storage.Edge {
+//
+// It returns an error rather than a short path when the parent chain is broken.
+// The case is unreachable today, because every admitted node gets a record and a
+// record is written once. If a later change makes it reachable, a caller must
+// not receive a wrong path that looks like a right one.
+func (f *frontier) pathTo(entry bfsEntry) ([]*storage.Edge, error) {
 	if !f.distinct {
-		return entry.edges
+		return entry.edges, nil
 	}
 
 	// The parent chain is discovered target-first and a row wants it
@@ -204,7 +218,8 @@ func (f *frontier) pathTo(entry bfsEntry) []*storage.Edge {
 	for id := entry.node.ID; id != f.start; {
 		rec, ok := f.discovery[id]
 		if !ok {
-			break
+			return nil, fmt.Errorf("traversal invariant broken: node %d is on the queue "+
+				"with no discovery record, so the path to it cannot be rebuilt", id)
 		}
 		path = append(path, rec.edge)
 		id = rec.parent
@@ -212,7 +227,43 @@ func (f *frontier) pathTo(entry bfsEntry) []*storage.Edge {
 	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
 		path[i], path[j] = path[j], path[i]
 	}
-	return path
+	return path, nil
+}
+
+// admissible reports whether the traversal may enter the node at the far end of
+// edge, and returns the loaded node when it may.
+//
+// The expansion loop and the depth-cap truncation check both use it, so
+// "would this candidate have been expanded?" has ONE answer. When they had two,
+// the cap check saw a candidate the caller's own filter rejects and reported an
+// incomplete answer that had lost nothing.
+func (ms *MatchStep) admissible(ctx *ExecutionContext, f *frontier, entry bfsEntry, rel *RelationshipPattern, edge *storage.Edge) (*storage.Node, bool) {
+	neighborID := ms.targetNodeID(edge, rel, entry.node)
+
+	// Cycle detection. Per-path under AllSimplePaths, shared under DistinctNodes.
+	if f.visited(entry, neighborID) {
+		return nil, false
+	}
+
+	// GetNodeForTenant, never the tenant-blind reader: a foreign node must be
+	// dropped here, before any caller code can observe that it exists.
+	node, err := ctx.graph.GetNodeForTenant(neighborID, ctx.tenantID)
+	if err != nil {
+		return nil, false
+	}
+
+	// A rejection is deliberately not remembered — the filter may read Depth and
+	// Edge, so "rejected here" does not mean "rejected everywhere".
+	if ctx.pathOpts.Expand != nil && !ctx.pathOpts.Expand(Expansion{
+		From:  entry.node,
+		Edge:  edge,
+		To:    node,
+		Depth: entry.depth + 1,
+	}) {
+		return nil, false
+	}
+
+	return node, true
 }
 
 // traverseVariablePath uses BFS to find paths within [MinHops, MaxHops].
@@ -287,7 +338,11 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 			if ms.nodeMatchesPattern(entry.node, targetNodePattern) {
 				newBinding := ms.copyBinding(currentBinding)
 				if rel.Variable != "" {
-					newBinding.bindings[rel.Variable] = f.pathTo(entry)
+					path, err := f.pathTo(entry)
+					if err != nil {
+						return results, err
+					}
+					newBinding.bindings[rel.Variable] = path
 				}
 				if targetNodePattern.Variable != "" {
 					newBinding.bindings[targetNodePattern.Variable] = entry.node
@@ -320,13 +375,15 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 			// At the cap. The answer is incomplete only if something here would
 			// actually have been expanded — a frontier node whose neighbours are
 			// all already visited on this path costs the caller nothing.
-			// Under DistinctNodes this consults the SHARED visited set, which
-			// makes the check strictly more accurate: a neighbour already
-			// visited globally is already in the answer, so it is not lost
-			// work and must not raise the signal.
+			// The question is whether anything here would ACTUALLY have been
+			// expanded. A neighbour already visited costs the caller nothing.
+			// Under DistinctNodes "visited" is the shared set, which makes the
+			// check strictly more accurate. A neighbour the caller's own filter
+			// rejects costs the caller nothing either, so admissible answers
+			// both halves and the signal keeps meaning something.
 			if engineCapped {
 				for _, edge := range edges {
-					if !f.visited(entry, ms.targetNodeID(edge, rel, entry.node)) {
+					if _, ok := ms.admissible(ctx, f, entry, rel, edge); ok {
 						truncated = true
 						break
 					}
@@ -336,34 +393,12 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 		}
 
 		for _, edge := range edges {
-			neighborID := ms.targetNodeID(edge, rel, entry.node)
-
-			// Cycle detection. Per-path under AllSimplePaths, shared under
-			// DistinctNodes.
-			if f.visited(entry, neighborID) {
-				continue
-			}
-
-			// GetNodeForTenant, never the tenant-blind reader: a foreign node
-			// must be dropped here, before any caller code can observe that it
-			// exists.
-			neighborNode, err := ctx.graph.GetNodeForTenant(neighborID, ctx.tenantID)
-			if err != nil {
-				continue
-			}
-
-			// The filter runs after the load and BEFORE admission. Running it
-			// after admission would only hide the node: the queue would still
-			// expand it and read its neighbours, which is the cost the filter
-			// exists to remove. A rejection is deliberately not remembered —
-			// the filter may read Depth and Edge, so "rejected here" does not
-			// mean "rejected everywhere".
-			if opts.Expand != nil && !opts.Expand(Expansion{
-				From:  entry.node,
-				Edge:  edge,
-				To:    neighborNode,
-				Depth: entry.depth + 1,
-			}) {
+			// admissible runs the filter BEFORE admission. After admission the
+			// filter would only hide the node: the queue would still expand it
+			// and read its neighbours, which is the cost the filter exists to
+			// remove.
+			neighborNode, ok := ms.admissible(ctx, f, entry, rel, edge)
+			if !ok {
 				continue
 			}
 

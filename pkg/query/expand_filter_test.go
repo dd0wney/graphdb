@@ -19,6 +19,7 @@ package query
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -361,6 +362,80 @@ func TestExpandFilterNeverSeesAForeignTenantNode(t *testing.T) {
 		if !tenant.IsDefaultTenant(n.TenantID) {
 			t.Errorf("the filter was offered a node of tenant %q while the query ran as "+
 				"the default tenant", n.TenantID)
+		}
+	}
+}
+
+// The depth-cap truncation check must ask the filter, not only the visited set.
+//
+// At the cap the traversal asks whether any neighbour would have been expanded.
+// It consulted the visited set alone, so a candidate the CALLER's own filter
+// would prune still raised ErrTraversalTruncated. Nothing was lost, and the
+// engine said the answer was incomplete anyway. pkg/api turns that error into
+// the incomplete signal, so a consumer that pairs Expand with an unbounded star
+// would see "incomplete" on nearly every query, and the signal stops meaning
+// anything — the exact outcome the comment above the depth check argues against.
+func TestExpandFilterDoesNotCauseAFalseTruncation(t *testing.T) {
+	_, e, cleanup := chainGraph(t, MaxAllowedTraversalDepth+2)
+	defer cleanup()
+
+	// The caller's own rule stops exactly at the engine cap, so the engine cap
+	// takes nothing away from it.
+	opts := PathOptions{Expand: func(x Expansion) bool {
+		return x.Depth <= MaxAllowedTraversalDepth
+	}}
+
+	rs, err := runQueryWithOptions(t, e, "MATCH (a:Root)-[:LINK*]->(b:Node) RETURN b.name", opts)
+	if rs == nil || len(rs.Rows) == 0 {
+		t.Fatalf("no rows came back, so this test cannot tell a false truncation from a "+
+			"broken query: rs=%v err=%v", rs, err)
+	}
+	if err != nil {
+		t.Errorf("the traversal reported an incomplete answer, but the only candidate past "+
+			"the cap was one the caller's filter rejects. Nothing was lost: %v", err)
+	}
+
+	// Control: with no filter the same query IS incomplete, so the signal still
+	// works and this test is not merely asserting that truncation never fires.
+	_, bare := runQueryWithOptions(t, e, "MATCH (a:Root)-[:LINK*]->(b:Node) RETURN b.name",
+		PathOptions{})
+	if !errors.Is(bare, ErrTraversalTruncated) {
+		t.Fatalf("the unfiltered control did not report truncation, so the instrument is "+
+			"broken and the assertion above proves nothing: %v", bare)
+	}
+}
+
+// The filter reaches variable-length patterns only. D10 decided this: a single
+// hop has no subtree to prune, so a filter there would only repeat a WHERE
+// clause. `*1..1` carries star syntax but is a single hop, and it takes the
+// fixed path.
+//
+// This pins the limit that ExpandFilter's doc comment states. It is a fact about
+// the engine, not an accident, and a later change to it must be deliberate.
+func TestExpandFilterDoesNotReachSingleHopPatterns(t *testing.T) {
+	f := gateGraph(t)
+	defer f.cleanup()
+
+	for _, q := range []string{
+		"MATCH (a:Root)-[:LINK]->(b) RETURN b.name",
+		"MATCH (a:Root)-[:LINK*1..1]->(b) RETURN b.name",
+	} {
+		called := 0
+		opts := PathOptions{Expand: func(Expansion) bool {
+			called++
+			return false
+		}}
+		rs, err := runQueryWithOptions(t, f.e, q, opts)
+		if err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+		if called != 0 {
+			t.Errorf("%s offered %d candidates to the filter; a single hop takes the fixed "+
+				"path, which has no filter", q, called)
+		}
+		if len(rs.Rows) != 2 {
+			t.Errorf("%s returned %d rows, want 2; the reject-all filter must not have "+
+				"applied here", q, len(rs.Rows))
 		}
 	}
 }

@@ -108,6 +108,13 @@ func (e *Executor) ExecuteWithOptions(ctx context.Context, query *Query, opts Pa
 	default:
 	}
 
+	// Refuse an unanswerable request before reading any data. A check inside
+	// the traversal fires only when a start node exists, which would make the
+	// refusal depend on the graph rather than on the request.
+	if err := opts.validate(query); err != nil {
+		return nil, err
+	}
+
 	// Handle UNION before normal execution
 	if query.Union != nil && query.UnionNext != nil {
 		return e.executeUnion(ctx, query, opts)

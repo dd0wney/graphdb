@@ -2,6 +2,7 @@ package query
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
@@ -38,7 +39,8 @@ const (
 	// distinct (a, b) binding, so that is the correct reading — a query-wide
 	// set would silently merge rows across different a bindings.
 	//
-	// MinHops of 2 or more is refused in this mode. See ErrDistinctNodesMinHops.
+	// MinHops of 2 or more is refused in this mode, before the query reads any
+	// data. See ErrDistinctNodesMinHops.
 	DistinctNodes
 )
 
@@ -54,6 +56,11 @@ const (
 // depth 0 and every other admitted node sits at depth 1 or deeper, so no row
 // can be lost there.
 var ErrDistinctNodesMinHops = errors.New("DistinctNodes semantics do not support MinHops above 1")
+
+// ErrUnknownPathSemantics reports a PathSemantics value the engine does not
+// know. Reading an unrecognised value as the default would run a traversal the
+// caller did not ask for and say nothing about it.
+var ErrUnknownPathSemantics = errors.New("unknown PathSemantics value")
 
 // Expansion describes one candidate step, offered to an ExpandFilter before the
 // traversal enters it.
@@ -81,6 +88,19 @@ type Expansion struct {
 // filter may read Depth and Edge, so "rejected here" does not mean "rejected
 // everywhere", and marking a rejected node visited would be wrong.
 //
+// Two limits on where it runs, both deliberate:
+//
+// It reaches variable-length patterns only. A single-hop pattern takes the fixed
+// path and is never offered to the filter — including [:T*1..1], which carries
+// star syntax but is one hop. A single hop has no subtree to prune, so a filter
+// there would only repeat a WHERE clause.
+//
+// At the engine depth cap the traversal consults the filter about a candidate it
+// will NOT enter, to decide whether the answer is incomplete. A candidate the
+// filter rejects costs the caller nothing, so it must not raise
+// ErrTraversalTruncated. A filter that records what it is offered sees these
+// calls.
+//
 // It runs on the query goroutine, under the query timeout, holding no storage
 // lock. A slow filter is indistinguishable from a slow query. A panic inside it
 // is recovered by ExecuteWithOptions and returned as a query error.
@@ -104,4 +124,64 @@ type ExpandFilter func(Expansion) bool
 type PathOptions struct {
 	Semantics PathSemantics
 	Expand    ExpandFilter
+}
+
+// validate refuses a request the engine cannot answer, BEFORE it reads any data.
+//
+// The MinHops rule used to live inside traverseVariablePath, which matchPath
+// calls once per start node. A start label that matched nothing meant the
+// traversal never ran, so an unanswerable query returned an empty success and a
+// caller could not use the refusal as validation. A refusal that depends on the
+// data is not a refusal.
+func (o PathOptions) validate(q *Query) error {
+	switch o.Semantics {
+	case AllSimplePaths:
+		// The zero value refuses nothing, by definition.
+		return nil
+	case DistinctNodes:
+	default:
+		return fmt.Errorf("%w: %d", ErrUnknownPathSemantics, int(o.Semantics))
+	}
+	return refuseUnsupportedMinHops(q)
+}
+
+// refuseUnsupportedMinHops walks every pattern that can reach a traversal and
+// refuses MinHops above one.
+//
+// CREATE patterns are not walked: CreateStep writes, it does not traverse, so
+// refusing there would reject a query that never uses the mode.
+func refuseUnsupportedMinHops(q *Query) error {
+	if q == nil {
+		return nil
+	}
+
+	groups := [][]*Pattern{}
+	if q.Match != nil {
+		groups = append(groups, q.Match.Patterns)
+	}
+	for _, om := range q.OptionalMatches {
+		groups = append(groups, om.Patterns)
+	}
+	if q.Merge != nil && q.Merge.Pattern != nil {
+		groups = append(groups, []*Pattern{q.Merge.Pattern})
+	}
+
+	for _, patterns := range groups {
+		for _, p := range patterns {
+			for _, rel := range p.Relationships {
+				// MinHops >= 2 implies isVariableLengthRel, so the hop window
+				// alone decides this.
+				if rel.MinHops >= 2 {
+					return fmt.Errorf("%w: got MinHops %d", ErrDistinctNodesMinHops, rel.MinHops)
+				}
+			}
+		}
+	}
+
+	// A WITH chain and a UNION each run further segments under the same
+	// options, so each segment owes the same refusal.
+	if err := refuseUnsupportedMinHops(q.Next); err != nil {
+		return err
+	}
+	return refuseUnsupportedMinHops(q.UnionNext)
 }

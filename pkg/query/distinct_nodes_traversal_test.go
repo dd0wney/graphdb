@@ -349,3 +349,42 @@ func TestDistinctNodesBindsAShortestPath(t *testing.T) {
 			len(path))
 	}
 }
+
+// The MinHops refusal must not depend on the data.
+//
+// The check lived inside traverseVariablePath, which matchPath calls once per
+// start node. A label that matches nothing meant the traversal never ran, so an
+// unanswerable query returned an empty success instead of the refusal. A caller
+// cannot use a refusal that only fires when the graph happens to cooperate.
+func TestDistinctNodesRefusesMinHopsBeforeItReadsAnyData(t *testing.T) {
+	const noSuchStart = "MATCH (a:Missing)-[:LINK*2..3]->(b:Sink) RETURN b.name"
+
+	_, e, cleanup := fanGraph(t, 3)
+	defer cleanup()
+
+	rs, err := runQueryWithOptions(t, e, noSuchStart, PathOptions{Semantics: DistinctNodes})
+	if err == nil {
+		t.Fatalf("a start label that matches nothing turned the refusal into an empty "+
+			"success: %d rows, nil error. The same pattern over :Root is refused, so the "+
+			"answer depends on the data rather than on the request.", len(rs.Rows))
+	}
+	if !errors.Is(err, ErrDistinctNodesMinHops) {
+		t.Errorf("the error does not wrap ErrDistinctNodesMinHops: %v", err)
+	}
+}
+
+// A PathSemantics the engine does not know must be refused, not quietly read as
+// the default. The project prefers a loud refusal to silent degradation.
+func TestUnknownPathSemanticsIsRefused(t *testing.T) {
+	_, e, cleanup := fanGraph(t, fanRoutes)
+	defer cleanup()
+
+	rs, err := runQueryWithOptions(t, e, fanSinkQuery, PathOptions{Semantics: PathSemantics(99)})
+	if err == nil {
+		t.Fatalf("an unknown PathSemantics ran as AllSimplePaths and returned %d rows with "+
+			"a nil error. A caller who passed a wrong value is told nothing.", len(rs.Rows))
+	}
+	if !errors.Is(err, ErrUnknownPathSemantics) {
+		t.Errorf("the error does not wrap ErrUnknownPathSemantics: %v", err)
+	}
+}

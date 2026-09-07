@@ -72,6 +72,28 @@ func newExecutionContext(ctx context.Context, graph *storage.GraphStorage, opts 
 	}
 }
 
+// subContext returns a context for a nested step: the same graph, the same
+// tenant and the same traversal policy, with fresh bindings and one empty
+// result.
+//
+// MergeStep built this by struct literal and dropped pathOpts, so a MERGE ran a
+// traversal the caller had not asked for. Changing newExecutionContext's
+// signature does not prevent that, because a struct literal bypasses the
+// constructor. Every nested step goes through here instead, so a new policy
+// field is carried in one place rather than remembered in several.
+func (ec *ExecutionContext) subContext() *ExecutionContext {
+	return &ExecutionContext{
+		context:  ec.context,
+		graph:    ec.graph,
+		tenantID: ec.tenantID,
+		pathOpts: ec.pathOpts,
+		bindings: make(map[string]any),
+		results: []*BindingSet{
+			{bindings: make(map[string]any)},
+		},
+	}
+}
+
 // IsCancelled checks if the execution context has been cancelled
 func (ec *ExecutionContext) IsCancelled() bool {
 	if ec.context == nil {
