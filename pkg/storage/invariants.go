@@ -593,9 +593,10 @@ func checkPropertyIndexes(report reportFunc, propIdx map[string]propSnapshot, gt
 // Also covered, since this change: the global and per-tenant count chains
 // (stats and tenantStats, both restored from the metadata blob) and the
 // sticky global label/type keys — nodesByLabel backs GetAllLabels; edgesByType
-// has no direct external reader today but is what the mmap snapshot writer
-// reads to build the sticky-type list for the next write. Checked for key
-// presence rather than bucket membership because that is the guarantee
+// has no reader on this (mmap) path (FindEdgesByTypeAcrossTenants reads it
+// only on the shard/JSON path) but is what the mmap snapshot writer reads to
+// build the sticky-type list for the next write. Checked for key presence
+// rather than bucket membership because that is the guarantee
 // loadFromDiskMmap's sticky-key registration makes. Both have an mmap teeth
 // test.
 func checkInvariantsMmap(gs *GraphStorage) []string {
@@ -743,11 +744,13 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 
 	// --- STICKY GLOBAL LABEL / TYPE KEYS -------------------------------------
 	// gs.nodesByLabel backs GetAllLabels (query_operations.go), read directly on
-	// both representations. gs.edgesByType has no direct external reader today
-	// — its only reader is mmap_snapshot_writer.go, which uses it to build the
-	// sticky-type list for the next snapshot write — but it is the structure
-	// the shard path already treats as the invariant target (reportReverseGlobal
-	// above), so it matters here for the same reason. The membership section
+	// both representations. gs.edgesByType has no reader on THIS (mmap) path —
+	// FindEdgesByTypeAcrossTenants reads it only on the shard/JSON path (the
+	// gs.mmapSnap == nil branch of membershipEdgeIDsByTypeGlobalLocked); here
+	// its only reader is mmap_snapshot_writer.go, which uses it to build the
+	// sticky-type list for the next snapshot write. It still matters here
+	// because it is the structure the shard path already treats as the
+	// invariant target (reportReverseGlobal above). The membership section
 	// checked below is a different structure and says nothing about either one.
 	// loadFromDiskMmap registers a key (possibly with an empty bucket) for
 	// every label/type live at the last Close; writes made after open add real

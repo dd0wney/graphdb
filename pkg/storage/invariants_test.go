@@ -499,10 +499,11 @@ func TestCheckInvariantsMmap_TeethTenantStatsMissing(t *testing.T) {
 // StickyEdgeTypes); writes made after open add real members through the same
 // addToLabelIndex the shard path uses. gs.nodesByLabel backs GetAllLabels
 // (query_operations.go), read directly on both representations. gs.edgesByType
-// has no direct external reader today — its only reader is
-// mmap_snapshot_writer.go, which uses it to build the sticky-type list for the
-// next snapshot write. Either way a key dropped from either map is invisible
-// to the membership-section checks above, which never look at these maps.
+// has no reader on the mmap path — FindEdgesByTypeAcrossTenants reads it only
+// on the shard/JSON path; here its only reader is mmap_snapshot_writer.go,
+// which uses it to build the sticky-type list for the next snapshot write.
+// Either way a key dropped from either map is invisible to the
+// membership-section checks above, which never look at these maps.
 
 // TestCheckInvariantsMmap_TeethStickyLabelKeyDropped deletes a live label's
 // key from the global index that backs GetAllLabels.
