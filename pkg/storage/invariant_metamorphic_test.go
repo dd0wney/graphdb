@@ -269,30 +269,45 @@ func (d *txMDriver) nodeIDs() map[string]uint64 { return d.nid }
 
 // --- WAL-REPLAY driver: ops applied live, then crash + recover ------------
 
-type walMDriver struct {
-	t   *testing.T
-	dir string
-	gs  *GraphStorage // crashable until finalize, then the recovered instance
-	nid map[string]uint64
-	eid map[string]uint64
+// mmapCrashRecoveryConfig mirrors crashRecoveryConfig (replay_tenant_index_test.go)
+// but selects the mmap snapshot path instead of JSON, for the mmap arm of
+// walMDriver. EnableEdgeCompression is OFF here, unlike crashRecoveryConfig's
+// EnableEdgeCompression:true: a change in flight elsewhere found that Snapshot()
+// on an mmap-backed store with edge compression on hides base edges from reads.
+// This script does not exercise compression, so it stays out of the way of the
+// new oracle rather than risk tripping that gap.
+func mmapCrashRecoveryConfig(dir string) StorageConfig {
+	return StorageConfig{DataDir: dir, EnableEdgeCompression: false, UseMmapSnapshot: true}
 }
 
-func newWALMDriver(t *testing.T) *walMDriver {
+type walMDriver struct {
+	t          *testing.T
+	dir        string
+	gs         *GraphStorage // crashable until finalize, then the recovered instance
+	nid        map[string]uint64
+	eid        map[string]uint64
+	driverName string
+	// cfgFn selects the on-disk representation (JSON or mmap) for the seed,
+	// the crashable instance and the crash-recovery reopen alike — passing it
+	// once here, rather than naming crashRecoveryConfig at three call sites,
+	// is what keeps those three from silently drifting apart.
+	cfgFn func(string) StorageConfig
+	// wantMmap tells finalize which representation the crash-recovery reopen
+	// must have taken, so a config that silently fell back to JSON is caught
+	// rather than passing as a false negative on the mmap oracle.
+	wantMmap bool
+}
+
+// newWALMDriverWithConfig builds the shared WAL-replay driver for one on-disk
+// representation. Both representations run this driver: newWALMDriver selects
+// JSON, newWALMMmapDriver selects mmap.
+func newWALMDriverWithConfig(t *testing.T, driverName string, cfgFn func(string) StorageConfig, wantMmap bool) *walMDriver {
 	dir := t.TempDir()
 	// Phase 0: snapshot the vector-index DEFINITION via a clean close, so recovery
 	// rebuilds the HNSW graph from the WAL-replayed nodes (the #305 fix) rather
 	// than entangling the separate, still-open "CreateVectorIndex not WAL-logged"
 	// gap. Matches the matrix WALReplay cell's discipline.
-	// JSON path throughout this driver. crashRecoveryConfig (used for the
-	// crashable instance below and for the recovery in finalize) forces the
-	// JSON path, and the seed has to agree or Close writes a snapshot the
-	// recovery cannot read. An older reason no longer holds: until #474 the
-	// invariant check would have compared an empty shard ground truth against
-	// empty derived indexes on an mmap store and reported health. The mmap
-	// checker now builds ground truth from the raw records and covers the
-	// adjacency lists, the vector index and the property indexes, so running
-	// this driver on the mmap path is possible; it is not yet done.
-	seed, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
+	seed, err := NewGraphStorageWithConfig(cfgFn(dir))
 	if err != nil {
 		t.Fatalf("wal seed NewGraphStorageWithConfig: %v", err)
 	}
@@ -303,11 +318,26 @@ func newWALMDriver(t *testing.T) *walMDriver {
 		t.Fatalf("wal seed Close: %v", err)
 	}
 
-	gs := testCrashableStorage(t, dir, crashRecoveryConfig(dir))
-	return &walMDriver{t: t, dir: dir, gs: gs, nid: map[string]uint64{}, eid: map[string]uint64{}}
+	gs := testCrashableStorage(t, dir, cfgFn(dir))
+	return &walMDriver{
+		t: t, dir: dir, gs: gs,
+		nid: map[string]uint64{}, eid: map[string]uint64{},
+		driverName: driverName, cfgFn: cfgFn, wantMmap: wantMmap,
+	}
 }
 
-func (d *walMDriver) name() string { return "wal-replay" }
+func newWALMDriver(t *testing.T) *walMDriver {
+	return newWALMDriverWithConfig(t, "wal-replay", crashRecoveryConfig, false)
+}
+
+// newWALMMmapDriver is the mmap arm of the WAL-replay driver (task 11): the
+// same crash-and-recover script, but every phase uses mmapCrashRecoveryConfig
+// so the crash-recovery reopen lands on the mmap path, proven in finalize.
+func newWALMMmapDriver(t *testing.T) *walMDriver {
+	return newWALMDriverWithConfig(t, "wal-replay-mmap", mmapCrashRecoveryConfig, true)
+}
+
+func (d *walMDriver) name() string { return d.driverName }
 func (d *walMDriver) beginPhase()  {}
 func (d *walMDriver) commitPhase() {}
 func (d *walMDriver) createNode(h string, l []string, v []float32) {
@@ -325,11 +355,17 @@ func (d *walMDriver) finalize() *GraphStorage {
 	// testCrashableStorage cleanup closes it after the test). Recover from the
 	// same dir — WAL replay is the path under test, and this is the one cell that
 	// queries after a reopen (the CC6-inverse: rebuild-on-load is the subject).
-	rec, err := NewGraphStorageWithConfig(crashRecoveryConfig(d.dir))
+	rec, err := NewGraphStorageWithConfig(d.cfgFn(d.dir))
 	if err != nil {
 		d.t.Fatalf("wal recover NewGraphStorageWithConfig: %v", err)
 	}
 	d.t.Cleanup(func() { _ = rec.Close() })
+	// Prove the mmap arm actually reopened through the mmap reader rather than
+	// silently falling back to JSON (mmapEligible has three ways to refuse).
+	// mmapSnap is the field the #474 tests (invariants_test.go) use for this.
+	if d.wantMmap && rec.mmapSnap == nil {
+		d.t.Fatalf("%s: crash-recovery reopen did not take the mmap path (mmapSnap is nil)", d.driverName)
+	}
 	d.gs = rec
 	return rec
 }
@@ -467,21 +503,25 @@ func assertMetamorphicEquivalence(t *testing.T, drivers []metamorphicDriver, wit
 	}
 }
 
-// TestMetamorphic_NoDelete runs create + edge + vector-update through all four
-// write paths and asserts they produce an observationally identical graph.
+// TestMetamorphic_NoDelete runs create + edge + vector-update through all five
+// write paths — live, batch, transaction, and WAL-replay on both the JSON and
+// mmap snapshot representations — and asserts they produce an observationally
+// identical graph.
 func TestMetamorphic_NoDelete(t *testing.T) {
 	drivers := []metamorphicDriver{
 		newLiveMDriver(t),
 		newBatchMDriver(t),
 		newTxMDriver(t),
 		newWALMDriver(t),
+		newWALMMmapDriver(t),
 	}
 	assertMetamorphicEquivalence(t, drivers, false)
 }
 
 // TestMetamorphic_WithDelete adds a cascade delete (delete a node while its edge
-// is live — the #307/#308 class) and asserts the three delete-capable paths stay
-// observationally identical. The transaction path has no delete op, so it is
+// is live — the #307/#308 class) and asserts the delete-capable paths stay
+// observationally identical, on both the JSON and mmap WAL-replay
+// representations. The transaction path has no delete op, so it is
 // logged-skipped (covered by the no-delete group) rather than silently omitted.
 func TestMetamorphic_WithDelete(t *testing.T) {
 	t.Logf("skip: transaction path has no DeleteNode op — excluded from the with-delete group (covered by TestMetamorphic_NoDelete)")
@@ -489,6 +529,7 @@ func TestMetamorphic_WithDelete(t *testing.T) {
 		newLiveMDriver(t),
 		newBatchMDriver(t),
 		newWALMDriver(t),
+		newWALMMmapDriver(t),
 	}
 	assertMetamorphicEquivalence(t, drivers, true)
 }
