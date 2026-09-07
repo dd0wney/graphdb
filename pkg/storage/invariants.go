@@ -3,6 +3,8 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"iter"
+	"maps"
 	"sync/atomic"
 
 	"github.com/dd0wney/graphdb/pkg/tenantid"
@@ -21,17 +23,19 @@ var ErrInvariantsUnsupported = errors.New("storage: invariant check unsupported 
 // CheckInvariants returns one string per violated invariant (an empty slice
 // means healthy), or ErrInvariantsUnsupported for a store it cannot inspect.
 //
-// It dispatches on representation, and the two paths do NOT cover the same
-// ground:
+// It dispatches on representation. Both paths check the adjacency lists, the
+// vector index and the property indexes against ground truth built from the
+// raw records, through the same three helpers (checkAdjacency,
+// checkVectorCounts, checkPropertyIndexes). They still differ:
 //
-//   - shard-backed (JSON): every derived structure, including the vector index
-//     and the adjacency lists.
-//   - mmap-backed: per-tenant and per-label/per-type membership, the tenant
-//     list, and edge endpoint integrity. The vector index and adjacency lists
-//     have no mmap ground truth yet — see checkInvariantsMmap.
+//   - shard-backed (JSON): also the global and per-tenant count chains and the
+//     global label/type indexes.
+//   - mmap-backed: also the persisted membership section, which is what serves
+//     reads there. The count chains and the sticky global label/type keys have
+//     no mmap check yet — see checkInvariantsMmap.
 //
-// A clean result on the mmap path is therefore a weaker statement than a clean
-// result on the JSON path. Do not read them as equivalent.
+// A clean result on the mmap path is therefore still a slightly weaker
+// statement than a clean result on the JSON path, by those two items only.
 //
 // It lived in a _test.go file until now, which meant the strongest correctness
 // statement graphdb owns could not run anywhere but a test binary. It is
@@ -82,48 +86,17 @@ func CheckInvariants(gs *GraphStorage) ([]string, error) {
 		return checkInvariantsMmap(gs), nil
 	}
 
-	type idSet = map[uint64]struct{}
-
-	// --- snapshot the vector index shape first (nested vi.mu under gs.mu, the
-	// production lock order) so the node pass can count only INDEXED props. ---
-	indexedLen := map[tenantid.TenantID]map[string]int{} // tid -> prop -> HNSW Len()
-	gs.vectorIndex.mu.RLock()
-	for tid, inner := range gs.vectorIndex.indexes {
-		indexedLen[tid] = map[string]int{}
-		for prop, idx := range inner {
-			indexedLen[tid][prop] = idx.Len()
-		}
-	}
-	gs.vectorIndex.mu.RUnlock()
-
-	// --- snapshot the property-index buckets (nested idx.mu under gs.mu, the
-	// production lock order: callers hold gs.mu.Lock before idx.mu) so the node
-	// pass computes ground truth without holding idx.mu across the shard scan.
-	// propertyIndexes is GLOBAL (one map[string]*PropertyIndex, no tenant
-	// dimension), so this checks index correctness, not tenant isolation. ---
-	type propSnapshot struct {
-		idx     *PropertyIndex      // for valueToKey + indexType (both lock-free)
-		buckets map[string][]uint64 // value-key -> node IDs
-	}
-	propIdx := map[string]propSnapshot{} // property key -> snapshot
-	for key, idx := range gs.propertyIndexes {
-		idx.mu.RLock()
-		buckets := make(map[string][]uint64, len(idx.index))
-		for v, ids := range idx.index {
-			cp := make([]uint64, len(ids))
-			copy(cp, ids)
-			buckets[v] = cp
-		}
-		idx.mu.RUnlock()
-		propIdx[key] = propSnapshot{idx: idx, buckets: buckets}
-	}
+	// Snapshot the derived structures whose ground truth the node pass builds:
+	// the vector index shape and the property-index buckets. Each nests its own
+	// mutex under gs.mu, the production lock order.
+	indexedLen := gs.vectorIndexLens()
+	propIdx := gs.propertyIndexSnapshots()
+	derived := newDerivedNodeTruth(indexedLen, propIdx)
 
 	// --- ground truth: NODES ---
 	gtNodeIDs := map[tenantid.TenantID]idSet{}               // tid -> node IDs
 	gtNodeLabels := map[tenantid.TenantID]map[string]idSet{} // tid -> label -> IDs
 	gtGlobalNodeLabels := map[string]idSet{}                 // global label -> IDs
-	gtVecCount := map[tenantid.TenantID]map[string]int{}     // tid -> indexed prop -> decodable-vector count
-	gtProp := map[string]map[string]idSet{}                  // property key -> value-key -> node IDs
 	gtNodeCount := 0
 
 	for i := range gs.nodeShards {
@@ -147,52 +120,22 @@ func CheckInvariants(gs *GraphStorage) ([]string, error) {
 				}
 				gtGlobalNodeLabels[label][id] = struct{}{}
 			}
-			// vector ground truth: only for props this tenant actually indexes.
-			for prop := range indexedLen[tid] {
-				propVal, ok := node.Properties[prop]
-				if !ok {
-					continue
-				}
-				if _, isVec, err := vectorFromProperty(propVal); isVec && err == nil {
-					if gtVecCount[tid] == nil {
-						gtVecCount[tid] = map[string]int{}
-					}
-					gtVecCount[tid][prop]++
-				}
-			}
-			// property-index ground truth: only for indexed keys, and only when
-			// the value type matches the index's declared type (Insert rejects
-			// mismatches, so they are legitimately absent from the index).
-			for key, snap := range propIdx {
-				val, ok := node.Properties[key]
-				if !ok || val.Type != snap.idx.indexType {
-					continue
-				}
-				vk := snap.idx.valueToKey(val)
-				if gtProp[key] == nil {
-					gtProp[key] = map[string]idSet{}
-				}
-				if gtProp[key][vk] == nil {
-					gtProp[key][vk] = idSet{}
-				}
-				gtProp[key][vk][id] = struct{}{}
-			}
+			derived.add(node)
 		}
 	}
 
 	// --- ground truth: EDGES ---
-	type endpoints struct{ from, to uint64 }
 	gtEdgeIDs := map[tenantid.TenantID]idSet{}
 	gtEdgeTypes := map[tenantid.TenantID]map[string]idSet{}
 	gtGlobalEdgeTypes := map[string]idSet{}
-	gtEdgeEnds := map[uint64]endpoints{}
+	gtEdgeEnds := map[uint64]edgeEndpoints{}
 	gtEdgeCount := 0
 
 	for i := range gs.edgeShards {
 		for id, edge := range gs.edgeShards[i] {
 			tid := effectiveTenantID(edge.TenantID)
 			gtEdgeCount++
-			gtEdgeEnds[id] = endpoints{edge.FromNodeID, edge.ToNodeID}
+			gtEdgeEnds[id] = edgeEndpoints{edge.FromNodeID, edge.ToNodeID}
 			if gtEdgeIDs[tid] == nil {
 				gtEdgeIDs[tid] = idSet{}
 			}
@@ -325,86 +268,11 @@ func CheckInvariants(gs *GraphStorage) ([]string, error) {
 		reportReverseTenant(report, "tenantEdgesByType", tid, buckets, gtEdgeTypes[tid])
 	}
 
-	// === ADJACENCY (both directions) ===
-	// Forward: every live edge is in its endpoints' adjacency lists.
-	for id, ends := range gtEdgeEnds {
-		if !containsUint64(gs.getEdgeIDsForNode(ends.from, true), id) {
-			report("adj: edge %d missing from node %d outgoing adjacency", id, ends.from)
-		}
-		if !containsUint64(gs.getEdgeIDsForNode(ends.to, false), id) {
-			report("adj: edge %d missing from node %d incoming adjacency", id, ends.to)
-		}
-	}
-	// Reverse: every adjacency entry points to a live edge with matching endpoint
-	// (catches dangling adjacency after a cascade delete — the #307 class).
-	for i := range gs.nodeShards {
-		for nodeID := range gs.nodeShards[i] {
-			for _, eid := range gs.getEdgeIDsForNode(nodeID, true) {
-				ends, ok := gtEdgeEnds[eid]
-				if !ok {
-					report("adj: node %d outgoing lists edge %d that no longer exists (dangling)", nodeID, eid)
-				} else if ends.from != nodeID {
-					report("adj: node %d outgoing lists edge %d whose source is actually %d", nodeID, eid, ends.from)
-				}
-			}
-			for _, eid := range gs.getEdgeIDsForNode(nodeID, false) {
-				ends, ok := gtEdgeEnds[eid]
-				if !ok {
-					report("adj: node %d incoming lists edge %d that no longer exists (dangling)", nodeID, eid)
-				} else if ends.to != nodeID {
-					report("adj: node %d incoming lists edge %d whose target is actually %d", nodeID, eid, ends.to)
-				}
-			}
-		}
-	}
-
-	// === VECTOR index (count-only, per tenant) ===
-	for tid, props := range indexedLen {
-		for prop, length := range props {
-			want := 0
-			if gtVecCount[tid] != nil {
-				want = gtVecCount[tid][prop]
-			}
-			if length != want {
-				report("vector: index (tenant %q, prop %q) Len()=%d != decodable-vector node count=%d", tid, prop, length, want)
-			}
-		}
-	}
-
-	// === PROPERTY index (exact membership, per indexed key; tenant-blind) ===
-	// PropertyIndex.Insert rejects type-mismatched values and does NOT dedup;
-	// Remove deletes a bucket once it empties. So the invariant is: no empty
-	// buckets, every member is a live node carrying that value, and every
-	// qualifying node appears exactly once in the right bucket.
-	for key, snap := range propIdx {
-		gt := gtProp[key] // value-key -> node IDs (nil if no qualifying nodes)
-		// reverse: members live + carrying value; no empty buckets; no duplicates.
-		for vk, ids := range snap.buckets {
-			if len(ids) == 0 {
-				report("property %q: empty bucket %q (Remove must delete empties)", key, vk)
-				continue
-			}
-			seen := idSet{}
-			for _, id := range ids {
-				if _, dup := seen[id]; dup {
-					report("property %q bucket %q: id %d appears more than once", key, vk, id)
-					continue
-				}
-				seen[id] = struct{}{}
-				if gt == nil || !inBucket(gt[vk], id) {
-					report("property %q bucket %q: lists id %d not backed by a live node carrying that value", key, vk, id)
-				}
-			}
-		}
-		// forward: every qualifying node is in the right bucket.
-		for vk, ids := range gt {
-			for id := range ids {
-				if !containsUint64(snap.buckets[vk], id) {
-					report("property %q: node %d missing from bucket %q", key, id, vk)
-				}
-			}
-		}
-	}
+	// === ADJACENCY, VECTOR index, PROPERTY indexes ===
+	// Shared with the mmap path: the ground truth differs, the checks do not.
+	checkAdjacency(report, gs, gtEdgeEnds, gs.shardNodeIDs())
+	checkVectorCounts(report, indexedLen, derived.vecCount)
+	checkPropertyIndexes(report, propIdx, derived.prop)
 
 	return violations, nil
 }
@@ -470,6 +338,226 @@ func containsUint64(s []uint64, want uint64) bool {
 	return false
 }
 
+// --- checks shared by both representations ---------------------------------
+//
+// Everything below takes ground truth as an argument and reads the served
+// structure through gs, so the shard path and the mmap path run the same
+// comparison over different raw-record sets. A check that lived on one path
+// only was the gap #474 left: a clean mmap result said nothing about the
+// adjacency lists, the vector index or the property indexes.
+
+// idSet is the id set every ground-truth map bottoms out in.
+type idSet = map[uint64]struct{}
+
+// edgeEndpoints is what the adjacency check needs from an edge record.
+type edgeEndpoints struct{ from, to uint64 }
+
+// propSnapshot is one property index's buckets, copied out from under idx.mu so
+// the node pass can build ground truth without holding that lock across the
+// scan. idx stays for valueToKey and indexType, both lock-free.
+type propSnapshot struct {
+	idx     *PropertyIndex
+	buckets map[string][]uint64 // value-key -> node IDs
+}
+
+// vectorIndexLens returns tid -> indexed property -> HNSW Len(). It takes
+// vi.mu nested under gs.mu, the production lock order, and runs before the
+// node pass so that pass counts vectors only on props a tenant actually
+// indexes. Caller holds gs.mu.RLock.
+func (gs *GraphStorage) vectorIndexLens() map[tenantid.TenantID]map[string]int {
+	lens := map[tenantid.TenantID]map[string]int{}
+	gs.vectorIndex.mu.RLock()
+	defer gs.vectorIndex.mu.RUnlock()
+	for tid, inner := range gs.vectorIndex.indexes {
+		lens[tid] = map[string]int{}
+		for prop, idx := range inner {
+			lens[tid][prop] = idx.Len()
+		}
+	}
+	return lens
+}
+
+// propertyIndexSnapshots copies every property index's buckets, taking each
+// idx.mu nested under gs.mu (production callers hold gs.mu.Lock before
+// idx.mu). propertyIndexes is GLOBAL, one map with no tenant dimension, so what
+// this feeds checks index correctness, not tenant isolation. Caller holds
+// gs.mu.RLock.
+func (gs *GraphStorage) propertyIndexSnapshots() map[string]propSnapshot {
+	snaps := make(map[string]propSnapshot, len(gs.propertyIndexes))
+	for key, idx := range gs.propertyIndexes {
+		idx.mu.RLock()
+		buckets := make(map[string][]uint64, len(idx.index))
+		for v, ids := range idx.index {
+			cp := make([]uint64, len(ids))
+			copy(cp, ids)
+			buckets[v] = cp
+		}
+		idx.mu.RUnlock()
+		snaps[key] = propSnapshot{idx: idx, buckets: buckets}
+	}
+	return snaps
+}
+
+// derivedNodeTruth accumulates, over one pass of the live nodes, what the
+// vector index and the property indexes must hold. Both representations feed
+// it the same way; only where the live nodes come from differs.
+type derivedNodeTruth struct {
+	indexedLen map[tenantid.TenantID]map[string]int
+	propIdx    map[string]propSnapshot
+
+	vecCount map[tenantid.TenantID]map[string]int // tid -> indexed prop -> decodable-vector count
+	prop     map[string]map[string]idSet          // property key -> value-key -> node IDs
+}
+
+func newDerivedNodeTruth(indexedLen map[tenantid.TenantID]map[string]int, propIdx map[string]propSnapshot) *derivedNodeTruth {
+	return &derivedNodeTruth{
+		indexedLen: indexedLen,
+		propIdx:    propIdx,
+		vecCount:   map[tenantid.TenantID]map[string]int{},
+		prop:       map[string]map[string]idSet{},
+	}
+}
+
+// add records one live node.
+func (d *derivedNodeTruth) add(node *Node) {
+	tid := effectiveTenantID(node.TenantID)
+	// vector ground truth: only for props this tenant actually indexes.
+	for prop := range d.indexedLen[tid] {
+		propVal, ok := node.Properties[prop]
+		if !ok {
+			continue
+		}
+		if _, isVec, err := vectorFromProperty(propVal); isVec && err == nil {
+			if d.vecCount[tid] == nil {
+				d.vecCount[tid] = map[string]int{}
+			}
+			d.vecCount[tid][prop]++
+		}
+	}
+	// property-index ground truth: only for indexed keys, and only when the
+	// value type matches the index's declared type (Insert rejects mismatches,
+	// so they are legitimately absent from the index).
+	for key, snap := range d.propIdx {
+		val, ok := node.Properties[key]
+		if !ok || val.Type != snap.idx.indexType {
+			continue
+		}
+		vk := snap.idx.valueToKey(val)
+		if d.prop[key] == nil {
+			d.prop[key] = map[string]idSet{}
+		}
+		if d.prop[key][vk] == nil {
+			d.prop[key][vk] = idSet{}
+		}
+		d.prop[key][vk][node.ID] = struct{}{}
+	}
+}
+
+// shardNodeIDs yields every node id resident in the shard maps. Caller holds
+// gs.mu.RLock.
+func (gs *GraphStorage) shardNodeIDs() iter.Seq[uint64] {
+	return func(yield func(uint64) bool) {
+		for i := range gs.nodeShards {
+			for id := range gs.nodeShards[i] {
+				if !yield(id) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// checkAdjacency compares the adjacency lists, as getEdgeIDsForNode serves
+// them, against the raw edge records in both directions. Forward: every live
+// edge is in both endpoints' lists. Reverse: every listed edge is live and has
+// that node as the matching endpoint, which catches dangling adjacency after a
+// cascade delete (the #307 class). nodeIDs is every live node. On the mmap
+// path that is base ∪ overlay − tombstones, and getEdgeIDsForNode there fuses
+// the CSR base run with the overlay map — exactly the path under test.
+func checkAdjacency(report reportFunc, gs *GraphStorage, gtEdgeEnds map[uint64]edgeEndpoints, nodeIDs iter.Seq[uint64]) {
+	for id, ends := range gtEdgeEnds {
+		if !containsUint64(gs.getEdgeIDsForNode(ends.from, true), id) {
+			report("adj: edge %d missing from node %d outgoing adjacency", id, ends.from)
+		}
+		if !containsUint64(gs.getEdgeIDsForNode(ends.to, false), id) {
+			report("adj: edge %d missing from node %d incoming adjacency", id, ends.to)
+		}
+	}
+	for nodeID := range nodeIDs {
+		for _, eid := range gs.getEdgeIDsForNode(nodeID, true) {
+			ends, ok := gtEdgeEnds[eid]
+			if !ok {
+				report("adj: node %d outgoing lists edge %d that no longer exists (dangling)", nodeID, eid)
+			} else if ends.from != nodeID {
+				report("adj: node %d outgoing lists edge %d whose source is actually %d", nodeID, eid, ends.from)
+			}
+		}
+		for _, eid := range gs.getEdgeIDsForNode(nodeID, false) {
+			ends, ok := gtEdgeEnds[eid]
+			if !ok {
+				report("adj: node %d incoming lists edge %d that no longer exists (dangling)", nodeID, eid)
+			} else if ends.to != nodeID {
+				report("adj: node %d incoming lists edge %d whose target is actually %d", nodeID, eid, ends.to)
+			}
+		}
+	}
+}
+
+// checkVectorCounts is count-only, per tenant and indexed property: HNSW Len()
+// against the number of live nodes carrying a decodable vector there. A vector
+// re-indexed under the wrong node id passes this; the metamorphic tests own
+// that case through search equivalence.
+func checkVectorCounts(report reportFunc, indexedLen, gtVecCount map[tenantid.TenantID]map[string]int) {
+	for tid, props := range indexedLen {
+		for prop, length := range props {
+			want := 0
+			if gtVecCount[tid] != nil {
+				want = gtVecCount[tid][prop]
+			}
+			if length != want {
+				report("vector: index (tenant %q, prop %q) Len()=%d != decodable-vector node count=%d", tid, prop, length, want)
+			}
+		}
+	}
+}
+
+// checkPropertyIndexes checks exact membership per indexed key.
+// PropertyIndex.Insert rejects type-mismatched values and does NOT dedup;
+// Remove deletes a bucket once it empties. So the invariant is: no empty
+// buckets, every member is a live node carrying that value, and every
+// qualifying node appears exactly once in the right bucket.
+func checkPropertyIndexes(report reportFunc, propIdx map[string]propSnapshot, gtProp map[string]map[string]idSet) {
+	for key, snap := range propIdx {
+		gt := gtProp[key] // value-key -> node IDs (nil if no qualifying nodes)
+		// reverse: members live + carrying value; no empty buckets; no duplicates.
+		for vk, ids := range snap.buckets {
+			if len(ids) == 0 {
+				report("property %q: empty bucket %q (Remove must delete empties)", key, vk)
+				continue
+			}
+			seen := idSet{}
+			for _, id := range ids {
+				if _, dup := seen[id]; dup {
+					report("property %q bucket %q: id %d appears more than once", key, vk, id)
+					continue
+				}
+				seen[id] = struct{}{}
+				if gt == nil || !inBucket(gt[vk], id) {
+					report("property %q bucket %q: lists id %d not backed by a live node carrying that value", key, vk, id)
+				}
+			}
+		}
+		// forward: every qualifying node is in the right bucket.
+		for vk, ids := range gt {
+			for id := range ids {
+				if !containsUint64(snap.buckets[vk], id) {
+					report("property %q: node %d missing from bucket %q", key, id, vk)
+				}
+			}
+		}
+	}
+}
+
 // checkInvariantsMmap is the mmap-representation counterpart to the shard-based
 // checks above. The caller holds gs.mu.RLock.
 //
@@ -490,17 +578,26 @@ func containsUint64(s []uint64, want uint64) bool {
 // checker exists to prevent.
 //
 // Covered: per-tenant node and edge membership, per-label and per-type
-// membership, the tenant list, and edge endpoint integrity.
+// membership, the tenant list, edge endpoint integrity, and — through the
+// helpers shared with the shard path — the adjacency lists, the vector index
+// and the property indexes. For the adjacency lists the served path is
+// getEdgeIDsForNode, which fuses the CSR base run with the overlay map and the
+// tombstones; ground truth is the raw edge records, so the fusion is what gets
+// tested.
 //
-// NOT covered, and deliberately so: the vector index and the adjacency lists.
-// Both are checked by the shard path and neither has an mmap ground truth yet.
-// Do not read a clean result here as equivalent to a clean result on the JSON
-// path.
+// NOT covered yet: the count chains (stats and tenantStats are restored from
+// the metadata blob and nothing here recomputes them) and the sticky global
+// label/type keys that back GetAllLabels/GetAllEdgeTypes. Neither has an mmap
+// teeth test, so neither is claimed.
 func checkInvariantsMmap(gs *GraphStorage) []string {
 	var violations []string
 	report := func(format string, args ...any) {
 		violations = append(violations, fmt.Sprintf(format, args...))
 	}
+
+	indexedLen := gs.vectorIndexLens()
+	propIdx := gs.propertyIndexSnapshots()
+	derived := newDerivedNodeTruth(indexedLen, propIdx)
 
 	// --- ground truth: raw records, base ∪ overlay, shard wins ---------------
 	//
@@ -551,6 +648,7 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 	for id, n := range liveNodes {
 		tid := effectiveTenantID(n.TenantID)
 		addToSet(gtNodesByTenant, tid, id)
+		derived.add(n)
 		for _, label := range n.Labels {
 			if gtNodesByLabel[tid] == nil {
 				gtNodesByLabel[tid] = map[string]map[uint64]struct{}{}
@@ -564,9 +662,11 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 
 	gtEdgesByTenant := map[tenantid.TenantID]map[uint64]struct{}{}
 	gtEdgesByType := map[tenantid.TenantID]map[string]map[uint64]struct{}{}
+	gtEdgeEnds := map[uint64]edgeEndpoints{}
 	for id, e := range liveEdges {
 		tid := effectiveTenantID(e.TenantID)
 		addToSet(gtEdgesByTenant, tid, id)
+		gtEdgeEnds[id] = edgeEndpoints{e.FromNodeID, e.ToNodeID}
 		if gtEdgesByType[tid] == nil {
 			gtEdgesByType[tid] = map[string]map[uint64]struct{}{}
 		}
@@ -632,6 +732,11 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 			report("edge %d: ToNodeID %d does not resolve to a live node", id, e.ToNodeID)
 		}
 	}
+
+	// --- derived structures, through the checks the shard path uses ---------
+	checkAdjacency(report, gs, gtEdgeEnds, maps.Keys(liveNodes))
+	checkVectorCounts(report, indexedLen, derived.vecCount)
+	checkPropertyIndexes(report, propIdx, derived.prop)
 
 	return violations
 }

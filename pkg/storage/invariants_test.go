@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/dd0wney/graphdb/pkg/vector"
 )
 
 // assertGraphInvariants verifies that every DERIVED representation of the graph
@@ -202,11 +204,27 @@ func mmapStoreWithData(t *testing.T) *GraphStorage {
 	if err != nil {
 		t.Fatalf("NewGraphStorageWithConfig: %v", err)
 	}
-	n1, err := gs.CreateNode([]string{"Thing"}, map[string]Value{"n": StringValue("one")})
+	// Every derived structure the mmap checker covers has a member here, so
+	// TestCheckInvariants_InspectsMmapBackedStore is a positive control for each
+	// of them: a property index on "n", a vector index on "embedding", two
+	// labels, one edge type and one edge.
+	if err := gs.CreatePropertyIndex("n", TypeString); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+	if err := gs.CreateVectorIndexForTenant(DefaultTenantID, "embedding", 3, 16, 200, vector.MetricCosine); err != nil {
+		t.Fatalf("CreateVectorIndexForTenant: %v", err)
+	}
+	n1, err := gs.CreateNode([]string{"Thing"}, map[string]Value{
+		"n":         StringValue("one"),
+		"embedding": VectorValue([]float32{1, 0, 0}),
+	})
 	if err != nil {
 		t.Fatalf("CreateNode: %v", err)
 	}
-	n2, err := gs.CreateNode([]string{"Thing", "Other"}, map[string]Value{"n": StringValue("two")})
+	n2, err := gs.CreateNode([]string{"Thing", "Other"}, map[string]Value{
+		"n":         StringValue("two"),
+		"embedding": VectorValue([]float32{0, 1, 0}),
+	})
 	if err != nil {
 		t.Fatalf("CreateNode: %v", err)
 	}
@@ -261,4 +279,163 @@ func TestCheckInvariants_InspectsJSONBackedStore(t *testing.T) {
 	if len(violations) != 0 {
 		t.Errorf("violations = %v, want none on a healthy store", violations)
 	}
+}
+
+// --- teeth for the derived structures the mmap path gained after #474 --------
+//
+// Each test corrupts one derived structure by hand and requires a violation
+// naming what it broke. The healthy fixture carries a member of every one of
+// them (see mmapStoreWithData), so TestCheckInvariants_InspectsMmapBackedStore
+// is the positive control: it proves each check runs and passes on a good
+// store, and these prove each check can fail.
+
+// TestCheckInvariantsMmap_TeethAdjacencyOverlayOmission removes a post-reopen
+// edge from the overlay adjacency map while its record stays live. That is the
+// shape a write path leaves when it stores the record and forgets the index.
+func TestCheckInvariantsMmap_TeethAdjacencyOverlayOmission(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	back, err := gs.CreateEdge(2, 1, "BACK", nil, 1.0)
+	if err != nil {
+		t.Fatalf("CreateEdge: %v", err)
+	}
+
+	gs.mu.Lock()
+	gs.outgoingEdges[2] = withoutID(gs.outgoingEdges[2], back.ID)
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	want := fmt.Sprintf("edge %d missing from node 2 outgoing adjacency", back.ID)
+	if !anyContains(violations, want) {
+		t.Errorf("no violation %q; got %v", want, violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethAdjacencyBaseMismatch proves the checker reads
+// the CSR base and not only the overlay map. Edge 1 (node 1 -> node 2) is
+// served from the snapshot's CSR run. Shadowing its record in the shard with
+// the endpoints reversed makes ground truth say its source is node 2, while
+// node 1's outgoing run still lists it.
+func TestCheckInvariantsMmap_TeethAdjacencyBaseMismatch(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	gs.mu.Lock()
+	gs.storeEdgeInShard(&Edge{
+		ID:         1,
+		TenantID:   DefaultTenantID,
+		FromNodeID: 2,
+		ToNodeID:   1,
+		Type:       "LINKS",
+	})
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	want := "node 1 outgoing lists edge 1 whose source is actually 2"
+	if !anyContains(violations, want) {
+		t.Errorf("no violation %q; got %v", want, violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethAdjacencyDangling plants an edge id in a base
+// node's overlay adjacency that no record backs: the #307 class, a cascade
+// delete that misses a reference.
+func TestCheckInvariantsMmap_TeethAdjacencyDangling(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	gs.mu.Lock()
+	gs.incomingEdges[1] = append(gs.incomingEdges[1], 777777)
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	want := "node 1 incoming lists edge 777777 that no longer exists (dangling)"
+	if !anyContains(violations, want) {
+		t.Errorf("no violation %q; got %v", want, violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethVectorIndexOmission drops one base node's vector
+// from the HNSW graph. The count check must see Len() fall below the number of
+// live nodes carrying a decodable vector on the indexed property.
+func TestCheckInvariantsMmap_TeethVectorIndexOmission(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	tid := effectiveTenantID(DefaultTenantID)
+	if err := gs.vectorIndex.RemoveVectorForTenant(tid, "embedding", 1); err != nil {
+		t.Fatalf("RemoveVectorForTenant: %v", err)
+	}
+
+	violations := mustCheckInvariants(t, gs)
+	want := fmt.Sprintf("vector: index (tenant %q, prop %q) Len()=1 != decodable-vector node count=2", tid, "embedding")
+	if !anyContains(violations, want) {
+		t.Errorf("no violation %q; got %v", want, violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethVectorIndexInvention adds a vector under a node
+// id that no record backs.
+func TestCheckInvariantsMmap_TeethVectorIndexInvention(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	tid := effectiveTenantID(DefaultTenantID)
+	if err := gs.vectorIndex.AddVectorForTenant(tid, "embedding", 999999, []float32{0, 0, 1}); err != nil {
+		t.Fatalf("AddVectorForTenant: %v", err)
+	}
+
+	violations := mustCheckInvariants(t, gs)
+	want := fmt.Sprintf("vector: index (tenant %q, prop %q) Len()=3 != decodable-vector node count=2", tid, "embedding")
+	if !anyContains(violations, want) {
+		t.Errorf("no violation %q; got %v", want, violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethPropertyIndexOmission deletes the bucket that
+// holds node 1's value, so the index no longer lists a live node that carries
+// an indexed value.
+func TestCheckInvariantsMmap_TeethPropertyIndexOmission(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	gs.mu.Lock()
+	idx := gs.propertyIndexes["n"]
+	key := idx.valueToKey(StringValue("one"))
+	idx.mu.Lock()
+	delete(idx.index, key)
+	idx.mu.Unlock()
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	want := fmt.Sprintf("property %q: node 1 missing from bucket %q", "n", key)
+	if !anyContains(violations, want) {
+		t.Errorf("no violation %q; got %v", want, violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethPropertyIndexInvention appends an id no live
+// node backs to a real bucket.
+func TestCheckInvariantsMmap_TeethPropertyIndexInvention(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	gs.mu.Lock()
+	idx := gs.propertyIndexes["n"]
+	key := idx.valueToKey(StringValue("one"))
+	idx.mu.Lock()
+	idx.index[key] = append(idx.index[key], 999999)
+	idx.mu.Unlock()
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	want := fmt.Sprintf("property %q bucket %q: lists id 999999 not backed by a live node carrying that value", "n", key)
+	if !anyContains(violations, want) {
+		t.Errorf("no violation %q; got %v", want, violations)
+	}
+}
+
+// withoutID returns a copy of ids with every occurrence of id removed.
+func withoutID(ids []uint64, id uint64) []uint64 {
+	out := make([]uint64, 0, len(ids))
+	for _, v := range ids {
+		if v != id {
+			out = append(out, v)
+		}
+	}
+	return out
 }
