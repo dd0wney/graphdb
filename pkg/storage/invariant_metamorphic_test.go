@@ -283,13 +283,15 @@ func newWALMDriver(t *testing.T) *walMDriver {
 	// rebuilds the HNSW graph from the WAL-replayed nodes (the #305 fix) rather
 	// than entangling the separate, still-open "CreateVectorIndex not WAL-logged"
 	// gap. Matches the matrix WALReplay cell's discipline.
-	// JSON path throughout this driver: the mmap reopen serves nodes lazily, so
-	// the shard maps stay empty and the invariant check in
-	// assertMetamorphicEquivalence would compare an empty ground truth against
-	// empty derived indexes and report health. crashRecoveryConfig (used for the
-	// crashable instance below and for the recovery in finalize) already forces
-	// the JSON path; the seed has to agree or Close writes a snapshot the
-	// recovery cannot read.
+	// JSON path throughout this driver. crashRecoveryConfig (used for the
+	// crashable instance below and for the recovery in finalize) forces the
+	// JSON path, and the seed has to agree or Close writes a snapshot the
+	// recovery cannot read. An older reason no longer holds: until #474 the
+	// invariant check would have compared an empty shard ground truth against
+	// empty derived indexes on an mmap store and reported health. The mmap
+	// checker now builds ground truth from the raw records and covers the
+	// adjacency lists, the vector index and the property indexes, so running
+	// this driver on the mmap path is possible; it is not yet done.
 	seed, err := NewGraphStorageWithConfig(crashRecoveryConfig(dir))
 	if err != nil {
 		t.Fatalf("wal seed NewGraphStorageWithConfig: %v", err)
