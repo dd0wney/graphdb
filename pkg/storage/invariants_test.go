@@ -491,6 +491,47 @@ func TestCheckInvariantsMmap_TeethTenantStatsMissing(t *testing.T) {
 	}
 }
 
+// --- teeth for the sticky global label/type keys the mmap path gained after
+// #569 ------------------------------------------------------------------
+//
+// loadFromDiskMmap registers a sticky KEY (possibly with an empty bucket) for
+// every label/type live at the last Close (meta.StickyNodeLabels /
+// StickyEdgeTypes); writes made after open add real members through the same
+// addToLabelIndex the shard path uses. Either way, GetAllLabels and
+// GetAllEdgeTypes (query_operations.go) read gs.nodesByLabel/gs.edgesByType
+// directly, on both representations — so a key dropped there is invisible to
+// the membership-section checks above, which never look at that index.
+
+// TestCheckInvariantsMmap_TeethStickyLabelKeyDropped deletes a live label's
+// key from the global index that backs GetAllLabels.
+func TestCheckInvariantsMmap_TeethStickyLabelKeyDropped(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	gs.mu.Lock()
+	delete(gs.nodesByLabel, "Thing")
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	if !anyContains(violations, "Thing") {
+		t.Errorf("no violation named the dropped label %q; got %v", "Thing", violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethStickyTypeKeyDropped is the same corruption for
+// the global edge-type index that backs GetAllEdgeTypes.
+func TestCheckInvariantsMmap_TeethStickyTypeKeyDropped(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	gs.mu.Lock()
+	delete(gs.edgesByType, "LINKS")
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	if !anyContains(violations, "LINKS") {
+		t.Errorf("no violation named the dropped type %q; got %v", "LINKS", violations)
+	}
+}
+
 // withoutID returns a copy of ids with every occurrence of id removed.
 func withoutID(ids []uint64, id uint64) []uint64 {
 	out := make([]uint64, 0, len(ids))

@@ -29,14 +29,18 @@ var ErrInvariantsUnsupported = errors.New("storage: invariant check unsupported 
 // checkVectorCounts, checkPropertyIndexes). They still differ:
 //
 //   - shard-backed (JSON): also the global and per-tenant count chains and the
-//     global label/type indexes.
+//     global label/type indexes, the latter checked for full bucket
+//     membership (every entity is a member of its label's or type's bucket).
 //   - mmap-backed: also the persisted membership section, which is what serves
 //     reads there, and, since this change, the global and per-tenant count
-//     chains. The sticky global label/type keys still have no mmap check —
-//     see checkInvariantsMmap.
+//     chains and the sticky global label/type keys — see checkInvariantsMmap.
+//     The sticky-key check is key presence only (an entity's label/type must
+//     be a key of the global index), because that is the guarantee
+//     loadFromDiskMmap's sticky-key registration makes; it does not check
+//     bucket membership the way the shard path does.
 //
-// A clean result on the mmap path is therefore still a slightly weaker
-// statement than a clean result on the JSON path, by that one item only.
+// A clean result on the mmap path is therefore no longer missing either of
+// the two checks this file used to name here as absent.
 //
 // It lived in a _test.go file until now, which meant the strongest correctness
 // statement graphdb owns could not run anywhere but a test binary. It is
@@ -587,12 +591,11 @@ func checkPropertyIndexes(report reportFunc, propIdx map[string]propSnapshot, gt
 // tested.
 //
 // Also covered, since this change: the global and per-tenant count chains
-// (stats and tenantStats, both restored from the metadata blob), each with
-// an mmap teeth test.
-//
-// NOT covered yet: the sticky global label/type keys that back
-// GetAllLabels/GetAllEdgeTypes. It has no mmap teeth test, so it is not
-// claimed.
+// (stats and tenantStats, both restored from the metadata blob) and the
+// sticky global label/type keys that back GetAllLabels/GetAllEdgeTypes,
+// checked for key presence rather than bucket membership because that is the
+// guarantee loadFromDiskMmap's sticky-key registration makes. Both have an
+// mmap teeth test.
 func checkInvariantsMmap(gs *GraphStorage) []string {
 	var violations []string
 	report := func(format string, args ...any) {
@@ -681,12 +684,13 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 	}
 
 	// --- COUNT CHAINS (global + per-tenant) ---------------------------------
-	// Mirrors the shard path's count-chain check (lines 158-169, 196-229), with
-	// "live" standing in for "shard node count": ground truth here is the raw
-	// mmap-base ∪ shard-overlay record set already built above, not the shard
-	// maps this path never reads. nodeCount()/edgeCount() have no mmap
-	// counterpart to compare against, so unlike the shard path this checks
-	// stats/tenantStats only, not a third representation of the same number.
+	// Mirrors the shard path's "=== COUNT CHAINS (global) ===" section and its
+	// per-tenant counterpart above, with "live" standing in for "shard node
+	// count": ground truth here is the raw mmap-base ∪ shard-overlay record set
+	// already built above, not the shard maps this path never reads.
+	// nodeCount()/edgeCount() have no mmap counterpart to compare against, so
+	// unlike the shard path this checks stats/tenantStats only, not a third
+	// representation of the same number.
 	if got := int(atomic.LoadUint64(&gs.stats.NodeCount)); got != len(liveNodes) {
 		report("count: stats.NodeCount=%d != live node count=%d", got, len(liveNodes))
 	}
@@ -733,6 +737,42 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 	}
 	if sumTenantEdges != len(liveEdges) {
 		report("count: Σ tenantStats.EdgeCount=%d != live edge count=%d", sumTenantEdges, len(liveEdges))
+	}
+
+	// --- STICKY GLOBAL LABEL / TYPE KEYS -------------------------------------
+	// GetAllLabels/GetAllEdgeTypes (query_operations.go) read gs.nodesByLabel /
+	// gs.edgesByType directly on both representations — the membership section
+	// checked below is a different structure and says nothing about this one.
+	// loadFromDiskMmap registers a key (possibly with an empty bucket) for
+	// every label/type live at the last Close; writes made after open add real
+	// members through the same addToLabelIndex the shard path uses. Either way,
+	// every label/type a live node/edge carries must remain a KEY here. This
+	// checks one direction only: an extra key with an empty bucket is allowed
+	// by design (the same "sticky" allowance reportReverseGlobal states above,
+	// for the shard path), so a bucket that lost membership but kept its key is
+	// not a finding.
+	liveLabels := map[string]struct{}{}
+	for _, byLabel := range gtNodesByLabel {
+		for label := range byLabel {
+			liveLabels[label] = struct{}{}
+		}
+	}
+	for label := range liveLabels {
+		if _, ok := gs.nodesByLabel[label]; !ok {
+			report("label: %q carried by a live node but missing from GLOBAL nodesByLabel", label)
+		}
+	}
+
+	liveTypes := map[string]struct{}{}
+	for _, byType := range gtEdgesByType {
+		for typ := range byType {
+			liveTypes[typ] = struct{}{}
+		}
+	}
+	for typ := range liveTypes {
+		if _, ok := gs.edgesByType[typ]; !ok {
+			report("type: %q carried by a live edge but missing from GLOBAL edgesByType", typ)
+		}
 	}
 
 	// --- compare against the path serving reads actually take ---------------
