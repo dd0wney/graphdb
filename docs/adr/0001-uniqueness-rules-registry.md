@@ -159,6 +159,83 @@ guarantee opts in.
   directions and they must be distinguishable — declare no rule and confirm the
   write is refused, declare the rule and confirm the *same* write succeeds.
 
+## Implementation notes (2026-09-08)
+
+Stage 1 (`pkg/storage`) landed the registry, its persistence, and the one
+enforcement method, with tests. Stage 2 (the write surfaces, the admin API,
+backup, and config) is separate work. These notes record the decisions stage
+1 made and are authoritative over any specialist report that disagrees with
+them.
+
+- **Scope of stage 1.** `CreateNodeWithUniquenessRulesForTenant` is a method
+  on `*GraphStorage`, not a member of the `Storage` interface. Both stage-2
+  callers (`pkg/api`, `pkg/graphql`) already hold the concrete type, and
+  `BTreeGraphStorage` is untouched by this ADR.
+
+- **The required-rule list carries the label, not a bare name.**
+  `StorageConfig.RequiredUniquenessRules` is `[]RequiredUniquenessRule`, each
+  entry a `(Name, Label)` pair, not a bare rule name. A bare name cannot tell
+  graphdb which writes it would cover without graphdb inferring that from a
+  rule once one is registered — which is exactly the domain knowledge this
+  ADR removes. The pair keeps fail-closed a property of the deployment,
+  consistent with "Where fail-closed lives" above: graphdb refuses a write
+  because its OWN configuration named a required rule for that label, never
+  because it recognizes the label.
+
+- **Persistence is `rules.json`, not a change to either snapshot format.** A
+  separate file in the data directory, with its own `version` field starting
+  at 1, independent of `snapshot.json`'s and `snapshot.mmap`'s version
+  numbers — registering or removing a rule never bumps a snapshot version,
+  and a snapshot format change never touches this file. The rule set is
+  explicitly NOT part of the JSON↔mmap fingerprint oracle
+  (`pkg/storage/mmap_reopen_test.go`): it is not represented in either
+  snapshot format, so the oracle has nothing to compare it against.
+
+- **The refusal a caller sees names only its own label.** REST maps a
+  missing required rule to HTTP 503 with fixed wording naming the label from
+  the caller's own request; GraphQL returns an error with the same wording.
+  Neither surface forwards the rule-name-carrying error's `Error()` text
+  verbatim, so a caller who simply tried to write an ordinary node is never
+  shown the rule name or the deployment's required-rule list.
+
+- **Audit events land with the admin routes, in stage 2.** Register and
+  remove will log an event following the existing
+  `s.logAuditEvent(&audit.Event{...})` pattern
+  (`pkg/api/handlers_tenant.go:108-118`) — `ActionCreate` for register,
+  `ActionDelete` for remove, `ResourceType: "uniqueness_rule"`. Stage 1 has
+  no HTTP surface to audit from, so this is stage 1's storage API called
+  directly by tests, with no audit event yet.
+
+- **Caps.** At most 256 rules; `rules.json` at most 1 MiB at load. Either
+  cap exceeded at load refuses the open, the same as a corrupt file — a
+  half-trusted registry is worse than none, the same reasoning
+  `ErrRecordUnreadable` applies to a damaged snapshot record. Exceeding the
+  count cap on `RegisterUniquenessRule` returns an error rather than evicting
+  an existing rule; an upsert of an existing name at the cap still succeeds.
+
+- **More than one matching rule refuses, and this is a known limitation.**
+  The underlying primitive, `CreateNodeWithUniquePropertyForTenant`,
+  enforces exactly one `(label, propertyKey)` pair per call. When a write's
+  labels match more than one registered rule,
+  `CreateNodeWithUniquenessRulesForTenant` returns
+  `ErrMultipleUniquenessRules` rather than choosing one silently — a silent
+  choice between two rules is the failure class this ADR exists to close,
+  not a corner case to special-case around. A deployment that needs two
+  independent uniqueness constraints on the same node cannot express that
+  today; widening the primitive to accept a set of `(label, propertyKey)`
+  pairs is future work and out of scope here.
+
+- **A naming inconsistency surfaced during implementation.** `Name` and
+  `PropertyKey` validate against `^[A-Za-z_][A-Za-z0-9_]*$`, which excludes
+  hyphens (matching `pkg/validation`'s existing `propKeyPattern`
+  precedent). Prose elsewhere describing this work — and the
+  `GRAPHDB_REQUIRED_UNIQUENESS_RULES=claim-for-task=Claim` deployment
+  variable syntax stage 2 will introduce — spells the coord rule name with a
+  hyphen. Stage 1's tests use `claim_for_task` to satisfy the validator as
+  specified. Stage 2 and graphdb-coord's `coord-bootstrap.sh` must agree on
+  one spelling before either configures a live deployment against this
+  registry.
+
 ## References
 
 - `pkg/graphql/mutations_resolvers.go:20` — the TODO this ADR closes
