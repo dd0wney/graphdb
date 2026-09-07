@@ -83,6 +83,11 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		// decrypt during construction (M-14).
 		encryptionEngine: config.EncryptionEngine,
 		keyManager:       config.KeyManager,
+		// ADR 0001: the registry map always exists so RegisterUniquenessRule
+		// never nil-checks it; the required list is deployment config,
+		// copied once and never mutated after construction.
+		uniquenessRules:         make(map[string]UniquenessRule),
+		requiredUniquenessRules: config.RequiredUniquenessRules,
 	}
 
 	// Initialize shard locks for fine-grained concurrency
@@ -155,6 +160,13 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 			}
 			gs.wal = walInstance
 		}
+	}
+
+	// Load the uniqueness-rules registry (ADR 0001). Before the disk-backed
+	// edge and snapshot loading below so a corrupt or oversized rules.json
+	// refuses the open before any other on-disk state is touched.
+	if err := gs.loadUniquenessRules(); err != nil {
+		return nil, err
 	}
 
 	// Initialize disk-backed edge storage if enabled (Milestone 2)
