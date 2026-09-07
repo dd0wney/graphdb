@@ -31,11 +31,12 @@ var ErrInvariantsUnsupported = errors.New("storage: invariant check unsupported 
 //   - shard-backed (JSON): also the global and per-tenant count chains and the
 //     global label/type indexes.
 //   - mmap-backed: also the persisted membership section, which is what serves
-//     reads there. The count chains and the sticky global label/type keys have
-//     no mmap check yet — see checkInvariantsMmap.
+//     reads there, and, since this change, the global and per-tenant count
+//     chains. The sticky global label/type keys still have no mmap check —
+//     see checkInvariantsMmap.
 //
 // A clean result on the mmap path is therefore still a slightly weaker
-// statement than a clean result on the JSON path, by those two items only.
+// statement than a clean result on the JSON path, by that one item only.
 //
 // It lived in a _test.go file until now, which meant the strongest correctness
 // statement graphdb owns could not run anywhere but a test binary. It is
@@ -585,10 +586,13 @@ func checkPropertyIndexes(report reportFunc, propIdx map[string]propSnapshot, gt
 // tombstones; ground truth is the raw edge records, so the fusion is what gets
 // tested.
 //
-// NOT covered yet: the count chains (stats and tenantStats are restored from
-// the metadata blob and nothing here recomputes them) and the sticky global
-// label/type keys that back GetAllLabels/GetAllEdgeTypes. Neither has an mmap
-// teeth test, so neither is claimed.
+// Also covered, since this change: the global and per-tenant count chains
+// (stats and tenantStats, both restored from the metadata blob), each with
+// an mmap teeth test.
+//
+// NOT covered yet: the sticky global label/type keys that back
+// GetAllLabels/GetAllEdgeTypes. It has no mmap teeth test, so it is not
+// claimed.
 func checkInvariantsMmap(gs *GraphStorage) []string {
 	var violations []string
 	report := func(format string, args ...any) {
@@ -674,6 +678,61 @@ func checkInvariantsMmap(gs *GraphStorage) []string {
 			gtEdgesByType[tid][e.Type] = map[uint64]struct{}{}
 		}
 		gtEdgesByType[tid][e.Type][id] = struct{}{}
+	}
+
+	// --- COUNT CHAINS (global + per-tenant) ---------------------------------
+	// Mirrors the shard path's count-chain check (lines 158-169, 196-229), with
+	// "live" standing in for "shard node count": ground truth here is the raw
+	// mmap-base ∪ shard-overlay record set already built above, not the shard
+	// maps this path never reads. nodeCount()/edgeCount() have no mmap
+	// counterpart to compare against, so unlike the shard path this checks
+	// stats/tenantStats only, not a third representation of the same number.
+	if got := int(atomic.LoadUint64(&gs.stats.NodeCount)); got != len(liveNodes) {
+		report("count: stats.NodeCount=%d != live node count=%d", got, len(liveNodes))
+	}
+	if got := int(atomic.LoadUint64(&gs.stats.EdgeCount)); got != len(liveEdges) {
+		report("count: stats.EdgeCount=%d != live edge count=%d", got, len(liveEdges))
+	}
+
+	// Union of every tenant key the ground truth or gs.tenantStats names, so a
+	// tenant with live records and no tenantStats entry (or vice versa) is
+	// caught rather than skipped.
+	tenantsForCounts := map[tenantid.TenantID]struct{}{}
+	for tid := range gtNodesByTenant {
+		tenantsForCounts[tid] = struct{}{}
+	}
+	for tid := range gtEdgesByTenant {
+		tenantsForCounts[tid] = struct{}{}
+	}
+	for tid := range gs.tenantStats {
+		tenantsForCounts[tid] = struct{}{}
+	}
+
+	sumTenantNodes, sumTenantEdges := 0, 0
+	for tid := range tenantsForCounts {
+		wantNodes := len(gtNodesByTenant[tid])
+		wantEdges := len(gtEdgesByTenant[tid])
+
+		var statNodes, statEdges int
+		if ts := gs.tenantStats[tid]; ts != nil {
+			statNodes = int(atomic.LoadUint64(&ts.NodeCount))
+			statEdges = int(atomic.LoadUint64(&ts.EdgeCount))
+		}
+		sumTenantNodes += statNodes
+		sumTenantEdges += statEdges
+
+		if statNodes != wantNodes {
+			report("tenant %q: tenantStats.NodeCount=%d != live nodes=%d", tid, statNodes, wantNodes)
+		}
+		if statEdges != wantEdges {
+			report("tenant %q: tenantStats.EdgeCount=%d != live edges=%d", tid, statEdges, wantEdges)
+		}
+	}
+	if sumTenantNodes != len(liveNodes) {
+		report("count: Σ tenantStats.NodeCount=%d != live node count=%d", sumTenantNodes, len(liveNodes))
+	}
+	if sumTenantEdges != len(liveEdges) {
+		report("count: Σ tenantStats.EdgeCount=%d != live edge count=%d", sumTenantEdges, len(liveEdges))
 	}
 
 	// --- compare against the path serving reads actually take ---------------

@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/dd0wney/graphdb/pkg/vector"
@@ -426,6 +427,67 @@ func TestCheckInvariantsMmap_TeethPropertyIndexInvention(t *testing.T) {
 	want := fmt.Sprintf("property %q bucket %q: lists id 999999 not backed by a live node carrying that value", "n", key)
 	if !anyContains(violations, want) {
 		t.Errorf("no violation %q; got %v", want, violations)
+	}
+}
+
+// --- teeth for the count chains the mmap path gained after #569 ------------
+//
+// checkInvariantsMmap already built the live node/edge sets these tests need;
+// only the comparison against stats/tenantStats was missing. Each test
+// corrupts one counter in isolation and requires a violation naming it.
+
+// TestCheckInvariantsMmap_TeethStatsNodeCountDrift bumps the global node
+// counter without adding a node, the shape a write path leaves if it updates
+// the record but forgets the counter.
+func TestCheckInvariantsMmap_TeethStatsNodeCountDrift(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	gs.mu.Lock()
+	atomic.AddUint64(&gs.stats.NodeCount, 1)
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	if !anyContains(violations, "stats.NodeCount") {
+		t.Errorf("no violation named stats.NodeCount; got %v", violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethTenantStatsNodeCountDrift is the same
+// corruption one level down, in the per-tenant counter.
+func TestCheckInvariantsMmap_TeethTenantStatsNodeCountDrift(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	tid := effectiveTenantID(DefaultTenantID)
+	gs.mu.Lock()
+	atomic.AddUint64(&gs.tenantStats[tid].NodeCount, 1)
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	if !anyContains(violations, "tenantStats.NodeCount") {
+		t.Errorf("no violation named tenantStats.NodeCount; got %v", violations)
+	}
+	if !anyContains(violations, string(tid)) {
+		t.Errorf("no violation named tenant %q; got %v", tid, violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethTenantStatsMissing drops a tenant's whole
+// tenantStats entry while the tenant still has live nodes — the shape left
+// behind if a counter map is cleared without clearing the nodes it counts.
+func TestCheckInvariantsMmap_TeethTenantStatsMissing(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	tid := effectiveTenantID(DefaultTenantID)
+	gs.mu.Lock()
+	delete(gs.tenantStats, tid)
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	if !anyContains(violations, "tenantStats.NodeCount") {
+		t.Errorf("no violation named tenantStats.NodeCount; got %v", violations)
+	}
+	if !anyContains(violations, string(tid)) {
+		t.Errorf("no violation named tenant %q; got %v", tid, violations)
 	}
 }
 
