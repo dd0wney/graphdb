@@ -10,7 +10,7 @@ First: **merge #564, #565, #566, #567.** All four had zero failing checks and on
 two background watchers were killed mid-wait last session, and a killed watcher is
 indistinguishable from a finished one.
 
-Second: **answer the three questions in §6 of the handoff.** The one that changes code is the
+Second: **answer the two open questions in §6 of the handoff** (the third resolved itself at close-out). The one that changes code is the
 library-API decision: #565 corrected `CAPABILITIES` to say the Go library import is unversioned.
 Declaring it supported and versioned instead is still open, purely additive, and would put
 `PathOptions` / `ExecuteWithOptions` under SemVer. `oit-cyber/interrogate` is the consumer.
@@ -22,7 +22,7 @@ carried claim before working from it, and record the evidence either way.
 Then pick from `NEXT_STEPS_2026-06-18.md`: the mmap `CheckInvariants` gap (§C) or ADR 0001, the
 uniqueness-rules registry. Neither is forced.
 
-Pre-flight: Go 1.27.0. Lint with
+Pre-flight: the main loop is Fable 5.1 again — `settings.json` has the `model` pin, restored at the end of the 09-07 session. Go 1.27.0. Lint with
 `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run ./pkg/... ./cmd/...`.
 `gofmt -s`, never plain `gofmt`. Build `./pkg/... ./cmd/...`, never `./...`. Branches and
 worktrees are clean — do not assume otherwise.

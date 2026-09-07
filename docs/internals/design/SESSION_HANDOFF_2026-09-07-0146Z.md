@@ -1,7 +1,7 @@
 # Session handoff — 2026-09-07 01:46 UTC
 
 **Date**: 2026-09-07 (single session; 1 PR merged, 4 opened and awaiting benchmarks)
-**Outgoing model**: Claude Opus 5 (1M context)
+**Outgoing model**: Claude Opus 5 (1M context) for the whole session's work. The user switched to Fable 5.1 via `/model` at close-out (11:50 AEST), after every PR in this handoff was opened — see §6.
 **Format defined in**: `CLAUDE.md` § "Preparing a new session (handoff convention)"
 
 ## 1. TL;DR
@@ -139,10 +139,13 @@ to be wrong.** That is the pattern worth taking from this section, more than any
    is still open and is purely additive. `oit-cyber/interrogate` is the consumer affected.
 2. **`main-prerebase-backup`** survived the cleanup. It has no PR and looks like a manual safety
    net from a past rebase. Keep or delete?
-3. **`CLAUDE.md` says the main loop runs Fable, "pinned via `model` in `~/.claude/settings.json`".
-   There is no `model` key in `settings.json` or `settings.local.json`** — verified by parsing
-   the file and listing its nine keys as a positive control. This session ran Opus 5. Either the
-   pin was dropped deliberately, in which case that clause should go, or it was lost.
+3. ~~**`CLAUDE.md` says the main loop is pinned to Fable via `model` in `settings.json`, and there
+   was no such key.**~~ **Resolved at close-out.** At session start `settings.json` had nine keys
+   and no `model` — verified by parsing the file, with the key list as a positive control — so
+   this session's main loop ran Opus 5 and the tier policy's premise did not hold. At 11:50 AEST
+   the user ran `/model`, which wrote `"model": "claude-fable-5-1[1m]"` and saved it as the
+   default. The `CLAUDE.md` clause is true again for the next session. The pin had been lost, not
+   dropped; nothing in `CLAUDE.md` needs to change.
 
 ## 7. Next-session prompt
 
