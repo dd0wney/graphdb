@@ -336,3 +336,75 @@ func (gs *GraphStorage) UniquenessRules() []UniquenessRule {
 	sort.Slice(rules, func(i, j int) bool { return rules[i].Name < rules[j].Name })
 	return rules
 }
+
+// CreateNodeWithUniquenessRulesForTenant is the one lookup path both write
+// surfaces (the GraphQL resolver and the REST handler, wired in stage 2)
+// call for node creation. It replaces the earlier direct calls to
+// CreateNodeWithUniquePropertyForTenant that hardcoded a single (label,
+// propertyKey) pair, so graphdb ships no domain vocabulary and both
+// surfaces enforce identically (ADR 0001).
+//
+// Order of checks, matching the ADR's fail-closed-per-deployment design:
+//
+//  1. Any StorageConfig.RequiredUniquenessRules pair whose Label is in
+//     labels and whose Name is not currently registered refuses the whole
+//     call with *RequiredRuleMissingError, naming the first such pair by
+//     name. No storage is touched.
+//  2. Among the REGISTERED rules, any whose Label is in labels is a match.
+//     Zero matches: an ordinary create. One match: the property it names
+//     must be present, then the create runs through
+//     CreateNodeWithUniquePropertyForTenant. More than one match:
+//     ErrMultipleUniquenessRules, because the underlying primitive
+//     enforces exactly one (label, propertyKey) pair per call and a silent
+//     choice between two rules is the failure class the ADR exists to
+//     avoid (R7).
+//
+// rulesMu is released before the primitive call in every branch: this
+// method only ever reads the registry, and the primitive it calls takes
+// gs.mu itself.
+func (gs *GraphStorage) CreateNodeWithUniquenessRulesForTenant(
+	tenantID string,
+	labels []string,
+	properties map[string]Value,
+) (*Node, error) {
+	gs.rulesMu.RLock()
+
+	var missing []RequiredUniquenessRule
+	for _, req := range gs.requiredUniquenessRules {
+		if !containsString(labels, req.Label) {
+			continue
+		}
+		if _, registered := gs.uniquenessRules[req.Name]; registered {
+			continue
+		}
+		missing = append(missing, req)
+	}
+	if len(missing) > 0 {
+		sort.Slice(missing, func(i, j int) bool { return missing[i].Name < missing[j].Name })
+		first := missing[0]
+		gs.rulesMu.RUnlock()
+		return nil, &RequiredRuleMissingError{RuleName: first.Name, Label: first.Label}
+	}
+
+	var matched []UniquenessRule
+	for _, rule := range gs.uniquenessRules {
+		if containsString(labels, rule.Label) {
+			matched = append(matched, rule)
+		}
+	}
+	gs.rulesMu.RUnlock()
+
+	switch len(matched) {
+	case 0:
+		return gs.CreateNodeWithTenant(tenantID, labels, properties)
+	case 1:
+		rule := matched[0]
+		if _, ok := properties[rule.PropertyKey]; !ok {
+			return nil, fmt.Errorf("label %q requires a %q property", rule.Label, rule.PropertyKey)
+		}
+		return gs.CreateNodeWithUniquePropertyForTenant(tenantID, labels, properties, rule.Label, rule.PropertyKey)
+	default:
+		sort.Slice(matched, func(i, j int) bool { return matched[i].Name < matched[j].Name })
+		return nil, fmt.Errorf("%w: %q and %q", ErrMultipleUniquenessRules, matched[0].Name, matched[1].Name)
+	}
+}
