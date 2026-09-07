@@ -71,7 +71,26 @@ func (e *Executor) Execute(query *Query) (*ResultSet, error) {
 
 // ExecuteWithContext executes a query with context for cancellation and timeout support.
 // Includes panic recovery to prevent server crashes from malformed queries.
-func (e *Executor) ExecuteWithContext(ctx context.Context, query *Query) (result *ResultSet, err error) {
+//
+// It is ExecuteWithOptions with the zero PathOptions, which is today's traversal
+// behaviour. Callers that want the node-visited mode or an expansion-time filter
+// call ExecuteWithOptions directly.
+func (e *Executor) ExecuteWithContext(ctx context.Context, query *Query) (*ResultSet, error) {
+	return e.ExecuteWithOptions(ctx, query, PathOptions{})
+}
+
+// ExecuteWithOptions executes a query with per-call variable-length traversal
+// policy. See PathOptions.
+//
+// The policy is a parameter rather than Executor state because pkg/api shares
+// one Executor across every request: a field there would change every tenant's
+// rows and would race with a query already running.
+//
+// NOTE: ExecuteWithText does not pass through here. It reads and fills the plan
+// cache and calls executePlan directly, so it always runs the zero PathOptions.
+// A caller that wants the options parses first and calls this, giving up the
+// plan cache.
+func (e *Executor) ExecuteWithOptions(ctx context.Context, query *Query, opts PathOptions) (result *ResultSet, err error) {
 	// Panic recovery - prevent server crashes from query execution panics
 	defer func() {
 		if r := recover(); r != nil {
@@ -91,7 +110,7 @@ func (e *Executor) ExecuteWithContext(ctx context.Context, query *Query) (result
 
 	// Handle UNION before normal execution
 	if query.Union != nil && query.UnionNext != nil {
-		return e.executeUnion(ctx, query)
+		return e.executeUnion(ctx, query, opts)
 	}
 
 	// Build execution plan
@@ -114,21 +133,21 @@ func (e *Executor) ExecuteWithContext(ctx context.Context, query *Query) (result
 
 	// PROFILE: execute with timing instrumentation
 	if query.Profile {
-		return e.executeWithProfiling(ctx, optimizedPlan, query)
+		return e.executeWithProfiling(ctx, optimizedPlan, query, opts)
 	}
 
 	// Handle WITH chaining — needs bindings, not just results
 	if query.With != nil && query.Next != nil {
-		return e.executeWithChain(ctx, optimizedPlan, query)
+		return e.executeWithChain(ctx, optimizedPlan, query, opts)
 	}
 
 	// Execute optimized plan with context
-	return e.executePlanWithContext(ctx, optimizedPlan, query)
+	return e.executePlanWithContext(ctx, optimizedPlan, query, opts)
 }
 
 // executeWithChain handles WITH clause chaining between query segments
-func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, query *Query) (*ResultSet, error) {
-	execCtx := newExecutionContext(ctx, e.graph)
+func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, query *Query, opts PathOptions) (*ResultSet, error) {
+	execCtx := newExecutionContext(ctx, e.graph, opts)
 
 	// Use initial bindings if provided, otherwise start with empty binding
 	if query.InitialBindings != nil {
@@ -200,8 +219,11 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	// execCtx.truncation (from THIS segment's steps) and the next segment's
 	// own error travel together: errors.Join(nil, nil) is nil, so a complete
 	// chain still asserts completeness, and errors.Is sees through the join.
+	// opts travels into the next segment too. Dropping it here would make the
+	// options apply to the first segment of a WITH chain and silently revert
+	// for the rest, which is worse than not offering them at all.
 	query.Next.InitialBindings = projectedBindings
-	result, err := e.ExecuteWithContext(ctx, query.Next)
+	result, err := e.ExecuteWithOptions(ctx, query.Next, opts)
 	return result, errors.Join(execCtx.truncation, err)
 }
 
@@ -388,19 +410,19 @@ func validateExprParams(expr Expression, params map[string]any) error {
 
 // executeUnion executes two query segments and combines their results.
 // UNION deduplicates rows; UNION ALL preserves all rows.
-func (e *Executor) executeUnion(ctx context.Context, query *Query) (*ResultSet, error) {
+func (e *Executor) executeUnion(ctx context.Context, query *Query, opts PathOptions) (*ResultSet, error) {
 	// Execute first segment via a shallow copy to avoid mutating the original AST
 	firstSegment := *query
 	firstSegment.Union = nil
 	firstSegment.UnionNext = nil
 
-	first, err := e.ExecuteWithContext(ctx, &firstSegment)
+	first, err := e.ExecuteWithOptions(ctx, &firstSegment, opts)
 	if err != nil {
 		return nil, fmt.Errorf("UNION first segment: %w", err)
 	}
 
 	// Execute second segment (handles chained UNIONs recursively)
-	second, err := e.ExecuteWithContext(ctx, query.UnionNext)
+	second, err := e.ExecuteWithOptions(ctx, query.UnionNext, opts)
 	if err != nil {
 		return nil, fmt.Errorf("UNION second segment: %w", err)
 	}
