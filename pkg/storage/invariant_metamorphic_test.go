@@ -33,8 +33,8 @@ import (
 // op-script. Grep "CROSS-PATH EQUIVALENCE" to find where it is enforced.
 //
 // Op-support differs per path (transactions cannot delete), so the script is run
-// in two groups: a no-delete group across all four paths, and a with-delete group
-// across the three that support deletes (transaction logged-skipped). The query
+// in two groups: a no-delete group across all five paths, and a with-delete group
+// across the four that support deletes (transaction logged-skipped). The query
 // (1, 0.5, 0) and the maximally-separated planted vectors are chosen so the top-k
 // ordering is unambiguous (no HNSW tie-flake across insertion orders) AND so the
 // script's vector update is search-observable — proven non-vacuous by
