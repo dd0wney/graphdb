@@ -1,6 +1,6 @@
 # Session handoff — 2026-09-07 01:46 UTC
 
-**Date**: 2026-09-07 (single session; 1 PR merged, 4 opened and awaiting benchmarks)
+**Date**: 2026-09-07 (single session; 5 PRs merged, plus this handoff)
 **Outgoing model**: Claude Opus 5 (1M context) for the whole session's work. The user switched to Fable 5.1 via `/model` at close-out (11:50 AEST), after every PR in this handoff was opened — see §6.
 **Format defined in**: `CLAUDE.md` § "Preparing a new session (handoff convention)"
 
@@ -9,7 +9,7 @@
 The V1-spike shipped (#563): the variable-length pattern path now has an opt-in node-visited
 mode and an expansion-time filter, carried per call by `PathOptions`. A code review on it found
 six defects, including `MERGE` silently dropping the options, all fixed in the same PR. Four
-follow-up PRs are open and clean. The biggest thing for the next session is §6: **two claims
+follow-up PRs merged behind it. The biggest thing for the next session is §6: **two claims
 carried across three handoffs turned out to be wrong**, and one of them cost nothing only
 because nobody acted on it.
 
@@ -31,24 +31,27 @@ were two in production code.
 The same site discarded `matchCtx.truncation`, a pre-existing defect: a `MERGE` whose match half
 stopped at the depth cap reported a complete answer.
 
-### Open PRs from this session
+### Follow-up PRs, all merged
 
-| PR | Title | Shape |
-|---|---|---|
-| #564 | docs(planning): mark the V1-spike deep-path traversal track done | `NEXT_STEPS_2026-06-18.md` §D only |
-| #565 | docs: reconcile the library-API stability contradiction, add two pitfalls | `CAPABILITIES`, `STABILITY_POLICY`, `CLAUDE.md` |
-| #566 | refactor(query): name the aggregation sub-context and state its absences | `pkg/query`, no behaviour change |
-| #567 | test(storage): make the mmap corruption tests measure what they claim | `pkg/storage` tests only |
+| PR | Merge | Title | Shape |
+|---|---|---|---|
+| #564 | `0f600bb` | docs(planning): mark the V1-spike deep-path traversal track done | `NEXT_STEPS_2026-06-18.md` §D only |
+| #565 | `8ac68e6` | docs: reconcile the library-API stability contradiction, add two pitfalls | `CAPABILITIES`, `STABILITY_POLICY`, `CLAUDE.md` |
+| #567 | `6c206ef` | test(storage): make the mmap corruption tests measure what they claim | `pkg/storage` tests only |
+| #566 | `2a8a109` | refactor(query): name the aggregation sub-context and state its absences | `pkg/query`, no behaviour change |
 
 ## 3. Current state
 
-- **`origin/main`**: `f7cfcc0` (#563).
-- **Open PRs**: #564, #565, #566, #567. **Zero failing checks on all four**; only the ~28-minute
-  benchmark jobs were outstanding at write time. Benchmark duration is normal — historical runs
-  on main are 28 minutes (07:51→08:19, 08:31→08:58, 06:49→07:17), so a benchmark still running
-  after half an hour is not stuck.
-- **Local branches**: `main`, `main-prerebase-backup`, and the four PR branches. **19 merged
-  branches were deleted this session.**
+- **`origin/main`**: `2a8a109` (#566), with #563, #564, #565 and #567 beneath it.
+- **Open PRs**: only #568, this handoff. All five session PRs merged with zero failing checks.
+  One timing fact worth keeping: five PRs pushed inside 34 minutes put **nine benchmark jobs**
+  (two workflows each) on one account at once, and #564's `Run benchmarks` step took ~45 minutes
+  against a 28-minute solo baseline (main runs 07:51→08:19, 08:31→08:58, 06:49→07:17). That is
+  the account-level contention `CLAUDE.md` § "Known infra patterns" describes — slow, not hung.
+  Its step list showed setup complete and the benchmark step in progress, which is what progress
+  looks like; the job-log endpoint returns `BlobNotFound` for a running job and is not evidence.
+- **Local branches**: `main`, `main-prerebase-backup`, and this handoff's branch. The four PR
+  branches went with `--delete-branch` at merge. **19 merged branches were deleted this session.**
 - **Worktrees**: one. **All nine `.claude/worktrees/agent-*` worktrees were removed**, every one
   clean and on a merged branch.
 - **Uncommitted changes**: none.
@@ -59,7 +62,7 @@ stopped at the depth cap reported a complete answer.
 
 ## 4. What is next
 
-1. **Merge #564–#567** once the benchmark jobs report. Read conclusions by SHA
+1. ~~**Merge #564–#567.**~~ Done — see §2. Kept for the advice: read CI conclusions by SHA
    (`gh api repos/dd0wney/graphdb/commits/<sha>/check-runs`), not from a watcher's exit code —
    two background watchers were killed mid-wait this session and a killed watcher looks
    identical to a finished one.
