@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -136,16 +137,38 @@ func TestMmapReaderRejectsACorruptSnapshotFromTheDriver(t *testing.T) {
 		t.Fatalf("control: a valid snapshot served through a Mapper failed to open: %v", err)
 	}
 
+	// The byte position comes from the FORMAT, not from the file length.
+	//
+	// This flipped bad[len(bad)/2] until 2026-09-07. The CRC covers the header,
+	// the three directories, the membership directory and the metadata blob —
+	// NOT the record bytes, which are bounds-checked at decode instead. Whether
+	// the midpoint landed in a covered region was therefore an accident of how
+	// big the fixture happened to be. Measured on this fixture: the file is 1226
+	// bytes, the midpoint 613 sits past the edge directory, and node records
+	// occupy [148, 280). Grow the fixture and the midpoint walks into the record
+	// region, where the CRC does not look and this test would fail for a reason
+	// that has nothing to do with the reader.
+	//
+	// nodeDirOffset+3 is inside the first entry of the node directory, which the
+	// CRC always covers.
+	nodeDirOffset := binary.LittleEndian.Uint64(good[hNodeDir:])
+	if nodeDirOffset < mmapHeaderSize || nodeDirOffset+8 > uint64(len(good)) {
+		t.Fatalf("node directory offset %d is not inside a %d-byte snapshot; the fixture "+
+			"changed shape and this test no longer corrupts what it claims to",
+			nodeDirOffset, len(good))
+	}
+
 	bad := make([]byte, len(good))
 	copy(bad, good)
-	bad[len(bad)/2] ^= 0xFF
+	bad[nodeDirOffset+3] ^= 0xFF
 
 	_, err = openMmapSnapshotWithFS(corruptMapper{FileSystem: vfs.OS(), payload: bad}, "served-from-memory")
 	if err == nil {
 		t.Fatal("the reader accepted a corrupt snapshot")
 	}
-	if !strings.Contains(err.Error(), "CRC") && !strings.Contains(err.Error(), "invalid") {
-		t.Fatalf("error does not identify the corruption: %v", err)
+	if !strings.Contains(err.Error(), "CRC") {
+		t.Fatalf("the error does not name the CRC, so it may be rejecting the snapshot for "+
+			"some other reason: %v", err)
 	}
 }
 
