@@ -15,6 +15,21 @@ The following are present in the codebase but not yet part of a tagged release
 `pkg/cluster/doc.go`):
 
 ### Added
+- **Opt-in variable-length traversal policy: `Executor.ExecuteWithOptions` and `query.PathOptions`.**
+  Two capabilities for consumers that import graphdb as a Go library.
+  `PathOptions{Semantics: DistinctNodes}` admits each node at most once per start node, so a
+  node reachable by twenty routes produces one row instead of twenty, and cost grows with the
+  reachable subgraph (`O(N+E)`) instead of with the number of routes (`O(b^d)`); the
+  relationship variable binds the BFS discovery path, which is *a* shortest path in edge count
+  (ties are unspecified — do not depend on which one comes back). `PathOptions.Expand` is a Go
+  predicate that runs at expansion time, so a rejected node is never queued and its neighbours
+  are never read from storage. The two are orthogonal, and `DistinctNodes` refuses `MinHops >= 2`
+  with `query.ErrDistinctNodesMinHops` rather than silently dropping rows it cannot find.
+  **The zero `PathOptions` is today's behaviour exactly**, on the plain, `PROFILE`, `WITH`-chain
+  and `OPTIONAL MATCH` surfaces alike. `ExecuteWithText` has no options parameter and always runs
+  the default — a caller who wants the options parses first and gives up the plan cache.
+  No REST or GraphQL surface: a Go closure cannot cross HTTP, and `pkg/api` shares one executor
+  across every request.
 - Multi-node/replication groundwork: node listing on replicas (`/nodes` GET), datacenter-link parsing in ZMQ/NNG primaries, snapshot-transfer handling, and primary-mode transition with `PromotionCallback` for HA failover
 - Generic OIDC authentication support for enterprise identity providers
 - Modularity calculation for community detection (ConnectedComponents, LabelPropagation)

@@ -1,7 +1,24 @@
 # V1-spike — deep-path traversal for the variable-length pattern path
 
 **Date**: 2026-09-04
-**Status**: Design spike. No implementation is approved.
+**Status**: **IMPLEMENTED 2026-09-07.** The recommended answer to every decision in §7 was
+accepted, and the design shipped as written. See the "Decisions as built" note below.
+
+D7 and D8 were answered by merged work rather than by a choice: #562 fixed the cancel, `PROFILE`
+and `WITH` truncation holes, and #561 replaced the REST 500 with a 200 plus a header. §2.5 and
+R5 below describe the state before those landed and are kept for the record.
+
+Two notes where the build differs from the document:
+
+- §7 D1 claims the emitted path is a shortest path. That follows from BFS admission order, and
+  the test that gates it (A-7) proves the parent-chain rebuild, not the ordering: a LIFO
+  mutation of the queue does not make A-7 fail, because both routes' first hop is admitted
+  during the same expansion. The shortest-path property rests on the algorithm, not on A-7.
+- R1's suggested mitigation (extract the expansion loop behind a frontier type) was taken. The
+  `frontier` struct in `match_path.go` owns cycle detection and the discovery records, so
+  `traverseVariablePath` keeps one loop, one emit gate and one pair of truncation checks.
+
+Original status line: Design spike. No implementation is approved.
 **Revision read**: `main` at `f4dcfd4` (`chore(go): raise the toolchain floor to 1.27.0 (#555)`).
 **Tracks**: `docs/NEXT_STEPS_2026-06-18.md` §D, "V1-spike — Deep-path traversal for the
 variable-length pattern path".
