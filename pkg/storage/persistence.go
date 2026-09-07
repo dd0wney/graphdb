@@ -34,13 +34,26 @@ func (gs *GraphStorage) Snapshot() error {
 // TruncateUpTo(boundary) to checkpoint the WAL without losing concurrent
 // writers' entries (M-1).
 func (gs *GraphStorage) snapshotWithBoundary() (uint64, error) {
-	// Compress edge lists before snapshot if compression is enabled
+	// Compress edge lists before snapshot if compression is enabled — but
+	// only on a JSON-backed store (gs.mmapSnap == nil). On an mmap-backed
+	// store, gs.outgoingEdges/gs.incomingEdges hold the post-open OVERLAY
+	// only; the base adjacency lives in the CSR run inside gs.mmapSnap and
+	// is never copied into these maps. Compressing and clearing the overlay
+	// there would leave a compressed entry that holds ONLY the overlay
+	// edges for a node — and getEdgeIDsForNode checks the compressed maps
+	// FIRST, returning that entry before it ever reaches the
+	// overlay-plus-base union below, hiding the base edges entirely.
+	// TestEdgeCompression_ComposesWithMmapOverlay names this defect. The
+	// mmap base is already compact in its CSR form, so skipping compression
+	// there costs only the (post-open-write-bounded) overlay.
 	if gs.useEdgeCompression {
 		gs.mu.Lock()
-		gs.compressAllEdgeLists()
-		// Clear uncompressed maps to free memory
-		gs.outgoingEdges = make(map[uint64][]uint64)
-		gs.incomingEdges = make(map[uint64][]uint64)
+		if gs.mmapSnap == nil {
+			gs.compressAllEdgeLists()
+			// Clear uncompressed maps to free memory
+			gs.outgoingEdges = make(map[uint64][]uint64)
+			gs.incomingEdges = make(map[uint64][]uint64)
+		}
 		gs.mu.Unlock()
 	}
 

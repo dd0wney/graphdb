@@ -156,3 +156,82 @@ func assertUint64SetEqual(t *testing.T, label string, got, want []uint64) {
 		}
 	}
 }
+
+// TestCompressEdgeLists_RefusesOnMmapBackedStore is Fix round 1, step 6: the
+// public manual entry point must refuse loudly on an mmap-backed store,
+// rather than silently no-op into the corruption
+// TestEdgeCompression_ComposesWithMmapOverlay proved above. Before the
+// guard, CompressEdgeLists returned nil here and still compressed the
+// overlay.
+func TestCompressEdgeLists_RefusesOnMmapBackedStore(t *testing.T) {
+	dir := t.TempDir()
+
+	gs, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatalf("NewGraphStorageWithConfig: %v", err)
+	}
+	nodeA, err := gs.CreateNode([]string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("CreateNode(A): %v", err)
+	}
+	nodeB, err := gs.CreateNode([]string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("CreateNode(B): %v", err)
+	}
+	if _, err := gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0); err != nil {
+		t.Fatalf("CreateEdge(A->B): %v", err)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	reopened, err := NewGraphStorageWithConfig(mmapConfig(dir))
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if reopened.mmapSnap == nil {
+		t.Fatalf("reopen did not take the mmap path (mmapSnap is nil); test cannot proceed")
+	}
+
+	if err := reopened.CompressEdgeLists(); err == nil {
+		t.Errorf("CompressEdgeLists on an mmap-backed store: got nil error, want a refusal")
+	}
+}
+
+// TestCompressEdgeLists_SucceedsOnJSONBackedStore is the negative control
+// for the guard above: a JSON-backed store with edge compression on must
+// still compress successfully, and the compressed edge must still read
+// back correctly.
+func TestCompressEdgeLists_SucceedsOnJSONBackedStore(t *testing.T) {
+	gs, err := NewGraphStorageWithConfig(jsonConfig(t.TempDir()))
+	if err != nil {
+		t.Fatalf("NewGraphStorageWithConfig: %v", err)
+	}
+	t.Cleanup(func() { _ = gs.Close() })
+	if !gs.useEdgeCompression {
+		t.Fatalf("test setup: useEdgeCompression = false, want true")
+	}
+
+	nodeA, err := gs.CreateNode([]string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("CreateNode(A): %v", err)
+	}
+	nodeB, err := gs.CreateNode([]string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("CreateNode(B): %v", err)
+	}
+	edge, err := gs.CreateEdge(nodeA.ID, nodeB.ID, "LINKS", nil, 1.0)
+	if err != nil {
+		t.Fatalf("CreateEdge(A->B): %v", err)
+	}
+
+	if err := gs.CompressEdgeLists(); err != nil {
+		t.Fatalf("CompressEdgeLists on a JSON-backed store: %v", err)
+	}
+
+	gs.mu.RLock()
+	ids := append([]uint64(nil), gs.getEdgeIDsForNode(nodeA.ID, true)...)
+	gs.mu.RUnlock()
+	assertUint64SetEqual(t, "after CompressEdgeLists: getEdgeIDsForNode(A, outgoing)", ids, []uint64{edge.ID})
+}
