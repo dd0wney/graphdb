@@ -1,6 +1,7 @@
 // Package backup builds and verifies graphdb store backup archives.
 //
-// An archive is a gzip+tar of a store's dataDir: the snapshot file plus the
+// An archive is a gzip+tar of a store's dataDir: the snapshot file,
+// rules.json (ADR 0001's uniqueness-rules registry) if present, plus the
 // wal/, auth/, lsa/, and edgestore/ trees, with a manifest trailer recording
 // per-file size + SHA-256 for integrity. The package has no dependency on the
 // HTTP server (pkg/api) or storage, so offline tooling (the graphdb-admin CLI)

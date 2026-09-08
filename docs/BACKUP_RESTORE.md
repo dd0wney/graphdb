@@ -32,6 +32,7 @@ Replace `$TOKEN` with your admin API key (`ADMIN_API_KEY` / `X-Admin-Token` head
 | Path in archive | What it contains |
 |---|---|
 | `snapshot.json` (or `snapshot.mmap`) | Point-in-time serialised graph (nodes, edges, tenant indexes) |
+| `rules.json` | Uniqueness-rules registry (ADR 0001), if the store has registered any rule — a third on-disk artefact, versioned separately from the snapshot |
 | `wal/` | Write-ahead log segments current at snapshot time |
 | `auth/` | Tenant credential files (hashed passwords, API keys) |
 | `lsa/` | LSA vector-index persistence files |
