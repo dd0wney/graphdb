@@ -59,6 +59,16 @@ func TestAdminUniquenessRules_RegisterIsIdempotentUpsert(t *testing.T) {
 	if first.Code != http.StatusOK {
 		t.Fatalf("first register: status = %d, want 200, body=%s", first.Code, first.Body.String())
 	}
+	// Fix round 1 (Minor): the response body must be what the registry
+	// holds, not an echo of the decoded request.
+	var firstBody storage.UniquenessRule
+	if err := json.Unmarshal(first.Body.Bytes(), &firstBody); err != nil {
+		t.Fatalf("decode first response: %v; body=%s", err, first.Body.String())
+	}
+	if firstBody != rule {
+		t.Errorf("first response body = %+v, want %+v", firstBody, rule)
+	}
+
 	second := uniquenessRuleReq(t, server, http.MethodPost, "/admin/uniqueness-rules", token, rule)
 	if second.Code != http.StatusOK {
 		t.Fatalf("second register (upsert): status = %d, want 200, body=%s", second.Code, second.Body.String())
@@ -127,8 +137,9 @@ func TestAdminUniquenessRules_AuditEventsOnRegisterAndRemove(t *testing.T) {
 }
 
 // TestAdminUniquenessRules_ValidationRejectsBadInput covers R5's validation
-// requirement: a control character in Name and an overlong Name are both
-// 400s that never reach the registry.
+// requirement: a control character or an overlong value in any of Name,
+// Label, or PropertyKey is a 400 that never reaches the registry (fix
+// round 1, Missing item: the original table covered Name only).
 func TestAdminUniquenessRules_ValidationRejectsBadInput(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
@@ -145,6 +156,14 @@ func TestAdminUniquenessRules_ValidationRejectsBadInput(t *testing.T) {
 		{
 			name: "overlong name",
 			rule: storage.UniquenessRule{Name: strings.Repeat("a", 101), Label: "Widget", PropertyKey: "sku"},
+		},
+		{
+			name: "control character in label",
+			rule: storage.UniquenessRule{Name: "good_name", Label: "bad\x00label", PropertyKey: "sku"},
+		},
+		{
+			name: "overlong propertyKey",
+			rule: storage.UniquenessRule{Name: "good_name", Label: "Widget", PropertyKey: strings.Repeat("a", 101)},
 		},
 	}
 

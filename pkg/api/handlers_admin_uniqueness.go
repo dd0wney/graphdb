@@ -82,7 +82,19 @@ func (s *Server) registerUniquenessRule(w http.ResponseWriter, r *http.Request) 
 		UserAgent:    r.UserAgent(),
 	})
 
-	s.respondJSON(w, http.StatusOK, req)
+	// Fix round 1 (Minor): respond with what the registry actually holds,
+	// not the decoded request body. RegisterUniquenessRule just succeeded
+	// under req.Name, so this is always found; the fallback to req only
+	// guards an impossible-in-practice race with a concurrent remove of
+	// the same name between the two calls above.
+	response := req
+	for _, stored := range s.graph.UniquenessRules() {
+		if stored.Name == req.Name {
+			response = stored
+			break
+		}
+	}
+	s.respondJSON(w, http.StatusOK, response)
 }
 
 // removeUniquenessRule handles DELETE /admin/uniqueness-rules/{name}. 200
