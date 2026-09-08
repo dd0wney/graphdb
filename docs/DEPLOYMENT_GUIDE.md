@@ -323,6 +323,33 @@ Operational notes:
   traffic — index construction on a hot path competes with query load. Index membership is
   persisted in the mmap snapshot and restored on reopen, so this is a one-time bootstrap cost.
 
+### Uniqueness rules (ADR 0001)
+
+A deployment declares which write labels MUST have a registered uniqueness rule before
+graphdb accepts them, via `GRAPHDB_REQUIRED_UNIQUENESS_RULES`. Unset (the default) means no
+label is required, matching graphdb's own out-of-the-box behaviour: it ships no domain
+vocabulary of its own.
+
+| `GRAPHDB_REQUIRED_UNIQUENESS_RULES` | Effect |
+|---|---|
+| *(unset)* | no required rule; every label is optional |
+| `name=Label` | one required pair, for example `claim_for_task=Claim` |
+| `name=Label,name=Label,...` | multiple required pairs, comma-separated |
+
+- **A malformed value refuses to start the server**, rather than silently running with an
+  emptier required list than the operator intended. Each entry must be `name=Label` with
+  neither side empty; `name` follows the same identifier shape as a property key (letters,
+  digits, underscore, starting with a letter or underscore — R8: `claim_for_task`, not
+  `claim-for-task`).
+- **A required pair with no matching REGISTERED rule refuses the covered write**, not the
+  whole server: REST returns a fixed `503` naming only the write's own label, and GraphQL
+  returns the equivalent fixed error text. Neither ever names the rule or the rest of the
+  required list.
+- **Register the rule itself** with `POST /admin/uniqueness-rules` (admin-only; see
+  `GET`/`DELETE` on the same path to list and remove). Setting the environment variable
+  alone does not register anything — it only declares which labels graphdb refuses to accept
+  writes for until a matching rule exists.
+
 ### Generating Secrets
 
 ```bash

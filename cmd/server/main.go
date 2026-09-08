@@ -186,6 +186,46 @@ func loadTLSConfig(logger *slog.Logger) *tlspkg.Config {
 	return cfg
 }
 
+// parseRequiredUniquenessRules parses GRAPHDB_REQUIRED_UNIQUENESS_RULES
+// (ADR 0001), format name=Label[,name=Label,...] — R8: names use
+// underscores (e.g. claim_for_task), matching pkg/storage's own Name
+// pattern. An empty/unset value is zero rules, not an error; most
+// deployments never set this variable.
+//
+// A malformed value is a startup error, not a warning: an operator's typo
+// here would otherwise silently start the server with an emptier required
+// list than intended, which is exactly the fail-OPEN failure mode ADR 0001
+// exists to avoid. This function only checks the entry SHAPE (name=Label,
+// neither side empty) — a name or label that fails pkg/storage's own
+// pattern still starts the server, and the required pair simply stays
+// unsatisfiable (every covered write gets the fixed 503) until an admin
+// registers a rule that matches it. That is a safe, fail-closed default:
+// the server never re-interprets an unsatisfiable pair as "not required".
+func parseRequiredUniquenessRules(raw string) ([]storage.RequiredUniquenessRule, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	var rules []storage.RequiredUniquenessRule
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			return nil, fmt.Errorf("GRAPHDB_REQUIRED_UNIQUENESS_RULES: empty entry in %q", raw)
+		}
+		name, label, ok := strings.Cut(entry, "=")
+		if !ok {
+			return nil, fmt.Errorf("GRAPHDB_REQUIRED_UNIQUENESS_RULES: entry %q is not name=Label", entry)
+		}
+		name, label = strings.TrimSpace(name), strings.TrimSpace(label)
+		if name == "" || label == "" {
+			return nil, fmt.Errorf("GRAPHDB_REQUIRED_UNIQUENESS_RULES: entry %q has an empty name or label", entry)
+		}
+		rules = append(rules, storage.RequiredUniquenessRule{Name: name, Label: label})
+	}
+	return rules, nil
+}
+
 // encodeHexKey encodes a byte slice to hex string
 func encodeHexKey(key []byte) string {
 	const hexChars = "0123456789abcdef"
@@ -387,6 +427,22 @@ func main() {
 	default:
 		logger.Info("mmap-backed lazy reopen enabled (default; set GRAPHDB_STORAGE_MODE=json to opt out)")
 	}
+
+	// ADR 0001: a deployment declares which uniqueness rules MUST be
+	// registered before graphdb accepts a covered write. Unset is the
+	// default (empty list, no requirement) — most deployments never set
+	// this. A malformed value refuses startup rather than silently running
+	// with an emptier required list than the operator intended.
+	if raw := os.Getenv("GRAPHDB_REQUIRED_UNIQUENESS_RULES"); raw != "" {
+		requiredRules, err := parseRequiredUniquenessRules(raw)
+		if err != nil {
+			logger.Error("invalid GRAPHDB_REQUIRED_UNIQUENESS_RULES", "error", err)
+			os.Exit(1)
+		}
+		storageConfig.RequiredUniquenessRules = requiredRules
+		logger.Info("required uniqueness rules configured", "count", len(requiredRules))
+	}
+
 	graph, err := storage.NewGraphStorageWithConfig(storageConfig)
 	if err != nil {
 		logger.Error("failed to create graph storage", "error", err)
