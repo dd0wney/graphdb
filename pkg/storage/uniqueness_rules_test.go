@@ -6,6 +6,7 @@ package storage
 // separately in uniqueness_rules_enforce_test.go.
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -89,14 +90,95 @@ func TestUniquenessRules_CorruptFileRefusesOpen(t *testing.T) {
 func TestUniquenessRules_OversizedFileRefusesOpen(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "rules.json")
-	oversized := make([]byte, maxUniquenessRulesFileSize+1)
-	if err := os.WriteFile(path, oversized, 0o600); err != nil {
+
+	// VALID JSON, deliberately padded past the 1 MiB cap with insignificant
+	// whitespace inside the document (JSON permits whitespace between
+	// tokens). This matters: a fixture that cannot even PARSE (e.g. a run of
+	// zero bytes) would also be refused if the size check were removed,
+	// because the JSON parse would fail on its own — the test would then
+	// pass for the wrong reason, unable to tell the size cap apart from the
+	// parse check. This fixture parses to a single valid rule if the size
+	// cap is ignored, so only the size cap can refuse it (see the fix report
+	// for the before/after proof).
+	padding := strings.Repeat(" ", maxUniquenessRulesFileSize+1)
+	doc := fmt.Sprintf(`{"version":1,%s"rules":[{"name":"r1","label":"L","propertyKey":"k"}]}`, padding)
+	if len(doc) <= maxUniquenessRulesFileSize {
+		t.Fatalf("fixture is %d bytes, want more than %d", len(doc), maxUniquenessRulesFileSize)
+	}
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
 		t.Fatalf("seed oversized rules.json: %v", err)
 	}
 
 	_, err := NewGraphStorageWithConfig(jsonConfig(dir))
 	if err == nil {
 		t.Fatalf("NewGraphStorageWithConfig: want an error for an oversized rules.json, got nil")
+	}
+	if !strings.Contains(err.Error(), "rules.json") {
+		t.Errorf("error %q does not name rules.json", err.Error())
+	}
+}
+
+// TestUniquenessRules_UnknownVersionRefusesOpen covers loadUniquenessRules'
+// version check (fix round 1, missing test).
+func TestUniquenessRules_UnknownVersionRefusesOpen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rules.json")
+	doc := `{"version":2,"rules":[]}`
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatalf("seed rules.json: %v", err)
+	}
+
+	_, err := NewGraphStorageWithConfig(jsonConfig(dir))
+	if err == nil {
+		t.Fatalf("NewGraphStorageWithConfig: want an error for an unknown rules.json version, got nil")
+	}
+	if !strings.Contains(err.Error(), "rules.json") {
+		t.Errorf("error %q does not name rules.json", err.Error())
+	}
+}
+
+// TestUniquenessRules_TooManyRulesInFileRefusesOpen covers
+// loadUniquenessRules' rule-count cap on a file written directly (as
+// opposed to TestUniquenessRules_CountCap, which drives the cap through
+// RegisterUniquenessRule) (fix round 1, missing test).
+func TestUniquenessRules_TooManyRulesInFileRefusesOpen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rules.json")
+
+	rules := make([]UniquenessRule, maxUniquenessRules+1)
+	for i := range rules {
+		rules[i] = UniquenessRule{Name: fmt.Sprintf("rule_%03d", i), Label: "L", PropertyKey: "k"}
+	}
+	data, err := json.Marshal(uniquenessRulesDocument{Version: uniquenessRulesFileVersion, Rules: rules})
+	if err != nil {
+		t.Fatalf("marshal fixture: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("seed rules.json: %v", err)
+	}
+
+	_, err = NewGraphStorageWithConfig(jsonConfig(dir))
+	if err == nil {
+		t.Fatalf("NewGraphStorageWithConfig: want an error for too many rules in rules.json, got nil")
+	}
+	if !strings.Contains(err.Error(), "rules.json") {
+		t.Errorf("error %q does not name rules.json", err.Error())
+	}
+}
+
+// TestUniquenessRules_InvalidRuleInFileRefusesOpen covers
+// loadUniquenessRules' per-rule validation (fix round 1, missing test).
+func TestUniquenessRules_InvalidRuleInFileRefusesOpen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rules.json")
+	doc := `{"version":1,"rules":[{"name":"1bad","label":"L","propertyKey":"k"}]}`
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatalf("seed rules.json: %v", err)
+	}
+
+	_, err := NewGraphStorageWithConfig(jsonConfig(dir))
+	if err == nil {
+		t.Fatalf("NewGraphStorageWithConfig: want an error for an invalid rule in rules.json, got nil")
 	}
 	if !strings.Contains(err.Error(), "rules.json") {
 		t.Errorf("error %q does not name rules.json", err.Error())
@@ -206,13 +288,23 @@ func TestUniquenessRules_DurableWriteSurvivesCrash(t *testing.T) {
 	defer func() { _ = reopened.Close() }()
 
 	got := reopened.UniquenessRules()
+	// oldOnly documents the general durability contract (rules.json must
+	// never end up unparsable or half-written) but is NOT reachable at this
+	// specific cut point: CrashFS.Rename forwards straight to the base
+	// filesystem, unconditionally and without gating, so by the time the
+	// crash fires at op 4 the rename has already completed for real and the
+	// new file's bytes were already fsynced before it (see the comment
+	// above). The only outcome this test can actually observe is "both" —
+	// kept here, and asserted as an exact equality below, so a future change
+	// that makes "old" reachable (or that breaks durability so NEITHER set
+	// survives) is caught rather than silently accepted by a looser check.
 	oldOnly := []UniquenessRule{{Name: "old_rule", Label: "Old", PropertyKey: "k"}}
 	both := []UniquenessRule{
 		{Name: "new_rule", Label: "New", PropertyKey: "k2"},
 		{Name: "old_rule", Label: "Old", PropertyKey: "k"},
 	}
-	if !rulesEqual(got, oldOnly) && !rulesEqual(got, both) {
-		t.Fatalf("after the crash, UniquenessRules() = %+v, want either the old set %+v or the new set %+v",
-			got, oldOnly, both)
+	if !rulesEqual(got, both) {
+		t.Fatalf("after the crash, UniquenessRules() = %+v, want the new set %+v (the old set %+v is not "+
+			"reachable at this cut point, but is documented above)", got, both, oldOnly)
 	}
 }

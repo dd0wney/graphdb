@@ -16,6 +16,7 @@ package storage
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -209,6 +210,12 @@ func TestCreateNodeWithUniquenessRules_MissingPropertyRefused(t *testing.T) {
 	if errors.Is(err, ErrRequiredUniquenessRuleMissing) || errors.Is(err, ErrUniqueConstraintViolation) {
 		t.Errorf("wrong error class for a missing property: %T: %v", err, err)
 	}
+	if !strings.Contains(err.Error(), "Claim") {
+		t.Errorf("error %q does not name the label", err.Error())
+	}
+	if !strings.Contains(err.Error(), "for_task") {
+		t.Errorf("error %q does not name the required property", err.Error())
+	}
 }
 
 func TestCreateNodeWithUniquenessRules_ConcurrentCreatesOneWins(t *testing.T) {
@@ -234,5 +241,17 @@ func TestCreateNodeWithUniquenessRules_ConcurrentCreatesOneWins(t *testing.T) {
 
 	if got := successes.Load(); got != 1 {
 		t.Fatalf("concurrent creates for the same (label, for_task) succeeded %d times, want exactly 1", got)
+	}
+}
+
+// TestUniquenessRuleRequiredRuleMissingError_ErrorMessage pins the exact wording stage 2
+// uses verbatim in its HTTP/GraphQL error mapping (R4, errors.go's doc
+// comment on RequiredRuleMissingError.Error). A change to this string
+// without updating those call sites is the review's Important 3.
+func TestUniquenessRuleRequiredRuleMissingError_ErrorMessage(t *testing.T) {
+	err := &RequiredRuleMissingError{RuleName: "claim_for_task", Label: "Claim"}
+	want := `required uniqueness rule "claim_for_task" for label "Claim" is not registered`
+	if got := err.Error(); got != want {
+		t.Fatalf("Error() = %q, want %q", got, want)
 	}
 }
