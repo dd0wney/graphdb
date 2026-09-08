@@ -129,6 +129,24 @@ func ValidateBatchSize(size int) error {
 	return nil
 }
 
+// ValidateLabel validates a single label string, using the same pattern and
+// length bound ValidateNodeRequest applies to each label in a node request.
+// Exported for callers that validate one label in isolation — the admin
+// uniqueness-rules routes (pkg/api), for one — rather than as part of a
+// full NodeRequest.
+func ValidateLabel(label string) error {
+	if label == "" {
+		return errors.New("label cannot be empty")
+	}
+	if len(label) > MaxLabelLength {
+		return fmt.Errorf("label '%s' exceeds maximum length of %d characters", label, MaxLabelLength)
+	}
+	if !labelPattern.MatchString(label) {
+		return fmt.Errorf("label '%s' is invalid (only alphanumeric and underscore allowed)", label)
+	}
+	return nil
+}
+
 // ValidatePropertyKey validates a property key
 func ValidatePropertyKey(key string) error {
 	if key == "" {

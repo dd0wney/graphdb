@@ -127,6 +127,12 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/update/jobs/", s.requireAdmin(s.handleUpdateJob))
 	mux.HandleFunc("/admin/backup", s.requireAdmin(s.handleBackup))
 
+	// Uniqueness-rules registry admin endpoints (ADR 0001, admin only):
+	// GET/POST /admin/uniqueness-rules (list, register/upsert) and
+	// DELETE /admin/uniqueness-rules/{name} (remove).
+	mux.HandleFunc("/admin/uniqueness-rules", s.requireAdmin(s.handleUniquenessRules))
+	mux.HandleFunc("/admin/uniqueness-rules/", s.requireAdmin(s.handleUniquenessRule))
+
 	// API Key management endpoints (admin only)
 	mux.HandleFunc("/api/v1/apikeys", s.requireAdmin(s.handleAPIKeys))
 	mux.HandleFunc("/api/v1/apikeys/", s.requireAdmin(s.handleAPIKey))
