@@ -7,7 +7,31 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
+
+// setupClaimUniquenessServer builds a test server exactly like
+// setupTestServer, then registers the Claim/for_task uniqueness rule this
+// file's tests exercise.
+//
+// Stage 2 (ADR 0001) removed createNode's hardcoded Claim/for_task check:
+// the handler now calls CreateNodeWithUniquenessRulesForTenant, the one
+// lookup path that enforces only REGISTERED rules. Every test in this file
+// pins the same :Claim/for_task behaviour the old hardcode gave for free,
+// so the fixture registers that rule explicitly — createNode itself
+// carries no domain knowledge of "Claim" any more.
+func setupClaimUniquenessServer(t *testing.T) (*Server, func()) {
+	t.Helper()
+	server, cleanup := setupTestServer(t)
+	if err := server.graph.RegisterUniquenessRule(storage.UniquenessRule{
+		Name: "claim_for_task", Label: "Claim", PropertyKey: "for_task",
+	}); err != nil {
+		cleanup()
+		t.Fatalf("RegisterUniquenessRule: %v", err)
+	}
+	return server, cleanup
+}
 
 // TestCreateNode_ClaimUniquenessOnSingleLabelClaim pins H4.4: REST POST
 // /nodes must enforce the same B-lite uniqueness on single-label :Claim
@@ -16,7 +40,7 @@ import (
 // silently bypassing the at-most-one-active-claim-per-task invariant
 // that gate work-claim/coord rely on.
 func TestCreateNode_ClaimUniquenessOnSingleLabelClaim(t *testing.T) {
-	server, cleanup := setupTestServer(t)
+	server, cleanup := setupClaimUniquenessServer(t)
 	defer cleanup()
 
 	post := func(t *testing.T, body NodeRequest) *httptest.ResponseRecorder {
@@ -144,7 +168,7 @@ func TestCreateNode_ClaimUniquenessOnSingleLabelClaim(t *testing.T) {
 // while GraphQL moved to containment, REST would simply become the documented
 // way around the constraint.
 func TestCreateNode_ClaimUniquenessSurvivesASecondLabel(t *testing.T) {
-	server, cleanup := setupTestServer(t)
+	server, cleanup := setupClaimUniquenessServer(t)
 	defer cleanup()
 
 	post := func(t *testing.T, body NodeRequest) *httptest.ResponseRecorder {

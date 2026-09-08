@@ -5,23 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"slices"
 	"strconv"
 	"time"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
 	"github.com/dd0wney/graphdb/pkg/validation"
-)
-
-// claimLabel + claimUniquePropertyKey mirror pkg/graphql/mutations_resolvers.go's
-// B-lite uniqueness rule for REST callers. Both sites enforce: at most one
-// :Claim per (tenant, for_task). Duplicated intentionally so REST POST /nodes
-// can't silently bypass the check; both sites retire together when the
-// configurable uniqueness-rules registry (COORD_DEPLOY_SPIKE option B-full)
-// lands.
-const (
-	claimLabel             = "Claim"
-	claimUniquePropertyKey = "for_task"
 )
 
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
@@ -134,35 +122,37 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	// at the storage layer.
 	tenantID := getTenantFromContext(r)
 
-	// H4.4: B-lite mirror. Route single-label :Claim creation through the
-	// unique-property helper so REST callers can't bypass the at-most-one-
-	// active-Claim-per-(tenant, for_task) rule that the GraphQL resolver
-	// enforces. Single-label labels==[claimLabel] is the same gate the
-	// resolver uses (pkg/graphql/mutations_resolvers.go:78) — multi-label
-	// nodes retain freedom to add secondary labels without inheriting
-	// uniqueness semantics.
-	var (
-		node *storage.Node
-		err  error
-	)
-	// Label containment, not an exact single-label match: see the reasoning in
-	// pkg/graphql/mutations_resolvers.go. REST and GraphQL must enforce the
-	// same rule, or the weaker path becomes the way around the stronger one.
-	if slices.Contains(req.Labels, claimLabel) {
-		if _, ok := props[claimUniquePropertyKey]; !ok {
-			s.respondError(w, http.StatusBadRequest,
-				":Claim creation requires a "+claimUniquePropertyKey+" property")
+	// ADR 0001: every create goes through the one uniqueness-rules lookup
+	// path, so this handler carries no domain vocabulary of its own — a
+	// deployment's REGISTERED rules decide which labels are unique on which
+	// property, not a hardcoded "Claim"/"for_task" pair. REST and GraphQL
+	// (pkg/graphql/mutations_resolvers.go) call the same storage method, so
+	// neither surface can become a way around the other's enforcement.
+	node, err := s.graph.CreateNodeWithUniquenessRulesForTenant(tenantID, req.Labels, props)
+	if err != nil {
+		// R4: a missing required rule is a fixed 503, naming only the
+		// caller's own label — never the rule name, never err.Error() from
+		// storage (which would name the rule), and never the required list.
+		var missing *storage.RequiredRuleMissingError
+		if errors.As(err, &missing) {
+			s.respondJSON(w, http.StatusServiceUnavailable, ErrorResponse{
+				Error: "required uniqueness rule missing",
+				Message: fmt.Sprintf(
+					"a required uniqueness rule for label %q is not registered; contact the administrator",
+					missing.Label,
+				),
+				Code: http.StatusServiceUnavailable,
+			})
 			return
 		}
-		node, err = s.graph.CreateNodeWithUniquePropertyForTenant(
-			tenantID, req.Labels, props, claimLabel, claimUniquePropertyKey,
-		)
-	} else {
-		node, err = s.graph.CreateNodeWithTenant(tenantID, req.Labels, props)
-	}
-	if err != nil {
 		if errors.Is(err, storage.ErrUniqueConstraintViolation) {
 			s.respondError(w, http.StatusConflict, err.Error())
+			return
+		}
+		if errors.Is(err, storage.ErrUniquenessRulePropertyMissing) {
+			// A caller-supplied request missing a required field is a
+			// client error, not a server error.
+			s.respondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create node"))

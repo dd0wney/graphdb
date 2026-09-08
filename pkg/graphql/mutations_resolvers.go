@@ -2,36 +2,13 @@ package graphql
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/graphql-go/graphql"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
 	"github.com/dd0wney/graphdb/pkg/tenant"
-)
-
-// claimLabel and claimUniqueProperty enforce B-lite atomic claim
-// semantics: at most one :Claim node per tenant may carry a given
-// for_task value. The resolver delegates uniqueness to
-// storage.CreateNodeWithUniquePropertyForTenant so the check + create
-// run under a single gs.mu.Lock acquisition.
-//
-// TODO(2026-05-10): these constants are coord-domain hardcoded. The
-// graphdb-coord layer (https://github.com/dd0wney/graphdb-coord) was
-// extracted to a sibling repo on this date; the storage primitive
-// (CreateNodeWithUniquePropertyForTenant + ErrUniqueConstraintViolation)
-// stayed here because it's a useful generic primitive, but this
-// label-and-property tuple is the one place graphdb still knows about
-// "Claim" and "for_task" by name. The right next step is to make
-// the resolver consume a configurable uniqueness-rules registry
-// (essentially option B-full from the original COORD_DEPLOY_SPIKE
-// design), at which point graphdb has zero coord-specific knowledge
-// and the rule lives in graphdb-coord's bootstrap path. ~150-300 LOC
-// of Go; no caller migration because it slots in at this same site.
-const (
-	claimLabel          = "Claim"
-	claimUniqueProperty = "for_task"
 )
 
 // createNodeMutationResolver creates a resolver for createNode mutation
@@ -71,39 +48,27 @@ func createNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		// Audit A6c-graphql-resolvers (2026-05-08).
 		tenantID := tenant.MustFromContext(p.Context)
 
-		// B-lite: :Claim creation goes through the atomic uniqueness path so
-		// two agents cannot both hold an active claim on the same task.
-		//
-		// The trigger is label CONTAINMENT, not an exact single-label match.
-		// It used to be labels==["Claim"] exactly, on the reasoning that a
-		// caller adding a secondary label should not inherit uniqueness
-		// semantics. That made an integrity constraint depend on how the
-		// caller spelled its label list: agent B could claim a task agent A
-		// already held simply by passing ["Claim","Urgent"], and neither agent
-		// got an error. A constraint that a caller can opt out of by accident
-		// is not a constraint.
-		//
-		// Storage already had the stronger contract —
-		// CreateNodeWithUniquePropertyForTenant matches on label membership
-		// and runs the check and the insert under one gs.mu.Lock — so this
-		// change makes the callers agree with the guarantee underneath them.
-		if slices.Contains(labels, claimLabel) {
-			if _, ok := properties[claimUniqueProperty]; !ok {
-				return nil, fmt.Errorf(":Claim creation requires a %q property", claimUniqueProperty)
+		// ADR 0001: every create goes through the one uniqueness-rules
+		// lookup path, so this resolver carries no domain vocabulary of its
+		// own — a deployment's REGISTERED rules decide which labels are
+		// unique on which property, not a hardcoded "Claim"/"for_task" pair.
+		node, err := gs.CreateNodeWithUniquenessRulesForTenant(tenantID, labels, properties)
+		if err != nil {
+			// R4: a missing required rule gets fixed wording naming only the
+			// caller's own label, never the rule name and never
+			// err.Error() from storage (which would name the rule).
+			var missing *storage.RequiredRuleMissingError
+			if errors.As(err, &missing) {
+				return nil, fmt.Errorf(
+					"a required uniqueness rule for label %q is not registered; contact the administrator",
+					missing.Label,
+				)
 			}
-			node, err := gs.CreateNodeWithUniquePropertyForTenant(
-				tenantID, labels, properties, claimLabel, claimUniqueProperty,
-			)
-			if err != nil {
+			if errors.Is(err, storage.ErrUniqueConstraintViolation) {
 				// Surface the typed conflict verbatim so callers can
 				// match on the message; errors.Is still works upstream.
 				return nil, err
 			}
-			return node, nil
-		}
-
-		node, err := gs.CreateNodeWithTenant(tenantID, labels, properties)
-		if err != nil {
 			return nil, fmt.Errorf("failed to create node: %w", err)
 		}
 

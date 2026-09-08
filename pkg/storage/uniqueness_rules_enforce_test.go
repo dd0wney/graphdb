@@ -4,15 +4,11 @@ package storage
 // CreateNodeWithUniquenessRulesForTenant, the one lookup path both write
 // surfaces will call (GraphQL resolver and REST handler, added in stage 2).
 //
-// Naming note: the plan's own worked examples spell the coord-domain rule
-// name "claim-for-task" (hyphenated), but the plan's Commit 1 validation
-// spec requires Name to match ^[A-Za-z_][A-Za-z0-9_]*$, which excludes
-// hyphens and matches pkg/validation's existing propKeyPattern precedent.
-// The two parts of the plan disagree with each other; this file follows the
-// explicit regex and spells it "claim_for_task". See the stage 1 report for
-// the full note — this needs a decision before stage 2 wires the REST/
-// GraphQL surfaces and the GRAPHDB_REQUIRED_UNIQUENESS_RULES env var, since
-// the deployed rule name must satisfy whichever form is authoritative.
+// Naming note: R8 (ruling, 2026-09-08) resolved the naming question stage 1
+// flagged. Rule names match ^[A-Za-z_][A-Za-z0-9_]*$, the same shape as a
+// property key, so the coord rule is spelled "claim_for_task", not
+// "claim-for-task". This file, stage 2's REST/GraphQL wiring, and the
+// GRAPHDB_REQUIRED_UNIQUENESS_RULES env var all use the underscore form.
 
 import (
 	"errors"
@@ -209,6 +205,14 @@ func TestCreateNodeWithUniquenessRules_MissingPropertyRefused(t *testing.T) {
 	}
 	if errors.Is(err, ErrRequiredUniquenessRuleMissing) || errors.Is(err, ErrUniqueConstraintViolation) {
 		t.Errorf("wrong error class for a missing property: %T: %v", err, err)
+	}
+	// Stage 2's REST handler maps this class to HTTP 400 (a client error:
+	// the caller's own request omitted a required field), distinct from the
+	// 500 bucket every other CreateNodeWithUniquenessRulesForTenant failure
+	// falls into. That mapping needs a sentinel to check, not a substring
+	// match on the message.
+	if !errors.Is(err, ErrUniquenessRulePropertyMissing) {
+		t.Errorf("error %v does not wrap ErrUniquenessRulePropertyMissing", err)
 	}
 	if !strings.Contains(err.Error(), "Claim") {
 		t.Errorf("error %q does not name the label", err.Error())

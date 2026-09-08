@@ -400,7 +400,9 @@ func (gs *GraphStorage) planUniquenessEnforcement(labels []string) (missing *Req
 //     the first such pair by name. No storage is touched.
 //  2. Among the REGISTERED rules, any whose Label is in labels is a match.
 //     Zero matches: an ordinary create. One match: the property it names
-//     must be present, then the create runs through
+//     must be present — its absence refuses with
+//     ErrUniquenessRulePropertyMissing, a client error stage 2's write
+//     surfaces map to HTTP 400 — then the create runs through
 //     CreateNodeWithUniquePropertyForTenant. More than one match:
 //     ErrMultipleUniquenessRules, because the underlying primitive
 //     enforces exactly one (label, propertyKey) pair per call and a silent
@@ -426,7 +428,7 @@ func (gs *GraphStorage) CreateNodeWithUniquenessRulesForTenant(
 	case 1:
 		rule := matched[0]
 		if _, ok := properties[rule.PropertyKey]; !ok {
-			return nil, fmt.Errorf("label %q requires a %q property", rule.Label, rule.PropertyKey)
+			return nil, fmt.Errorf("%w: label %q requires a %q property", ErrUniquenessRulePropertyMissing, rule.Label, rule.PropertyKey)
 		}
 		return gs.CreateNodeWithUniquePropertyForTenant(tenantID, labels, properties, rule.Label, rule.PropertyKey)
 	default:

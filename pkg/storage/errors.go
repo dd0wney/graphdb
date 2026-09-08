@@ -53,6 +53,15 @@ var (
 	// pick one without silently ignoring the other — the failure class
 	// ADR 0001's implementation notes name as a known limitation (R7).
 	ErrMultipleUniquenessRules = errors.New("multiple uniqueness rules match this write's labels")
+
+	// ErrUniquenessRulePropertyMissing is returned by
+	// CreateNodeWithUniquenessRulesForTenant when a write's labels match a
+	// registered uniqueness rule and the write's properties omit the rule's
+	// PropertyKey. A caller-supplied request that is missing a required
+	// field is a client error, not a server error, so stage 2's write
+	// surfaces map errors.Is(err, ErrUniquenessRulePropertyMissing) to
+	// HTTP 400 rather than falling into the generic 500 bucket.
+	ErrUniquenessRulePropertyMissing = errors.New("uniqueness rule requires a property the write did not supply")
 )
 
 // recordDoesNotDecodePhrase is the exact wording CheckInvariants uses to
