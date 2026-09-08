@@ -108,7 +108,8 @@ doc already uses for decision point B-2.
 ### E — Known code residuals (lower priority)
 - **A5 `withTenant` hardening** — endpoints fall back to the default tenant when no context is set; tenant-aware DSL search not scoped (`pkg/search/tenant_indexes.go:20`, `pkg/api/middleware_tenant.go:124`, `pkg/api/handlers_nodes.go:69`). Single-tenant deployments are unaffected.
 - **BTree backend C2.1 partial** — `DeleteNode` / `BeginBatch` unimplemented (`pkg/storage/btree_storage.go:486,555`); experimental alt backend.
-- **Coord-domain hardcoded uniqueness constants** → generic uniqueness-rules registry (`pkg/graphql/mutations_resolvers.go:19`, mirrored at `pkg/api/handlers_nodes.go:19`).
+- ~~**Coord-domain hardcoded uniqueness constants** → generic uniqueness-rules registry (`pkg/graphql/mutations_resolvers.go:19`, mirrored at `pkg/api/handlers_nodes.go:19`).~~ **Implemented in #578 (2026-09-08, open at write time)**; the constants are gone and graphdb-coord declares the rule.
+- **mmap overlay stays uncompressed** (#575, 2026-09-08). The default config had both mmap and edge compression on, and a `Snapshot()`/`CompactWAL()` on a reopened store hid a node's base edges from adjacency reads until the next reopen (`CheckInvariants` caught it). Fixed by never compressing the overlay of an mmap-backed store; `CompressEdgeLists` refuses loudly there. The read-path union (keep compression on mmap) is the follow-up if the uncompressed overlay's memory ever matters.
 - **Query `physical_plan.go` spike residuals** — CallOperator (C3.x / C6 co-land), edge-direction hardcoded.
 - **Snapshot-mode stale selection** — a data directory can hold both `snapshot.json` and `snapshot.mmap`. The loader picks by the mode flag (`mmapEligible`, `pkg/storage/storage.go`) and never compares which is newer, so switching mode serves the older snapshot with no error, and the next `Close()` overwrites the newer one. **No ordering marker exists to fix this with**: neither format persists the WAL boundary LSN, and `Stats.LastSnapshot` is assigned *after* serialization (`persistence.go:167`, `mmap_snapshot_persist.go:69`), so the stored value records the *previous* snapshot. A repair therefore needs an on-disk format version bump (mmap `GMNP` 4→5 plus the JSON side), which is why #504 guarded only the empty-open case. Documented in [`DEPLOYMENT_GUIDE.md`](./DEPLOYMENT_GUIDE.md).
 - btree tombstone compaction + random eviction; intelligence auto-embed R2.x re-entry.
@@ -207,10 +208,13 @@ list lived only in a chat window.
    indexes were never named in the gap but had the same shape, so they went in
    too. **Still unchecked on the mmap path**, and said so in the doc comment:
    the count chains (`stats`, `tenantStats`) and the sticky global label/type
-   keys behind `GetAllLabels`. Neither is queued; each is a short check plus a
-   teeth test if anyone wants it. One more thing #569 surfaced: the metamorphic
-   driver (`invariant_metamorphic_test.go`) still runs on the JSON path for a
-   reason that stopped being true at #474, so it can now run on mmap as well.
+   keys behind `GetAllLabels`. ~~Neither is queued; each is a short check plus a
+   teeth test if anyone wants it.~~ **Both closed 2026-09-08 — #577** (five
+   teeth tests, each seen red with `got []` first; the old doc comment's
+   `GetAllEdgeTypes` never existed, the real readers are named now). One more
+   thing #569 surfaced: the metamorphic driver (`invariant_metamorphic_test.go`)
+   ~~still runs on the JSON path~~ — **runs on both representations since #576**
+   (2026-09-08), with compression off on the mmap driver because of #575.
 
 2. **Coverage moves with the machine, by ~4 points.** CI measured 75.5% where a
    developer machine measured 79.5% on the same commit: wal 70.2 vs 79.1, lsm
@@ -219,6 +223,13 @@ list lived only in a chat window.
    runner never reaches. Unverified: local runs show zero skipped tests in wal
    and graphql, and skips were not measured on CI. If it holds, some statements
    are covered only where tests run fast enough.
+   **Does not reproduce at `63fb92c` (2026-09-08).** A haiku sweep downloaded
+   CI's `coverage-report` artifact (run 34169343675, the same SHA) and ran the
+   same `go test` command locally; the main loop recomputed both profiles
+   independently. Per-package coverage is identical: wal 83.3, wal/apply 92.9,
+   lsm 86.3, graphql 83.8. The local run skipped 12 tests. The 2026-08-28 delta
+   stays unexplained (a different commit and test set). Closed unless it
+   recurs; the evidence is in the session ledger of 2026-09-08.
 
 3. **Uniqueness-rules registry** (`pkg/graphql/mutations_resolvers.go:20`, existing
    TODO). #470 made the `:Claim` rule correct but kept the hardcoded label.
@@ -230,6 +241,17 @@ list lived only in a chat window.
    to serve while a rule is missing, which deadlocks because the declaration is
    an admin write to that daemon). Directional steer from the user
    (2026-08-28): ACID over eventual consistency for this class of constraint.
+   **Implemented 2026-09-08 — PR #578 (open at write time).** A registry in
+   `pkg/storage` with its own lock, `rules.json` with its own version field (no
+   snapshot bump), one enforcement method both surfaces call, three admin
+   routes with validation and audit events, backup inclusion, and
+   `GRAPHDB_REQUIRED_UNIQUENESS_RULES` in `cmd/server`. Nine rulings are in the
+   PR body; two change the ADR's letter: a required rule is a (name, label)
+   pair, because an unregistered rule cannot say which writes it covers, and
+   the coord rule is `claim_for_task` (no hyphen). **Cross-repo ordering**:
+   graphdb-coord must set the env var and declare the rule in its bootstrap
+   before the coord daemon takes this build, or duplicate claims are accepted
+   silently. Contract row CC16 pins the 201-then-409 behaviour.
 
 **Not started, from the same comparison:** I/O fault injection for `pkg/lsm` and
 `pkg/btree` (no filesystem seam — `pkg/storage` calls the OS directly at ~171
