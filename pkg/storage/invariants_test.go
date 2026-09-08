@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/dd0wney/graphdb/pkg/vector"
@@ -426,6 +427,112 @@ func TestCheckInvariantsMmap_TeethPropertyIndexInvention(t *testing.T) {
 	want := fmt.Sprintf("property %q bucket %q: lists id 999999 not backed by a live node carrying that value", "n", key)
 	if !anyContains(violations, want) {
 		t.Errorf("no violation %q; got %v", want, violations)
+	}
+}
+
+// --- teeth for the count chains the mmap path gained after #569 ------------
+//
+// checkInvariantsMmap already built the live node/edge sets these tests need;
+// only the comparison against stats/tenantStats was missing. Each test
+// corrupts one counter in isolation and requires a violation naming it.
+
+// TestCheckInvariantsMmap_TeethStatsNodeCountDrift bumps the global node
+// counter without adding a node, the shape a write path leaves if it updates
+// the record but forgets the counter.
+func TestCheckInvariantsMmap_TeethStatsNodeCountDrift(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	gs.mu.Lock()
+	atomic.AddUint64(&gs.stats.NodeCount, 1)
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	if !anyContains(violations, "stats.NodeCount") {
+		t.Errorf("no violation named stats.NodeCount; got %v", violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethTenantStatsNodeCountDrift is the same
+// corruption one level down, in the per-tenant counter.
+func TestCheckInvariantsMmap_TeethTenantStatsNodeCountDrift(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	tid := effectiveTenantID(DefaultTenantID)
+	gs.mu.Lock()
+	atomic.AddUint64(&gs.tenantStats[tid].NodeCount, 1)
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	if !anyContains(violations, "tenantStats.NodeCount") {
+		t.Errorf("no violation named tenantStats.NodeCount; got %v", violations)
+	}
+	if !anyContains(violations, string(tid)) {
+		t.Errorf("no violation named tenant %q; got %v", tid, violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethTenantStatsMissing drops a tenant's whole
+// tenantStats entry while the tenant still has live nodes — the shape left
+// behind if a counter map is cleared without clearing the nodes it counts.
+func TestCheckInvariantsMmap_TeethTenantStatsMissing(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	tid := effectiveTenantID(DefaultTenantID)
+	gs.mu.Lock()
+	delete(gs.tenantStats, tid)
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	if !anyContains(violations, "tenantStats.NodeCount") {
+		t.Errorf("no violation named tenantStats.NodeCount; got %v", violations)
+	}
+	if !anyContains(violations, string(tid)) {
+		t.Errorf("no violation named tenant %q; got %v", tid, violations)
+	}
+}
+
+// --- teeth for the sticky global label/type keys the mmap path gained after
+// #569 ------------------------------------------------------------------
+//
+// loadFromDiskMmap registers a sticky KEY (possibly with an empty bucket) for
+// every label/type live at the last Close (meta.StickyNodeLabels /
+// StickyEdgeTypes); writes made after open add real members through the same
+// addToLabelIndex the shard path uses. gs.nodesByLabel backs GetAllLabels
+// (query_operations.go), read directly on both representations. gs.edgesByType
+// has no reader on the mmap path — FindEdgesByTypeAcrossTenants reads it only
+// on the shard/JSON path; here its only reader is mmap_snapshot_writer.go,
+// which uses it to build the sticky-type list for the next snapshot write.
+// Either way a key dropped from either map is invisible to the
+// membership-section checks above, which never look at these maps.
+
+// TestCheckInvariantsMmap_TeethStickyLabelKeyDropped deletes a live label's
+// key from the global index that backs GetAllLabels.
+func TestCheckInvariantsMmap_TeethStickyLabelKeyDropped(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	gs.mu.Lock()
+	delete(gs.nodesByLabel, "Thing")
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	if !anyContains(violations, "Thing") {
+		t.Errorf("no violation named the dropped label %q; got %v", "Thing", violations)
+	}
+}
+
+// TestCheckInvariantsMmap_TeethStickyTypeKeyDropped is the same corruption for
+// the global edge-type index that the mmap snapshot writer reads to build the
+// sticky-type list for the next write.
+func TestCheckInvariantsMmap_TeethStickyTypeKeyDropped(t *testing.T) {
+	gs := mmapStoreWithData(t)
+
+	gs.mu.Lock()
+	delete(gs.edgesByType, "LINKS")
+	gs.mu.Unlock()
+
+	violations := mustCheckInvariants(t, gs)
+	if !anyContains(violations, "LINKS") {
+		t.Errorf("no violation named the dropped type %q; got %v", "LINKS", violations)
 	}
 }
 
