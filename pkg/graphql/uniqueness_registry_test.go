@@ -108,3 +108,47 @@ func TestCreateNodeMutation_RequiredRuleMissingIsFriendlyError(t *testing.T) {
 		t.Fatalf("create should succeed once the rule is registered: %v", ok.Errors)
 	}
 }
+
+// TestCreateNodeMutation_MultipleRulesRefusedWithoutNamingThem pins the
+// fix-round-1 finding (Critical 1): before this fix, a write covered by
+// two registered rules reached the caller as "failed to create node:
+// multiple uniqueness rules match this write's labels: \"rule_a\" and
+// \"rule_b\"" — both rule names, straight from storage.Error(). The
+// resolver must map storage.ErrMultipleUniquenessRules to fixed wording
+// that names neither rule, the same way the missing-required-rule case
+// already does.
+func TestCreateNodeMutation_MultipleRulesRefusedWithoutNamingThem(t *testing.T) {
+	gs, schema := setupClaimSchema(t)
+	if err := gs.RegisterUniquenessRule(storage.UniquenessRule{
+		Name: "rule_a", Label: "A", PropertyKey: "x",
+	}); err != nil {
+		t.Fatalf("RegisterUniquenessRule rule_a: %v", err)
+	}
+	if err := gs.RegisterUniquenessRule(storage.UniquenessRule{
+		Name: "rule_b", Label: "B", PropertyKey: "y",
+	}); err != nil {
+		t.Fatalf("RegisterUniquenessRule rule_b: %v", err)
+	}
+
+	ctx := tenant.WithTenant(context.Background(), "default")
+	res := graphql.Do(graphql.Params{
+		Schema: schema,
+		RequestString: `mutation { createNode(labels: ["A", "B"], ` +
+			`properties: "{\"x\":\"1\",\"y\":\"2\"}") { id } }`,
+		Context: ctx,
+	})
+
+	if !res.HasErrors() {
+		t.Fatal("a node covered by two registered rules should be refused")
+	}
+	msg := res.Errors[0].Message
+	want := "more than one uniqueness rule covers the labels in this request; contact the administrator"
+	if msg != want {
+		t.Errorf("error = %q, want %q", msg, want)
+	}
+	for _, leak := range []string{"rule_a", "rule_b"} {
+		if strings.Contains(msg, leak) {
+			t.Errorf("error %q leaks rule name %q", msg, leak)
+		}
+	}
+}

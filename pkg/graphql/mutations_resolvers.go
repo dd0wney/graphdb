@@ -69,6 +69,22 @@ func createNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 				// match on the message; errors.Is still works upstream.
 				return nil, err
 			}
+			if errors.Is(err, storage.ErrMultipleUniquenessRules) {
+				// Fixed wording, like the missing-required-rule case above:
+				// storage's own message names both matching rules, which a
+				// tenant caller has no business seeing.
+				return nil, errors.New(
+					"more than one uniqueness rule covers the labels in this request; contact the administrator",
+				)
+			}
+			if errors.Is(err, storage.ErrUniquenessRulePropertyMissing) {
+				// Verbatim, unlike the two cases above: this message names
+				// only the label and the property key the caller's OWN
+				// request is missing — the same information REST's 400
+				// response for this class gives, and information the
+				// caller needs to fix its own request.
+				return nil, err
+			}
 			return nil, fmt.Errorf("failed to create node: %w", err)
 		}
 
