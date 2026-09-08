@@ -12,6 +12,17 @@ func (gs *GraphStorage) CompressEdgeLists() error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
+	// An mmap-backed store never compresses its overlay — see the guard and
+	// its comment in snapshotWithBoundary (persistence.go) for the
+	// mechanism this avoids. This is the public manual entry point, so
+	// refuse loudly rather than silently no-op: a caller polling this on a
+	// timer must see the error, not a false "success" that did nothing.
+	// gs.mmapSnap changes only under gs.mu, so check it under the lock
+	// already held above.
+	if gs.mmapSnap != nil {
+		return fmt.Errorf("edge compression does not apply to an mmap-backed store")
+	}
+
 	// Compress all edge lists using helper
 	gs.compressAllEdgeLists()
 
