@@ -266,7 +266,10 @@ documents).
    record, so the decode failure precedes the tenant check); a
    `membershipContains` guard on five tenant-scoped sites closes it by binary
    search over the mmap'd membership run, at zero allocation on the happy path.
-   **What remains, and is the live item: the enumeration half.**
+   ~~**What remains, and is the live item: the enumeration half.**~~
+   **CLOSED — #531 (`62e53c0`, ADR 0003, accepted 2026-08-30): the seven
+   enumeration methods return an error.** The paragraph below is the record of
+   the problem as it stood.
    `GetAllNodesForTenant`, `GetAllEdgesForTenant`, `GetNodesByLabelForTenant`
    and the four `*PageForTenant` methods still skip an unreadable record rather
    than reporting it. This is PR C, not started: 7 public methods gain an
@@ -276,7 +279,13 @@ documents).
    and `pkg/algorithms` (1). It changes a public interface, which the
    parallel-agent rule says to propose to the user before implementing.
 
-5. **Nothing verifies resource release under OOM.** SQLite runs its leak
+5. ~~**Nothing verifies resource release under OOM.**~~ **CLOSED — #523
+   (`36d6139`).** `pkg/storage/mmap_release_balance_test.go` drives each of the
+   eight `release()` sites in `openMmapSnapshotWithFS` with a payload malformed
+   for exactly that check, counts `Map` against `release` with
+   `vfstest.MapCounter`, and fails if fewer than all eight cases complete. Two
+   mutation runs, each removing one `release()`, proved it a gate. The text
+   below is the record of the problem as it stood. SQLite runs its leak
    detector *while* the OOM overlay is active, "verifying no leaks occur during
    OOM scenarios". graphdb's sweep asserts that returned data is correct and
    asserts nothing about cleanup. That matters here because the mmap `release()`
