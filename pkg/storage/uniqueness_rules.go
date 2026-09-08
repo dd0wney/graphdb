@@ -337,6 +337,53 @@ func (gs *GraphStorage) UniquenessRules() []UniquenessRule {
 	return rules
 }
 
+// planUniquenessEnforcement reads the registry under rulesMu.RLock and
+// returns everything CreateNodeWithUniquenessRulesForTenant needs as plain
+// values, copied out before the lock releases via the deferred RUnlock.
+// The caller never touches rulesMu itself, so no early return added to
+// CreateNodeWithUniquenessRulesForTenant in the future can leak the read
+// lock (fix round 1, review finding).
+//
+// Exactly one of the two return values is meaningful: a non-nil missing
+// means the whole call must be refused before any primitive runs; a nil
+// missing means matched holds every registered rule whose Label is among
+// the write's labels (zero, one, or more).
+//
+// R9 (controller ruling, fix round 1): a required (Name, Label) pair is
+// satisfied only by a REGISTERED rule carrying BOTH the same name AND the
+// same label. A rule registered under the required name but a DIFFERENT
+// label does not satisfy the pair — the pair, not the name alone, is what
+// fail-closed checks against, so a required "claim_for_task"/"Claim" is
+// still missing if "claim_for_task" is registered against "Task".
+func (gs *GraphStorage) planUniquenessEnforcement(labels []string) (missing *RequiredRuleMissingError, matched []UniquenessRule) {
+	gs.rulesMu.RLock()
+	defer gs.rulesMu.RUnlock()
+
+	var missingPairs []RequiredUniquenessRule
+	for _, req := range gs.requiredUniquenessRules {
+		if !containsString(labels, req.Label) {
+			continue
+		}
+		rule, registered := gs.uniquenessRules[req.Name]
+		if registered && rule.Label == req.Label {
+			continue
+		}
+		missingPairs = append(missingPairs, req)
+	}
+	if len(missingPairs) > 0 {
+		sort.Slice(missingPairs, func(i, j int) bool { return missingPairs[i].Name < missingPairs[j].Name })
+		first := missingPairs[0]
+		return &RequiredRuleMissingError{RuleName: first.Name, Label: first.Label}, nil
+	}
+
+	for _, rule := range gs.uniquenessRules {
+		if containsString(labels, rule.Label) {
+			matched = append(matched, rule)
+		}
+	}
+	return nil, matched
+}
+
 // CreateNodeWithUniquenessRulesForTenant is the one lookup path both write
 // surfaces (the GraphQL resolver and the REST handler, wired in stage 2)
 // call for node creation. It replaces the earlier direct calls to
@@ -344,12 +391,13 @@ func (gs *GraphStorage) UniquenessRules() []UniquenessRule {
 // propertyKey) pair, so graphdb ships no domain vocabulary and both
 // surfaces enforce identically (ADR 0001).
 //
-// Order of checks, matching the ADR's fail-closed-per-deployment design:
+// Order of checks, matching the ADR's fail-closed-per-deployment design;
+// see planUniquenessEnforcement for the registry lookup itself:
 //
-//  1. Any StorageConfig.RequiredUniquenessRules pair whose Label is in
-//     labels and whose Name is not currently registered refuses the whole
-//     call with *RequiredRuleMissingError, naming the first such pair by
-//     name. No storage is touched.
+//  1. Any StorageConfig.RequiredUniquenessRules pair covering labels and
+//     not satisfied by a matching registered rule (R9: same name AND same
+//     label) refuses the whole call with *RequiredRuleMissingError, naming
+//     the first such pair by name. No storage is touched.
 //  2. Among the REGISTERED rules, any whose Label is in labels is a match.
 //     Zero matches: an ordinary create. One match: the property it names
 //     must be present, then the create runs through
@@ -359,40 +407,18 @@ func (gs *GraphStorage) UniquenessRules() []UniquenessRule {
 //     choice between two rules is the failure class the ADR exists to
 //     avoid (R7).
 //
-// rulesMu is released before the primitive call in every branch: this
-// method only ever reads the registry, and the primitive it calls takes
-// gs.mu itself.
+// This method never holds rulesMu directly — planUniquenessEnforcement
+// does, and releases it before returning — so every branch below is free
+// to call a gs.mu-taking primitive without re-entering gs.mu.
 func (gs *GraphStorage) CreateNodeWithUniquenessRulesForTenant(
 	tenantID string,
 	labels []string,
 	properties map[string]Value,
 ) (*Node, error) {
-	gs.rulesMu.RLock()
-
-	var missing []RequiredUniquenessRule
-	for _, req := range gs.requiredUniquenessRules {
-		if !containsString(labels, req.Label) {
-			continue
-		}
-		if _, registered := gs.uniquenessRules[req.Name]; registered {
-			continue
-		}
-		missing = append(missing, req)
+	missing, matched := gs.planUniquenessEnforcement(labels)
+	if missing != nil {
+		return nil, missing
 	}
-	if len(missing) > 0 {
-		sort.Slice(missing, func(i, j int) bool { return missing[i].Name < missing[j].Name })
-		first := missing[0]
-		gs.rulesMu.RUnlock()
-		return nil, &RequiredRuleMissingError{RuleName: first.Name, Label: first.Label}
-	}
-
-	var matched []UniquenessRule
-	for _, rule := range gs.uniquenessRules {
-		if containsString(labels, rule.Label) {
-			matched = append(matched, rule)
-		}
-	}
-	gs.rulesMu.RUnlock()
 
 	switch len(matched) {
 	case 0:

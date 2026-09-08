@@ -87,6 +87,41 @@ func TestCreateNodeWithUniquenessRules_TwoDirection(t *testing.T) {
 	}
 }
 
+// TestCreateNodeWithUniquenessRules_RequiredPairLabelMustMatch is ruling R9
+// (fix round 1): a required (Name, Label) pair is satisfied only by a
+// registered rule carrying BOTH the same name AND the same label. A
+// registered rule that reuses the required name under a DIFFERENT label
+// must not satisfy the pair.
+func TestCreateNodeWithUniquenessRules_RequiredPairLabelMustMatch(t *testing.T) {
+	gs := newTestGraphStorageWithConfig(t, func(c *StorageConfig) {
+		c.RequiredUniquenessRules = []RequiredUniquenessRule{{Name: "claim_for_task", Label: "Claim"}}
+	})
+
+	// Registered under the required NAME, but a different Label. Under a
+	// name-only check this would (wrongly) satisfy the required pair.
+	if err := gs.RegisterUniquenessRule(UniquenessRule{Name: "claim_for_task", Label: "Task", PropertyKey: "id"}); err != nil {
+		t.Fatalf("RegisterUniquenessRule (wrong label): %v", err)
+	}
+
+	_, err := gs.CreateNodeWithUniquenessRulesForTenant("tenant-a", []string{"Claim"}, map[string]Value{"for_task": StringValue("t1")})
+	if err == nil {
+		t.Fatalf("create should be refused: the registered rule's label does not match the required pair's label")
+	}
+	if !errors.Is(err, ErrRequiredUniquenessRuleMissing) {
+		t.Fatalf("expected ErrRequiredUniquenessRuleMissing, got %T: %v", err, err)
+	}
+
+	// Re-registering the SAME name with the label the required pair actually
+	// names satisfies it.
+	if err := gs.RegisterUniquenessRule(UniquenessRule{Name: "claim_for_task", Label: "Claim", PropertyKey: "for_task"}); err != nil {
+		t.Fatalf("RegisterUniquenessRule (correct label): %v", err)
+	}
+
+	if _, err := gs.CreateNodeWithUniquenessRulesForTenant("tenant-a", []string{"Claim"}, map[string]Value{"for_task": StringValue("t1")}); err != nil {
+		t.Fatalf("create should succeed once the registered rule's label matches the required pair: %v", err)
+	}
+}
+
 func TestCreateNodeWithUniquenessRules_ContainmentNotExactMatch(t *testing.T) {
 	gs := newTestGraphStorageWithConfig(t, nil)
 	if err := gs.RegisterUniquenessRule(UniquenessRule{Name: "claim_for_task", Label: "Claim", PropertyKey: "for_task"}); err != nil {
