@@ -167,6 +167,23 @@ type GraphStorage struct {
 	// gs.mu.RLock by snapshotObservers (pkg/storage/observation.go).
 	// R2.1 / S11 spike §7.4.
 	observers []NodeObserver
+
+	// uniquenessRules is the registry ADR 0001 introduces: a
+	// deployment-configured set of (label, propertyKey) uniqueness
+	// constraints, keyed by rule name, persisted to rules.json (see
+	// uniqueness_rules.go).
+	uniquenessRules map[string]UniquenessRule
+	// requiredUniquenessRules is deployment configuration
+	// (StorageConfig.RequiredUniquenessRules), copied once at construction
+	// and never mutated after. Read under rulesMu alongside uniquenessRules
+	// for a consistent view, even though this slice itself never changes.
+	requiredUniquenessRules []RequiredUniquenessRule
+	// rulesMu guards uniquenessRules and requiredUniquenessRules. NOT gs.mu:
+	// CreateNodeWithUniquenessRulesForTenant reads this registry and then
+	// calls a gs.mu-taking primitive (CreateNodeWithUniquePropertyForTenant
+	// or CreateNodeWithTenant), so sharing gs.mu would make that call
+	// re-entrant.
+	rulesMu sync.RWMutex
 }
 
 // StorageConfig holds configuration for GraphStorage
@@ -202,6 +219,13 @@ type StorageConfig struct {
 	// restart (the server exited with "encryption is not enabled").
 	EncryptionEngine encryption.EncryptDecrypter
 	KeyManager       encryption.KeyProvider
+
+	// RequiredUniquenessRules names the uniqueness rules this deployment
+	// insists must be registered before graphdb accepts a node write
+	// covered by the paired label. Empty by default: a general-purpose
+	// deployment with no uniqueness rules pays nothing for the feature.
+	// See ADR 0001 (docs/adr/0001-uniqueness-rules-registry.md).
+	RequiredUniquenessRules []RequiredUniquenessRule
 }
 
 // Statistics tracks database statistics

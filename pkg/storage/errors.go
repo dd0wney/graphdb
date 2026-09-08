@@ -40,6 +40,28 @@ var (
 	// record bytes themselves are wrong. Unexported: callers discriminate on
 	// ErrRecordUnreadable, or on alloc.ErrNoMemory for the other cause.
 	errRecordDamaged = errors.New("record did not decode")
+
+	// ErrRequiredUniquenessRuleMissing is the sentinel behind
+	// *RequiredRuleMissingError. errors.Is(err, ErrRequiredUniquenessRuleMissing)
+	// detects the class without needing the struct fields (ADR 0001).
+	ErrRequiredUniquenessRuleMissing = errors.New("required uniqueness rule is not registered")
+
+	// ErrMultipleUniquenessRules is returned when more than one registered
+	// uniqueness rule matches a write's labels.
+	// CreateNodeWithUniquePropertyForTenant enforces exactly one (label,
+	// propertyKey) pair per call, so two matching rules have no safe way to
+	// pick one without silently ignoring the other — the failure class
+	// ADR 0001's implementation notes name as a known limitation (R7).
+	ErrMultipleUniquenessRules = errors.New("multiple uniqueness rules match this write's labels")
+
+	// ErrUniquenessRulePropertyMissing is returned by
+	// CreateNodeWithUniquenessRulesForTenant when a write's labels match a
+	// registered uniqueness rule and the write's properties omit the rule's
+	// PropertyKey. A caller-supplied request that is missing a required
+	// field is a client error, not a server error, so stage 2's write
+	// surfaces map errors.Is(err, ErrUniquenessRulePropertyMissing) to
+	// HTTP 400 rather than falling into the generic 500 bucket.
+	ErrUniquenessRulePropertyMissing = errors.New("uniqueness rule requires a property the write did not supply")
 )
 
 // recordDoesNotDecodePhrase is the exact wording CheckInvariants uses to
@@ -87,6 +109,32 @@ func (e *UniqueConstraintError) Error() string {
 // Unwrap allows errors.Is(err, ErrUniqueConstraintViolation).
 func (e *UniqueConstraintError) Unwrap() error {
 	return ErrUniqueConstraintViolation
+}
+
+// RequiredRuleMissingError is returned by
+// CreateNodeWithUniquenessRulesForTenant when a deployment's required-rule
+// list (StorageConfig.RequiredUniquenessRules, ADR 0001) names a rule for
+// one of the write's labels and that rule is not registered.
+//
+// Fail-closed is a property of the DEPLOYMENT, not of the label: graphdb
+// never refuses a write because of what the label is called, only because a
+// rule the deployment itself declared required is absent
+// (docs/adr/0001-uniqueness-rules-registry.md, "Where fail-closed lives").
+type RequiredRuleMissingError struct {
+	RuleName string
+	Label    string
+}
+
+// Error implements the error interface. The wording is fixed and used
+// verbatim by both write surfaces' HTTP/GraphQL error mapping in stage 2
+// (R4) — do not change it without updating those call sites.
+func (e *RequiredRuleMissingError) Error() string {
+	return fmt.Sprintf("required uniqueness rule %q for label %q is not registered", e.RuleName, e.Label)
+}
+
+// Unwrap allows errors.Is(err, ErrRequiredUniquenessRuleMissing).
+func (e *RequiredRuleMissingError) Unwrap() error {
+	return ErrRequiredUniquenessRuleMissing
 }
 
 // StorageError provides structured error information for storage operations.

@@ -1,6 +1,7 @@
 // Package backup builds and verifies graphdb store backup archives.
 //
-// An archive is a gzip+tar of a store's dataDir: the snapshot file plus the
+// An archive is a gzip+tar of a store's dataDir: the snapshot file,
+// rules.json (ADR 0001's uniqueness-rules registry) if present, plus the
 // wal/, auth/, lsa/, and edgestore/ trees, with a manifest trailer recording
 // per-file size + SHA-256 for integrity. The package has no dependency on the
 // HTTP server (pkg/api) or storage, so offline tooling (the graphdb-admin CLI)
@@ -97,8 +98,9 @@ func walkFilesWithFS(fsys vfs.FileSystem, root string, visit func(path string) e
 }
 
 // entriesWithFS lists the files (relative to dataDir) that constitute a
-// restorable backup: the snapshot file plus the wal/, auth/, lsa/, and
-// edgestore/ trees. Transient *.tmp files are skipped.
+// restorable backup: the snapshot file, rules.json if present, plus the
+// wal/, auth/, lsa/, and edgestore/ trees. Transient *.tmp files are
+// skipped.
 func entriesWithFS(fsys vfs.FileSystem, dataDir string) (files []string, snapshotMode string, err error) {
 	switch {
 	case fileExistsWithFS(fsys, filepath.Join(dataDir, "snapshot.mmap")):
@@ -107,6 +109,13 @@ func entriesWithFS(fsys vfs.FileSystem, dataDir string) (files []string, snapsho
 		files, snapshotMode = append(files, "snapshot.json"), "json"
 	default:
 		snapshotMode = "none"
+	}
+	// rules.json (ADR 0001) is a third on-disk artefact, independent of
+	// both snapshot formats and versioned on its own (CLAUDE.md's
+	// "Snapshot format stability" section) — optional, exactly like the
+	// snapshot file itself: a store that never registered a rule has none.
+	if fileExistsWithFS(fsys, filepath.Join(dataDir, "rules.json")) {
+		files = append(files, "rules.json")
 	}
 	for _, dir := range []string{"wal", "auth", "lsa", "edgestore"} {
 		full := filepath.Join(dataDir, dir)

@@ -162,6 +162,13 @@ func TestCreateClaimMutation_NonClaimLabelUnaffected(t *testing.T) {
 
 // setupClaimSchema returns a fresh GraphStorage + schema wired with
 // the createNode resolver. The storage is closed via t.Cleanup.
+//
+// Stage 2 (ADR 0001) removed the resolver's hardcoded Claim/for_task
+// check: the resolver now calls CreateNodeWithUniquenessRulesForTenant,
+// the one lookup path that enforces only REGISTERED rules. Every test in
+// this file exercises the same :Claim/for_task behaviour the old hardcode
+// gave for free, so the fixture registers that rule explicitly — the
+// resolver itself carries no domain knowledge of "Claim" any more.
 func setupClaimSchema(t *testing.T) (*storage.GraphStorage, graphql.Schema) {
 	t.Helper()
 	dir := t.TempDir()
@@ -173,6 +180,12 @@ func setupClaimSchema(t *testing.T) (*storage.GraphStorage, graphql.Schema) {
 		t.Fatalf("NewGraphStorageWithConfig: %v", err)
 	}
 	t.Cleanup(func() { _ = gs.Close() })
+
+	if err := gs.RegisterUniquenessRule(storage.UniquenessRule{
+		Name: "claim_for_task", Label: "Claim", PropertyKey: "for_task",
+	}); err != nil {
+		t.Fatalf("RegisterUniquenessRule: %v", err)
+	}
 
 	schema, err := GenerateSchemaWithEdges(gs)
 	if err != nil {

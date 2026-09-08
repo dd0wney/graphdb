@@ -129,6 +129,36 @@ func ValidateBatchSize(size int) error {
 	return nil
 }
 
+// ValidateLabel validates a single label string, using the same pattern and
+// length bound ValidateNodeRequest applies to each label in a node request.
+// Exported for callers that validate one label in isolation — the admin
+// uniqueness-rules routes (pkg/api), for one — rather than as part of a
+// full NodeRequest.
+//
+// Deliberately NOT called from ValidateNodeRequest's own per-label loop
+// (fix round 1, Minor): that loop has no explicit empty-string branch — an
+// empty label already fails labelPattern's `+` (one-or-more) quantifier,
+// so it falls through to the "contains invalid characters" message.
+// ValidateLabel adds an explicit empty check ahead of the pattern match so
+// a caller validating one label gets "label cannot be empty" rather than
+// the less specific "invalid characters" wording. Routing
+// ValidateNodeRequest through this function would change that message for
+// every existing caller of ValidateNodeRequest on an empty label — a
+// wire-visible behaviour change outside this task's scope — so the two
+// stay separate rather than sharing one implementation.
+func ValidateLabel(label string) error {
+	if label == "" {
+		return errors.New("label cannot be empty")
+	}
+	if len(label) > MaxLabelLength {
+		return fmt.Errorf("label '%s' exceeds maximum length of %d characters", label, MaxLabelLength)
+	}
+	if !labelPattern.MatchString(label) {
+		return fmt.Errorf("label '%s' is invalid (only alphanumeric and underscore allowed)", label)
+	}
+	return nil
+}
+
 // ValidatePropertyKey validates a property key
 func ValidatePropertyKey(key string) error {
 	if key == "" {

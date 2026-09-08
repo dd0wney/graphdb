@@ -168,6 +168,8 @@ If you add a third partitioned structure, mirror this exactly. Don't re-invent.
 
 ### Snapshot format stability
 
+`rules.json` (ADR 0001, the uniqueness-rules registry, `pkg/storage/uniqueness_rules.go`) is a **third** on-disk artefact in the same data directory, with its own `version` field (1) independent of both snapshot formats below — changing the registry's shape never bumps a snapshot version, and vice versa.
+
 There are **two** on-disk snapshot formats:
 
 1. **JSON (default)** — `snapshot.json`, a flat `map[uint64]*Node` / `map[uint64]*Edge` even though in-memory storage is partitioned. `flattenNodesForSnapshot` / `rebucketSnapshotNodes` (and edge variants) handle the conversion.
@@ -244,7 +246,7 @@ Single-agent / session-lifecycle skills live in `.claude/skills/<name>/SKILL.md`
 | `branch-cleanup` | After multi-PR work, or "clean up stale branches." | Local `git branch -D` of confirmed-merged branches. Asks user before bulk delete. |
 | `integration-checkpoint` | Long-running branch (>4h) before merging, after high-leverage main changes, when the user says "sync against main." | Clean rebase + re-run tests + advisor confirmation that original framing still holds. |
 
-**Parallel-agent coordination tooling lives in a sibling repo: [`dd0wney/graphdb-coord`](https://github.com/dd0wney/graphdb-coord)**. Extracted on 2026-05-10. Includes `work-claim`, `worktree-spawn`, `merge-coordinator`, `coord-next`, `coord-subtask`, `coord-clusters` skills + `cmd/coord-mcp` MCP server + `scripts/coord-*.sh` operational tooling. The atomic uniqueness primitive that makes the claim semantics correct (`pkg/storage.CreateNodeWithUniquePropertyForTenant` + `:Claim`/`for_task` resolver special-case) stayed here in graphdb because it's a useful generic primitive — graphdb-coord is the consumer.
+**Parallel-agent coordination tooling lives in a sibling repo: [`dd0wney/graphdb-coord`](https://github.com/dd0wney/graphdb-coord)**. Extracted on 2026-05-10. Includes `work-claim`, `worktree-spawn`, `merge-coordinator`, `coord-next`, `coord-subtask`, `coord-clusters` skills + `cmd/coord-mcp` MCP server + `scripts/coord-*.sh` operational tooling. The atomic uniqueness primitive that makes the claim semantics correct (`pkg/storage.CreateNodeWithUniquePropertyForTenant`, reached through the uniqueness-rules registry's `CreateNodeWithUniquenessRulesForTenant`, ADR 0001) stayed here in graphdb because it's a useful generic primitive — graphdb-coord is the consumer, and declares the `claim_for_task`/`Claim` rule itself rather than graphdb hardcoding it.
 
 To use the parallel-agent skills, clone graphdb-coord alongside this repo and follow its README.
 
@@ -253,7 +255,7 @@ To use the parallel-agent skills, clone graphdb-coord alongside this repo and fo
 When ≥2 Claude Code agents are or might be active on this repo simultaneously, the discipline lives in graphdb-coord; the *primitives* it relies on live here:
 
 - **B-lite atomic uniqueness** (graphdb's `pkg/storage.CreateNodeWithUniquePropertyForTenant`) is what makes concurrent claims for the same task race-free.
-- **The `:Claim`/`for_task` resolver special-case** (graphdb's `pkg/graphql/mutations_resolvers.go`) is currently the one place graphdb still hardcodes coord-domain knowledge. There's a TODO at that site to replace it with a generic uniqueness-rules registry — at that point graphdb-coord configures the rule and graphdb has zero coord-specific knowledge.
+- **The uniqueness-rules registry** (ADR 0001, `pkg/storage/uniqueness_rules.go`, `CreateNodeWithUniquenessRulesForTenant`) replaced the old `:Claim`/`for_task` resolver special-case in both `pkg/graphql/mutations_resolvers.go` and `pkg/api/handlers_nodes.go`. graphdb ships no coord-specific knowledge any more: graphdb-coord declares the `claim_for_task`/`Claim` rule itself, via `GRAPHDB_REQUIRED_UNIQUENESS_RULES` at daemon startup and a `POST /admin/uniqueness-rules` call in its bootstrap path.
 
 The user's global `~/.claude/CLAUDE.md` parallel-agent rules ("Never modify shared interfaces without explicit coordination," "Own your directory," "If you need an interface change, stop and propose it — don't implement," "Run full tests before marking any task complete," "Commit frequently with small atomic changes") are the discipline; graphdb-coord's skills + MCP tools are the mechanism.
 
