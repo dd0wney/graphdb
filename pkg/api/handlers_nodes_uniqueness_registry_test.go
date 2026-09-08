@@ -212,3 +212,38 @@ func TestCreateNode_AdminAuthenticatedWriteStillEnforced(t *testing.T) {
 			rr.Code, rr.Body.String())
 	}
 }
+
+// CONSUMER CONTRACT: CC16-claim-for-task-uniqueness — graphdb-coord (Task 9 / ADR 0001)
+//
+// graphdb-coord's atomic work-claim primitive depends on this exact REST
+// shape: in a deployment where the claim_for_task/Claim rule is both
+// REQUIRED (GRAPHDB_REQUIRED_UNIQUENESS_RULES) and REGISTERED
+// (POST /admin/uniqueness-rules, coord-bootstrap.sh), two agents racing to
+// claim the same task must see 201 then 409 over REST — the second agent's
+// duplicate POST /nodes is what tells it the task is already taken.
+func TestClaimForTaskUniqueness_RESTGivesCreatedThenConflict(t *testing.T) {
+	server, cleanup := setupTestServerWithRequiredRules(t, []storage.RequiredUniquenessRule{
+		{Name: "claim_for_task", Label: "Claim"},
+	})
+	defer cleanup()
+
+	if err := server.graph.RegisterUniquenessRule(storage.UniquenessRule{
+		Name: "claim_for_task", Label: "Claim", PropertyKey: "for_task",
+	}); err != nil {
+		t.Fatalf("RegisterUniquenessRule: %v", err)
+	}
+
+	first := postNode(t, server, NodeRequest{
+		Labels: []string{"Claim"}, Properties: map[string]any{"for_task": "graphdb:cc16"},
+	})
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first :Claim create: status = %d, want 201, body=%s", first.Code, first.Body.String())
+	}
+
+	second := postNode(t, server, NodeRequest{
+		Labels: []string{"Claim"}, Properties: map[string]any{"for_task": "graphdb:cc16"},
+	})
+	if second.Code != http.StatusConflict {
+		t.Fatalf("duplicate :Claim create: status = %d, want 409, body=%s", second.Code, second.Body.String())
+	}
+}

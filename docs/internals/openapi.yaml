@@ -374,6 +374,27 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: >-
+            Service unavailable - a uniqueness rule required for one of the
+            node's labels (GRAPHDB_REQUIRED_UNIQUENESS_RULES, ADR 0001) is
+            not registered. Fixed wording, naming only the caller's own
+            label — never the rule name, never the rest of the required
+            list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: required uniqueness rule missing
+                  message:
+                    type: string
+                    example: a required uniqueness rule for label "Claim" is not registered; contact the administrator
+                  code:
+                    type: integer
+                    example: 503
 
   /nodes/{id}:
     parameters:
