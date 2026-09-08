@@ -2,10 +2,12 @@
 
 **Status:** proposal / living planning doc. Sketches the minor-version line from the
 v1.0.0 GA to the next major (v2.0.0).
-**Current release:** `v1.0.0` (2026-06-23, GA, GPG-signed).
+**Current release:** `v1.4.0` (2026-09-08, GPG-signed). It consolidates the untagged
+v1.1–v1.3 work and the August–September durability programme; `v1.0.0` (2026-06-23) was
+the first GA.
 **What ✅ DONE means here:** the milestone's work is merged to `main`. It does **not**
-mean a tag was cut. `v1.0.0` is still the newest tag in the repository — there is no
-`v1.1.0`, `v1.2.0` or `v1.3.0` tag. Tagging is deliberate rather than pending: a `v*`
+mean a tag was cut. `v1.1.0`, `v1.2.0` and `v1.3.0` were never tagged individually; their
+content shipped in `v1.4.0`. Tagging is deliberate rather than pending: a `v*`
 tag starts both `release.yml` (GPG-signed goreleaser artifacts) and `docker-publish.yml`,
 so tags are cut when a release is actually intended, not to record progress.
 **Companion:** [`ROADMAP_v1.md`](./ROADMAP_v1.md) defined what 1.0 means and the path to GA
@@ -109,6 +111,9 @@ coi-screen validation #444).*
 
 ### v1.4.0 — Finish the API surface
 *Completes the additive API work carried since pre-1.0.*
+> **Tag note (2026-09-08):** the `v1.4.0` tag was cut before this milestone started. Its
+> content is v1.1–v1.3 plus the durability work and ADR 0001. The items below keep this
+> heading for the dependency spine and ship under a later minor.
 - **GraphQL index-level pagination** (resolver offset→ID-cursor; the REST side landed in #366).
 - **F3 compliance HTTP-API** surface (the framework exists in `pkg/compliance`; only the
   endpoints are missing).

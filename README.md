@@ -36,7 +36,7 @@ an interface with real consumers rather than scaffolding.
 
 ## Releases
 
-Latest server release: **[v1.0.0](https://github.com/dd0wney/graphdb/releases/latest)** — first GA (single-node), GPG-signed (see [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md)). First-party clients: **[Python SDK v0.1.0](clients/python/)** and **[TypeScript client v1.0.0](workers/graphdb-client/)** (Cloudflare Workers).
+Latest server release: **[v1.4.0](https://github.com/dd0wney/graphdb/releases/latest)** — single-node GA line, GPG-signed (see [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md)); v1.0.0 was the first GA. First-party clients: **[Go client](clients/go/)**, **[Python SDK v0.1.0](clients/python/)** and **[TypeScript client v1.0.0](workers/graphdb-client/)** (Cloudflare Workers).
 
 `v1.0.0` is the newest tag. Work on the post-1.0 milestones (v1.1 validation/observability,
 v1.2 mmap-by-default, v1.3 deploy-anywhere) is merged to `main` and **not tagged** — see
