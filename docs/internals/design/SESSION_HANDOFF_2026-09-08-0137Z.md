@@ -38,7 +38,7 @@ Outside the repo, in `~/.claude`: `ste-agent-hook.py` now denies a definition-le
 - **Worktrees**: `.claude/worktrees/task9-uniqueness` on the #578 branch, clean. Remove after #578 merges. The four other task worktrees were removed before their merges.
 - **Uncommitted changes**: none.
 - **Gate state on `00e31f1`** (from the merged PRs' own runs and the branch gates): build, vet, `gofmt -s`, golangci-lint v2.13.2 (0 issues), `pkg/storage -short`, `-race` on the invariant, mmap and compression tests, `make contract-guard` (16 contracts, 24 guarding tests after #578).
-- **Session ledger**: `.superpowers/sdd/plan-model-tiers/progress.md` (gitignored) holds every ruling, every review verdict, the specialist reports for ADR 0001 (`adr0001-*.md`), the task briefs and the implementer reports. It survives until someone deletes it; the handoff summarises it.
+- **Session ledger**: deleted at session end on the user's instruction (it was `.superpowers/sdd/plan-model-tiers/`, gitignored). The rulings live in §5 and §6 here and in the PR bodies of #575, #577 and #578; the ADR 0001 specialist reports are summarised in the #578 body and the ADR's "Implementation notes".
 
 ## 4. What is next
 
@@ -80,4 +80,4 @@ See `docs/internals/design/NEXT_SESSION_PROMPT.md`.
 1. Read this first; §5 is the section that saves turns, as it was last time.
 2. Then `docs/NEXT_STEPS_2026-06-18.md` as amended by #573 and #579.
 3. If touching ADR 0001 or graphdb-coord, read the PR #578 body first (the deployment warning and the nine rulings), then `docs/adr/0001-uniqueness-rules-registry.md` § "Implementation notes".
-4. The session ledger at `.superpowers/sdd/plan-model-tiers/progress.md` has the full ruling trail if a decision needs re-examination.
+4. If a ruling needs re-examination, the PR bodies of #575, #577 and #578 carry the trail; the session ledger was deleted at close-out.
