@@ -1,7 +1,7 @@
 # 1. Uniqueness-rules registry
 
 Date: 2026-08-28
-Status: proposed
+Status: accepted — implemented in graphdb PR #578, shipped in v1.4.0 (2026-09-08); graphdb-coord declares the rule since its PR #17
 
 ## Context
 
