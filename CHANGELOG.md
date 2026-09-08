@@ -10,11 +10,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-The following are present in the codebase but not yet part of a tagged release
-(several relate to the EXPERIMENTAL, not-wired clustering/replication path — see
-`pkg/cluster/doc.go`):
+_Nothing yet._
+
+## [1.4.0] - 2026-09-08
+
+This release consolidates the work merged since v1.0.0 under the untagged v1.1–v1.3
+milestones (mmap by default, Helm and Terraform, the Go client) and the August–September
+durability programme (I/O fault injection, crash simulation, nightly fuzzing, invariant
+checks in production code). Several entries relate to the EXPERIMENTAL, not-wired
+clustering/replication path — see `pkg/cluster/doc.go`. The roadmap milestone named
+"v1.4.0 — Finish the API surface" is NOT this release; it ships under a later minor.
 
 ### Added
+- **Uniqueness-rules registry (ADR 0001, #578).** A deployment can declare a per-tenant
+  uniqueness rule `(name, label, propertyKey)` through three admin routes
+  (`POST`/`GET /admin/uniqueness-rules`, `DELETE /admin/uniqueness-rules/{name}`), persisted
+  in `rules.json` in the data directory with its own version field (no snapshot format
+  change). Both the REST and the GraphQL node-create paths enforce from one lookup. A
+  required-rule list, `GRAPHDB_REQUIRED_UNIQUENESS_RULES=name=Label[,...]`, empty by default,
+  makes the daemon refuse a covered write with `503` until the rule is registered. Backup
+  archives carry `rules.json`. See the deployment note under **Changed**.
+- **Helm chart and Terraform module (#450).** Single-node StatefulSet+PVC chart under
+  `deployments/helm/graphdb` with a `replicaCount>1` fail-guard, non-root uid 10001,
+  read-only rootfs, an auto-generated `JWT_SECRET` persisted across upgrades, and a thin
+  provider-agnostic Terraform `helm_release` wrapper. The chart's `appVersion` is `1.4.0`.
+- **First-party Go client (#458).** `clients/go`, its own module: retry/backoff transport
+  with coalesced 401 refresh, token/API-key/login auth, cursor pagination via `iter.Seq2`,
+  Traverse/Query/GraphQL/Embeddings helpers, a `Raw` escape hatch, sentinel errors.
+- **`CheckInvariants` in production code (#468, #474, #569, #577).** The strongest
+  correctness statement graphdb owns is callable from a staging build for both the JSON and
+  the mmap representation: membership, adjacency, the vector index, the property indexes,
+  the count chains and the sticky label/type keys, each with a teeth test.
+- **Durability test regime (#466, #479, #481, #483, #507).** `pkg/vfs` puts every file
+  operation of `pkg/storage` and the three WAL flavours behind a driver; `vfstest` injects
+  I/O faults, crashes with lost, partial and reordered writes, and out-of-memory on the
+  snapshot read path; the 16 fuzz targets run nightly (#467); a coverage floor is enforced
+  per package (#469). `docs/internals/design/SQLITE_TESTING_SCORECARD.md` tracks it.
+- **OpenTelemetry tracing (#442).** Env-configurable provider, off by default, with an HTTP
+  root-span middleware; `docs/OBSERVABILITY.md` carries the SLO/SLI guidance.
 - **Opt-in variable-length traversal policy: `Executor.ExecuteWithOptions` and `query.PathOptions`.**
   Two capabilities for consumers that import graphdb as a Go library.
   `PathOptions{Semantics: DistinctNodes}` admits each node at most once per start node, so a
@@ -47,6 +80,14 @@ The following are present in the codebase but not yet part of a tagged release
 - Closed four reachable `govulncheck` dependency advisories: `github.com/jackc/pgx/v5` v5.7.6 → v5.9.2 (GO-2026-5004, SQL injection via placeholder confusion), `go.opentelemetry.io/otel` v1.43.0 → v1.44.0 (GO-2026-5158, unbounded baggage-header parsing), `google.golang.org/grpc` v1.80.0 → v1.82.1 (GO-2026-6061, xDS RBAC and HTTP/2 transport issues, indirect via the OTLP gRPC exporter), and `golang.org/x/text` v0.35.0 → v0.39.0 (GO-2026-5970, infinite loop on invalid input, indirect).
 
 ### Changed
+- **The `:Claim`/`for_task` uniqueness rule is no longer hardcoded (#578).** graphdb ships no
+  coord vocabulary; graphdb-coord declares the rule. **Deployment note for the coord
+  daemon**: with an empty required-rule list, this build accepts duplicate claims silently.
+  Start the daemon with `GRAPHDB_REQUIRED_UNIQUENESS_RULES=claim_for_task=Claim` and register
+  the rule in the bootstrap before it takes this release.
+- **List and page reads report an unreadable record instead of skipping it (#531, ADR 0003).**
+  On the Go library surface, which the stability policy does not version, the seven
+  enumeration methods of `pkg/storage` gained an error return.
 - **mmap-backed lazy reopen is now the DEFAULT snapshot mode** (v1.2). Reopen after a
   restart is near-instant (~6 ms at ~1M nodes vs ~8 s for the JSON path), byte-identical
   (property-based JSON↔mmap oracle). Backward-compatible: existing `snapshot.json` stores
@@ -59,6 +100,14 @@ The following are present in the codebase but not yet part of a tagged release
 - Zero-allocation `Contains()` for compressed edge lists (sequential scan with early termination)
 
 ### Fixed
+- **A snapshot on a reopened mmap store hid a node's base edges from adjacency reads (#575).**
+  The default configuration turns on both mmap snapshots and edge compression. A
+  `Snapshot()` or `CompactWAL()` on a store reopened from `snapshot.mmap` compressed the
+  post-open overlay and the read path then returned the compressed entry without the mmap
+  base, so a node written since open lost its older edges from every adjacency read until
+  the next reopen. The disk stayed correct; `CheckInvariants` reported the drift. An
+  mmap-backed store no longer compresses its overlay, and `CompressEdgeLists` refuses on
+  such a store instead of silently doing nothing.
 - A `MERGE` whose match half stopped at an engine limit reported a complete answer.
   `MergeStep.Execute` built its sub-context as a struct literal and discarded
   `matchCtx.truncation`, so `ErrTraversalTruncated` from the match pattern never reached the
@@ -316,7 +365,8 @@ Low backlog from the 2026-06-10 security re-audit (#371), across Waves 1–3.
 - 100x concurrency improvement
 - 650x faster LSM read performance
 
-[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/dd0wney/graphdb/compare/v1.0.0...v1.4.0
 [1.0.0]: https://github.com/dd0wney/graphdb/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/dd0wney/graphdb/compare/v0.6.0...v0.8.0
 [0.7.0]: https://github.com/dd0wney/graphdb/compare/v0.6.0...b6eefef
