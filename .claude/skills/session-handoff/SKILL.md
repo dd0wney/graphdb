@@ -36,6 +36,7 @@ Write the doc with these sections in order. Each section earns its place by savi
 
 **Date**: <YYYY-MM-DD> (<one-line session shape: "single session, ~9 PRs merged" / "two distinct stages" / etc.>)
 **Outgoing model**: <model name from environment, e.g. "Claude Opus 4.7 (1M context)">
+**Delegation**: <one line per subagent the session dispatched: agent type, model tier, what it returned, and whether the main loop used the report unchanged or re-did the work. "none" if no subagent ran. The tier policy in the global CLAUDE.md gets no feedback without this line.>
 **Format defined in**: `CLAUDE.md` § "Preparing a new session (handoff convention)"
 ```
 
