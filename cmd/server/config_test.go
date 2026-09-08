@@ -62,6 +62,8 @@ func TestParseRequiredUniquenessRules_MalformedIsAnError(t *testing.T) {
 		"claim_for_task=",          // empty label
 		"claim_for_task=Claim,,",   // empty entry
 		"claim_for_task=Claim,bad", // second entry malformed
+		"claim-for-task=Claim",     // hyphenated name (R8: underscores, not hyphens)
+		"1claim_for_task=Claim",    // name starting with a digit
 	}
 	for _, raw := range cases {
 		if _, err := parseRequiredUniquenessRules(raw); err == nil {

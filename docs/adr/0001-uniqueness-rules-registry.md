@@ -225,16 +225,17 @@ them.
   today; widening the primitive to accept a set of `(label, propertyKey)`
   pairs is future work and out of scope here.
 
-- **A naming inconsistency surfaced during implementation.** `Name` and
-  `PropertyKey` validate against `^[A-Za-z_][A-Za-z0-9_]*$`, which excludes
-  hyphens (matching `pkg/validation`'s existing `propKeyPattern`
-  precedent). Prose elsewhere describing this work — and the
-  `GRAPHDB_REQUIRED_UNIQUENESS_RULES=claim-for-task=Claim` deployment
-  variable syntax stage 2 will introduce — spells the coord rule name with a
-  hyphen. Stage 1's tests use `claim_for_task` to satisfy the validator as
-  specified. Stage 2 and graphdb-coord's `coord-bootstrap.sh` must agree on
-  one spelling before either configures a live deployment against this
-  registry.
+- **A naming inconsistency surfaced during implementation, and R8 resolved
+  it.** `Name` and `PropertyKey` validate against
+  `^[A-Za-z_][A-Za-z0-9_]*$`, which excludes hyphens (matching
+  `pkg/validation`'s existing `propKeyPattern` precedent). Some prose
+  elsewhere describing this work spelled the coord rule name with a
+  hyphen (`claim-for-task`), which that regex rejects. R8 (2026-09-08)
+  settled this: rule names use underscores, the same shape as a property
+  key, so the coord rule is `claim_for_task`. Stage 1's tests, stage 2's
+  REST/GraphQL wiring, the `GRAPHDB_REQUIRED_UNIQUENESS_RULES=claim_for_task=Claim`
+  deployment variable syntax, and graphdb-coord's `coord-bootstrap.sh` all
+  use this spelling.
 
 ## References
 

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -186,6 +187,15 @@ func loadTLSConfig(logger *slog.Logger) *tlspkg.Config {
 	return cfg
 }
 
+// requiredRuleNamePattern mirrors pkg/storage's own (unexported) rule-Name
+// pattern (uniquenessNamePattern, pkg/storage/uniqueness_rules.go). Checked
+// here too (fix round 1, Important 2) so a hyphenated name — the spelling
+// an earlier draft of the ADR's own prose used before R8 settled on
+// underscores — fails at startup rather than becoming a required pair no
+// registered rule can ever satisfy, which would otherwise read as a
+// permanent 503 with no indication that the NAME itself is the problem.
+var requiredRuleNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
 // parseRequiredUniquenessRules parses GRAPHDB_REQUIRED_UNIQUENESS_RULES
 // (ADR 0001), format name=Label[,name=Label,...] — R8: names use
 // underscores (e.g. claim_for_task), matching pkg/storage's own Name
@@ -195,12 +205,15 @@ func loadTLSConfig(logger *slog.Logger) *tlspkg.Config {
 // A malformed value is a startup error, not a warning: an operator's typo
 // here would otherwise silently start the server with an emptier required
 // list than intended, which is exactly the fail-OPEN failure mode ADR 0001
-// exists to avoid. This function only checks the entry SHAPE (name=Label,
-// neither side empty) — a name or label that fails pkg/storage's own
-// pattern still starts the server, and the required pair simply stays
-// unsatisfiable (every covered write gets the fixed 503) until an admin
-// registers a rule that matches it. That is a safe, fail-closed default:
-// the server never re-interprets an unsatisfiable pair as "not required".
+// exists to avoid. This function checks the entry shape (name=Label,
+// neither side empty) AND that Name matches pkg/storage's own Name
+// pattern — a name that can never be registered would otherwise turn into
+// a permanent, unexplained 503 for every write to that label. It does NOT
+// check Label against pkg/storage's Label pattern: an unsatisfiable
+// (Name, Label) pair from a Label typo alone still starts the server and
+// stays unsatisfiable (every covered write gets the fixed 503) until an
+// admin registers a rule that matches it — a narrower, already-covered
+// case this round did not ask to widen.
 func parseRequiredUniquenessRules(raw string) ([]storage.RequiredUniquenessRule, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -220,6 +233,12 @@ func parseRequiredUniquenessRules(raw string) ([]storage.RequiredUniquenessRule,
 		name, label = strings.TrimSpace(name), strings.TrimSpace(label)
 		if name == "" || label == "" {
 			return nil, fmt.Errorf("GRAPHDB_REQUIRED_UNIQUENESS_RULES: entry %q has an empty name or label", entry)
+		}
+		if !requiredRuleNamePattern.MatchString(name) {
+			return nil, fmt.Errorf(
+				"GRAPHDB_REQUIRED_UNIQUENESS_RULES: entry %q has a name %q that no registered rule can ever match (must match %s)",
+				entry, name, requiredRuleNamePattern.String(),
+			)
 		}
 		rules = append(rules, storage.RequiredUniquenessRule{Name: name, Label: label})
 	}
