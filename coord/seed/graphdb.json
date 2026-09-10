@@ -4,26 +4,38 @@
     {
       "id": "v1.1-coi-screen-validation",
       "track": "v1.1",
-      "status": "pending",
-      "title": "Real-corpus coi-screen validation (~814K ICIJ): exercise mmap end-to-end + answer B-1 (is full-graph enumeration a hot path?)"
+      "status": "done",
+      "title": "Real-corpus coi-screen validation (~814K ICIJ): exercise mmap end-to-end + answer B-1 (is full-graph enumeration a hot path?)",
+      "closing_prs": [
+        444
+      ]
     },
     {
       "id": "v1.1-mmap-oracle-property-based",
       "track": "v1.1",
-      "status": "pending",
-      "title": "Harden the JSON<->mmap equivalence oracle to property-based/fuzzed coverage (precondition for mmap-default in v1.2)"
+      "status": "done",
+      "title": "Harden the JSON<->mmap equivalence oracle to property-based/fuzzed coverage (precondition for mmap-default in v1.2)",
+      "closing_prs": [
+        440
+      ]
     },
     {
       "id": "v1.1-otel-tracing",
       "track": "v1.1",
-      "status": "pending",
-      "title": "OpenTelemetry tracing + SLO/SLI docs (additive; pairs with existing Prometheus metrics)"
+      "status": "done",
+      "title": "OpenTelemetry tracing + SLO/SLI docs (additive; pairs with existing Prometheus metrics)",
+      "closing_prs": [
+        442
+      ]
     },
     {
       "id": "v1.1-reenable-fuzz-tests",
       "track": "v1.1",
-      "status": "pending",
-      "title": "Re-enable the disabled fuzz tests (pkg/api/fuzz_test.go.disabled, pkg/query/fuzz_test.go.disabled)"
+      "status": "done",
+      "title": "Re-enable the disabled fuzz tests (pkg/api/fuzz_test.go.disabled, pkg/query/fuzz_test.go.disabled)",
+      "closing_prs": [
+        441
+      ]
     }
   ],
   "deps": []
