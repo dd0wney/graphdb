@@ -36,7 +36,49 @@
       "closing_prs": [
         441
       ]
+    },
+    {
+      "id": "v1.3-gofmt-ci-gate",
+      "track": "v1.3",
+      "status": "done",
+      "title": "CI: repo-wide gofmt -s lint gate. ROADMAP v1.3 says not started, but #490 added the gofmt -s step to test.yml and .golangci.yml sets gofmt.simplify",
+      "closing_prs": [
+        490
+      ]
+    },
+    {
+      "id": "v1.4-graphql-index-pagination",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "GraphQL index-level pagination: resolver offset -> ID cursor (REST side landed in #366)"
+    },
+    {
+      "id": "v1.4-f3-compliance-http-api",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "F3 compliance HTTP-API surface over the existing pkg/compliance framework (endpoints only)"
+    },
+    {
+      "id": "v1.4-sdk-parity",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "SDK parity: Python, TypeScript and Go clients catch up to the v1.4 endpoints"
+    },
+    {
+      "id": "v1.1-coi-screen-real-corpus",
+      "track": "v1.1",
+      "status": "pending",
+      "title": "Real-corpus coi-screen run (Milestone-1-proper, ~814K ICIJ). Needs ../coi-screen checked out and an ICIJ corpus on the machine; runbook in SPIKE_COI_SCREEN_VALIDATION_2026-07-01.md"
     }
   ],
-  "deps": []
+  "deps": [
+    {
+      "from": "v1.4-sdk-parity",
+      "to": "v1.4-graphql-index-pagination"
+    },
+    {
+      "from": "v1.4-sdk-parity",
+      "to": "v1.4-f3-compliance-http-api"
+    }
+  ]
 }
