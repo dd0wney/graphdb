@@ -68,7 +68,7 @@
       "id": "v1.1-coi-screen-real-corpus",
       "track": "v1.1",
       "status": "pending",
-      "title": "Real-corpus coi-screen run (Milestone-1-proper, ~814K ICIJ). Needs ../coi-screen checked out and an ICIJ corpus on the machine; runbook in SPIKE_COI_SCREEN_VALIDATION_2026-07-01.md"
+      "title": "Real-corpus coi-screen run (Milestone-1-proper, ~814K ICIJ). Needs the sibling coi-screen repo checked out beside graphdb and an ICIJ corpus on the machine; runbook in SPIKE_COI_SCREEN_VALIDATION_2026-07-01.md"
     }
   ],
   "deps": [
