@@ -43,6 +43,16 @@ func (c *Client) Query(ctx context.Context, cypher string) (*QueryResult, error)
 	return &out, json.Unmarshal(res.data, &out)
 }
 
+// GraphQL executes a GraphQL document against POST /graphql and returns the
+// raw {"data": ..., "errors": ...} envelope for the caller to decode.
+//
+// A list field (for example, the per-label plural fields and edges) accepts
+// an after: ID argument for cursor pagination, added to the server in
+// PR #585. The cursor is the id of the last item on the previous page; a
+// page shorter than the requested limit is the last page, the same contract
+// as the REST X-Next-Cursor header. The server rejects after when it is
+// combined with orderBy or with a non-zero offset, because the cursor
+// already fixes the walk order and the start position.
 func (c *Client) GraphQL(ctx context.Context, document string, variables map[string]any) (json.RawMessage, error) {
 	body := map[string]any{"query": document}
 	if variables != nil {
