@@ -114,7 +114,7 @@ coi-screen validation #444).*
 > **Tag note (2026-09-08):** the `v1.4.0` tag was cut before this milestone started. Its
 > content is v1.1–v1.3 plus the durability work and ADR 0001. The items below keep this
 > heading for the dependency spine and ship under a later minor.
-- **GraphQL index-level pagination** (resolver offset→ID-cursor; the REST side landed in #366).
+- ~~**GraphQL index-level pagination**~~ ✅ done #585 (`after: ID` cursor on every list field; `offset` kept for existing clients; REST side was #366).
 - **F3 compliance HTTP-API** surface (the framework exists in `pkg/compliance`; only the
   endpoints are missing).
 - SDK parity (Python/TS/Go catch up to the new endpoints).
