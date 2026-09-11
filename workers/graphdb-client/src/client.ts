@@ -19,6 +19,7 @@ import {
   CreateNodeInput,
   UpdateNodeInput,
   CreateEdgeInput,
+  UpdateEdgeInput,
   BatchNodeResult,
   BatchEdgeResult,
   HealthCheckResponse,
@@ -174,10 +175,34 @@ export class GraphDBClient {
   }
 
   /**
+   * Get an edge by ID (REST API). GET /edges/{id}.
+   */
+  async getEdge(id: number): Promise<Edge> {
+    return this.request<Edge>('GET', `/edges/${id}`);
+  }
+
+  /**
    * Create an edge between two nodes (REST API)
    */
   async createEdge(input: CreateEdgeInput): Promise<Edge> {
     return this.request<Edge>('POST', '/edges', input);
+  }
+
+  /**
+   * Update an edge's properties and/or weight (REST API). PUT
+   * /edges/{id}. A `weight` left undefined leaves the stored weight
+   * unchanged (pkg/api/types.go EdgeUpdateRequest — Weight is a pointer
+   * on the server for exactly this reason).
+   */
+  async updateEdge(id: number, input: UpdateEdgeInput): Promise<Edge> {
+    return this.request<Edge>('PUT', `/edges/${id}`, input);
+  }
+
+  /**
+   * Delete an edge (REST API). DELETE /edges/{id}.
+   */
+  async deleteEdge(id: number): Promise<void> {
+    await this.request<void>('DELETE', `/edges/${id}`);
   }
 
   /**

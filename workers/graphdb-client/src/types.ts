@@ -216,6 +216,17 @@ export type CreateEdgeInput = {
 };
 
 /**
+ * Update edge input for PUT /edges/{id}. Matches pkg/api/types.go
+ * EdgeUpdateRequest. `weight: undefined` (an omitted field) leaves the
+ * edge's stored weight unchanged; there is no way to explicitly re-zero
+ * it separately from "don't touch it" on the wire.
+ */
+export type UpdateEdgeInput = {
+  properties?: NodeProperties;
+  weight?: number;
+};
+
+/**
  * One failed item from a batch create request. `index` is the item's
  * position in the REQUEST array, not the response (failed items are
  * omitted from the response array entirely).

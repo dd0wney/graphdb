@@ -60,6 +60,7 @@ export {
   CreateNodeInput,
   UpdateNodeInput,
   CreateEdgeInput,
+  UpdateEdgeInput,
   BatchItemError,
   BatchNodeResult,
   BatchEdgeResult,
