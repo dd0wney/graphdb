@@ -1,5 +1,13 @@
 # @graphdb/client - Implementation Complete ✅
 
+> **Superseded.** This document describes the v1.0.0 client. v2.0.0
+> (see `CHANGELOG.md`) fixed several methods listed below that never
+> matched the server's real HTTP contract (`updateNode`, `queryNodes`,
+> `traverse`) and removed two that queried GraphQL fields the server
+> never defined (`getTrustScore`, `findFraudRing`). Read `README.md`
+> and `CHANGELOG.md` for the current API; the method list in this file
+> is historical only.
+
 ## Overview
 
 Production-ready GraphDB client for Cloudflare Workers with GraphQL/REST support, automatic retries, timeout handling, and full TypeScript types.
