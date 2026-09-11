@@ -115,8 +115,11 @@ coi-screen validation #444).*
 > content is v1.1–v1.3 plus the durability work and ADR 0001. The items below keep this
 > heading for the dependency spine and ship under a later minor.
 - ~~**GraphQL index-level pagination**~~ ✅ done #585 (`after: ID` cursor on every list field; `offset` kept for existing clients; REST side was #366).
-- **F3 compliance HTTP-API** surface (the framework exists in `pkg/compliance`; only the
-  endpoints are missing).
+- ~~**F3 compliance HTTP-API** surface~~ — this row was wrong when written: the endpoints
+  shipped in May 2026 (#107 audit collector, #111 `/v1/compliance/audit-log`, #114 masking
+  policy CRUD + REST read-path masking, #122 GraphQL masking, #124 `COMPLIANCE.md` +
+  regression row). The only `pkg/compliance` surface without HTTP is the framework report
+  (`ComplianceChecker.CheckCompliance`), deferred by design Decision 5 and untracked.
 - SDK parity (Python/TS/Go catch up to the new endpoints).
 - **Gates:** none · **Size:** M · **Risk:** low
 

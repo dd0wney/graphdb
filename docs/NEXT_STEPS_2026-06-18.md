@@ -118,7 +118,7 @@ doc already uses for decision point B-2.
 - Storage interface (arch HIGH-1), `pkg/api.Server` god-struct (HIGH-2), REST/GraphQL service-layer duplication (MED-1), `pkg/editions` global singleton, unified `TenantID` type.
 
 ### G — Productization / commercial gaps (`CAPABILITIES_2026-05-10.md`)
-- Client SDKs (Java/Rust; ~~Go~~ ✅ shipped 2026-07-17, #458 — see status update above; ~~Python~~ ✅ shipped — `clients/python`, 81 files with tests, tagged `python-sdk/v0.1.0` on 2026-06-11); IaC (Helm chart / Terraform provider / operator); observability (OTel tracing, SLO/SLI docs); data-platform connectors (Kafka, ETL, lakehouse export, BI drivers); commercial packaging (pricing/support/roadmap); F3 compliance HTTP-API surface; the 4 documented-but-unbuilt enterprise plugins (`ENTERPRISE_PLUGINS.md`).
+- Client SDKs (Java/Rust; ~~Go~~ ✅ shipped 2026-07-17, #458 — see status update above; ~~Python~~ ✅ shipped — `clients/python`, 81 files with tests, tagged `python-sdk/v0.1.0` on 2026-06-11); IaC (Helm chart / Terraform provider / operator); observability (OTel tracing, SLO/SLI docs); data-platform connectors (Kafka, ETL, lakehouse export, BI drivers); commercial packaging (pricing/support/roadmap); ~~F3 compliance HTTP-API surface~~ (shipped May 2026, #111/#114/#122/#124 — the carry-forward was a re-listing; only a framework-report endpoint over `ComplianceChecker` remains unbuilt and untracked); the 4 documented-but-unbuilt enterprise plugins (`ENTERPRISE_PLUGINS.md`).
 
 ## Recommended next track
 
