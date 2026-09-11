@@ -22,6 +22,10 @@ with GraphDBClient("https://your-graphdb", token="YOUR_TOKEN") as db:
     for node in db.nodes.list(label="Person"):
         print(node.id, node.properties)
 
+    # List every KNOWS edge — same auto-pagination.
+    for edge in db.edges.list(edge_type="KNOWS"):
+        print(edge.id, edge.from_node_id, edge.to_node_id)
+
     hits = db.vector_search("embedding", [0.1, 0.2, 0.3], k=5, filter_labels=["Document"])
     neighbours = db.traverse(alice.id, max_depth=1)
 ```
@@ -97,6 +101,8 @@ async def main():
         node = await db.nodes.create(["Person"], {"name": "Ada"})
         async for n in db.nodes.list(label="Person"):
             print(n.id)
+        async for e in db.edges.list(edge_type="KNOWS"):
+            print(e.id)
         hits = await db.search.hybrid("graph database")
         rows = (await db.query("MATCH (n) RETURN n LIMIT 1")).rows
 

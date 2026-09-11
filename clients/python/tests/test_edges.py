@@ -11,6 +11,13 @@ def _res(base_url):
     return EdgesResource(Transport(base_url, token="tok"))
 
 
+def _edge_row(id_: int, from_id: int, to_id: int, edge_type: str = "R") -> dict:
+    return {
+        "id": id_, "from_node_id": from_id, "to_node_id": to_id,
+        "type": edge_type, "properties": {}, "weight": 0.0,
+    }
+
+
 @respx.mock
 def test_create_edge(base_url):
     route = respx.post(f"{base_url}/edges").mock(return_value=httpx.Response(201, json={
@@ -79,13 +86,12 @@ def test_delete_edge(base_url):
 
 @respx.mock
 def test_list_auto_paginates_across_cursor(base_url):
-    page1 = httpx.Response(200, json=[
-        {"id": 1, "from_node_id": 1, "to_node_id": 2, "type": "KNOWS", "properties": {}, "weight": 0.0},
-        {"id": 2, "from_node_id": 2, "to_node_id": 3, "type": "KNOWS", "properties": {}, "weight": 0.0},
-    ], headers={"X-Next-Cursor": "2"})
-    page2 = httpx.Response(200, json=[
-        {"id": 3, "from_node_id": 3, "to_node_id": 4, "type": "KNOWS", "properties": {}, "weight": 0.0},
-    ])
+    page1 = httpx.Response(
+        200,
+        json=[_edge_row(1, 1, 2, "KNOWS"), _edge_row(2, 2, 3, "KNOWS")],
+        headers={"X-Next-Cursor": "2"},
+    )
+    page2 = httpx.Response(200, json=[_edge_row(3, 3, 4, "KNOWS")])
     route = respx.get(f"{base_url}/edges").mock(side_effect=[page1, page2])
 
     got = list(_res(base_url).list(edge_type="KNOWS", page_size=2))
@@ -98,11 +104,7 @@ def test_list_auto_paginates_across_cursor(base_url):
 def test_list_terminates_on_stuck_cursor(base_url):
     # A non-spec-compliant server that never advances the cursor must not hang
     # the client: the generator stops once the cursor repeats.
-    page = httpx.Response(
-        200,
-        json=[{"id": 1, "from_node_id": 1, "to_node_id": 2, "type": "R", "properties": {}, "weight": 0.0}],
-        headers={"X-Next-Cursor": "stuck"},
-    )
+    page = httpx.Response(200, json=[_edge_row(1, 1, 2)], headers={"X-Next-Cursor": "stuck"})
     respx.get(f"{base_url}/edges").mock(side_effect=[page, page, page])
     got = list(_res(base_url).list(page_size=1))
     # page1: cursor="stuck" (advances); page2: cursor=="stuck"==prev -> terminate.
