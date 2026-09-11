@@ -31,19 +31,21 @@ export default {
     try {
       // GET /learning-path/:conceptId
       if (path.startsWith('/learning-path/')) {
-        const conceptId = path.split('/')[2];
+        const conceptId = Number(path.split('/')[2]);
         return await getLearningPath(graphDB, env.CONCEPT_CACHE, conceptId);
       }
 
       // GET /related/:conceptId
       if (path.startsWith('/related/')) {
-        const conceptId = path.split('/')[2];
+        const conceptId = Number(path.split('/')[2]);
         return await getRelatedConcepts(graphDB, env.CONCEPT_CACHE, conceptId);
       }
 
       // POST /mastery/:userId/:conceptId
       if (path.match(/\/mastery\/(.+)\/(.+)$/)) {
-        const [_, userId, conceptId] = path.split('/');
+        const [, userIdRaw, conceptIdRaw] = path.split('/');
+        const userId = Number(userIdRaw);
+        const conceptId = Number(conceptIdRaw);
         const level = parseFloat(url.searchParams.get('level') || '0.85');
         return await recordMastery(graphDB, userId, conceptId, level);
       }
@@ -57,12 +59,17 @@ export default {
 };
 
 /**
- * Get learning path (prerequisite chain) for a concept
+ * Get learning path (prerequisite chain) for a concept.
+ *
+ * POST /traverse only returns a flat node list — there is no `paths`
+ * field on the response (pkg/api/handlers_algorithms_traversal.go
+ * TraversalResponse) — so "the learning path" here is the reachable
+ * prerequisite set, not an ordered chain of individual paths.
  */
 async function getLearningPath(
   graphDB: GraphDBClient,
   cache: KVNamespace,
-  conceptId: string
+  conceptId: number
 ): Promise<Response> {
   const cacheKey = `learning-path:${conceptId}`;
 
@@ -83,23 +90,18 @@ async function getLearningPath(
     edgeTypes: ['PREREQUISITE'],
     maxDepth: 3, // Go up to 3 levels deep
     direction: 'incoming', // Follow edges pointing TO this concept
-    limit: 50,
   });
 
-  // Build learning path (ordered by depth)
   const learningPath = {
     targetConcept: conceptId,
-    prerequisites: result.nodes.map(node => ({
+    prerequisites: result.nodes.map((node) => ({
       id: node.id,
       name: node.properties.name,
       domain: node.properties.domain,
       difficulty: node.properties.difficulty,
     })),
     totalConcepts: result.nodes.length,
-    paths: result.paths.map(path => ({
-      concepts: path.nodes,
-      depth: path.nodes.length,
-    })),
+    truncated: result.truncated ?? false,
   };
 
   // Cache for 7 days (knowledge graph rarely changes)
@@ -121,7 +123,7 @@ async function getLearningPath(
 async function getRelatedConcepts(
   graphDB: GraphDBClient,
   cache: KVNamespace,
-  conceptId: string
+  conceptId: number
 ): Promise<Response> {
   const cacheKey = `related:${conceptId}`;
 
@@ -139,16 +141,14 @@ async function getRelatedConcepts(
     edgeTypes: ['RELATED_TO'],
     maxDepth: 1, // Only immediate neighbors
     direction: 'both',
-    limit: 20,
   });
 
   const related = {
     conceptId,
-    relatedConcepts: result.nodes.map(node => ({
+    relatedConcepts: result.nodes.map((node) => ({
       id: node.id,
       name: node.properties.name,
       domain: node.properties.domain,
-      similarity: 0.8, // Could calculate from edge properties
     })),
   };
 
@@ -167,15 +167,15 @@ async function getRelatedConcepts(
  */
 async function recordMastery(
   graphDB: GraphDBClient,
-  userId: string,
-  conceptId: string,
+  userId: number,
+  conceptId: number,
   level: number
 ): Promise<Response> {
   // Create MASTERED edge with mastery level
-  const edge = await graphDB.createEdge({
+  await graphDB.createEdge({
     type: 'MASTERED',
-    source: userId,
-    target: conceptId,
+    from_node_id: userId,
+    to_node_id: conceptId,
     properties: {
       level,
       timestamp: new Date().toISOString(),
@@ -184,7 +184,7 @@ async function recordMastery(
 
   // Update user's total mastery count
   const user = await graphDB.getNode(userId);
-  const masteryCount = (user.properties.masteryCount || 0) + 1;
+  const masteryCount = Number(user.properties.masteryCount ?? 0) + 1;
 
   await graphDB.updateNode(userId, {
     properties: {

@@ -1,6 +1,6 @@
 {
   "name": "@graphdb/client",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "GraphDB client for Cloudflare Workers with GraphQL/REST support, automatic retries, and timeout handling",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -36,9 +36,7 @@
     "client",
     "graph-database",
     "syntopica",
-    "cluso",
-    "trust-score",
-    "fraud-detection"
+    "cluso"
   ],
   "author": "Cluso Team",
   "license": "MIT",

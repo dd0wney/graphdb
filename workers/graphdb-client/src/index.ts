@@ -19,15 +19,15 @@
  *   retries: 2,
  * });
  *
- * // Get trust score
- * const trustScore = await graphDB.getTrustScore('user-123');
- *
- * // Detect fraud
- * const fraudRing = await graphDB.findFraudRing('user-suspicious');
+ * // Create and fetch a node
+ * const node = await graphDB.createNode({
+ *   labels: ['Person'],
+ *   properties: { name: 'Alice' },
+ * });
  *
  * // Traverse graph
  * const network = await graphDB.traverse({
- *   startNodeId: 'user-123',
+ *   startNodeId: node.id,
  *   edgeTypes: ['TRUSTS', 'VERIFIED_BY'],
  *   maxDepth: 2,
  *   direction: 'outgoing',
@@ -46,17 +46,13 @@ export {
   Edge,
   NodeProperties,
   QueryResult,
+  QueryNodesFilter,
+  QueryNodesOptions,
 
   // Traversal
   TraversalOptions,
   TraversalResult,
 
-  // Syntopica/Cluso use cases
-  TrustScore,
-  FraudRing,
-
-  // Query options
-  QueryOptions,
   GraphQLVariables,
   GraphQLResponse,
 
@@ -64,11 +60,28 @@ export {
   CreateNodeInput,
   UpdateNodeInput,
   CreateEdgeInput,
-  BatchResult,
+  UpdateEdgeInput,
+  BatchItemError,
+  BatchNodeResult,
+  BatchEdgeResult,
 
   // Health & Metrics
   HealthCheckResponse,
   MetricsResponse,
+
+  // Compliance
+  AuditLogEntry,
+  AuditLogOptions,
+  AuditLogResponse,
+  MaskingStrategyName,
+  MaskingPolicy,
+  SetMaskingPolicyInput,
+
+  // Vector indexes
+  VectorMetric,
+  VectorIndex,
+  VectorIndexList,
+  CreateVectorIndexInput,
 
   // Errors
   GraphDBError,

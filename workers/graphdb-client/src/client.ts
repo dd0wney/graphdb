@@ -12,17 +12,25 @@ import {
   Node,
   Edge,
   QueryResult,
+  QueryNodesFilter,
+  QueryNodesOptions,
   TraversalOptions,
   TraversalResult,
-  TrustScore,
-  FraudRing,
-  QueryOptions,
   CreateNodeInput,
   UpdateNodeInput,
   CreateEdgeInput,
-  BatchResult,
+  UpdateEdgeInput,
+  BatchNodeResult,
+  BatchEdgeResult,
   HealthCheckResponse,
   MetricsResponse,
+  AuditLogOptions,
+  AuditLogResponse,
+  MaskingPolicy,
+  SetMaskingPolicyInput,
+  VectorIndex,
+  VectorIndexList,
+  CreateVectorIndexInput,
 } from './types';
 
 /**
@@ -43,7 +51,10 @@ import {
  *   retries: 2,
  * });
  *
- * const trustScore = await graphDB.getTrustScore('user-123');
+ * const node = await graphDB.createNode({
+ *   labels: ['Person'],
+ *   properties: { name: 'Alice' },
+ * });
  * ```
  */
 export class GraphDBClient {
@@ -115,7 +126,7 @@ export class GraphDBClient {
   /**
    * Get a node by ID (REST API)
    */
-  async getNode(id: string): Promise<Node> {
+  async getNode(id: number): Promise<Node> {
     return this.request<Node>('GET', `/nodes/${id}`);
   }
 
@@ -127,42 +138,54 @@ export class GraphDBClient {
   }
 
   /**
-   * Update a node (REST API)
+   * Update a node (REST API). PUT /nodes/{id} — the route accepts GET,
+   * PUT and DELETE only (pkg/api/handlers_nodes.go handleNode); PATCH is
+   * rejected with 405.
    */
-  async updateNode(id: string, input: UpdateNodeInput): Promise<Node> {
-    return this.request<Node>('PATCH', `/nodes/${id}`, input);
+  async updateNode(id: number, input: UpdateNodeInput): Promise<Node> {
+    return this.request<Node>('PUT', `/nodes/${id}`, input);
   }
 
   /**
    * Delete a node (REST API)
    */
-  async deleteNode(id: string): Promise<void> {
+  async deleteNode(id: number): Promise<void> {
     await this.request<void>('DELETE', `/nodes/${id}`);
   }
 
   /**
-   * Query nodes with filters (REST API)
+   * Query nodes with a server-side filter and cursor pagination (REST
+   * API). GET /nodes only honours `?label=` as a filter, and only
+   * `?limit=`/`?cursor=` for paging (pkg/api/handlers_nodes.go listNodes,
+   * pkg/api/pagination.go). The response is a bare JSON array; the next
+   * page's cursor comes back in the X-Next-Cursor header and is absent
+   * on the last page.
    */
   async queryNodes(
-    filters?: Record<string, unknown>,
-    options?: QueryOptions
+    filter?: QueryNodesFilter,
+    options?: QueryNodesOptions
   ): Promise<QueryResult<Node>> {
     const params = new URLSearchParams();
 
+    if (filter?.label) params.set('label', filter.label);
     if (options?.limit) params.set('limit', options.limit.toString());
-    if (options?.offset) params.set('offset', options.offset.toString());
     if (options?.cursor) params.set('cursor', options.cursor);
-    if (options?.sortBy) params.set('sortBy', options.sortBy);
-    if (options?.sortOrder) params.set('sortOrder', options.sortOrder);
-
-    if (filters) {
-      params.set('filter', JSON.stringify(filters));
-    }
 
     const query = params.toString();
     const url = query ? `/nodes?${query}` : '/nodes';
 
-    return this.request<QueryResult<Node>>('GET', url);
+    const response = await this.requestWithResponse('GET', url);
+    const nodes = (await response.json()) as Node[];
+    const cursor = response.headers.get('X-Next-Cursor');
+
+    return cursor ? { nodes, cursor } : { nodes };
+  }
+
+  /**
+   * Get an edge by ID (REST API). GET /edges/{id}.
+   */
+  async getEdge(id: number): Promise<Edge> {
+    return this.request<Edge>('GET', `/edges/${id}`);
   }
 
   /**
@@ -173,12 +196,32 @@ export class GraphDBClient {
   }
 
   /**
-   * Traverse the graph from a starting node
+   * Update an edge's properties and/or weight (REST API). PUT
+   * /edges/{id}. A `weight` left undefined leaves the stored weight
+   * unchanged (pkg/api/types.go EdgeUpdateRequest — Weight is a pointer
+   * on the server for exactly this reason).
+   */
+  async updateEdge(id: number, input: UpdateEdgeInput): Promise<Edge> {
+    return this.request<Edge>('PUT', `/edges/${id}`, input);
+  }
+
+  /**
+   * Delete an edge (REST API). DELETE /edges/{id}.
+   */
+  async deleteEdge(id: number): Promise<void> {
+    await this.request<void>('DELETE', `/edges/${id}`);
+  }
+
+  /**
+   * Traverse the graph from a starting node (REST API). POST /traverse
+   * (pkg/api/handlers_algorithms_traversal.go handleTraversal). No
+   * GraphQL resolver named `traverse` exists — v1 built a GraphQL query
+   * against one, which always failed.
    *
    * @example
    * ```typescript
-   * const trustNetwork = await graphDB.traverse({
-   *   startNodeId: 'user-123',
+   * const network = await graphDB.traverse({
+   *   startNodeId: 123,
    *   edgeTypes: ['VERIFIED_BY', 'TRUSTS'],
    *   maxDepth: 2,
    *   direction: 'outgoing',
@@ -186,128 +229,28 @@ export class GraphDBClient {
    * ```
    */
   async traverse(options: TraversalOptions): Promise<TraversalResult> {
-    const query = `
-      query TraverseGraph($startNodeId: ID!, $edgeTypes: [String!], $maxDepth: Int!, $direction: String!, $limit: Int) {
-        traverse(
-          startNodeId: $startNodeId
-          edgeTypes: $edgeTypes
-          maxDepth: $maxDepth
-          direction: $direction
-          limit: $limit
-        ) {
-          nodes {
-            id
-            type
-            properties
-          }
-          edges {
-            id
-            type
-            source
-            target
-            properties
-          }
-          paths {
-            nodes
-            edges
-          }
-        }
-      }
-    `;
-
-    const variables = {
-      startNodeId: options.startNodeId,
-      edgeTypes: options.edgeTypes || [],
-      maxDepth: options.maxDepth,
+    const body = {
+      start_node_id: options.startNodeId,
+      max_depth: options.maxDepth,
+      edge_types: options.edgeTypes,
       direction: options.direction,
-      limit: options.limit,
     };
 
-    const result = await this.query<{ traverse: TraversalResult }>(query, variables);
-    return result.traverse;
-  }
-
-  /**
-   * Get trust score for a user (Syntopica use case)
-   *
-   * @example
-   * ```typescript
-   * const trustScore = await graphDB.getTrustScore('user-123');
-   * console.log(trustScore.score); // 847
-   * ```
-   */
-  async getTrustScore(userId: string): Promise<TrustScore> {
-    const query = `
-      query GetTrustScore($userId: ID!) {
-        user(id: $userId) {
-          id
-          trustScore
-          trustComponents {
-            verification
-            activity
-            reputation
-          }
-          lastUpdated
-        }
-      }
-    `;
-
-    const result = await this.query<{ user: TrustScore }>(query, { userId });
-    return result.user;
-  }
-
-  /**
-   * Detect fraud ring (Cluso use case)
-   *
-   * @example
-   * ```typescript
-   * const fraudRing = await graphDB.findFraudRing('user-suspicious');
-   * if (fraudRing.suspicionScore > 0.8) {
-   *   console.log('High fraud risk detected!');
-   * }
-   * ```
-   */
-  async findFraudRing(userId: string): Promise<FraudRing> {
-    const query = `
-      query FindFraudRing($userId: ID!) {
-        user(id: $userId) {
-          id
-          fraudRing {
-            nodes {
-              id
-              type
-              properties
-            }
-            edges {
-              id
-              type
-              source
-              target
-              properties
-            }
-            suspicionScore
-            reasons
-          }
-        }
-      }
-    `;
-
-    const result = await this.query<{ user: { fraudRing: FraudRing } }>(query, { userId });
-    return result.user.fraudRing;
+    return this.request<TraversalResult>('POST', '/traverse', body);
   }
 
   /**
    * Batch create nodes (REST API)
    */
-  async batchCreateNodes(inputs: CreateNodeInput[]): Promise<BatchResult<Node>> {
-    return this.request<BatchResult<Node>>('POST', '/nodes/batch', { nodes: inputs });
+  async batchCreateNodes(inputs: CreateNodeInput[]): Promise<BatchNodeResult> {
+    return this.request<BatchNodeResult>('POST', '/nodes/batch', { nodes: inputs });
   }
 
   /**
    * Batch create edges (REST API)
    */
-  async batchCreateEdges(inputs: CreateEdgeInput[]): Promise<BatchResult<Edge>> {
-    return this.request<BatchResult<Edge>>('POST', '/edges/batch', { edges: inputs });
+  async batchCreateEdges(inputs: CreateEdgeInput[]): Promise<BatchEdgeResult> {
+    return this.request<BatchEdgeResult>('POST', '/edges/batch', { edges: inputs });
   }
 
   /**
@@ -322,6 +265,98 @@ export class GraphDBClient {
    */
   async getMetrics(): Promise<MetricsResponse> {
     return this.request<MetricsResponse>('GET', '/metrics');
+  }
+
+  /**
+   * Query the compliance audit log (REST API). GET
+   * /v1/compliance/audit-log (pkg/api/handlers_compliance.go
+   * handleComplianceAuditLog). Scope is tenant-bound server-side; unset
+   * filters are omitted from the query string.
+   */
+  async getAuditLog(options?: AuditLogOptions): Promise<AuditLogResponse> {
+    const params = new URLSearchParams();
+
+    if (options?.userId) params.set('user_id', options.userId);
+    if (options?.username) params.set('username', options.username);
+    if (options?.action) params.set('action', options.action);
+    if (options?.resourceType) params.set('resource_type', options.resourceType);
+    if (options?.status) params.set('status', options.status);
+    if (options?.startTime) params.set('start_time', options.startTime);
+    if (options?.endTime) params.set('end_time', options.endTime);
+    if (options?.limit) params.set('limit', options.limit.toString());
+    if (options?.offset !== undefined) params.set('offset', options.offset.toString());
+
+    const query = params.toString();
+    const url = query ? `/v1/compliance/audit-log?${query}` : '/v1/compliance/audit-log';
+
+    return this.request<AuditLogResponse>('GET', url);
+  }
+
+  /**
+   * Get a tenant's masking policy (REST API). GET
+   * /v1/compliance/masking-policy/{tenant} (pkg/api/handlers_compliance.go
+   * handleComplianceMaskingPolicyGet). Admins may read any tenant;
+   * non-admins may only read their own (403 otherwise).
+   */
+  async getMaskingPolicy(tenant: string): Promise<MaskingPolicy> {
+    return this.request<MaskingPolicy>(
+      'GET',
+      `/v1/compliance/masking-policy/${encodeURIComponent(tenant)}`
+    );
+  }
+
+  /**
+   * Set the caller's tenant masking policy (REST API, admin-only). POST
+   * /v1/compliance/masking-policy. The target tenant comes from the
+   * caller's own auth context, not this call's arguments — the server
+   * has no tenant field on this request body.
+   */
+  async setMaskingPolicy(policy: SetMaskingPolicyInput): Promise<MaskingPolicy> {
+    const body = {
+      properties: policy.properties,
+      auto_detect: policy.autoDetect ?? false,
+    };
+
+    return this.request<MaskingPolicy>('POST', '/v1/compliance/masking-policy', body);
+  }
+
+  /**
+   * List vector indexes for the caller's tenant (REST API). GET
+   * /vector-indexes.
+   */
+  async listVectorIndexes(): Promise<VectorIndexList> {
+    return this.request<VectorIndexList>('GET', '/vector-indexes');
+  }
+
+  /**
+   * Create a vector index (REST API). POST /vector-indexes.
+   */
+  async createVectorIndex(input: CreateVectorIndexInput): Promise<VectorIndex> {
+    const body = {
+      property_name: input.propertyName,
+      dimensions: input.dimensions,
+      m: input.m,
+      ef_construction: input.efConstruction,
+      metric: input.metric,
+    };
+
+    return this.request<VectorIndex>('POST', '/vector-indexes', body);
+  }
+
+  /**
+   * Get a vector index by property name (REST API). GET
+   * /vector-indexes/{name}.
+   */
+  async getVectorIndex(name: string): Promise<VectorIndex> {
+    return this.request<VectorIndex>('GET', `/vector-indexes/${encodeURIComponent(name)}`);
+  }
+
+  /**
+   * Delete a vector index (REST API). DELETE /vector-indexes/{name}.
+   * Responds 204 No Content on success.
+   */
+  async deleteVectorIndex(name: string): Promise<void> {
+    await this.request<void>('DELETE', `/vector-indexes/${encodeURIComponent(name)}`);
   }
 
   /**
@@ -347,13 +382,16 @@ export class GraphDBClient {
   }
 
   /**
-   * Execute REST API request (internal)
+   * Execute a REST API request and return the raw Response (internal).
+   * Used directly by callers that need response headers (queryNodes'
+   * X-Next-Cursor); `request<T>` wraps this for the common
+   * parse-the-body-and-return-it case.
    */
-  private async request<T>(
+  private async requestWithResponse(
     method: string,
     path: string,
     body?: unknown
-  ): Promise<T> {
+  ): Promise<Response> {
     if (!this.config.enableREST) {
       throw new GraphDBError(
         'REST API is disabled',
@@ -374,7 +412,18 @@ export class GraphDBClient {
       options.body = JSON.stringify(body);
     }
 
-    const response = await this.fetchWithRetry(path, options);
+    return this.fetchWithRetry(path, options);
+  }
+
+  /**
+   * Execute REST API request (internal)
+   */
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown
+  ): Promise<T> {
+    const response = await this.requestWithResponse(method, path, body);
 
     if (response.status === 204) {
       return undefined as T;

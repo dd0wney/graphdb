@@ -11,7 +11,7 @@ GraphDB client for Cloudflare Workers, optimized for low latency and high reliab
 ✅ **Type-Safe** - Full TypeScript support with comprehensive types
 ✅ **Error Handling** - Structured error types for debugging
 ✅ **Auth Support** - API key and JWT authentication
-✅ **Syntopica/Cluso Ready** - Built-in trust score and fraud detection methods
+✅ **Compliance & Vector Search** - Audit log, masking policy, and vector index methods
 
 ## Installation
 
@@ -32,12 +32,12 @@ const graphDB = new GraphDBClient({
   retries: 2,
 });
 
-// Query nodes
-const users = await graphDB.queryNodes({ type: 'user' }, { limit: 10 });
+// Query nodes (only `label` is a server-side filter — see "Query nodes" below)
+const users = await graphDB.queryNodes({ label: 'Person' }, { limit: 10 });
 
 // Traverse graph
 const network = await graphDB.traverse({
-  startNodeId: 'user-123',
+  startNodeId: 123,
   edgeTypes: ['TRUSTS', 'VERIFIED_BY'],
   maxDepth: 2,
   direction: 'outgoing',
@@ -98,31 +98,72 @@ const graphDB = new GraphDBClient({
 ### GraphQL Queries
 
 #### Basic Query
+
+A per-label GraphQL type (`pkg/graphql/schema.go` createNodeType) exposes
+`id`, `labels`, and `properties` — `properties` is a JSON-encoded string,
+not individual property fields:
+
 ```typescript
-const result = await graphDB.query<{ user: User }>(
-  `query GetUser($id: ID!) {
-    user(id: $id) {
+const result = await graphDB.query<{ person: { id: string; properties: string } }>(
+  `query GetPerson($id: ID!) {
+    person(id: $id) {
       id
-      name
-      trustScore
+      properties
     }
   }`,
-  { id: 'user-123' }
+  { id: '123' }
 );
+const properties = JSON.parse(result.person.properties);
+```
+
+#### Cursor Pagination (`limit`/`after`)
+
+The plural query for a label (e.g. `persons` for a `Person` label) takes
+`limit` and an ID-cursor `after`: `after` is the ID of the last item the
+caller has already seen, and a page shorter than `limit` is the last page.
+`after` cannot be combined with `orderBy` or a non-zero `offset` — the
+cursor already fixes the walk order and the start position.
+
+```typescript
+const limit = 50;
+const people: Array<{ id: string; properties: string }> = [];
+let after: string | undefined;
+
+for (;;) {
+  const result = await graphDB.query<{
+    persons: Array<{ id: string; properties: string }>;
+  }>(
+    `query Persons($limit: Int!, $after: ID) {
+      persons(limit: $limit, after: $after) { id properties }
+    }`,
+    { limit, after }
+  );
+
+  people.push(...result.persons);
+  if (result.persons.length < limit) break; // short page = last page
+  after = result.persons[result.persons.length - 1].id;
+}
 ```
 
 #### Mutation
+
+The generic `createNode` mutation (pkg/graphql/mutations.go) takes
+`properties` as a JSON-encoded **string**, not a nested object:
+
 ```typescript
-const result = await graphDB.mutate<{ createUser: User }>(
-  `mutation CreateUser($input: UserInput!) {
-    createUser(input: $input) {
+const result = await graphDB.mutate<{ createNode: { id: string } }>(
+  `mutation CreateNode($labels: [String!]!, $properties: String!) {
+    createNode(labels: $labels, properties: $properties) {
       id
-      name
     }
   }`,
-  { input: { name: 'New User', type: 'user' } }
+  { labels: ['Person'], properties: JSON.stringify({ name: 'New Person' }) }
 );
 ```
+
+For most create/read/update/delete work, the REST methods below are more
+convenient — `createNode()` builds this same request without the manual
+`JSON.stringify`.
 
 ### REST API Methods
 
@@ -130,36 +171,46 @@ const result = await graphDB.mutate<{ createUser: User }>(
 
 **Get node by ID:**
 ```typescript
-const user = await graphDB.getNode('user-123');
-// { id: 'user-123', type: 'user', properties: { name: '...' } }
+const person = await graphDB.getNode(123);
+// { id: 123, labels: ['Person'], properties: { name: '...' } }
 ```
 
 **Create node:**
 ```typescript
-const newUser = await graphDB.createNode({
-  type: 'user',
+const newPerson = await graphDB.createNode({
+  labels: ['Person'],
   properties: { name: 'Alice', email: 'alice@example.com' },
 });
 ```
 
 **Update node:**
 ```typescript
-const updated = await graphDB.updateNode('user-123', {
-  properties: { trustScore: 850 },
+const updated = await graphDB.updateNode(123, {
+  properties: { verified: true },
 });
 ```
 
 **Delete node:**
 ```typescript
-await graphDB.deleteNode('user-123');
+await graphDB.deleteNode(123);
 ```
 
-**Query nodes with filters:**
+**Query nodes (cursor pagination):**
+
+`GET /nodes` only honours a `label` filter and `limit`/`cursor` for
+paging server-side — `offset`, `sortBy`, `sortOrder` are not read by the
+server. The response is a bare array; the next page's cursor comes back
+in the `X-Next-Cursor` response header and is absent on the last page.
+
 ```typescript
-const users = await graphDB.queryNodes(
-  { type: 'user', 'properties.verified': true },
-  { limit: 100, offset: 0, sortBy: 'createdAt', sortOrder: 'desc' }
-);
+let cursor: string | undefined;
+const people = [];
+
+do {
+  const page = await graphDB.queryNodes({ label: 'Person' }, { limit: 100, cursor });
+  people.push(...page.nodes);
+  cursor = page.cursor;
+} while (cursor);
 ```
 
 #### Edges
@@ -168,10 +219,23 @@ const users = await graphDB.queryNodes(
 ```typescript
 const edge = await graphDB.createEdge({
   type: 'TRUSTS',
-  source: 'user-123',
-  target: 'user-456',
-  properties: { weight: 0.8, since: '2025-01-01' },
+  from_node_id: 123,
+  to_node_id: 456,
+  properties: { since: '2025-01-01' },
+  weight: 0.8,
 });
+```
+
+**Get, update, delete edge:**
+```typescript
+const edge = await graphDB.getEdge(789);
+
+const updated = await graphDB.updateEdge(789, {
+  properties: { since: '2026-01-01' },
+  weight: 0.9,
+});
+
+await graphDB.deleteEdge(789);
 ```
 
 #### Batch Operations
@@ -179,20 +243,21 @@ const edge = await graphDB.createEdge({
 **Batch create nodes:**
 ```typescript
 const result = await graphDB.batchCreateNodes([
-  { type: 'user', properties: { name: 'Alice' } },
-  { type: 'user', properties: { name: 'Bob' } },
-  { type: 'user', properties: { name: 'Charlie' } },
+  { labels: ['Person'], properties: { name: 'Alice' } },
+  { labels: ['Person'], properties: { name: 'Bob' } },
+  { labels: ['Person'], properties: { name: 'Charlie' } },
 ]);
 
-console.log(result.success.length); // 3
-console.log(result.failed.length);  // 0
+console.log(result.nodes.length); // 3 created
+console.log(result.failed);       // 0 — a count, not an array
+console.log(result.errors);       // [{ index, error }] for any failures
 ```
 
 **Batch create edges:**
 ```typescript
 const result = await graphDB.batchCreateEdges([
-  { type: 'TRUSTS', source: 'user-1', target: 'user-2' },
-  { type: 'TRUSTS', source: 'user-2', target: 'user-3' },
+  { type: 'TRUSTS', from_node_id: 1, to_node_id: 2 },
+  { type: 'TRUSTS', from_node_id: 2, to_node_id: 3 },
 ]);
 ```
 
@@ -201,95 +266,68 @@ const result = await graphDB.batchCreateEdges([
 **Traverse graph:**
 ```typescript
 const network = await graphDB.traverse({
-  startNodeId: 'user-123',
+  startNodeId: 123,
   edgeTypes: ['TRUSTS', 'VERIFIED_BY'],
   maxDepth: 2,
   direction: 'outgoing',
-  limit: 100,
 });
 
-console.log(network.nodes);  // All reachable nodes
-console.log(network.edges);  // All traversed edges
-console.log(network.paths);  // All paths from start node
+console.log(network.nodes);      // All reachable nodes
+console.log(network.count);      // network.nodes.length
+console.log(network.truncated);  // true if the server capped the result
 ```
+
+`POST /traverse` (`pkg/api/handlers_algorithms_traversal.go`) returns
+only a flat node list — there is no `edges` or `paths` field on the
+response, and no `limit` argument on the request.
 
 **Traversal options:**
 - `direction`: `'outgoing'` | `'incoming'` | `'both'`
 - `maxDepth`: Maximum hops from start node
-- `edgeTypes`: Filter by edge types (empty = all types)
-- `limit`: Max nodes to return
+- `edgeTypes`: Filter by edge types (empty/omitted = all types)
 
-### Syntopica/Cluso Use Cases
+### Compliance API
 
-#### Trust Score Lookup
-
+**Audit log:**
 ```typescript
-const trustScore = await graphDB.getTrustScore('user-123');
-
-console.log(trustScore.score);  // 847
-console.log(trustScore.components);
-// {
-//   verification: 0.9,
-//   activity: 0.85,
-//   reputation: 0.83
-// }
+const log = await graphDB.getAuditLog({
+  resourceType: 'node',
+  status: 'success',
+  limit: 50,
+});
+console.log(log.events, log.total, log.has_more);
 ```
 
-**With KV Cache Wrapper (Recommended):**
+**Masking policy (admin-only for writes):**
 ```typescript
-import { GraphDBClient, GraphDBCache } from '@graphdb/client';
+const policy = await graphDB.getMaskingPolicy('tenant-a');
 
-// Create cache wrapper
-const cache = new GraphDBCache(graphDB, env.TRUST_CACHE, {
-  trustScoreTTL: 3600,  // 1 hour
-  nodeTTL: 300,         // 5 minutes
+await graphDB.setMaskingPolicy({
+  properties: { email: 'hash', ssn: 'redact' },
+  autoDetect: true,
+});
+```
+
+### Vector Index API
+
+```typescript
+await graphDB.createVectorIndex({
+  propertyName: 'embedding',
+  dimensions: 128,
+  metric: 'cosine',
 });
 
-// Automatic cache-aside pattern
-const trustScore = await cache.getTrustScore('user-123');
-
-// Check cache performance
-const stats = cache.getStats();
-console.log(`Cache hit rate: ${(stats.hitRate * 100).toFixed(1)}%`);
-```
-
-**Manual caching (for custom control):**
-```typescript
-async function getTrustScoreCached(userId: string) {
-  // 1. Try cache first
-  const cached = await env.TRUST_CACHE.get(`trust:${userId}`, 'json');
-  if (cached) return cached;
-
-  // 2. Cache miss - query GraphDB
-  const trustScore = await graphDB.getTrustScore(userId);
-
-  // 3. Cache for 1 hour
-  await env.TRUST_CACHE.put(
-    `trust:${userId}`,
-    JSON.stringify(trustScore),
-    { expirationTtl: 3600 }
-  );
-
-  return trustScore;
-}
-```
-
-#### Fraud Ring Detection
-
-```typescript
-const fraudRing = await graphDB.findFraudRing('user-suspicious');
-
-if (fraudRing.suspicionScore > 0.8) {
-  console.log('High fraud risk!');
-  console.log('Reasons:', fraudRing.reasons);
-  // ['Similar IP addresses', 'Coordinated activity', ...]
-
-  console.log('Related accounts:', fraudRing.nodes.length);
-  console.log('Suspicious connections:', fraudRing.edges.length);
-}
+const indexes = await graphDB.listVectorIndexes();
+const index = await graphDB.getVectorIndex('embedding');
+await graphDB.deleteVectorIndex('embedding');
 ```
 
 ### Health & Metrics
+
+> These two methods were not re-verified against `pkg/api` for this
+> release (see `CHANGELOG.md`). `getMetrics()` in particular may be
+> pointed at the wrong route or response shape — treat the example
+> output below as unverified.
 
 **Health check:**
 ```typescript
@@ -323,25 +361,21 @@ const graphDB = new GraphDBClient({
   apiKey: env.GRAPHDB_API_KEY,
 });
 
-const cache = new GraphDBCache(graphDB, env.TRUST_CACHE, {
-  trustScoreTTL: 3600,    // Trust scores: 1 hour
+const cache = new GraphDBCache(graphDB, env.GRAPHDB_CACHE, {
   nodeTTL: 300,           // Nodes: 5 minutes
   traversalTTL: 600,      // Traversals: 10 minutes
-  fraudTTL: 86400,        // Fraud detection: 24 hours
 });
 ```
 
 **Methods:**
 ```typescript
 // Cache-aside queries
-const trustScore = await cache.getTrustScore('user-123');
-const node = await cache.getNode('node-456');
-const result = await cache.traverse('user-123', ['TRUSTS'], 2, 'outgoing');
+const node = await cache.getNode(456);
+const result = await cache.traverse(123, ['TRUSTS'], 2, 'outgoing');
 
 // Cache invalidation
-await cache.invalidateTrustScore('user-123');
-await cache.invalidateNode('node-456');
-await cache.invalidateMultiple(['trust:user-1', 'node:node-2']);
+await cache.invalidateNode(456);
+await cache.invalidateMultiple(['node:1', 'node:2']);
 
 // Statistics
 const stats = cache.getStats();
@@ -355,10 +389,8 @@ cache.resetStats();
 ```typescript
 interface CacheConfig {
   defaultTTL?: number;      // Default: 3600 seconds (1 hour)
-  trustScoreTTL?: number;   // Default: 3600 seconds (1 hour)
   nodeTTL?: number;         // Default: 300 seconds (5 minutes)
   traversalTTL?: number;    // Default: 600 seconds (10 minutes)
-  fraudTTL?: number;        // Default: 86400 seconds (24 hours)
 }
 ```
 
@@ -377,7 +409,7 @@ All errors thrown by the client are instances of `GraphDBError`:
 import { GraphDBError, GraphDBErrorType } from '@graphdb/client';
 
 try {
-  const user = await graphDB.getNode('user-999');
+  const person = await graphDB.getNode(999);
 } catch (error) {
   if (error instanceof GraphDBError) {
     console.log(error.type);        // GraphDBErrorType.NotFoundError
@@ -425,7 +457,7 @@ import { GraphDBClient } from '@graphdb/client';
 interface Env {
   GRAPHDB_URL: string;
   GRAPHDB_API_KEY: string;
-  TRUST_CACHE: KVNamespace;
+  GRAPHDB_CACHE: KVNamespace;
 }
 
 export default {
@@ -438,15 +470,16 @@ export default {
     });
 
     const url = new URL(request.url);
-    const userId = url.searchParams.get('userId');
+    const nodeIdParam = url.searchParams.get('nodeId');
+    const nodeId = nodeIdParam ? Number(nodeIdParam) : NaN;
 
-    if (!userId) {
-      return new Response('Missing userId', { status: 400 });
+    if (!Number.isFinite(nodeId)) {
+      return new Response('Missing or invalid nodeId', { status: 400 });
     }
 
     try {
-      // Try KV cache first (95% hit rate expected)
-      const cached = await env.TRUST_CACHE.get(`trust:${userId}`, 'json');
+      // Try KV cache first
+      const cached = await env.GRAPHDB_CACHE.get(`node:${nodeId}`, 'json');
       if (cached) {
         return new Response(JSON.stringify(cached), {
           headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT' },
@@ -454,16 +487,16 @@ export default {
       }
 
       // Cache miss - query GraphDB
-      const trustScore = await graphDB.getTrustScore(userId);
+      const node = await graphDB.getNode(nodeId);
 
-      // Cache for 1 hour
-      await env.TRUST_CACHE.put(
-        `trust:${userId}`,
-        JSON.stringify(trustScore),
-        { expirationTtl: 3600 }
+      // Cache for 5 minutes
+      await env.GRAPHDB_CACHE.put(
+        `node:${nodeId}`,
+        JSON.stringify(node),
+        { expirationTtl: 300 }
       );
 
-      return new Response(JSON.stringify(trustScore), {
+      return new Response(JSON.stringify(node), {
         headers: { 'Content-Type': 'application/json', 'X-Cache': 'MISS' },
       });
     } catch (error) {
@@ -478,57 +511,56 @@ export default {
 
 ```typescript
 // Generate 500 nodes + 2000 edges in batches
-async function generateCampaign(conceptIds: string[]) {
+async function generateCampaign(conceptCount: number) {
   // Create concept nodes in batch
-  const concepts = conceptIds.map(id => ({
-    type: 'concept',
-    properties: { id, domain: 'physics' },
+  const concepts = Array.from({ length: conceptCount }, (_, i) => ({
+    labels: ['Concept'],
+    properties: { domain: 'physics', order: i },
   }));
 
   const nodeResult = await graphDB.batchCreateNodes(concepts);
-  console.log(`Created ${nodeResult.success.length} nodes`);
+  console.log(`Created ${nodeResult.nodes.length} nodes`);
+  const conceptIds = nodeResult.nodes.map((n) => n.id);
 
   // Create prerequisite edges
   const edges = [];
   for (let i = 0; i < conceptIds.length - 1; i++) {
     edges.push({
       type: 'PREREQUISITE',
-      source: conceptIds[i],
-      target: conceptIds[i + 1],
+      from_node_id: conceptIds[i],
+      to_node_id: conceptIds[i + 1],
     });
   }
 
   const edgeResult = await graphDB.batchCreateEdges(edges);
-  console.log(`Created ${edgeResult.success.length} edges`);
+  console.log(`Created ${edgeResult.edges.length} edges`);
 }
 ```
 
-### Real-time Synopsis Approval
+### Recording Approval (Node + Edge Update)
 
 ```typescript
-// Update trust score when synopsis is approved
-async function approveSynopsis(synopsisId: string, userId: string) {
-  // Create edge: User -> Synopsis
+// Record that a reviewer approved a synopsis, and bump its review count.
+async function approveSynopsis(synopsisId: number, reviewerId: number) {
+  // Create edge: Reviewer -> Synopsis
   await graphDB.createEdge({
     type: 'APPROVED',
-    source: userId,
-    target: synopsisId,
-    properties: {
-      stars: 5,
-      timestamp: new Date().toISOString(),
-    },
+    from_node_id: reviewerId,
+    to_node_id: synopsisId,
+    properties: { timestamp: new Date().toISOString() },
+    weight: 1,
   });
 
-  // Update user trust score
-  const user = await graphDB.getNode(userId);
-  const newTrustScore = user.properties.trustScore + 10;
+  // Update the synopsis's review count
+  const synopsis = await graphDB.getNode(synopsisId);
+  const reviewCount = Number(synopsis.properties.reviewCount ?? 0) + 1;
 
-  await graphDB.updateNode(userId, {
-    properties: { trustScore: newTrustScore },
+  await graphDB.updateNode(synopsisId, {
+    properties: { reviewCount },
   });
 
   // Invalidate cache
-  await env.TRUST_CACHE.delete(`trust:${userId}`);
+  await env.GRAPHDB_CACHE.delete(`node:${synopsisId}`);
 }
 ```
 
@@ -536,13 +568,12 @@ async function approveSynopsis(synopsisId: string, userId: string) {
 
 ### 1. Use Cloudflare KV for Caching
 
-Cache frequently accessed data like trust scores:
+Cache frequently accessed nodes:
 
 ```typescript
-// Cache hit rate: 95% expected
 // Latency: KV = 10-50ms, GraphDB = 50-500ms
-const cached = await env.TRUST_CACHE.get(`trust:${userId}`, 'json');
-if (cached) return cached; // 95% of requests end here
+const cached = await env.GRAPHDB_CACHE.get(`node:${nodeId}`, 'json');
+if (cached) return cached;
 ```
 
 ### 2. Batch Operations
@@ -564,38 +595,35 @@ await graphDB.batchCreateNodes(inputs);
 Keep graph traversals shallow (maxDepth ≤ 3):
 
 ```typescript
-// Good: Fast, focused traversal
+// Good: fast, focused traversal
 const network = await graphDB.traverse({
-  startNodeId: userId,
+  startNodeId: personId,
   maxDepth: 2,
-  limit: 100,
 });
 
-// Bad: Slow, unbounded traversal
+// Bad: slow, unbounded traversal
 const network = await graphDB.traverse({
-  startNodeId: userId,
-  maxDepth: 5,  // Exponential growth!
+  startNodeId: personId,
+  maxDepth: 5,  // Exponential growth! There is no server-side `limit` —
+                // MaxTraversalNodes caps the result and sets `truncated`.
 });
 ```
 
-### 4. Use GraphQL for Complex Queries
+### 4. Use GraphQL to Combine Several Reads
 
-GraphQL is more efficient for complex nested queries:
+GraphQL lets several top-level fields share one round trip — for
+example a node plus a filtered list from another label:
 
 ```typescript
-// Fetch user + trust network in one request
-const result = await graphDB.query(`
-  query GetUserWithNetwork($id: ID!) {
-    user(id: $id) {
-      id
-      trustScore
-      trustedBy {
-        id
-        trustScore
-      }
-    }
+const result = await graphDB.query<{
+  person: { id: string; properties: string };
+  concepts: Array<{ id: string; properties: string }>;
+}>(`
+  query PersonAndConcepts($id: ID!, $limit: Int!) {
+    person(id: $id) { id properties }
+    concepts(limit: $limit) { id properties }
   }
-`, { id: userId });
+`, { id: String(personId), limit: 10 });
 ```
 
 ## Testing
@@ -621,19 +649,17 @@ import {
   GraphDBCache,
   Node,
   Edge,
-  TrustScore,
-  FraudRing,
   GraphDBError,
   CacheConfig,
   CacheStats,
 } from '@graphdb/client';
 
 // Type-safe queries
-const user: Node = await graphDB.getNode('user-123');
-const trustScore: TrustScore = await graphDB.getTrustScore('user-123');
+const person: Node = await graphDB.getNode(123);
+const edge: Edge = await graphDB.getEdge(789);
 
 // Type-safe caching
-const cache = new GraphDBCache(graphDB, env.TRUST_CACHE);
+const cache = new GraphDBCache(graphDB, env.GRAPHDB_CACHE);
 const stats: CacheStats = cache.getStats();
 ```
 

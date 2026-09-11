@@ -59,46 +59,80 @@ export interface GraphQLResponse<T = unknown> {
 export type NodeProperties = Record<string, unknown>;
 
 /**
- * Graph node
+ * Graph node. Matches pkg/api/types.go NodeResponse: the id is the JSON
+ * number the server's uint64 id marshals to (not a string), and a node's
+ * type is carried as `labels` (a node can carry more than one label).
+ * v1 declared `id: string`, `type: string`, and `createdAt`/`updatedAt`
+ * that the server never returns.
  */
-export interface Node {
-  id: string;
-  type: string;
+export type Node = {
+  id: number;
+  labels: string[];
   properties: NodeProperties;
-  createdAt?: string;
-  updatedAt?: string;
-}
+};
 
 /**
- * Graph edge
+ * Graph edge. Matches pkg/api/types.go EdgeResponse. v1 declared
+ * `id: string` and `source`/`target` that the server never returns.
  */
-export interface Edge {
-  id: string;
+export type Edge = {
+  id: number;
+  from_node_id: number;
+  to_node_id: number;
   type: string;
-  source: string;
-  target: string;
   properties: NodeProperties;
-  createdAt?: string;
-}
+  weight: number;
+};
 
 /**
- * Query result with pagination
+ * Result of queryNodes(). GET /nodes returns a bare JSON array (no
+ * envelope) plus the next cursor in the X-Next-Cursor response header,
+ * absent on the last page (pkg/api/pagination.go, handlers_nodes.go
+ * listNodes). There is no `total`/`hasMore` on the wire — v1 declared
+ * both but the server never sent them.
  */
-export interface QueryResult<T> {
-  data: T[];
-  total: number;
-  hasMore: boolean;
+export type QueryResult<T> = {
+  nodes: T[];
   cursor?: string;
-}
+};
 
 /**
- * Traversal options
+ * Server-side filter for queryNodes(). GET /nodes only honours `?label=`
+ * (handlers_nodes.go listNodes) — v1's generic `filters` object was
+ * serialized into a `?filter=` query param the server never read.
  */
-export interface TraversalOptions {
-  /** Starting node ID */
-  startNodeId: string;
+export type QueryNodesFilter = {
+  label?: string;
+};
 
-  /** Edge types to traverse (empty = all types) */
+/**
+ * Query options for queryNodes(). Only `limit` and `cursor` are read by
+ * GET /nodes (pkg/api/pagination.go parsePageRequest) — `offset`,
+ * `sortBy`, `sortOrder` and `fields` from v1's QueryOptions were never
+ * read server-side and are dropped here rather than silently doing
+ * nothing.
+ */
+export type QueryNodesOptions = {
+  /** Page size. Server default is 100, capped at 1000. */
+  limit?: number;
+
+  /** Cursor from a previous QueryResult, to fetch the next page. */
+  cursor?: string;
+};
+
+/**
+ * Traversal options for traverse(). Sent as the JSON body of
+ * POST /traverse (pkg/api/handlers_algorithms_traversal.go
+ * handleTraversal) after translating to the server's snake_case
+ * TraversalRequest fields. There is no `limit` or `nodeFilter` on the
+ * wire — TraversalRequest has no such fields, so v1's values were
+ * silently ignored.
+ */
+export type TraversalOptions = {
+  /** Starting node ID */
+  startNodeId: number;
+
+  /** Edge types to traverse (empty/omitted = all types) */
   edgeTypes?: string[];
 
   /** Maximum traversal depth */
@@ -106,49 +140,20 @@ export interface TraversalOptions {
 
   /** Traversal direction */
   direction: 'outgoing' | 'incoming' | 'both';
-
-  /** Limit number of nodes returned */
-  limit?: number;
-
-  /** Filter function for nodes */
-  nodeFilter?: (node: Node) => boolean;
-}
+};
 
 /**
- * Traversal result
+ * Traversal result. Matches pkg/api/types.go TraversalResponse: a flat
+ * node list, not the `{nodes, edges, paths}` shape v1 expected from a
+ * GraphQL `traverse` field that no resolver ever defined.
  */
-export interface TraversalResult {
+export type TraversalResult = {
   nodes: Node[];
-  edges: Edge[];
-  paths: Array<{
-    nodes: string[];
-    edges: string[];
-  }>;
-}
-
-/**
- * Trust score result
- */
-export interface TrustScore {
-  userId: string;
-  score: number;
-  components: {
-    verification: number;
-    activity: number;
-    reputation: number;
-  };
-  lastUpdated: string;
-}
-
-/**
- * Fraud ring detection result
- */
-export interface FraudRing {
-  nodes: Node[];
-  edges: Edge[];
-  suspicionScore: number;
-  reasons: string[];
-}
+  count: number;
+  time: string;
+  /** True when the server capped the result at MaxTraversalNodes. */
+  truncated?: boolean;
+};
 
 /**
  * Error types
@@ -179,35 +184,14 @@ export class GraphDBError extends Error {
 }
 
 /**
- * Query options for REST API
+ * Create node input. Matches pkg/api/types.go NodeRequest: the server
+ * decodes `labels`, never `type` — a POST /nodes body carrying `type`
+ * fails validation with "at least one label is required" on every call.
  */
-export interface QueryOptions {
-  /** Result limit */
-  limit?: number;
-
-  /** Pagination offset */
-  offset?: number;
-
-  /** Cursor for cursor-based pagination */
-  cursor?: string;
-
-  /** Sort field */
-  sortBy?: string;
-
-  /** Sort order */
-  sortOrder?: 'asc' | 'desc';
-
-  /** Fields to include in response */
-  fields?: string[];
-}
-
-/**
- * Create node input
- */
-export interface CreateNodeInput {
-  type: string;
+export type CreateNodeInput = {
+  labels: string[];
   properties: NodeProperties;
-}
+};
 
 /**
  * Update node input
@@ -217,25 +201,66 @@ export interface UpdateNodeInput {
 }
 
 /**
- * Create edge input
+ * Create edge input. Matches pkg/api/types.go EdgeRequest: the server
+ * decodes `from_node_id`/`to_node_id`, never `source`/`target`, and
+ * accepts an optional `weight`. The v1 field names were never read by
+ * the server, so every edge was created with from_node_id: 0,
+ * to_node_id: 0.
  */
-export interface CreateEdgeInput {
+export type CreateEdgeInput = {
+  from_node_id: number;
+  to_node_id: number;
   type: string;
-  source: string;
-  target: string;
   properties?: NodeProperties;
-}
+  weight?: number;
+};
 
 /**
- * Batch operation result
+ * Update edge input for PUT /edges/{id}. Matches pkg/api/types.go
+ * EdgeUpdateRequest. `weight: undefined` (an omitted field) leaves the
+ * edge's stored weight unchanged; there is no way to explicitly re-zero
+ * it separately from "don't touch it" on the wire.
  */
-export interface BatchResult<T> {
-  success: T[];
-  failed: Array<{
-    input: unknown;
-    error: string;
-  }>;
-}
+export type UpdateEdgeInput = {
+  properties?: NodeProperties;
+  weight?: number;
+};
+
+/**
+ * One failed item from a batch create request. `index` is the item's
+ * position in the REQUEST array, not the response (failed items are
+ * omitted from the response array entirely).
+ */
+export type BatchItemError = {
+  index: number;
+  error: string;
+};
+
+/**
+ * Batch node creation response. Matches pkg/api/types.go
+ * BatchNodeResponse — v1's `{success, failed}` shape (with `failed` as
+ * an array of created items) never matched what the server actually
+ * returns: `failed` is a count, and per-item failures are in `errors`.
+ */
+export type BatchNodeResult = {
+  nodes: Node[];
+  created: number;
+  time: string;
+  failed: number;
+  errors?: BatchItemError[];
+};
+
+/**
+ * Batch edge creation response. Matches pkg/api/types.go
+ * BatchEdgeResponse.
+ */
+export type BatchEdgeResult = {
+  edges: Edge[];
+  created: number;
+  time: string;
+  failed: number;
+  errors?: BatchItemError[];
+};
 
 /**
  * Health check response
@@ -257,3 +282,125 @@ export interface MetricsResponse {
   cache_hit_rate: number;
   avg_query_latency_ms: number;
 }
+
+/**
+ * One audit log entry. Matches pkg/audit/audit.go Event.
+ */
+export type AuditLogEntry = {
+  id: string;
+  timestamp: string;
+  tenant_id?: string;
+  user_id?: string;
+  username?: string;
+  action: string;
+  resource_type: string;
+  resource_id?: string;
+  status: string;
+  error_message?: string;
+  ip_address?: string;
+  user_agent?: string;
+  metadata?: Record<string, unknown>;
+};
+
+/**
+ * Options for getAuditLog(). Translated to the ?user_id=/?resource_type=/
+ * etc. query params GET /v1/compliance/audit-log reads
+ * (pkg/api/handlers_compliance.go handleComplianceAuditLog). `startTime`/
+ * `endTime` are RFC3339 strings.
+ */
+export type AuditLogOptions = {
+  userId?: string;
+  username?: string;
+  action?: string;
+  resourceType?: string;
+  status?: string;
+  startTime?: string;
+  endTime?: string;
+  limit?: number;
+  offset?: number;
+};
+
+/**
+ * Response from getAuditLog(). Matches the map[string]any body
+ * handleComplianceAuditLog returns.
+ */
+export type AuditLogResponse = {
+  events: AuditLogEntry[];
+  count: number;
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+  tenant?: string;
+  cross_tenant?: boolean;
+};
+
+/**
+ * Per-property masking strategy. Matches pkg/masking/masking_types.go
+ * MaskingStrategy.
+ */
+export type MaskingStrategyName =
+  | 'full'
+  | 'partial'
+  | 'hash'
+  | 'redact'
+  | 'tokenize'
+  | 'none';
+
+/**
+ * A tenant's masking policy. Matches pkg/masking/policy_types.go Policy.
+ */
+export type MaskingPolicy = {
+  tenant_id: string;
+  properties?: Record<string, MaskingStrategyName>;
+  auto_detect: boolean;
+  updated_at: string;
+};
+
+/**
+ * Body for setMaskingPolicy() — POST /v1/compliance/masking-policy.
+ * Admin-only; the target tenant comes from the caller's auth context, not
+ * this body (mirrors clients/python's set_masking_policy).
+ */
+export type SetMaskingPolicyInput = {
+  properties: Record<string, MaskingStrategyName>;
+  autoDetect?: boolean;
+};
+
+/**
+ * Distance metric for a vector index. Matches pkg/vector's
+ * DistanceMetric, as serialized by pkg/api/handlers_vectors.go
+ * metricToString.
+ */
+export type VectorMetric = 'cosine' | 'euclidean' | 'dot_product';
+
+/**
+ * A vector index, as returned by the /vector-indexes endpoints. Matches
+ * pkg/api/handlers_vectors.go VectorIndexResponse.
+ */
+export type VectorIndex = {
+  property_name: string;
+  dimensions?: number;
+  metric?: string;
+};
+
+/**
+ * Response from listVectorIndexes(). Matches
+ * pkg/api/handlers_vectors.go VectorIndexListResponse.
+ */
+export type VectorIndexList = {
+  indexes: VectorIndex[];
+  count: number;
+};
+
+/**
+ * Body for createVectorIndex() — POST /vector-indexes. Translated to the
+ * server's snake_case VectorIndexRequest fields.
+ */
+export type CreateVectorIndexInput = {
+  propertyName: string;
+  dimensions: number;
+  m?: number;
+  efConstruction?: number;
+  metric?: VectorMetric;
+};
