@@ -282,3 +282,125 @@ export interface MetricsResponse {
   cache_hit_rate: number;
   avg_query_latency_ms: number;
 }
+
+/**
+ * One audit log entry. Matches pkg/audit/audit.go Event.
+ */
+export type AuditLogEntry = {
+  id: string;
+  timestamp: string;
+  tenant_id?: string;
+  user_id?: string;
+  username?: string;
+  action: string;
+  resource_type: string;
+  resource_id?: string;
+  status: string;
+  error_message?: string;
+  ip_address?: string;
+  user_agent?: string;
+  metadata?: Record<string, unknown>;
+};
+
+/**
+ * Options for getAuditLog(). Translated to the ?user_id=/?resource_type=/
+ * etc. query params GET /v1/compliance/audit-log reads
+ * (pkg/api/handlers_compliance.go handleComplianceAuditLog). `startTime`/
+ * `endTime` are RFC3339 strings.
+ */
+export type AuditLogOptions = {
+  userId?: string;
+  username?: string;
+  action?: string;
+  resourceType?: string;
+  status?: string;
+  startTime?: string;
+  endTime?: string;
+  limit?: number;
+  offset?: number;
+};
+
+/**
+ * Response from getAuditLog(). Matches the map[string]any body
+ * handleComplianceAuditLog returns.
+ */
+export type AuditLogResponse = {
+  events: AuditLogEntry[];
+  count: number;
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+  tenant?: string;
+  cross_tenant?: boolean;
+};
+
+/**
+ * Per-property masking strategy. Matches pkg/masking/masking_types.go
+ * MaskingStrategy.
+ */
+export type MaskingStrategyName =
+  | 'full'
+  | 'partial'
+  | 'hash'
+  | 'redact'
+  | 'tokenize'
+  | 'none';
+
+/**
+ * A tenant's masking policy. Matches pkg/masking/policy_types.go Policy.
+ */
+export type MaskingPolicy = {
+  tenant_id: string;
+  properties?: Record<string, MaskingStrategyName>;
+  auto_detect: boolean;
+  updated_at: string;
+};
+
+/**
+ * Body for setMaskingPolicy() — POST /v1/compliance/masking-policy.
+ * Admin-only; the target tenant comes from the caller's auth context, not
+ * this body (mirrors clients/python's set_masking_policy).
+ */
+export type SetMaskingPolicyInput = {
+  properties: Record<string, MaskingStrategyName>;
+  autoDetect?: boolean;
+};
+
+/**
+ * Distance metric for a vector index. Matches pkg/vector's
+ * DistanceMetric, as serialized by pkg/api/handlers_vectors.go
+ * metricToString.
+ */
+export type VectorMetric = 'cosine' | 'euclidean' | 'dot_product';
+
+/**
+ * A vector index, as returned by the /vector-indexes endpoints. Matches
+ * pkg/api/handlers_vectors.go VectorIndexResponse.
+ */
+export type VectorIndex = {
+  property_name: string;
+  dimensions?: number;
+  metric?: string;
+};
+
+/**
+ * Response from listVectorIndexes(). Matches
+ * pkg/api/handlers_vectors.go VectorIndexListResponse.
+ */
+export type VectorIndexList = {
+  indexes: VectorIndex[];
+  count: number;
+};
+
+/**
+ * Body for createVectorIndex() — POST /vector-indexes. Translated to the
+ * server's snake_case VectorIndexRequest fields.
+ */
+export type CreateVectorIndexInput = {
+  propertyName: string;
+  dimensions: number;
+  m?: number;
+  efConstruction?: number;
+  metric?: VectorMetric;
+};

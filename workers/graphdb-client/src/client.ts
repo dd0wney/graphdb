@@ -24,6 +24,13 @@ import {
   BatchEdgeResult,
   HealthCheckResponse,
   MetricsResponse,
+  AuditLogOptions,
+  AuditLogResponse,
+  MaskingPolicy,
+  SetMaskingPolicyInput,
+  VectorIndex,
+  VectorIndexList,
+  CreateVectorIndexInput,
 } from './types';
 
 /**
@@ -258,6 +265,98 @@ export class GraphDBClient {
    */
   async getMetrics(): Promise<MetricsResponse> {
     return this.request<MetricsResponse>('GET', '/metrics');
+  }
+
+  /**
+   * Query the compliance audit log (REST API). GET
+   * /v1/compliance/audit-log (pkg/api/handlers_compliance.go
+   * handleComplianceAuditLog). Scope is tenant-bound server-side; unset
+   * filters are omitted from the query string.
+   */
+  async getAuditLog(options?: AuditLogOptions): Promise<AuditLogResponse> {
+    const params = new URLSearchParams();
+
+    if (options?.userId) params.set('user_id', options.userId);
+    if (options?.username) params.set('username', options.username);
+    if (options?.action) params.set('action', options.action);
+    if (options?.resourceType) params.set('resource_type', options.resourceType);
+    if (options?.status) params.set('status', options.status);
+    if (options?.startTime) params.set('start_time', options.startTime);
+    if (options?.endTime) params.set('end_time', options.endTime);
+    if (options?.limit) params.set('limit', options.limit.toString());
+    if (options?.offset !== undefined) params.set('offset', options.offset.toString());
+
+    const query = params.toString();
+    const url = query ? `/v1/compliance/audit-log?${query}` : '/v1/compliance/audit-log';
+
+    return this.request<AuditLogResponse>('GET', url);
+  }
+
+  /**
+   * Get a tenant's masking policy (REST API). GET
+   * /v1/compliance/masking-policy/{tenant} (pkg/api/handlers_compliance.go
+   * handleComplianceMaskingPolicyGet). Admins may read any tenant;
+   * non-admins may only read their own (403 otherwise).
+   */
+  async getMaskingPolicy(tenant: string): Promise<MaskingPolicy> {
+    return this.request<MaskingPolicy>(
+      'GET',
+      `/v1/compliance/masking-policy/${encodeURIComponent(tenant)}`
+    );
+  }
+
+  /**
+   * Set the caller's tenant masking policy (REST API, admin-only). POST
+   * /v1/compliance/masking-policy. The target tenant comes from the
+   * caller's own auth context, not this call's arguments — the server
+   * has no tenant field on this request body.
+   */
+  async setMaskingPolicy(policy: SetMaskingPolicyInput): Promise<MaskingPolicy> {
+    const body = {
+      properties: policy.properties,
+      auto_detect: policy.autoDetect ?? false,
+    };
+
+    return this.request<MaskingPolicy>('POST', '/v1/compliance/masking-policy', body);
+  }
+
+  /**
+   * List vector indexes for the caller's tenant (REST API). GET
+   * /vector-indexes.
+   */
+  async listVectorIndexes(): Promise<VectorIndexList> {
+    return this.request<VectorIndexList>('GET', '/vector-indexes');
+  }
+
+  /**
+   * Create a vector index (REST API). POST /vector-indexes.
+   */
+  async createVectorIndex(input: CreateVectorIndexInput): Promise<VectorIndex> {
+    const body = {
+      property_name: input.propertyName,
+      dimensions: input.dimensions,
+      m: input.m,
+      ef_construction: input.efConstruction,
+      metric: input.metric,
+    };
+
+    return this.request<VectorIndex>('POST', '/vector-indexes', body);
+  }
+
+  /**
+   * Get a vector index by property name (REST API). GET
+   * /vector-indexes/{name}.
+   */
+  async getVectorIndex(name: string): Promise<VectorIndex> {
+    return this.request<VectorIndex>('GET', `/vector-indexes/${encodeURIComponent(name)}`);
+  }
+
+  /**
+   * Delete a vector index (REST API). DELETE /vector-indexes/{name}.
+   * Responds 204 No Content on success.
+   */
+  async deleteVectorIndex(name: string): Promise<void> {
+    await this.request<void>('DELETE', `/vector-indexes/${encodeURIComponent(name)}`);
   }
 
   /**

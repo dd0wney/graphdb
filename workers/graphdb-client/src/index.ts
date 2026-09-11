@@ -69,6 +69,20 @@ export {
   HealthCheckResponse,
   MetricsResponse,
 
+  // Compliance
+  AuditLogEntry,
+  AuditLogOptions,
+  AuditLogResponse,
+  MaskingStrategyName,
+  MaskingPolicy,
+  SetMaskingPolicyInput,
+
+  // Vector indexes
+  VectorMetric,
+  VectorIndex,
+  VectorIndexList,
+  CreateVectorIndexInput,
+
   // Errors
   GraphDBError,
   GraphDBErrorType,
