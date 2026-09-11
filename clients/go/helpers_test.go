@@ -3,7 +3,11 @@ package graphdb
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +100,91 @@ func TestGraphQLSendsVariablesOnlyWhenSet(t *testing.T) {
 	}
 	if vars, ok := bodies[1]["variables"].(map[string]any); !ok || vars["id"] != "1" {
 		t.Errorf("variables = %v, want id=1", bodies[1]["variables"])
+	}
+}
+
+// TestGraphQLAfterCursorWalk drives Client.GraphQL through a manual cursor
+// walk of persons(limit: N, after: "<id>"), the pattern a caller uses for
+// the v1.4 GraphQL `after` argument (pkg/graphql/after_cursor.go): the
+// cursor is the id of the last item seen, and a page shorter than limit
+// ends the walk. Client.GraphQL itself carries no pagination logic -- this
+// pins that a caller-driven walk round-trips correctly through it.
+func TestGraphQLAfterCursorWalk(t *testing.T) {
+	type person struct {
+		ID string `json:"id"`
+	}
+	all := []person{{"1"}, {"2"}, {"3"}, {"4"}, {"5"}}
+	const limit = 2
+	afterRe := regexp.MustCompile(`after:\s*"(\d+)"`)
+
+	var pages int
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		pages++
+		if r.Method != http.MethodPost || r.URL.Path != "/graphql" {
+			t.Fatalf("got %s %s", r.Method, r.URL.Path)
+		}
+		var body struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if !strings.Contains(body.Query, fmt.Sprintf("limit: %d", limit)) {
+			t.Errorf("query %q missing limit: %d", body.Query, limit)
+		}
+		after := 0
+		if m := afterRe.FindStringSubmatch(body.Query); m != nil {
+			after, _ = strconv.Atoi(m[1])
+		}
+		var page []person
+		for _, p := range all {
+			id, _ := strconv.Atoi(p.ID)
+			if id > after {
+				page = append(page, p)
+			}
+			if len(page) == limit {
+				break
+			}
+		}
+		data, _ := json.Marshal(map[string]any{"data": map[string]any{"persons": page}})
+		_, _ = w.Write(data)
+	})
+
+	var got []string
+	after := ""
+	for i := 0; i < 10; i++ {
+		afterArg := ""
+		if after != "" {
+			afterArg = fmt.Sprintf(`, after: "%s"`, after)
+		}
+		query := fmt.Sprintf(`{ persons(limit: %d%s) { id } }`, limit, afterArg)
+		raw, err := c.GraphQL(context.Background(), query, nil)
+		if err != nil {
+			t.Fatalf("graphql: %v", err)
+		}
+		var parsed struct {
+			Data struct {
+				Persons []person `json:"persons"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		page := parsed.Data.Persons
+		for _, p := range page {
+			got = append(got, p.ID)
+		}
+		if len(page) < limit {
+			break
+		}
+		after = page[len(page)-1].ID
+	}
+
+	want := []string{"1", "2", "3", "4", "5"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("walked ids = %v, want %v", got, want)
+	}
+	if pages != 3 {
+		t.Errorf("pages = %d, want 3 (2+2+1, stopping at the short page)", pages)
 	}
 }

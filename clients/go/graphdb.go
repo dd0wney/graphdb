@@ -11,9 +11,10 @@ import (
 type Client struct {
 	t *transport
 
-	Nodes  *Nodes
-	Edges  *Edges
-	Search *Search
+	Nodes      *Nodes
+	Edges      *Edges
+	Search     *Search
+	Compliance *Compliance
 }
 
 // Option configures a Client.
@@ -74,6 +75,7 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	c.Nodes = &Nodes{t: t}
 	c.Edges = &Edges{t: t}
 	c.Search = &Search{t: t}
+	c.Compliance = &Compliance{t: t}
 	return c, nil
 }
 
@@ -81,3 +83,4 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 type Nodes struct{ t *transport }
 type Edges struct{ t *transport }
 type Search struct{ t *transport }
+type Compliance struct{ t *transport }

@@ -117,3 +117,11 @@ func (s *Search) GetIndex(ctx context.Context, property string) (*VectorIndex, e
 	var out VectorIndex
 	return &out, json.Unmarshal(res.data, &out)
 }
+
+// DeleteIndex drops a vector index. A missing index returns an *Error
+// wrapping ErrNotFound (404).
+func (s *Search) DeleteIndex(ctx context.Context, property string) error {
+	_, err := s.t.request(ctx, http.MethodDelete,
+		fmt.Sprintf("/vector-indexes/%s", url.PathEscape(property)), nil, nil)
+	return err
+}
