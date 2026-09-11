@@ -20,7 +20,8 @@ import {
   CreateNodeInput,
   UpdateNodeInput,
   CreateEdgeInput,
-  BatchResult,
+  BatchNodeResult,
+  BatchEdgeResult,
   HealthCheckResponse,
   MetricsResponse,
 } from './types';
@@ -115,7 +116,7 @@ export class GraphDBClient {
   /**
    * Get a node by ID (REST API)
    */
-  async getNode(id: string): Promise<Node> {
+  async getNode(id: number): Promise<Node> {
     return this.request<Node>('GET', `/nodes/${id}`);
   }
 
@@ -129,14 +130,14 @@ export class GraphDBClient {
   /**
    * Update a node (REST API)
    */
-  async updateNode(id: string, input: UpdateNodeInput): Promise<Node> {
+  async updateNode(id: number, input: UpdateNodeInput): Promise<Node> {
     return this.request<Node>('PATCH', `/nodes/${id}`, input);
   }
 
   /**
    * Delete a node (REST API)
    */
-  async deleteNode(id: string): Promise<void> {
+  async deleteNode(id: number): Promise<void> {
     await this.request<void>('DELETE', `/nodes/${id}`);
   }
 
@@ -299,15 +300,15 @@ export class GraphDBClient {
   /**
    * Batch create nodes (REST API)
    */
-  async batchCreateNodes(inputs: CreateNodeInput[]): Promise<BatchResult<Node>> {
-    return this.request<BatchResult<Node>>('POST', '/nodes/batch', { nodes: inputs });
+  async batchCreateNodes(inputs: CreateNodeInput[]): Promise<BatchNodeResult> {
+    return this.request<BatchNodeResult>('POST', '/nodes/batch', { nodes: inputs });
   }
 
   /**
    * Batch create edges (REST API)
    */
-  async batchCreateEdges(inputs: CreateEdgeInput[]): Promise<BatchResult<Edge>> {
-    return this.request<BatchResult<Edge>>('POST', '/edges/batch', { edges: inputs });
+  async batchCreateEdges(inputs: CreateEdgeInput[]): Promise<BatchEdgeResult> {
+    return this.request<BatchEdgeResult>('POST', '/edges/batch', { edges: inputs });
   }
 
   /**

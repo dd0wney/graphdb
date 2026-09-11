@@ -64,7 +64,9 @@ export {
   CreateNodeInput,
   UpdateNodeInput,
   CreateEdgeInput,
-  BatchResult,
+  BatchItemError,
+  BatchNodeResult,
+  BatchEdgeResult,
 
   // Health & Metrics
   HealthCheckResponse,

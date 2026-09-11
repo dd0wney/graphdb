@@ -122,7 +122,7 @@ export class GraphDBCache {
   /**
    * Get node with caching
    */
-  async getNode(nodeId: string): Promise<Node> {
+  async getNode(nodeId: number): Promise<Node> {
     const cacheKey = this.generateKey('node', nodeId);
 
     try {
@@ -215,7 +215,7 @@ export class GraphDBCache {
   /**
    * Generate cache key
    */
-  generateKey(type: string, id: string): string {
+  generateKey(type: string, id: string | number): string {
     return `${this.keyPrefix()}${type}:${id}`;
   }
 

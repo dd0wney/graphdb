@@ -59,27 +59,30 @@ export interface GraphQLResponse<T = unknown> {
 export type NodeProperties = Record<string, unknown>;
 
 /**
- * Graph node
+ * Graph node. Matches pkg/api/types.go NodeResponse: the id is the JSON
+ * number the server's uint64 id marshals to (not a string), and a node's
+ * type is carried as `labels` (a node can carry more than one label).
+ * v1 declared `id: string`, `type: string`, and `createdAt`/`updatedAt`
+ * that the server never returns.
  */
-export interface Node {
-  id: string;
-  type: string;
+export type Node = {
+  id: number;
+  labels: string[];
   properties: NodeProperties;
-  createdAt?: string;
-  updatedAt?: string;
-}
+};
 
 /**
- * Graph edge
+ * Graph edge. Matches pkg/api/types.go EdgeResponse. v1 declared
+ * `id: string` and `source`/`target` that the server never returns.
  */
-export interface Edge {
-  id: string;
+export type Edge = {
+  id: number;
+  from_node_id: number;
+  to_node_id: number;
   type: string;
-  source: string;
-  target: string;
   properties: NodeProperties;
-  createdAt?: string;
-}
+  weight: number;
+};
 
 /**
  * Query result with pagination
@@ -202,12 +205,14 @@ export interface QueryOptions {
 }
 
 /**
- * Create node input
+ * Create node input. Matches pkg/api/types.go NodeRequest: the server
+ * decodes `labels`, never `type` — a POST /nodes body carrying `type`
+ * fails validation with "at least one label is required" on every call.
  */
-export interface CreateNodeInput {
-  type: string;
+export type CreateNodeInput = {
+  labels: string[];
   properties: NodeProperties;
-}
+};
 
 /**
  * Update node input
@@ -217,25 +222,55 @@ export interface UpdateNodeInput {
 }
 
 /**
- * Create edge input
+ * Create edge input. Matches pkg/api/types.go EdgeRequest: the server
+ * decodes `from_node_id`/`to_node_id`, never `source`/`target`, and
+ * accepts an optional `weight`. The v1 field names were never read by
+ * the server, so every edge was created with from_node_id: 0,
+ * to_node_id: 0.
  */
-export interface CreateEdgeInput {
+export type CreateEdgeInput = {
+  from_node_id: number;
+  to_node_id: number;
   type: string;
-  source: string;
-  target: string;
   properties?: NodeProperties;
-}
+  weight?: number;
+};
 
 /**
- * Batch operation result
+ * One failed item from a batch create request. `index` is the item's
+ * position in the REQUEST array, not the response (failed items are
+ * omitted from the response array entirely).
  */
-export interface BatchResult<T> {
-  success: T[];
-  failed: Array<{
-    input: unknown;
-    error: string;
-  }>;
-}
+export type BatchItemError = {
+  index: number;
+  error: string;
+};
+
+/**
+ * Batch node creation response. Matches pkg/api/types.go
+ * BatchNodeResponse — v1's `{success, failed}` shape (with `failed` as
+ * an array of created items) never matched what the server actually
+ * returns: `failed` is a count, and per-item failures are in `errors`.
+ */
+export type BatchNodeResult = {
+  nodes: Node[];
+  created: number;
+  time: string;
+  failed: number;
+  errors?: BatchItemError[];
+};
+
+/**
+ * Batch edge creation response. Matches pkg/api/types.go
+ * BatchEdgeResponse.
+ */
+export type BatchEdgeResult = {
+  edges: Edge[];
+  created: number;
+  time: string;
+  failed: number;
+  errors?: BatchItemError[];
+};
 
 /**
  * Health check response
