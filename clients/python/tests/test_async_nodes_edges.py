@@ -43,3 +43,19 @@ async def test_edge_create_and_delete(base_url):
     assert e.id == 9 and e.type == "LINKS"
     respx.delete(f"{base_url}/edges/9").mock(return_value=httpx.Response(204))
     assert await _edges(base_url).delete(9) is None
+
+
+@respx.mock
+async def test_edge_list_async_iterates_cursor(base_url):
+    page1 = httpx.Response(
+        200,
+        json=[{"id": 1, "from_node_id": 1, "to_node_id": 2, "type": "R", "properties": {}, "weight": 0.0}],
+        headers={"X-Next-Cursor": "c2"},
+    )
+    page2 = httpx.Response(
+        200,
+        json=[{"id": 2, "from_node_id": 2, "to_node_id": 3, "type": "R", "properties": {}, "weight": 0.0}],
+    )
+    respx.get(f"{base_url}/edges").mock(side_effect=[page1, page2])
+    ids = [e.id async for e in _edges(base_url).list(page_size=1)]
+    assert ids == [1, 2]

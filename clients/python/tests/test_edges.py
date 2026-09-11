@@ -75,3 +75,35 @@ def test_delete_edge(base_url):
     route = respx.delete(f"{base_url}/edges/3").mock(return_value=httpx.Response(200))
     _res(base_url).delete(3)
     assert route.called
+
+
+@respx.mock
+def test_list_auto_paginates_across_cursor(base_url):
+    page1 = httpx.Response(200, json=[
+        {"id": 1, "from_node_id": 1, "to_node_id": 2, "type": "KNOWS", "properties": {}, "weight": 0.0},
+        {"id": 2, "from_node_id": 2, "to_node_id": 3, "type": "KNOWS", "properties": {}, "weight": 0.0},
+    ], headers={"X-Next-Cursor": "2"})
+    page2 = httpx.Response(200, json=[
+        {"id": 3, "from_node_id": 3, "to_node_id": 4, "type": "KNOWS", "properties": {}, "weight": 0.0},
+    ])
+    route = respx.get(f"{base_url}/edges").mock(side_effect=[page1, page2])
+
+    got = list(_res(base_url).list(edge_type="KNOWS", page_size=2))
+    assert [e.id for e in got] == [1, 2, 3]
+    assert route.calls[-1].request.url.params["cursor"] == "2"
+    assert route.calls[0].request.url.params["type"] == "KNOWS"
+
+
+@respx.mock
+def test_list_terminates_on_stuck_cursor(base_url):
+    # A non-spec-compliant server that never advances the cursor must not hang
+    # the client: the generator stops once the cursor repeats.
+    page = httpx.Response(
+        200,
+        json=[{"id": 1, "from_node_id": 1, "to_node_id": 2, "type": "R", "properties": {}, "weight": 0.0}],
+        headers={"X-Next-Cursor": "stuck"},
+    )
+    respx.get(f"{base_url}/edges").mock(side_effect=[page, page, page])
+    got = list(_res(base_url).list(page_size=1))
+    # page1: cursor="stuck" (advances); page2: cursor=="stuck"==prev -> terminate.
+    assert len(got) == 2
