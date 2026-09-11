@@ -3,6 +3,7 @@ package graphdb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 )
@@ -111,5 +112,42 @@ func TestSearchGetIndexEscapesPropertyName(t *testing.T) {
 	idx, err := c.Search.GetIndex(context.Background(), "vec/dim")
 	if err != nil || idx.PropertyName != "vec/dim" {
 		t.Fatalf("getindex: %v %+v", err, idx)
+	}
+}
+
+func TestSearchDeleteIndex(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/vector-indexes/embedding" {
+			t.Fatalf("got %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	if err := c.Search.DeleteIndex(context.Background(), "embedding"); err != nil {
+		t.Fatalf("deleteindex: %v", err)
+	}
+}
+
+// A property name containing a slash must be path-escaped, not become an
+// extra URL segment (same pattern as GetIndex).
+func TestSearchDeleteIndexEscapesPropertyName(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/vector-indexes/vec%2Fdim" {
+			t.Errorf("escaped path = %q, want /vector-indexes/vec%%2Fdim", got)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	if err := c.Search.DeleteIndex(context.Background(), "vec/dim"); err != nil {
+		t.Fatalf("deleteindex: %v", err)
+	}
+}
+
+func TestSearchDeleteIndexMapsNotFound(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"index not found"}`))
+	})
+	err := c.Search.DeleteIndex(context.Background(), "missing")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
 }
