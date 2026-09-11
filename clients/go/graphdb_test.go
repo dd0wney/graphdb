@@ -19,7 +19,7 @@ func TestNewRequiresExactlyOneAuthMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid: %v", err)
 	}
-	if c.Nodes == nil || c.Edges == nil || c.Search == nil {
+	if c.Nodes == nil || c.Edges == nil || c.Search == nil || c.Compliance == nil {
 		t.Error("facets not wired")
 	}
 }
