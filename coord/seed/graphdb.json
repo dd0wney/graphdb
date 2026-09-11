@@ -55,8 +55,8 @@
     {
       "id": "v1.4-f3-compliance-http-api",
       "track": "v1.4",
-      "status": "pending",
-      "title": "F3 compliance HTTP-API surface over the existing pkg/compliance framework (endpoints only)"
+      "status": "done",
+      "title": "F3 compliance HTTP-API surface over the existing pkg/compliance framework (endpoints only) — already shipped May 2026 (#111/#114/#122/#124); re-listed in error, closed 2026-09-11 with PR 124"
     },
     {
       "id": "v1.4-sdk-parity",
