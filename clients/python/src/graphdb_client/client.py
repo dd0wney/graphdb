@@ -188,7 +188,12 @@ class GraphDBClient:
     ) -> dict[str, Any]:
         """Execute a GraphQL document (POST /graphql). Returns the raw response
         dict ({"data": ..., "errors": ...}); GraphQL-level errors are returned in
-        the dict, not raised (only HTTP >= 400 raises)."""
+        the dict, not raised (only HTTP >= 400 raises).
+
+        List fields (for example `persons`) take an `after` argument for
+        cursor pagination: pass the `id` of the last item as `after`, and a
+        page shorter than `limit` is the last page. `after` cannot combine
+        with `orderBy` or a non-zero `offset`."""
         body: dict[str, Any] = {"query": query}
         if variables is not None:
             body["variables"] = dict(variables)

@@ -66,6 +66,23 @@ with GraphDBClient("http://localhost:8080", token=TOKEN) as db:
     path = db.algorithms.shortest_path(1, 42)
 ```
 
+`graphql()` returns the raw `{"data": ..., "errors": ...}` dict. Page a list
+field yourself with the `after` cursor argument (the `id` of the last item; a
+page shorter than `limit` is the last page):
+
+```python
+query = "query($after: ID) { persons(limit: 100, after: $after) { id properties } }"
+after = None
+all_persons = []
+while True:
+    out = db.graphql(query, variables={"after": after})
+    page = out["data"]["persons"]
+    all_persons.extend(page)
+    if len(page) < 100:
+        break
+    after = page[-1]["id"]
+```
+
 ## Admin (requires an admin token)
 
 ```python
