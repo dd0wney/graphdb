@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"net/http"
+	"net/url"
+	"strconv"
 )
 
 type EdgeCreateOptions struct {
@@ -86,4 +89,65 @@ func (e *Edges) BatchCreate(ctx context.Context, edges []EdgeInput) ([]Edge, err
 		Edges []Edge `json:"edges"`
 	}
 	return out.Edges, json.Unmarshal(res.data, &out)
+}
+
+// ListEdgesOptions controls edge listing.
+type ListEdgesOptions struct {
+	Type     string
+	PageSize int // default 100 if <= 0
+}
+
+// List streams every edge (optionally filtered by type), auto-following the
+// X-Next-Cursor response header. On error the iterator yields one final
+// (zero, err) pair and stops.
+func (e *Edges) List(ctx context.Context, opts ListEdgesOptions) iter.Seq2[Edge, error] {
+	pageSize := opts.PageSize
+	if pageSize <= 0 {
+		pageSize = 100
+	}
+	return func(yield func(Edge, error) bool) {
+		var cursor, prev string
+		for {
+			params := url.Values{}
+			params.Set("limit", strconv.Itoa(pageSize))
+			if opts.Type != "" {
+				params.Set("type", opts.Type)
+			}
+			if cursor != "" {
+				params.Set("cursor", cursor)
+			}
+			res, err := e.t.request(ctx, http.MethodGet, "/edges", nil, params)
+			if err != nil {
+				yield(Edge{}, err)
+				return
+			}
+			var page []Edge
+			if err := json.Unmarshal(res.data, &page); err != nil {
+				yield(Edge{}, err)
+				return
+			}
+			for _, ed := range page {
+				if !yield(ed, nil) {
+					return
+				}
+			}
+			cursor = res.header.Get("X-Next-Cursor")
+			if cursor == "" || cursor == prev {
+				return
+			}
+			prev = cursor
+		}
+	}
+}
+
+// ListAll collects every edge into a slice (convenience over List).
+func (e *Edges) ListAll(ctx context.Context, opts ListEdgesOptions) ([]Edge, error) {
+	var out []Edge
+	for ed, err := range e.List(ctx, opts) {
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ed)
+	}
+	return out, nil
 }
