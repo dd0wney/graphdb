@@ -5,7 +5,7 @@
  */
 
 import { GraphDBClient } from './client';
-import type { TrustScore, Node, TraversalResult } from './types';
+import type { Node, TraversalResult } from './types';
 
 /**
  * Cache configuration options
@@ -14,17 +14,11 @@ export interface CacheConfig {
   /** Default TTL in seconds (default: 3600 = 1 hour) */
   defaultTTL?: number;
 
-  /** Trust score TTL in seconds (default: 3600 = 1 hour) */
-  trustScoreTTL?: number;
-
   /** Node TTL in seconds (default: 300 = 5 minutes) */
   nodeTTL?: number;
 
   /** Traversal TTL in seconds (default: 600 = 10 minutes) */
   traversalTTL?: number;
-
-  /** Fraud detection TTL in seconds (default: 86400 = 24 hours) */
-  fraudTTL?: number;
 
   /**
    * Identity namespace prefixed onto every cache key (security audit
@@ -53,13 +47,12 @@ export interface CacheStats {
  *
  * @example
  * ```typescript
- * const cache = new GraphDBCache(graphDB, env.TRUST_CACHE, {
- *   trustScoreTTL: 3600,  // 1 hour
+ * const cache = new GraphDBCache(graphDB, env.GRAPHDB_CACHE, {
  *   nodeTTL: 300,         // 5 minutes
  * });
  *
  * // Cache-aside pattern - automatic caching
- * const trustScore = await cache.getTrustScore('user-123');
+ * const node = await cache.getNode(123);
  * ```
  */
 export class GraphDBCache {
@@ -76,47 +69,10 @@ export class GraphDBCache {
   ) {
     this.config = {
       defaultTTL: config.defaultTTL || 3600,
-      trustScoreTTL: config.trustScoreTTL || 3600,
       nodeTTL: config.nodeTTL || 300,
       traversalTTL: config.traversalTTL || 600,
-      fraudTTL: config.fraudTTL || 86400,
       namespace: config.namespace || '',
     };
-  }
-
-  /**
-   * Get trust score with caching (cache-aside pattern)
-   */
-  async getTrustScore(userId: string): Promise<TrustScore> {
-    const cacheKey = this.generateKey('trust', userId);
-
-    try {
-      // Try cache first
-      const cached = await this.kv.get(cacheKey, 'json');
-      if (cached) {
-        this.stats.hits++;
-        return cached as TrustScore;
-      }
-    } catch (error) {
-      // KV error - fall through to fetch from GraphDB
-      console.warn('[GraphDBCache] KV get error:', error);
-    }
-
-    // Cache miss - fetch from GraphDB
-    this.stats.misses++;
-    const trustScore = await this.client.getTrustScore(userId);
-
-    // Cache the result
-    try {
-      await this.kv.put(cacheKey, JSON.stringify(trustScore), {
-        expirationTtl: this.config.trustScoreTTL,
-      });
-    } catch (error) {
-      // KV put error - log but don't fail
-      console.warn('[GraphDBCache] KV put error:', error);
-    }
-
-    return trustScore;
   }
 
   /**
@@ -190,17 +146,9 @@ export class GraphDBCache {
   }
 
   /**
-   * Invalidate trust score cache
-   */
-  async invalidateTrustScore(userId: string): Promise<void> {
-    const cacheKey = this.generateKey('trust', userId);
-    await this.kv.delete(cacheKey);
-  }
-
-  /**
    * Invalidate node cache
    */
-  async invalidateNode(nodeId: string): Promise<void> {
+  async invalidateNode(nodeId: number): Promise<void> {
     const cacheKey = this.generateKey('node', nodeId);
     await this.kv.delete(cacheKey);
   }

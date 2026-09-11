@@ -156,30 +156,6 @@ export type TraversalResult = {
 };
 
 /**
- * Trust score result
- */
-export interface TrustScore {
-  userId: string;
-  score: number;
-  components: {
-    verification: number;
-    activity: number;
-    reputation: number;
-  };
-  lastUpdated: string;
-}
-
-/**
- * Fraud ring detection result
- */
-export interface FraudRing {
-  nodes: Node[];
-  edges: Edge[];
-  suspicionScore: number;
-  reasons: string[];
-}
-
-/**
  * Error types
  */
 export enum GraphDBErrorType {

@@ -16,8 +16,6 @@ import {
   QueryNodesOptions,
   TraversalOptions,
   TraversalResult,
-  TrustScore,
-  FraudRing,
   CreateNodeInput,
   UpdateNodeInput,
   CreateEdgeInput,
@@ -45,7 +43,10 @@ import {
  *   retries: 2,
  * });
  *
- * const trustScore = await graphDB.getTrustScore('user-123');
+ * const node = await graphDB.createNode({
+ *   labels: ['Person'],
+ *   properties: { name: 'Alice' },
+ * });
  * ```
  */
 export class GraphDBClient {
@@ -204,75 +205,6 @@ export class GraphDBClient {
     };
 
     return this.request<TraversalResult>('POST', '/traverse', body);
-  }
-
-  /**
-   * Get trust score for a user (Syntopica use case)
-   *
-   * @example
-   * ```typescript
-   * const trustScore = await graphDB.getTrustScore('user-123');
-   * console.log(trustScore.score); // 847
-   * ```
-   */
-  async getTrustScore(userId: string): Promise<TrustScore> {
-    const query = `
-      query GetTrustScore($userId: ID!) {
-        user(id: $userId) {
-          id
-          trustScore
-          trustComponents {
-            verification
-            activity
-            reputation
-          }
-          lastUpdated
-        }
-      }
-    `;
-
-    const result = await this.query<{ user: TrustScore }>(query, { userId });
-    return result.user;
-  }
-
-  /**
-   * Detect fraud ring (Cluso use case)
-   *
-   * @example
-   * ```typescript
-   * const fraudRing = await graphDB.findFraudRing('user-suspicious');
-   * if (fraudRing.suspicionScore > 0.8) {
-   *   console.log('High fraud risk detected!');
-   * }
-   * ```
-   */
-  async findFraudRing(userId: string): Promise<FraudRing> {
-    const query = `
-      query FindFraudRing($userId: ID!) {
-        user(id: $userId) {
-          id
-          fraudRing {
-            nodes {
-              id
-              type
-              properties
-            }
-            edges {
-              id
-              type
-              source
-              target
-              properties
-            }
-            suspicionScore
-            reasons
-          }
-        }
-      }
-    `;
-
-    const result = await this.query<{ user: { fraudRing: FraudRing } }>(query, { userId });
-    return result.user.fraudRing;
   }
 
   /**
