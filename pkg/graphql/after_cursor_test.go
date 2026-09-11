@@ -247,6 +247,15 @@ func TestAfterCursorAcceptsIntegerLiteral(t *testing.T) {
 
 	assertSameIDs(t, "bare integer cursor vs quoted cursor", bare, quoted)
 	assertSameIDs(t, "quoted cursor vs tail of the full list", quoted, all[3:])
+
+	// The same value through a variable, as a client library sends it.
+	var thirdID int
+	if _, err := fmt.Sscanf(third, "%d", &thirdID); err != nil {
+		t.Fatalf("fixture id %q is not a number: %v", third, err)
+	}
+	viaVar := runIDs(t, schema, "persons", `query($after: ID) { persons(after: $after) { id } }`,
+		map[string]any{"after": thirdID})
+	assertSameIDs(t, "integer variable cursor vs quoted cursor", viaVar, quoted)
 }
 
 // damageFixture seeds five Thing nodes for tenant "owner" in an mmap store,
@@ -341,4 +350,16 @@ func TestAfterCursorDamageWindowIsThePage(t *testing.T) {
 		t.Fatalf("page 3 refused although its scan met no damaged record: %v", third.Errors)
 	}
 	assertSameIDs(t, "page 3", idsOf(third), []string{str(ids[4])})
+
+	// A where filter materialises the whole label, so its window is the
+	// whole set: the same page-3 request with a filter meets the damage.
+	filtered := graphql.Do(graphql.Params{
+		Schema:         schema,
+		RequestString:  fmt.Sprintf(`query($where: WhereInput) { things(limit: 2, after: "%s", where: $where) { id } }`, str(ids[3])),
+		VariableValues: whereVars(map[string]any{"name": map[string]any{"eq": "n4"}}),
+		Context:        ctx,
+	})
+	if !filtered.HasErrors() {
+		t.Fatalf("filtered page served %v although the whole-set scan met a damaged record", idsOf(filtered))
+	}
 }

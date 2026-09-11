@@ -454,7 +454,10 @@ last page. Without `offset`, `orderBy` and `where` the server seeks to the
 cursor in the sorted ID set and clones only the page, so a page costs O(limit)
 rather than O(tenant size). A `where` filter works with `after` too, but it
 materialises the set as `offset` does, because the filter runs on the decoded
-properties.
+properties. On a damaged record (see ADR 0003) the page-only path refuses only
+the page whose scan meets the record, while the materialised paths refuse the
+request if the record is anywhere in the set. GraphQL has no equivalent of the
+REST `X-Enumeration-Incomplete` header yet.
 
 ```bash
 # first page

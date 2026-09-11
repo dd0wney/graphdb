@@ -232,8 +232,16 @@ func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, confi
 		// Index-level path (the GraphQL half of #366): seek to the cursor in
 		// the sorted ID set and clone only the page. Without orderBy, offset
 		// or where this yields the same rows as the materialise path below,
-		// because both walk in ascending ID order. ADR 0003: the damage
-		// window is the page scan, as on the REST list endpoints.
+		// because both walk in ascending ID order.
+		//
+		// ADR 0003: the damage window is the page scan, as on the REST list
+		// endpoints, so an intact page no longer fails because of a damaged
+		// record elsewhere in the tenant. The page that meets damage still
+		// refuses: a GraphQL field cannot carry a partial list beside an
+		// error, and this schema has no equivalent of the REST
+		// X-Enumeration-Incomplete header yet. That signal is a follow-up.
+		// The materialise path below keeps the whole-set window: one damaged
+		// record anywhere in the label fails a where/offset/orderBy request.
 		if paging.indexLevel(filterExpr != nil) {
 			nodes, _, err := gs.NodesByLabelPageForTenant(tenantID, label, paging.afterID, effectiveLimit)
 			if err != nil {
