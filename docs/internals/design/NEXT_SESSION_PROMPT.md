@@ -10,6 +10,6 @@ Pick up **`graphdb:v1.4-f3-compliance-http-api`**: `git checkout -b v1.4/v1.4-f3
 
 Before you start: `ListAgents`, message `graphdb-coord-a0` (the coord session) with the task you take, and ask the user for a budget grant up front (`coord budget grant task:graphdb:v1.4-f3-compliance-http-api 25`) — the coord hook refuses every tool, including the request for more, once the task budget is spent.
 
-Also decide with the user: merge or close PR #582 (open since 2026-09-08, checks green), and whether ADR 0003 gets amended for GraphQL's refusal or GraphQL gets an `X-Enumeration-Incomplete` equivalent.
+Also decide with the user whether ADR 0003 gets amended for GraphQL's refusal or GraphQL gets an `X-Enumeration-Incomplete` equivalent. (PR #582 is resolved: its ADR line merged as #588.)
 
 End via the `session-handoff` skill.

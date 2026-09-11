@@ -21,8 +21,8 @@ Coord: `graphdb:v1.4-graphql-index-pagination` claimed on branch checkout (hook)
 ## 3. Current state
 
 - `origin/main` HEAD: `7d6c06d` (#586). `main` locally matches, tree clean.
-- Open PRs: **#582** `docs: mark ADR 0001 accepted and refresh the next-session prompt for v1.4.0` (opened 2026-09-08, 10 checks green, `mergeable: UNKNOWN` at handoff time — GitHub had not recomputed after #585/#586; re-read before merging). Not this session's work; its local branch `docs/adr-0001-accepted` still exists.
-- Open branches: `main`, `docs/adr-0001-accepted` (belongs to #582). The task branch and the planning branch were deleted at merge.
+- Open PRs: none. **#582** (ADR 0001 accepted + a 2026-09-08 next-session prompt) was resolved after this handoff was written: its ADR line landed as **#588** (`c40a0e2`), rebased onto main; its prompt edit was dropped as superseded; #582 closed with a pointer. 
+- Open branches: `main` only. Every branch from this session and the stale `docs/adr-0001-accepted` were deleted.
 - Uncommitted changes: none.
 - Test/lint state at #585: `go build`/`go vet` on `./pkg/... ./cmd/...` clean; full `-short` suite across `pkg` and `cmd` green; `golangci-lint` v2.13.2 0 issues on the module; `gofmt -s -l` empty; `make contract-guard` OK (16 contracts, 24 guarding tests). CI: all 11 checks green including both benchmark jobs (~29 min each, normal).
 - Coord daemon on :8090: restarted by the coord session at 14:30 AEST on the #585 build (`coord-daemon.service`, both uniqueness rules registered). It probed `after` live and confirmed the refusal of `after` with `offset`.
@@ -51,7 +51,7 @@ Off-path options unchanged from `NEXT_STEPS_2026-06-18.md` §D: real-corpus coi-
 ## 6. Open questions for the user
 
 - **GraphQL damage signal**: amend ADR 0003 to say GraphQL refuses, or add the signal? The refusal is loud (repo objective) but a client walking a big tenant loses the page and has no cursor past the damaged record.
-- **PR #582** has sat open since 2026-09-08 with green checks. Merge it, or is it superseded by the 2026-09-10 reconciliation (#583)? Its next-session-prompt content is now overwritten by this handoff either way.
+- ~~**PR #582** has sat open since 2026-09-08 with green checks. Merge it, or is it superseded by the 2026-09-10 reconciliation (#583)?~~ Resolved 2026-09-11 14:35 AEST: the ADR line merged as #588, the prompt edit was superseded, #582 closed.
 - **Budget sizing**: should a feature task default to more than $10? This one cost ~$25 with two review rounds and full preflight.
 
 ## 7. Next-session prompt (paste-ready)
