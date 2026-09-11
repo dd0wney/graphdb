@@ -121,13 +121,18 @@ export type QueryNodesOptions = {
 };
 
 /**
- * Traversal options
+ * Traversal options for traverse(). Sent as the JSON body of
+ * POST /traverse (pkg/api/handlers_algorithms_traversal.go
+ * handleTraversal) after translating to the server's snake_case
+ * TraversalRequest fields. There is no `limit` or `nodeFilter` on the
+ * wire — TraversalRequest has no such fields, so v1's values were
+ * silently ignored.
  */
-export interface TraversalOptions {
+export type TraversalOptions = {
   /** Starting node ID */
-  startNodeId: string;
+  startNodeId: number;
 
-  /** Edge types to traverse (empty = all types) */
+  /** Edge types to traverse (empty/omitted = all types) */
   edgeTypes?: string[];
 
   /** Maximum traversal depth */
@@ -135,25 +140,20 @@ export interface TraversalOptions {
 
   /** Traversal direction */
   direction: 'outgoing' | 'incoming' | 'both';
-
-  /** Limit number of nodes returned */
-  limit?: number;
-
-  /** Filter function for nodes */
-  nodeFilter?: (node: Node) => boolean;
-}
+};
 
 /**
- * Traversal result
+ * Traversal result. Matches pkg/api/types.go TraversalResponse: a flat
+ * node list, not the `{nodes, edges, paths}` shape v1 expected from a
+ * GraphQL `traverse` field that no resolver ever defined.
  */
-export interface TraversalResult {
+export type TraversalResult = {
   nodes: Node[];
-  edges: Edge[];
-  paths: Array<{
-    nodes: string[];
-    edges: string[];
-  }>;
-}
+  count: number;
+  time: string;
+  /** True when the server capped the result at MaxTraversalNodes. */
+  truncated?: boolean;
+};
 
 /**
  * Trust score result

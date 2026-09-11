@@ -180,12 +180,15 @@ export class GraphDBClient {
   }
 
   /**
-   * Traverse the graph from a starting node
+   * Traverse the graph from a starting node (REST API). POST /traverse
+   * (pkg/api/handlers_algorithms_traversal.go handleTraversal). No
+   * GraphQL resolver named `traverse` exists — v1 built a GraphQL query
+   * against one, which always failed.
    *
    * @example
    * ```typescript
-   * const trustNetwork = await graphDB.traverse({
-   *   startNodeId: 'user-123',
+   * const network = await graphDB.traverse({
+   *   startNodeId: 123,
    *   edgeTypes: ['VERIFIED_BY', 'TRUSTS'],
    *   maxDepth: 2,
    *   direction: 'outgoing',
@@ -193,45 +196,14 @@ export class GraphDBClient {
    * ```
    */
   async traverse(options: TraversalOptions): Promise<TraversalResult> {
-    const query = `
-      query TraverseGraph($startNodeId: ID!, $edgeTypes: [String!], $maxDepth: Int!, $direction: String!, $limit: Int) {
-        traverse(
-          startNodeId: $startNodeId
-          edgeTypes: $edgeTypes
-          maxDepth: $maxDepth
-          direction: $direction
-          limit: $limit
-        ) {
-          nodes {
-            id
-            type
-            properties
-          }
-          edges {
-            id
-            type
-            source
-            target
-            properties
-          }
-          paths {
-            nodes
-            edges
-          }
-        }
-      }
-    `;
-
-    const variables = {
-      startNodeId: options.startNodeId,
-      edgeTypes: options.edgeTypes || [],
-      maxDepth: options.maxDepth,
+    const body = {
+      start_node_id: options.startNodeId,
+      max_depth: options.maxDepth,
+      edge_types: options.edgeTypes,
       direction: options.direction,
-      limit: options.limit,
     };
 
-    const result = await this.query<{ traverse: TraversalResult }>(query, variables);
-    return result.traverse;
+    return this.request<TraversalResult>('POST', '/traverse', body);
   }
 
   /**

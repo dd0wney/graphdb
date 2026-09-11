@@ -153,7 +153,7 @@ export class GraphDBCache {
    * Get traversal result with caching
    */
   async traverse(
-    startNodeId: string,
+    startNodeId: number,
     edgeTypes: string[],
     maxDepth: number,
     direction: 'outgoing' | 'incoming' | 'both'
@@ -223,7 +223,7 @@ export class GraphDBCache {
    * Generate traversal cache key
    */
   private generateTraversalKey(
-    startNodeId: string,
+    startNodeId: number,
     edgeTypes: string[],
     maxDepth: number,
     direction: string
