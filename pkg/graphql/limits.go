@@ -230,15 +230,12 @@ func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, confi
 		effectiveLimit := applyLimit(requestedLimit(p.Args), config)
 
 		// Index-level path (the GraphQL half of #366): seek to the cursor in
-		// the sorted ID set and clone only the page. Without orderBy or
-		// offset this yields the same rows as the materialise path below,
-		// because both walk in ascending ID order.
-		if paging.indexLevel() {
-			nodes, err := walkPages(paging.afterID, effectiveLimit,
-				func(afterID uint64, limit int) ([]*storage.Node, uint64, error) {
-					return gs.NodesByLabelPageForTenant(tenantID, label, afterID, limit)
-				},
-				func(n *storage.Node) bool { return evaluateFilter(n, filterExpr) })
+		// the sorted ID set and clone only the page. Without orderBy, offset
+		// or where this yields the same rows as the materialise path below,
+		// because both walk in ascending ID order. ADR 0003: the damage
+		// window is the page scan, as on the REST list endpoints.
+		if paging.indexLevel(filterExpr != nil) {
+			nodes, _, err := gs.NodesByLabelPageForTenant(tenantID, label, paging.afterID, effectiveLimit)
 			if err != nil {
 				return nil, fmt.Errorf("list %s nodes: %w", label, err)
 			}
@@ -261,6 +258,12 @@ func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, confi
 		// Apply sorting if specified
 		orderBy := parseOrderBy(p.Args)
 		filteredNodes = sortNodes(filteredNodes, orderBy)
+
+		// Apply the cursor. parseListPaging refused orderBy with after, so
+		// the slice is still in ascending ID order here.
+		if paging.hasAfter {
+			filteredNodes = seekPastID(filteredNodes, func(n *storage.Node) uint64 { return n.ID }, paging.afterID)
+		}
 
 		// Apply offset
 		offset, offsetOk := p.Args["offset"].(int)
@@ -297,12 +300,8 @@ func createEdgesResolverWithLimits(gs *storage.GraphStorage, config *LimitConfig
 		effectiveLimit := applyLimit(requestedLimit(p.Args), config)
 
 		// Index-level path; see createNodesResolverWithLimits.
-		if paging.indexLevel() {
-			edges, err := walkPages(paging.afterID, effectiveLimit,
-				func(afterID uint64, limit int) ([]*storage.Edge, uint64, error) {
-					return gs.EdgesPageForTenant(tenantID, afterID, limit)
-				},
-				func(e *storage.Edge) bool { return evaluateEdgeFilter(e, filterExpr) })
+		if paging.indexLevel(filterExpr != nil) {
+			edges, _, err := gs.EdgesPageForTenant(tenantID, paging.afterID, effectiveLimit)
 			if err != nil {
 				return nil, fmt.Errorf("list edges: %w", err)
 			}
@@ -325,6 +324,11 @@ func createEdgesResolverWithLimits(gs *storage.GraphStorage, config *LimitConfig
 		// Apply sorting if specified
 		orderBy := parseOrderBy(p.Args)
 		filteredEdges = sortEdges(filteredEdges, orderBy)
+
+		// Apply the cursor; see the node resolver.
+		if paging.hasAfter {
+			filteredEdges = seekPastID(filteredEdges, func(e *storage.Edge) uint64 { return e.ID }, paging.afterID)
+		}
 
 		// Apply offset
 		offset, offsetOk := p.Args["offset"].(int)

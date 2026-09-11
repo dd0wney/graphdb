@@ -2,12 +2,13 @@ package graphql
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 )
 
 // listPaging is the pagination shape of one list-field request. It decides
-// whether the request can be served index-level (clone only the page, walk in
-// ascending ID order) or must fall back to the materialise-everything path.
+// whether the request can be served index-level (one storage page call that
+// clones only the page) or must fall back to the materialise-everything path.
 //
 // The ID cursor contract mirrors the REST X-Next-Cursor header: `after` is the
 // ID of the last item the caller has seen, and a page shorter than `limit` is
@@ -50,44 +51,21 @@ func parseListPaging(args map[string]any) (listPaging, error) {
 	return lp, nil
 }
 
-// indexLevel reports whether the storage page methods can serve the request.
-// They walk in ascending ID order, which a sort or an offset contradicts.
-func (lp listPaging) indexLevel() bool {
-	return !lp.hasOffset && !lp.hasOrder
+// indexLevel reports whether one storage page call can serve the request.
+// The page methods walk in ascending ID order, which a sort or an offset
+// contradicts, and they cannot apply a `where` filter, so a filtered request
+// materialises instead (see seekPastID for why it does not loop over pages).
+func (lp listPaging) indexLevel(filtered bool) bool {
+	return !lp.hasOffset && !lp.hasOrder && !filtered
 }
 
-// pageFetcher returns one index-level page of at most `limit` items with
-// ID > afterID, plus the next cursor (0 on the last page). It is the shape of
-// storage.NodesByLabelPageForTenant and storage.EdgesPageForTenant.
-type pageFetcher[T any] func(afterID uint64, limit int) ([]T, uint64, error)
-
-// walkPages collects up to `limit` items that pass `keep`, in ascending ID
-// order, from successive pages. Every page asks storage for `limit` rows, so a
-// filter that drops most rows costs more rounds but never clones more than
-// `limit` items per round. The caller's next cursor is the ID of the last
-// item returned, which walkPages does not need to know: the items carry it.
-func walkPages[T any](afterID uint64, limit int, fetch pageFetcher[T], keep func(T) bool) ([]T, error) {
-	out := make([]T, 0, limit)
-	if limit <= 0 {
-		return out, nil
-	}
-	for {
-		page, next, err := fetch(afterID, limit)
-		if err != nil {
-			return nil, err
-		}
-		for _, item := range page {
-			if !keep(item) {
-				continue
-			}
-			out = append(out, item)
-			if len(out) == limit {
-				return out, nil
-			}
-		}
-		if next == 0 {
-			return out, nil
-		}
-		afterID = next
-	}
+// seekPastID drops the leading items whose ID is <= afterID. `items` must be
+// in ascending ID order, which the materialise path guarantees when no
+// orderBy is present (the storage enumerations return sorted IDs). It serves
+// `after` on requests with a `where` filter, which must not loop over storage
+// pages: every page call re-sorts the full ID set, so a narrow filter would
+// turn one scan into N/limit scans.
+func seekPastID[T any](items []T, idOf func(T) uint64, afterID uint64) []T {
+	start := sort.Search(len(items), func(i int) bool { return idOf(items[i]) > afterID })
+	return items[start:]
 }

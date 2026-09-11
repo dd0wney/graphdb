@@ -1,6 +1,7 @@
 package graphql
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,6 +10,8 @@ import (
 	"github.com/graphql-go/graphql"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/storage/storagetest"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 // afterCursorFixture seeds `n` Person nodes, each with an integer property
@@ -229,4 +232,113 @@ func TestAfterCursorRefusals(t *testing.T) {
 			}
 		})
 	}
+}
+
+// graphql-go coerces an integer literal to the ID scalar, so `after: 3` and
+// `after: "3"` must page identically. This guards the type assertion in
+// parseListPaging against a change in the library's coercion.
+func TestAfterCursorAcceptsIntegerLiteral(t *testing.T) {
+	_, schema := afterCursorFixture(t, 10)
+	all := runIDs(t, schema, "persons", `{ persons { id } }`, nil)
+	third := all[2]
+
+	quoted := runIDs(t, schema, "persons", fmt.Sprintf(`{ persons(after: "%s") { id } }`, third), nil)
+	bare := runIDs(t, schema, "persons", fmt.Sprintf(`{ persons(after: %s) { id } }`, third), nil)
+
+	assertSameIDs(t, "bare integer cursor vs quoted cursor", bare, quoted)
+	assertSameIDs(t, "quoted cursor vs tail of the full list", quoted, all[3:])
+}
+
+// damageFixture seeds five Thing nodes for tenant "owner" in an mmap store,
+// damages the record of the fourth (index 3), reopens, and returns the live
+// IDs in order plus a limits schema. The positive and negative controls follow
+// pkg/api/enumeration_partial_page_test.go.
+func damageFixture(t *testing.T) ([]uint64, graphql.Schema) {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := storage.DefaultStorageConfig(dir)
+	cfg.UseMmapSnapshot = true // the JSON path has no record to damage
+
+	gs, err := storage.NewGraphStorageWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	ids := make([]uint64, 0, 5)
+	for i := 0; i < 5; i++ {
+		n, cerr := gs.CreateNodeWithTenant("owner", []string{"Thing"},
+			map[string]storage.Value{"name": storage.StringValue(fmt.Sprintf("n%d", i))})
+		if cerr != nil {
+			t.Fatalf("create node %d: %v", i, cerr)
+		}
+		ids = append(ids, n.ID)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+
+	storagetest.DamageNodeRecord(t, dir, ids[3])
+
+	reopened, err := storage.NewGraphStorageWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("reopen store: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+
+	// POSITIVE CONTROL on the injector: the damaged node must not read.
+	if _, err := reopened.GetNodeForTenant(ids[3], "owner"); err == nil {
+		t.Fatalf("the node fault did not take: node %d still reads", ids[3])
+	}
+	// NEGATIVE CONTROL: an undamaged node must still read.
+	if _, err := reopened.GetNodeForTenant(ids[0], "owner"); err != nil {
+		t.Fatalf("the first undamaged node must still read: %v", err)
+	}
+
+	schema, err := GenerateSchemaWithLimits(reopened, &LimitConfig{DefaultLimit: 100, MaxLimit: 1000})
+	if err != nil {
+		t.Fatalf("GenerateSchemaWithLimits: %v", err)
+	}
+	return ids, schema
+}
+
+// ADR 0003 for the index-level path: a page fails only when its scan meets a
+// damaged record. Before this change the resolver scanned the whole set, so
+// one damaged record failed every page of the tenant, intact pages included.
+// The page that meets the damage still refuses: GraphQL cannot carry a partial
+// page beside an error, and a silent short page would hide the loss.
+func TestAfterCursorDamageWindowIsThePage(t *testing.T) {
+	ids, schema := damageFixture(t)
+	ctx := tenant.WithTenant(context.Background(), "owner")
+	run := func(query string) *graphql.Result {
+		return graphql.Do(graphql.Params{Schema: schema, RequestString: query, Context: ctx})
+	}
+	idsOf := func(r *graphql.Result) []string {
+		items := r.Data.(map[string]any)["things"].([]any)
+		out := make([]string, len(items))
+		for i, item := range items {
+			out[i] = item.(map[string]any)["id"].(string)
+		}
+		return out
+	}
+	str := func(id uint64) string { return fmt.Sprintf("%d", id) }
+
+	// Page 1 holds nodes 0 and 1 and probes node 2. Its scan never meets
+	// node 3, so the page is complete and must not refuse.
+	first := run(`{ things(limit: 2) { id } }`)
+	if first.HasErrors() {
+		t.Fatalf("page 1 refused although its scan met no damaged record: %v", first.Errors)
+	}
+	assertSameIDs(t, "page 1", idsOf(first), []string{str(ids[0]), str(ids[1])})
+
+	// Page 2 starts after node 1 and its scan meets node 3. It refuses.
+	second := run(fmt.Sprintf(`{ things(limit: 2, after: "%s") { id } }`, str(ids[1])))
+	if !second.HasErrors() {
+		t.Fatalf("page 2 served %v although its scan met a damaged record", idsOf(second))
+	}
+
+	// Page 3 starts after the damaged record and is complete again.
+	third := run(fmt.Sprintf(`{ things(limit: 2, after: "%s") { id } }`, str(ids[3])))
+	if third.HasErrors() {
+		t.Fatalf("page 3 refused although its scan met no damaged record: %v", third.Errors)
+	}
+	assertSameIDs(t, "page 3", idsOf(third), []string{str(ids[4])})
 }
