@@ -11,6 +11,13 @@ def _res(base_url):
     return EdgesResource(Transport(base_url, token="tok"))
 
 
+def _edge_row(id_: int, from_id: int, to_id: int, edge_type: str = "R") -> dict:
+    return {
+        "id": id_, "from_node_id": from_id, "to_node_id": to_id,
+        "type": edge_type, "properties": {}, "weight": 0.0,
+    }
+
+
 @respx.mock
 def test_create_edge(base_url):
     route = respx.post(f"{base_url}/edges").mock(return_value=httpx.Response(201, json={
@@ -75,3 +82,30 @@ def test_delete_edge(base_url):
     route = respx.delete(f"{base_url}/edges/3").mock(return_value=httpx.Response(200))
     _res(base_url).delete(3)
     assert route.called
+
+
+@respx.mock
+def test_list_auto_paginates_across_cursor(base_url):
+    page1 = httpx.Response(
+        200,
+        json=[_edge_row(1, 1, 2, "KNOWS"), _edge_row(2, 2, 3, "KNOWS")],
+        headers={"X-Next-Cursor": "2"},
+    )
+    page2 = httpx.Response(200, json=[_edge_row(3, 3, 4, "KNOWS")])
+    route = respx.get(f"{base_url}/edges").mock(side_effect=[page1, page2])
+
+    got = list(_res(base_url).list(edge_type="KNOWS", page_size=2))
+    assert [e.id for e in got] == [1, 2, 3]
+    assert route.calls[-1].request.url.params["cursor"] == "2"
+    assert route.calls[0].request.url.params["type"] == "KNOWS"
+
+
+@respx.mock
+def test_list_terminates_on_stuck_cursor(base_url):
+    # A non-spec-compliant server that never advances the cursor must not hang
+    # the client: the generator stops once the cursor repeats.
+    page = httpx.Response(200, json=[_edge_row(1, 1, 2)], headers={"X-Next-Cursor": "stuck"})
+    respx.get(f"{base_url}/edges").mock(side_effect=[page, page, page])
+    got = list(_res(base_url).list(page_size=1))
+    # page1: cursor="stuck" (advances); page2: cursor=="stuck"==prev -> terminate.
+    assert len(got) == 2

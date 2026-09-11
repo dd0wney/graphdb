@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from .._transport import Transport
 from ..models import Edge
@@ -69,3 +69,24 @@ class EdgesResource:
         ]}
         res = self._t.request("POST", "/edges/batch", json=payload)
         return [Edge.from_dict(d) for d in (res.data.get("edges") or [])]
+
+    def list(self, *, edge_type: str | None = None, page_size: int = 100) -> Iterator[Edge]:
+        """Yield every edge (optionally filtered by type), auto-following X-Next-Cursor."""
+        cursor: str | None = None
+        prev_cursor: str | None = None
+        while True:
+            params: dict[str, Any] = {"limit": page_size}
+            if edge_type is not None:
+                params["type"] = edge_type
+            if cursor is not None:
+                params["cursor"] = cursor
+            res = self._t.request("GET", "/edges", params=params)
+            for d in res.data or []:
+                yield Edge.from_dict(d)
+            cursor = res.headers.get("X-Next-Cursor")
+            # Terminate on absent/empty cursor, or if the server fails to advance
+            # it (a non-spec-compliant server returning the same cursor forever
+            # would otherwise loop indefinitely).
+            if not cursor or cursor == prev_cursor:
+                return
+            prev_cursor = cursor

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from typing import Any, AsyncIterator, Mapping, Sequence
 
 from ...models import Edge
 from ..transport import AsyncTransport
@@ -63,3 +63,23 @@ class AsyncEdgesResource:
         ]}
         res = await self._t.request("POST", "/edges/batch", json=payload)
         return [Edge.from_dict(d) for d in (res.data.get("edges") or [])]
+
+    async def list(
+        self, *, edge_type: str | None = None, page_size: int = 100
+    ) -> AsyncIterator[Edge]:
+        """Yield every edge (optionally filtered by type), auto-following X-Next-Cursor."""
+        cursor: str | None = None
+        prev_cursor: str | None = None
+        while True:
+            params: dict[str, Any] = {"limit": page_size}
+            if edge_type is not None:
+                params["type"] = edge_type
+            if cursor is not None:
+                params["cursor"] = cursor
+            res = await self._t.request("GET", "/edges", params=params)
+            for d in res.data or []:
+                yield Edge.from_dict(d)
+            cursor = res.headers.get("X-Next-Cursor")
+            if not cursor or cursor == prev_cursor:
+                return
+            prev_cursor = cursor
