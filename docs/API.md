@@ -450,10 +450,11 @@ accepts `limit`, `offset`, `after`, `where` and `orderBy`.
 `after` is an ID cursor with the same contract as the REST `X-Next-Cursor`
 header: pass the `id` of the last item you received, and the field returns
 items with a greater ID in ascending order. A page shorter than `limit` is the
-last page. Without `offset` and `orderBy` the server seeks to the cursor in the
-sorted ID set and clones only the page, so a page costs O(limit) rather than
-O(tenant size). A `where` filter still works on this path; the server walks
-pages and filters each one until the page is full.
+last page. Without `offset`, `orderBy` and `where` the server seeks to the
+cursor in the sorted ID set and clones only the page, so a page costs O(limit)
+rather than O(tenant size). A `where` filter works with `after` too, but it
+materialises the set as `offset` does, because the filter runs on the decoded
+properties.
 
 ```bash
 # first page
