@@ -442,6 +442,41 @@ curl -X POST http://localhost:8080/graphql \
   }'
 ```
 
+#### GraphQL List Pagination
+
+Every list field (the per-label plural fields such as `persons`, and `edges`)
+accepts `limit`, `offset`, `after`, `where` and `orderBy`.
+
+`after` is an ID cursor with the same contract as the REST `X-Next-Cursor`
+header: pass the `id` of the last item you received, and the field returns
+items with a greater ID in ascending order. A page shorter than `limit` is the
+last page. Without `offset`, `orderBy` and `where` the server seeks to the
+cursor in the sorted ID set and clones only the page, so a page costs O(limit)
+rather than O(tenant size). A `where` filter works with `after` too, but it
+materialises the set as `offset` does, because the filter runs on the decoded
+properties. On a damaged record (see ADR 0003) the page-only path refuses only
+the page whose scan meets the record, while the materialised paths refuse the
+request if the record is anywhere in the set. GraphQL has no equivalent of the
+REST `X-Enumeration-Incomplete` header yet.
+
+```bash
+# first page
+curl -X POST http://localhost:8080/graphql \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ persons(limit: 100) { id properties } }"}'
+
+# next page: after = id of the last item on the previous page
+curl -X POST http://localhost:8080/graphql \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ persons(limit: 100, after: \"1742\") { id properties } }"}'
+```
+
+`after` cannot be combined with `orderBy` (a property sort has no ID order) or
+with a non-zero `offset`; either combination is an error. `offset` keeps its
+meaning for existing clients, but it materialises the whole set on every page.
+
 ### Vector Search Operations
 
 Vector search enables semantic similarity queries using HNSW (Hierarchical Navigable Small World) indexes. This is ideal for AI/ML applications, recommendation systems, and semantic search.

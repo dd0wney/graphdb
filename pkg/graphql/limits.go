@@ -50,6 +50,15 @@ func applyLimit(requestedLimit int, config *LimitConfig) int {
 	return requestedLimit
 }
 
+// requestedLimit reads the `limit` argument, or -1 when the caller gave none
+// so applyLimit substitutes the default.
+func requestedLimit(args map[string]any) int {
+	if limit, ok := args["limit"].(int); ok {
+		return limit
+	}
+	return -1
+}
+
 // GenerateSchemaWithLimits generates a GraphQL schema with filtering
 // and result limits (tenant-blind). API callers should use
 // GenerateSchemaWithLimitsForTenant per audit A9 (#36).
@@ -141,6 +150,10 @@ func generateSchemaWithLimitsForLabels(gs *storage.GraphStorage, config *LimitCo
 				"offset": &graphql.ArgumentConfig{
 					Type: graphql.Int,
 				},
+				"after": &graphql.ArgumentConfig{
+					Type:        graphql.ID,
+					Description: "ID cursor: return items with ID greater than this. Mutually exclusive with offset and orderBy. A page shorter than limit is the last page.",
+				},
 			},
 			Resolve: createNodesResolverWithLimits(gs, label, config),
 		}
@@ -171,6 +184,10 @@ func generateSchemaWithLimitsForLabels(gs *storage.GraphStorage, config *LimitCo
 			},
 			"offset": &graphql.ArgumentConfig{
 				Type: graphql.Int,
+			},
+			"after": &graphql.ArgumentConfig{
+				Type:        graphql.ID,
+				Description: "ID cursor: return edges with ID greater than this. Mutually exclusive with offset and orderBy. A page shorter than limit is the last page.",
 			},
 		},
 		Resolve: createEdgesResolverWithLimits(gs, config),
@@ -205,13 +222,40 @@ func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, confi
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped label query.
 		tenantID := tenant.MustFromContext(p.Context)
+		paging, err := parseListPaging(p.Args)
+		if err != nil {
+			return nil, err
+		}
+		filterExpr := parseWhere(p.Args)
+		effectiveLimit := applyLimit(requestedLimit(p.Args), config)
+
+		// Index-level path (the GraphQL half of #366): seek to the cursor in
+		// the sorted ID set and clone only the page. Without orderBy, offset
+		// or where this yields the same rows as the materialise path below,
+		// because both walk in ascending ID order.
+		//
+		// ADR 0003: the damage window is the page scan, as on the REST list
+		// endpoints, so an intact page no longer fails because of a damaged
+		// record elsewhere in the tenant. The page that meets damage still
+		// refuses: a GraphQL field cannot carry a partial list beside an
+		// error, and this schema has no equivalent of the REST
+		// X-Enumeration-Incomplete header yet. That signal is a follow-up.
+		// The materialise path below keeps the whole-set window: one damaged
+		// record anywhere in the label fails a where/offset/orderBy request.
+		if paging.indexLevel(filterExpr != nil) {
+			nodes, _, err := gs.NodesByLabelPageForTenant(tenantID, label, paging.afterID, effectiveLimit)
+			if err != nil {
+				return nil, fmt.Errorf("list %s nodes: %w", label, err)
+			}
+			return nodes, nil
+		}
+
 		nodes, err := gs.GetNodesByLabelForTenant(tenantID, label)
 		if err != nil {
 			return nil, fmt.Errorf("list %s nodes: %w", label, err)
 		}
 
 		// Apply filtering
-		filterExpr := parseWhere(p.Args)
 		var filteredNodes []*storage.Node
 		for _, node := range nodes {
 			if evaluateFilter(node, filterExpr) {
@@ -223,6 +267,12 @@ func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, confi
 		orderBy := parseOrderBy(p.Args)
 		filteredNodes = sortNodes(filteredNodes, orderBy)
 
+		// Apply the cursor. parseListPaging refused orderBy with after, so
+		// the slice is still in ascending ID order here.
+		if paging.hasAfter {
+			filteredNodes = seekPastID(filteredNodes, func(n *storage.Node) uint64 { return n.ID }, paging.afterID)
+		}
+
 		// Apply offset
 		offset, offsetOk := p.Args["offset"].(int)
 		if offsetOk && offset > 0 {
@@ -233,13 +283,6 @@ func createNodesResolverWithLimits(gs *storage.GraphStorage, label string, confi
 		}
 
 		// Apply limit with enforcement
-		requestedLimit := -1 // Default to no limit specified
-		if limit, ok := p.Args["limit"].(int); ok {
-			requestedLimit = limit
-		}
-
-		effectiveLimit := applyLimit(requestedLimit, config)
-
 		if effectiveLimit == 0 {
 			return []*storage.Node{}, nil
 		}
@@ -257,13 +300,28 @@ func createEdgesResolverWithLimits(gs *storage.GraphStorage, config *LimitConfig
 	return func(p graphql.ResolveParams) (any, error) {
 		// Audit A6c-graphql-resolvers: tenant-scoped enumeration.
 		tenantID := tenant.MustFromContext(p.Context)
+		paging, err := parseListPaging(p.Args)
+		if err != nil {
+			return nil, err
+		}
+		filterExpr := parseWhere(p.Args)
+		effectiveLimit := applyLimit(requestedLimit(p.Args), config)
+
+		// Index-level path; see createNodesResolverWithLimits.
+		if paging.indexLevel(filterExpr != nil) {
+			edges, _, err := gs.EdgesPageForTenant(tenantID, paging.afterID, effectiveLimit)
+			if err != nil {
+				return nil, fmt.Errorf("list edges: %w", err)
+			}
+			return edges, nil
+		}
+
 		edges, err := gs.GetAllEdgesForTenant(tenantID)
 		if err != nil {
 			return nil, fmt.Errorf("list edges: %w", err)
 		}
 
 		// Apply filtering
-		filterExpr := parseWhere(p.Args)
 		var filteredEdges []*storage.Edge
 		for _, edge := range edges {
 			if evaluateEdgeFilter(edge, filterExpr) {
@@ -275,6 +333,11 @@ func createEdgesResolverWithLimits(gs *storage.GraphStorage, config *LimitConfig
 		orderBy := parseOrderBy(p.Args)
 		filteredEdges = sortEdges(filteredEdges, orderBy)
 
+		// Apply the cursor; see the node resolver.
+		if paging.hasAfter {
+			filteredEdges = seekPastID(filteredEdges, func(e *storage.Edge) uint64 { return e.ID }, paging.afterID)
+		}
+
 		// Apply offset
 		offset, offsetOk := p.Args["offset"].(int)
 		if offsetOk && offset > 0 {
@@ -285,13 +348,6 @@ func createEdgesResolverWithLimits(gs *storage.GraphStorage, config *LimitConfig
 		}
 
 		// Apply limit with enforcement
-		requestedLimit := -1 // Default to no limit specified
-		if limit, ok := p.Args["limit"].(int); ok {
-			requestedLimit = limit
-		}
-
-		effectiveLimit := applyLimit(requestedLimit, config)
-
 		if effectiveLimit == 0 {
 			return []*storage.Edge{}, nil
 		}
