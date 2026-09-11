@@ -46,6 +46,8 @@ export {
   Edge,
   NodeProperties,
   QueryResult,
+  QueryNodesFilter,
+  QueryNodesOptions,
 
   // Traversal
   TraversalOptions,
@@ -55,8 +57,6 @@ export {
   TrustScore,
   FraudRing,
 
-  // Query options
-  QueryOptions,
   GraphQLVariables,
   GraphQLResponse,
 

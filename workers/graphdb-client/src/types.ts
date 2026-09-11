@@ -85,14 +85,40 @@ export type Edge = {
 };
 
 /**
- * Query result with pagination
+ * Result of queryNodes(). GET /nodes returns a bare JSON array (no
+ * envelope) plus the next cursor in the X-Next-Cursor response header,
+ * absent on the last page (pkg/api/pagination.go, handlers_nodes.go
+ * listNodes). There is no `total`/`hasMore` on the wire — v1 declared
+ * both but the server never sent them.
  */
-export interface QueryResult<T> {
-  data: T[];
-  total: number;
-  hasMore: boolean;
+export type QueryResult<T> = {
+  nodes: T[];
   cursor?: string;
-}
+};
+
+/**
+ * Server-side filter for queryNodes(). GET /nodes only honours `?label=`
+ * (handlers_nodes.go listNodes) — v1's generic `filters` object was
+ * serialized into a `?filter=` query param the server never read.
+ */
+export type QueryNodesFilter = {
+  label?: string;
+};
+
+/**
+ * Query options for queryNodes(). Only `limit` and `cursor` are read by
+ * GET /nodes (pkg/api/pagination.go parsePageRequest) — `offset`,
+ * `sortBy`, `sortOrder` and `fields` from v1's QueryOptions were never
+ * read server-side and are dropped here rather than silently doing
+ * nothing.
+ */
+export type QueryNodesOptions = {
+  /** Page size. Server default is 100, capped at 1000. */
+  limit?: number;
+
+  /** Cursor from a previous QueryResult, to fetch the next page. */
+  cursor?: string;
+};
 
 /**
  * Traversal options
@@ -179,29 +205,6 @@ export class GraphDBError extends Error {
     super(message);
     this.name = 'GraphDBError';
   }
-}
-
-/**
- * Query options for REST API
- */
-export interface QueryOptions {
-  /** Result limit */
-  limit?: number;
-
-  /** Pagination offset */
-  offset?: number;
-
-  /** Cursor for cursor-based pagination */
-  cursor?: string;
-
-  /** Sort field */
-  sortBy?: string;
-
-  /** Sort order */
-  sortOrder?: 'asc' | 'desc';
-
-  /** Fields to include in response */
-  fields?: string[];
 }
 
 /**

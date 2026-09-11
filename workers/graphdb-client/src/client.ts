@@ -12,11 +12,12 @@ import {
   Node,
   Edge,
   QueryResult,
+  QueryNodesFilter,
+  QueryNodesOptions,
   TraversalOptions,
   TraversalResult,
   TrustScore,
   FraudRing,
-  QueryOptions,
   CreateNodeInput,
   UpdateNodeInput,
   CreateEdgeInput,
@@ -128,10 +129,12 @@ export class GraphDBClient {
   }
 
   /**
-   * Update a node (REST API)
+   * Update a node (REST API). PUT /nodes/{id} — the route accepts GET,
+   * PUT and DELETE only (pkg/api/handlers_nodes.go handleNode); PATCH is
+   * rejected with 405.
    */
   async updateNode(id: number, input: UpdateNodeInput): Promise<Node> {
-    return this.request<Node>('PATCH', `/nodes/${id}`, input);
+    return this.request<Node>('PUT', `/nodes/${id}`, input);
   }
 
   /**
@@ -142,28 +145,31 @@ export class GraphDBClient {
   }
 
   /**
-   * Query nodes with filters (REST API)
+   * Query nodes with a server-side filter and cursor pagination (REST
+   * API). GET /nodes only honours `?label=` as a filter, and only
+   * `?limit=`/`?cursor=` for paging (pkg/api/handlers_nodes.go listNodes,
+   * pkg/api/pagination.go). The response is a bare JSON array; the next
+   * page's cursor comes back in the X-Next-Cursor header and is absent
+   * on the last page.
    */
   async queryNodes(
-    filters?: Record<string, unknown>,
-    options?: QueryOptions
+    filter?: QueryNodesFilter,
+    options?: QueryNodesOptions
   ): Promise<QueryResult<Node>> {
     const params = new URLSearchParams();
 
+    if (filter?.label) params.set('label', filter.label);
     if (options?.limit) params.set('limit', options.limit.toString());
-    if (options?.offset) params.set('offset', options.offset.toString());
     if (options?.cursor) params.set('cursor', options.cursor);
-    if (options?.sortBy) params.set('sortBy', options.sortBy);
-    if (options?.sortOrder) params.set('sortOrder', options.sortOrder);
-
-    if (filters) {
-      params.set('filter', JSON.stringify(filters));
-    }
 
     const query = params.toString();
     const url = query ? `/nodes?${query}` : '/nodes';
 
-    return this.request<QueryResult<Node>>('GET', url);
+    const response = await this.requestWithResponse('GET', url);
+    const nodes = (await response.json()) as Node[];
+    const cursor = response.headers.get('X-Next-Cursor');
+
+    return cursor ? { nodes, cursor } : { nodes };
   }
 
   /**
@@ -348,13 +354,16 @@ export class GraphDBClient {
   }
 
   /**
-   * Execute REST API request (internal)
+   * Execute a REST API request and return the raw Response (internal).
+   * Used directly by callers that need response headers (queryNodes'
+   * X-Next-Cursor); `request<T>` wraps this for the common
+   * parse-the-body-and-return-it case.
    */
-  private async request<T>(
+  private async requestWithResponse(
     method: string,
     path: string,
     body?: unknown
-  ): Promise<T> {
+  ): Promise<Response> {
     if (!this.config.enableREST) {
       throw new GraphDBError(
         'REST API is disabled',
@@ -375,7 +384,18 @@ export class GraphDBClient {
       options.body = JSON.stringify(body);
     }
 
-    const response = await this.fetchWithRetry(path, options);
+    return this.fetchWithRetry(path, options);
+  }
+
+  /**
+   * Execute REST API request (internal)
+   */
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown
+  ): Promise<T> {
+    const response = await this.requestWithResponse(method, path, body);
 
     if (response.status === 204) {
       return undefined as T;
