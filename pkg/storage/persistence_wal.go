@@ -25,15 +25,15 @@ func (gs *GraphStorage) writeToWAL(operation wal.OpType, data any) {
 func (gs *GraphStorage) writeToWALWithError(operation wal.OpType, data any) error {
 	encoded, err := json.Marshal(data)
 	if err != nil {
-		return fmt.Errorf("failed to marshal WAL data: %w", err)
+		return gs.noteWALWriteError(fmt.Errorf("failed to marshal WAL data: %w", err))
 	}
 	if encoded, err = gs.sealWALPayload(encoded); err != nil {
-		return err
+		return gs.noteWALWriteError(err)
 	}
 
 	if gs.useBatching && gs.batchedWAL != nil {
 		if _, err := gs.batchedWAL.Append(operation, encoded); err != nil {
-			return fmt.Errorf("failed to append to batched WAL: %w", err)
+			return gs.noteWALWriteError(fmt.Errorf("failed to append to batched WAL: %w", err))
 		}
 	} else if gs.useCompression && gs.compressedWAL != nil {
 		// This branch was MISSING until M-1's compact tests surfaced it:
@@ -41,11 +41,11 @@ func (gs *GraphStorage) writeToWALWithError(operation wal.OpType, data any) erro
 		// the WAL (and replayWAL never read it back) — zero crash
 		// durability on the compressed backend.
 		if _, err := gs.compressedWAL.Append(operation, encoded); err != nil {
-			return fmt.Errorf("failed to append to compressed WAL: %w", err)
+			return gs.noteWALWriteError(fmt.Errorf("failed to append to compressed WAL: %w", err))
 		}
 	} else if gs.wal != nil {
 		if _, err := gs.wal.Append(operation, encoded); err != nil {
-			return fmt.Errorf("failed to append to WAL: %w", err)
+			return gs.noteWALWriteError(fmt.Errorf("failed to append to WAL: %w", err))
 		}
 	}
 	// No WAL configured - this is valid for in-memory only mode
@@ -71,10 +71,12 @@ func (gs *GraphStorage) writeToWALWithError(operation wal.OpType, data any) erro
 func (gs *GraphStorage) enqueueWAL(operation wal.OpType, data any) *wal.Pending {
 	encoded, err := json.Marshal(data)
 	if err != nil {
+		gs.noteWALWriteError(err)
 		fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
 		return nil
 	}
 	if encoded, err = gs.sealWALPayload(encoded); err != nil {
+		gs.noteWALWriteError(err)
 		fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
 		return nil
 	}
@@ -86,10 +88,12 @@ func (gs *GraphStorage) enqueueWAL(operation wal.OpType, data any) *wal.Pending 
 		// writeToWALWithError) — single-op writes never reached the
 		// compressed WAL.
 		if _, err := gs.compressedWAL.Append(operation, encoded); err != nil {
+			gs.noteWALWriteError(err)
 			fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
 		}
 	} else if gs.wal != nil {
 		if _, err := gs.wal.Append(operation, encoded); err != nil {
+			gs.noteWALWriteError(err)
 			fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
 		}
 	}
@@ -105,6 +109,7 @@ func (gs *GraphStorage) waitWALPending(operation wal.OpType, pending *wal.Pendin
 		return
 	}
 	if err := pending.Wait(); err != nil {
+		gs.noteWALWriteError(err)
 		fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
 	}
 }

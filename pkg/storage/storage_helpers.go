@@ -43,19 +43,19 @@ func atomicDecrementWithUnderflowProtection(counter *uint64) {
 func (gs *GraphStorage) appendToWAL(opType wal.OpType, data []byte) error {
 	data, err := gs.sealWALPayload(data)
 	if err != nil {
-		return err
+		return gs.noteWALWriteError(err)
 	}
 	if gs.useBatching && gs.batchedWAL != nil {
 		_, err := gs.batchedWAL.Append(opType, data)
-		return err
+		return gs.noteWALWriteError(err)
 	}
 	if gs.useCompression && gs.compressedWAL != nil {
 		_, err := gs.compressedWAL.Append(opType, data)
-		return err
+		return gs.noteWALWriteError(err)
 	}
 	if gs.wal != nil {
 		_, err := gs.wal.Append(opType, data)
-		return err
+		return gs.noteWALWriteError(err)
 	}
 	return nil // No WAL configured
 }

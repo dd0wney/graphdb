@@ -184,7 +184,7 @@ func (tx *Transaction) Commit() error {
 
 	// (3) Atomic durability — one fsync for the whole batch. Propagate the
 	// error: a commit that did not become durable must fail loudly.
-	walErr := tx.gs.appendWALBatch(walEntries)
+	walErr := tx.gs.noteWALWriteError(tx.gs.appendWALBatch(walEntries))
 	tx.gs.txWALBarrier.RUnlock()
 	if walErr != nil {
 		return fmt.Errorf("commit: WAL durability: %w", walErr)

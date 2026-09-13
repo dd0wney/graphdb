@@ -305,9 +305,15 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 	// Everything that construction can log is logged now (replay, the
 	// plaintext purge above). A Close whose boundary still equals this LSN
 	// wrote nothing to the WAL; mmapSnapshotCleanLocked reads it.
-	gs.mu.RLock()
+	gs.mu.Lock()
 	gs.walLSNAtOpen = gs.walBoundaryLSNLocked()
-	gs.mu.RUnlock()
+	// JSON mode: the file we loaded is the live state when the replay put
+	// nothing on top of it and a rewrite would produce the same envelope.
+	// A plaintext purge above already recorded its own sync point.
+	if gs.jsonSnapshotLoadedInSync && gs.walReplayedEntries == 0 {
+		gs.markJSONSnapshotSyncedLocked(gs.walLSNAtOpen, gs.encryptionEngine, gs.jsonSyncEpoch)
+	}
+	gs.mu.Unlock()
 
 	opened = true
 	return gs, nil

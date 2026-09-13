@@ -34,11 +34,20 @@ func (gs *GraphStorage) Snapshot() error {
 // TruncateUpTo(boundary) to checkpoint the WAL without losing concurrent
 // writers' entries (M-1).
 //
-// skipIfClean is Close's option: when the mmap file on disk already holds the
+// skipIfClean is Close's option: when the file on disk already holds the
 // live state, return the boundary without writing. Snapshot and CompactWAL
 // pass false — an explicit request to write is honoured, and its damage
 // refusal (snapshotMmapLocked) stays a contract a caller can rely on.
 func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
+	// Decided before anything else runs: on a clean Close the edge
+	// compression below was the whole remaining cost (1.1 s on the
+	// 2.0M-node ICIJ store) for a file that was not going to be written.
+	if skipIfClean {
+		if boundary, clean := gs.snapshotAlreadyOnDisk(); clean {
+			return boundary, nil
+		}
+	}
+
 	// Compress edge lists before snapshot if compression is enabled — but
 	// only on a JSON-backed store (gs.mmapSnap == nil). On an mmap-backed
 	// store, gs.outgoingEdges/gs.incomingEdges hold the post-open OVERLAY
@@ -63,37 +72,21 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 	}
 
 	gs.mu.RLock()
-
-	// Boundary capture. The barrier write-lock waits out any
-	// Transaction.Commit that applied its changes in-memory (visible to
-	// this snapshot) but hasn't appended its WAL batch yet — those
-	// appends happen after gs.mu is released, so the RLock alone doesn't
-	// exclude them. New commits can't reach that window while we hold
-	// gs.mu.RLock. Holding the barrier across the LSN read costs nothing
-	// here (no commit can contend for it) and keeps the critical section
-	// non-empty.
-	gs.txWALBarrier.Lock()
-	boundary := gs.walBoundaryLSNLocked()
-	gs.txWALBarrier.Unlock()
+	boundary := gs.walLSNBarrieredLocked()
 
 	// mmap reopen mode: write snapshot.mmap (merged overlay ∪ base − tombstones)
 	// instead of the JSON snapshot. snapshotMmapLocked releases gs.mu.RLock.
 	if gs.useMmapSnapshot {
-		// Nothing changed since open: the file on disk already is the live
-		// state, so writing it again would cost a full materialisation (8 s
-		// and 8 GB on a 2M-node store) and would let a read-only session
-		// rewrite the data file. See mmap_snapshot_clean.go.
-		if skipIfClean && gs.mmapSnapshotCleanLocked(boundary) {
-			gs.mu.RUnlock()
-			return boundary, nil
-		}
 		return gs.snapshotMmapLocked(boundary)
 	}
 
 	// Capture the engine under the same RLock as the state it encrypts:
 	// SetEncryption writes this field under gs.mu.Lock, and the encrypt
-	// call + envelope flag below must agree on one value.
+	// call + envelope flag below must agree on one value. The epoch is read
+	// under the same lock so the publish can tell whether an invalidation
+	// happened after this state was captured (json_snapshot_clean.go).
 	engine := gs.encryptionEngine
+	epoch := gs.jsonSyncEpoch
 
 	// Get statistics atomically before creating snapshot
 	stats := gs.GetStatistics()
@@ -177,17 +170,64 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 	// the first-byte plaintext-vs-ciphertext heuristic on load.
 	data = encodeSnapshotEnvelope(data, engine != nil)
 
-	snapshotPath := filepath.Join(gs.dataDir, "snapshot.json")
+	if err := gs.publishJSONSnapshot(data, boundary, engine, epoch); err != nil {
+		return 0, err
+	}
+
+	// Update LastSnapshot timestamp (safe to modify after releasing lock)
+	gs.stats.LastSnapshot = time.Now()
+
+	return boundary, nil
+}
+
+// walLSNBarrieredLocked captures the WAL boundary for the state visible under
+// the caller's gs.mu. The barrier write-lock waits out any Transaction.Commit
+// that applied its changes in-memory (visible to this snapshot) but hasn't
+// appended its WAL batch yet — those appends happen after gs.mu is released,
+// so the RLock alone doesn't exclude them. New commits can't reach that
+// window while we hold gs.mu. Holding the barrier across the LSN read costs
+// nothing here (no commit can contend for it) and keeps the critical section
+// non-empty.
+func (gs *GraphStorage) walLSNBarrieredLocked() uint64 {
+	gs.txWALBarrier.Lock()
+	defer gs.txWALBarrier.Unlock()
+	return gs.walBoundaryLSNLocked()
+}
+
+// snapshotAlreadyOnDisk reports whether the snapshot on disk already holds the
+// live state, and the boundary that state has. One check for both formats,
+// under the same lock and the same boundary capture the write path uses:
+// mmap_snapshot_clean.go for snapshot.mmap, json_snapshot_clean.go for
+// snapshot.json. Snapshot() and CompactWAL never ask; only Close does.
+func (gs *GraphStorage) snapshotAlreadyOnDisk() (uint64, bool) {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+	boundary := gs.walLSNBarrieredLocked()
+	if gs.useMmapSnapshot {
+		return boundary, gs.mmapSnapshotCleanLocked(boundary)
+	}
+	return boundary, gs.jsonSnapshotCleanLocked(boundary, gs.encryptionEngine)
+}
+
+// publishJSONSnapshot writes data as snapshot.json and records the sync point
+// for it. One publish at a time: two callers shared the temp path, and the
+// sync point must describe whichever file renamed last, which only holds if
+// the rename and the record happen under the same lock.
+func (gs *GraphStorage) publishJSONSnapshot(data []byte, boundary uint64, engine encryption.EncryptDecrypter, epoch uint64) error {
+	gs.jsonPublishMu.Lock()
+	defer gs.jsonPublishMu.Unlock()
+
+	snapshotPath := jsonSnapshotPath(gs.dataDir)
 	tmpPath := snapshotPath + ".tmp"
 
 	// Write to temporary file first
 	if err := writeFileWithFS(gs.fs, tmpPath, data, filePermissions); err != nil {
-		return 0, fmt.Errorf("failed to write snapshot: %w", err)
+		return fmt.Errorf("failed to write snapshot: %w", err)
 	}
 
 	// Atomic rename
 	if err := gs.fs.Rename(tmpPath, snapshotPath); err != nil {
-		return 0, fmt.Errorf("failed to rename snapshot: %w", err)
+		return fmt.Errorf("failed to rename snapshot: %w", err)
 	}
 
 	// The rename is atomic, but the directory entry it creates is not durable
@@ -196,13 +236,13 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 	// no name points at them. PR #530 did this for the mmap path; this path
 	// kept the gap until a crash sweep generated the states it produces.
 	if err := vfs.SyncParentDir(gs.fs, snapshotPath); err != nil {
-		return 0, fmt.Errorf("failed to sync the data directory after the snapshot rename: %w", err)
+		return fmt.Errorf("failed to sync the data directory after the snapshot rename: %w", err)
 	}
 
-	// Update LastSnapshot timestamp (safe to modify after releasing lock)
-	gs.stats.LastSnapshot = time.Now()
-
-	return boundary, nil
+	gs.mu.Lock()
+	gs.markJSONSnapshotSyncedLocked(boundary, engine, epoch)
+	gs.mu.Unlock()
+	return nil
 }
 
 // loadFromDisk loads the graph from disk
@@ -270,6 +310,9 @@ func (gs *GraphStorage) loadFromDisk() error {
 		return fmt.Errorf("failed to unmarshal snapshot: %w", err)
 	}
 	prof.mark("json.Unmarshal")
+	// A rewrite of this file would change nothing only if the envelope is
+	// current and its encryption matches the engine we hold now.
+	gs.jsonSnapshotLoadedInSync = !legacy && isEncrypted == (gs.encryptionEngine != nil)
 
 	gs.rebucketSnapshotNodes(snapshot.Nodes)
 	gs.rebucketSnapshotEdges(snapshot.Edges)
