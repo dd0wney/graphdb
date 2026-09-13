@@ -90,7 +90,7 @@ func (gs *GraphStorage) CompactWAL() error {
 	gs.compactMu.Lock()
 	defer gs.compactMu.Unlock()
 
-	boundary, err := gs.snapshotWithBoundary()
+	boundary, err := gs.snapshotWithBoundary(false)
 	if err != nil {
 		return fmt.Errorf("compact WAL: snapshot: %w", err)
 	}

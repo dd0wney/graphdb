@@ -106,6 +106,10 @@ type GraphStorage struct {
 	mmapSnap     *mmapSnapshot
 	deletedNodes [256]map[uint64]struct{}
 	deletedEdges [256]map[uint64]struct{}
+	// walLSNAtOpen is the WAL LSN once construction finished (snapshot loaded,
+	// WAL replayed). A Close whose boundary still equals it logged nothing;
+	// mmapSnapshotCleanLocked uses that as one of its four conditions.
+	walLSNAtOpen uint64
 
 	// ID generators
 	nextNodeID uint64

@@ -23,7 +23,7 @@ type PropertyIndexSnapshot struct {
 
 // Snapshot saves the current state to disk
 func (gs *GraphStorage) Snapshot() error {
-	_, err := gs.snapshotWithBoundary()
+	_, err := gs.snapshotWithBoundary(false)
 	return err
 }
 
@@ -33,7 +33,12 @@ func (gs *GraphStorage) Snapshot() error {
 // lands after has LSN > boundary. CompactWAL pairs this with
 // TruncateUpTo(boundary) to checkpoint the WAL without losing concurrent
 // writers' entries (M-1).
-func (gs *GraphStorage) snapshotWithBoundary() (uint64, error) {
+//
+// skipIfClean is Close's option: when the mmap file on disk already holds the
+// live state, return the boundary without writing. Snapshot and CompactWAL
+// pass false — an explicit request to write is honoured, and its damage
+// refusal (snapshotMmapLocked) stays a contract a caller can rely on.
+func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 	// Compress edge lists before snapshot if compression is enabled — but
 	// only on a JSON-backed store (gs.mmapSnap == nil). On an mmap-backed
 	// store, gs.outgoingEdges/gs.incomingEdges hold the post-open OVERLAY
@@ -74,6 +79,14 @@ func (gs *GraphStorage) snapshotWithBoundary() (uint64, error) {
 	// mmap reopen mode: write snapshot.mmap (merged overlay ∪ base − tombstones)
 	// instead of the JSON snapshot. snapshotMmapLocked releases gs.mu.RLock.
 	if gs.useMmapSnapshot {
+		// Nothing changed since open: the file on disk already is the live
+		// state, so writing it again would cost a full materialisation (8 s
+		// and 8 GB on a 2M-node store) and would let a read-only session
+		// rewrite the data file. See mmap_snapshot_clean.go.
+		if skipIfClean && gs.mmapSnapshotCleanLocked(boundary) {
+			gs.mu.RUnlock()
+			return boundary, nil
+		}
 		return gs.snapshotMmapLocked(boundary)
 	}
 
@@ -394,7 +407,7 @@ func (gs *GraphStorage) Close() error {
 	// snapshotMmapLocked refuses to write when a base record is damaged (#521),
 	// which turned this from a full-disk edge case into something ordinary bit
 	// rot reaches.
-	snapErr := gs.Snapshot()
+	_, snapErr := gs.snapshotWithBoundary(true)
 	var errs []error
 	if snapErr != nil {
 		errs = append(errs, snapErr)
