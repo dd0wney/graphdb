@@ -69,6 +69,12 @@
       "track": "v1.1",
       "status": "pending",
       "title": "Real-corpus coi-screen run (Milestone-1-proper, ~814K ICIJ). Needs the sibling coi-screen repo checked out beside graphdb and an ICIJ corpus on the machine; runbook in SPIKE_COI_SCREEN_VALIDATION_2026-07-01.md"
+    },
+    {
+      "id": "v1.4-close-no-rewrite-when-clean",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: Close must not rewrite the snapshot when the session wrote nothing. Surfaced by v1.1-coi-screen-real-corpus (#594): a read-only consumer rewrites the 1.1 GB snapshot.mmap on every exit (8.3 s / 7.9 GB; JSON 25 s / 17.5 GB). Acceptance: mtime and bytes unchanged after a read-only open/close, changed after one write, both seen red first; WAL truncate stays tied to a snapshot that happened. Spec row in NEXT_STEPS_2026-06-18.md section D"
     }
   ],
   "deps": [
