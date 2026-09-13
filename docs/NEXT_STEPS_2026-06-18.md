@@ -72,16 +72,17 @@ doc already uses for decision point B-2.
 - **#416 — `DeleteAllNodes` mmap-awareness bug** — ✅ **DONE (#423, `0ccb976`)**: `DeleteAllNodes` now unmaps the mmap base (mirroring `Close()`) before snapshotting, so a delete-all is real in memory and across reopen instead of silently re-persisting the base. Root cause was deeper than the issue title — in mmap mode the op was a no-op that rewrote the full old graph. Gated by a new JSON↔mmap parity test (`TestMmapReopen_DeleteAllNodesClears`).
 
 ### B — Open decisions gating further mmap work (carried from 06-17)
-- **B-1**: is full-graph `GetAllNodesForTenant`-on-reopen a real consumer hot path? → gates DoD Levers 2–3.
+- ~~**B-1**: is full-graph `GetAllNodesForTenant`-on-reopen a real consumer hot path? → gates DoD Levers 2–3.~~ **ANSWERED 2026-09-13 (#594)**: no, not on the consumer's read path — coi-screen's hot path on the real 2.0M-node corpus is a label-bucket scan (0.6 s over 771K nodes, same in mmap and JSON) plus a DFS. Full-graph enumeration *is* on graphdb's own `Close` path: it rewrites the snapshot even when the session wrote nothing (8.3 s / 7.9 GB mmap, 25 s / 17.5 GB JSON). See `COI_SCREEN_REAL_CORPUS_2026-09-13.md`.
 - **B-2**: should mmap become a default / per-deployment opt-in now that open + index lookup are ~0? → precondition: property-based/fuzzed equivalence oracle + validation on a real consumer.
 
 ### C — Gated mmap follow-ups (`SPIKE_DOD_MATERIALIZATION_2026-06-17.md`)
-- **DoD Lever 2** (lazy property bag → ~3.6× on the 479ms full-enum residual) and **Lever 3** (columnar SoA) — both gated on B-1; both carry `*Node`/`Properties` public-type blast radius.
+- **DoD Lever 2** (lazy property bag → ~3.6× on the 479ms full-enum residual) and **Lever 3** (columnar SoA) — both gated on B-1; both carry `*Node`/`Properties` public-type blast radius. *B-1 answered 2026-09-13: the consumer does not enumerate the graph, so neither lever has a consumer pull. The enumeration that every consumer pays is `Close`'s snapshot rewrite; skipping it on a read-only session (below, §D) removes the cost without touching the public types.*
 - Harden the oracle to property-based coverage before mmap-default.
 - mmap + encryption and mmap + `UseDiskBackedEdges` still fall back to JSON (would need a page/segment-decrypt path).
 
 ### D — Carry-forward candidate tracks (none forced)
-- **Real-corpus coi-screen Milestone-1-proper** (~814K ICIJ run; deferred for lack of a local corpus). See recommendation below.
+- **Real-corpus coi-screen Milestone-1-proper** — ✅ **DONE 2026-09-13 (#594)**. The corpus (ICIJ full-oldb 2023-09-06, 2,017,662 nodes / 3,339,267 edges — "~814K" was the entity count) was at `/mnt/ssd2/Workspace/icij/` the whole time the row said "deferred for lack of a local corpus"; a recorded "not present" is a claim, probe it. The real `cmd/coi` binary ran end to end in mmap mode: 5 of 5 shared-entity pairs flagged; import 16 s; open 11 ms vs 25.7 s JSON. coi-screen needed three fixes to build against main (module rename, #531 error return, `UseMmapSnapshot`) — on its branch `fix/graphdb-module-rename`, unpushed. The July runbook's `GRAPHDB_STORAGE_MODE=mmap` step could never work: the library does not read the variable. The coi step of `scripts/consumer-drive.sh` had never run (sibling absent → SKIP). Write-up: `docs/internals/design/COI_SCREEN_REAL_CORPUS_2026-09-13.md`.
+- **`Close` must not rewrite the snapshot when the session wrote nothing** (surfaced by the row above; not yet a coord task). `Close` → `Snapshot` unconditionally (`pkg/storage/persistence.go`); the mmap branch merges overlay ∪ base − tombstones into a fresh 1.1 GB file even with an empty overlay. Every read-only consumer rewrites the customer-data-equivalent file on exit, and two exiting together rewrite it concurrently — a safety shape first, a performance one second. **Acceptance**: after a read-only open/close the snapshot mtime and bytes are unchanged; after one write they change; a test sees both, red first. **Scope**: track "no writes since open" (WAL boundary at open == boundary at close, overlay and tombstones empty) and skip the rewrite; the WAL truncate must stay tied to a snapshot that actually happened. Est. small; the invariant machinery in `invariants.go` is the natural oracle.
 - **Productization / operability Wave 2** — customer-facing onboarding docs (standing gap), ~~single-node-limitation framing~~ (✅ done #427: cluster marked EXPERIMENTAL + single-node stated in README/CAPABILITIES, ROADMAP B6), deploy-ordering note (create indexes before traffic).
 - **GraphQL index-level pagination** — ✅ **DONE 2026-09-11 (#585, `275e217`)**. REST side #366; the GraphQL half adds `after: ID` to every list field in the production limits schema (cursor = last item's ID, same contract as `X-Next-Cursor`; a short page ends the walk). Unfiltered requests make one storage page call; `where` requests materialise and seek with `sort.Search` (a page loop re-sorts the full ID set per round, review caught it). `offset` keeps its meaning, so graphdb-coord's offset walk still works; coord moves to `after` in its own follow-up. ADR 0003 window on the page-only path is the page scan; a GraphQL field cannot carry a partial list beside an error, so the page that meets damage refuses — an `X-Enumeration-Incomplete` equivalent for GraphQL is an open follow-up. Unblocks v1.4 SDK parity (coord `graphdb:v1.4-sdk-parity`).
 - **Batched-WAL default sweep** — ✅ **RESOLVED #427 (ROADMAP B3 / PERF HIGH-3)**: the `FlushInterval` sweep measured batched WAL **13× slower** than per-write fsync on fast NVMe, so the default was kept as per-write fsync (strongest durability + fastest on local storage) and documented; batching stays opt-in for slow/networked disk. Not a flip — the data inverted the assumption.
@@ -122,7 +123,7 @@ doc already uses for decision point B-2.
 
 ## Recommended next track
 
-**Real-corpus coi-screen Milestone-1-proper (~814K ICIJ).** It's the single pick that *converts open questions into evidence* instead of guessing:
+**Real-corpus coi-screen Milestone-1-proper (~814K ICIJ).** ✅ *Done 2026-09-13 (#594); B-1 answered, see §B and §D. The recommendation below is kept as written for the record.* It's the single pick that *converts open questions into evidence* instead of guessing:
 
 1. likeliest source of new product evidence (deferred only for lack of a local corpus);
 2. exercises mmap mode **end-to-end on a real consumer** — the validation Stages 2a–2c never had — which is the explicit precondition for decision **B-2** (mmap-as-default);
@@ -134,7 +135,7 @@ Consistent with 06-03/06-17: **no critical path is forced.** This is a recommend
 
 ## Decision points (open, for the user)
 
-- **B-1**: is full-graph enumeration-on-reopen a consumer hot path? Gates DoD Levers 2–3.
+- ~~**B-1**: is full-graph enumeration-on-reopen a consumer hot path? Gates DoD Levers 2–3.~~ **RESOLVED 2026-09-13 (#594)** — not on the consumer's read path; it is on graphdb's `Close` path. Levers 2–3 lose their consumer pull; the `Close` no-rewrite item in §D takes their place.
 - ~~**B-2**: should mmap mode become a default?~~ **RESOLVED — shipped.** `UseMmapSnapshot: true` is the default as of v1.2 (#447), citing #440 (property-based oracle) and #444 (reopen ~1370x cheaper at ICIJ scale). The recommended track below still has value for B-1, but its "explicit precondition for B-2" framing is overtaken. Verified against `pkg/storage/storage.go:46` on 2026-08-28.
 
 ## How to use this document
