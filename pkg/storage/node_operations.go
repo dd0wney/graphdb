@@ -946,6 +946,11 @@ func (gs *GraphStorage) DeleteAllNodes() error {
 		gs.compressedIncoming = make(map[uint64]*CompressedEdgeList)
 	}
 
+	// The truncate below resets the WAL LSN to 0, so the JSON sync point's
+	// LSN equality means nothing afterwards. Drop it first; the empty
+	// snapshot written at the end records a fresh one if it lands.
+	gs.invalidateJSONSnapshotSyncLocked()
+
 	// Truncate whichever WAL variant is active so replay doesn't restore deleted data.
 	if gs.wal != nil {
 		if err := gs.wal.Truncate(); err != nil {

@@ -32,6 +32,7 @@ func (gs *GraphStorage) replayWAL() error {
 
 // replayEntry replays a single WAL entry
 func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
+	gs.walReplayedEntries++
 	// H-3: unseal encrypted payloads before dispatch. A legacy plaintext
 	// entry (written before encryption was enabled) passes through; note
 	// it so the constructor can purge it from disk via CompactWAL.

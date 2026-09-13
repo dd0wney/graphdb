@@ -165,6 +165,27 @@ type GraphStorage struct {
 	// replayed — the constructor then runs CompactWAL once so pre-toggle
 	// plaintext leaves the disk (H-3). Constructor-only; no locking.
 	walReplaySawPlaintext bool
+	// walReplayedEntries counts the WAL entries constructor-time replay
+	// applied on top of the loaded snapshot. Constructor-only; no locking.
+	// Non-zero means the snapshot on disk is behind memory at open.
+	walReplayedEntries uint64
+	// jsonSnapshotLoadedInSync is set by loadFromDisk when the snapshot it
+	// read is in the current envelope format and its encryption matches the
+	// engine, so a rewrite would produce the same file. Constructor-only.
+	jsonSnapshotLoadedInSync bool
+	// jsonSnapshotSync is the JSON-mode sync point; see json_snapshot_clean.go.
+	// Guarded by gs.mu.
+	jsonSnapshotSync jsonSnapshotSync
+	// jsonSyncEpoch counts invalidations of the sync point. Guarded by gs.mu.
+	jsonSyncEpoch uint64
+	// walWriteFailed is set when any WAL append fails and never cleared: a
+	// write that reached memory and not the WAL leaves the LSN behind the
+	// state, so the LSN can no longer prove a Close has nothing to write.
+	walWriteFailed atomic.Bool
+	// jsonPublishMu serialises the temp-write, rename and sync-point record of
+	// a JSON snapshot publish, so the sync point always describes the file
+	// that renamed last. Two publishes also shared one temp path.
+	jsonPublishMu sync.Mutex
 
 	// observers is the registered NodeObserver slice. Mutated by
 	// AddObserver under gs.mu.Lock; snapshot-copied for dispatch under
