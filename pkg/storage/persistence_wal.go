@@ -3,22 +3,9 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/dd0wney/graphdb/pkg/wal"
 )
-
-// writeToWAL writes an operation to the write-ahead log for durability
-// Handles both batched and non-batched WAL writes
-// Note: This function logs errors rather than returning them to maintain
-// backward compatibility with existing callers. Critical operations that
-// require durability guarantees should use writeToWALWithError instead.
-func (gs *GraphStorage) writeToWAL(operation wal.OpType, data any) {
-	if err := gs.writeToWALWithError(operation, data); err != nil {
-		// Log the error - callers that need error handling should use writeToWALWithError
-		fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
-	}
-}
 
 // writeToWALWithError writes an operation to the WAL and returns any error
 // Use this for operations that require durability guarantees
@@ -62,23 +49,22 @@ func (gs *GraphStorage) writeToWALWithError(operation wal.OpType, data any) erro
 // mutation order; only the durability wait moves outside the lock.
 //
 // For the synchronous path (plain WAL, or no WAL) the durable write happens
-// inline here exactly as writeToWAL does today, and the returned handle is nil
-// (nothing to wait for). This keeps the non-batched default byte-identical.
+// inline here exactly as writeToWALWithError does, and the returned handle is
+// nil on success (nothing to wait for).
 //
-// Matches writeToWAL's fail-soft contract: marshal / synchronous-append errors
-// are logged, not returned. The caller likewise logs (does not propagate) the
-// deferred Wait() error.
+// A marshal, seal, or synchronous-append failure returns a *wal.Pending whose
+// Wait() returns the error at once (wal.FailedPending) — the caller always
+// gets a handle it can Wait() on, with no special case for "the write never
+// reached the batch buffer." The in-memory change the caller already applied
+// stays applied: this is the fail-loud-but-keep-going contract described on
+// ErrWALWriteFailed, not a rollback.
 func (gs *GraphStorage) enqueueWAL(operation wal.OpType, data any) *wal.Pending {
 	encoded, err := json.Marshal(data)
 	if err != nil {
-		gs.noteWALWriteError(err)
-		fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
-		return nil
+		return wal.FailedPending(gs.noteWALWriteError(fmt.Errorf("failed to marshal WAL data: %w", err)))
 	}
 	if encoded, err = gs.sealWALPayload(encoded); err != nil {
-		gs.noteWALWriteError(err)
-		fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
-		return nil
+		return wal.FailedPending(gs.noteWALWriteError(err))
 	}
 
 	if gs.useBatching && gs.batchedWAL != nil {
@@ -88,30 +74,34 @@ func (gs *GraphStorage) enqueueWAL(operation wal.OpType, data any) *wal.Pending 
 		// writeToWALWithError) — single-op writes never reached the
 		// compressed WAL.
 		if _, err := gs.compressedWAL.Append(operation, encoded); err != nil {
-			gs.noteWALWriteError(err)
-			fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
+			return wal.FailedPending(gs.noteWALWriteError(fmt.Errorf("failed to append to compressed WAL: %w", err)))
 		}
 	} else if gs.wal != nil {
 		if _, err := gs.wal.Append(operation, encoded); err != nil {
-			gs.noteWALWriteError(err)
-			fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
+			return wal.FailedPending(gs.noteWALWriteError(fmt.Errorf("failed to append to WAL: %w", err)))
 		}
 	}
 	// No WAL configured - valid for in-memory only mode.
 	return nil
 }
 
-// waitWALPending blocks on a pending batched-WAL durability handle and logs
-// (does not propagate) any flush error, preserving writeToWAL's fail-soft
-// contract. nil handle (synchronous/no-op path) returns immediately.
-func (gs *GraphStorage) waitWALPending(operation wal.OpType, pending *wal.Pending) {
+// waitWALPending blocks on a pending WAL durability handle and returns any
+// failure to become durable. A nil handle (the synchronous path already
+// succeeded, or no WAL is configured) returns nil at once.
+//
+// A non-nil error wraps ErrWALWriteFailed and the operation type, and has
+// already been recorded via gs.noteWALWriteError so the next Close rewrites
+// the snapshot. The caller's in-memory change stays applied and its result
+// value stays valid — see ErrWALWriteFailed's doc comment for the contract.
+func (gs *GraphStorage) waitWALPending(operation wal.OpType, pending *wal.Pending) error {
 	if pending == nil {
-		return
+		return nil
 	}
 	if err := pending.Wait(); err != nil {
 		gs.noteWALWriteError(err)
-		fmt.Fprintf(os.Stderr, "WAL write error (op=%d): %v\n", operation, err)
+		return fmt.Errorf("%w: op %d: %w", ErrWALWriteFailed, operation, err)
 	}
+	return nil
 }
 
 // appendWALBatch durably writes a batch of WAL entries with a single fsync —
@@ -120,9 +110,9 @@ func (gs *GraphStorage) waitWALPending(operation wal.OpType, pending *wal.Pendin
 // leaves none of the batch in the WAL, after leaves all of it (replay then
 // restores the whole transaction via the existing per-op opcodes).
 //
-// Unlike the fire-and-forget single-op writeToWAL/enqueueWAL paths, this
-// PROPAGATES the error: a transaction whose commit did not become durable must
-// fail loudly so the caller knows.
+// Like the single-op enqueueWAL/waitWALPending path, this PROPAGATES the
+// error: a transaction whose commit did not become durable must fail loudly
+// so the caller knows.
 //
 // Atomicity holds on the batched and plain WAL (both back onto WAL.Append-
 // BatchAtomic's single fsync). The compressed WAL has no batch primitive, so it

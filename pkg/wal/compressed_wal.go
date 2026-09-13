@@ -94,10 +94,10 @@ func (w *CompressedWAL) Truncate() error {
 
 	walPath := filepath.Join(w.dataDir, "wal_compressed.log")
 
-	// Flush any buffered data before truncating
-	if err := w.writer.Flush(); err != nil {
-		return fmt.Errorf("failed to flush WAL before truncate: %w", err)
-	}
+	// Discard, do not flush: the buffer is empty on the success path, and
+	// after a failed append it holds only a sticky error and the tail of
+	// the entry that did not land. See WAL.Truncate.
+	w.writer.Reset(w.file)
 
 	// Create the new file BEFORE closing the old one to ensure we have a valid handle
 	newFile, err := w.fs.Open(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)

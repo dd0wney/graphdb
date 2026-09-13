@@ -18,14 +18,20 @@ import (
 // CreateEdgeWithTenant.
 //
 // Existence (not tenancy) of the from/to nodes is still validated.
-func (gs *GraphStorage) CreateEdge(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
+func (gs *GraphStorage) CreateEdge(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (edge *Edge, err error) {
 	gs.mu.Lock()
 	// Deferred WAL wait runs AFTER gs.mu.Unlock (defers are LIFO), so the
 	// durability wait happens off-lock and concurrent writers can fill the
 	// batch (group commit, Track P item 1). nil handle on the error paths
-	// below => no-op wait.
+	// below => no-op wait. A wait error (wrapping ErrWALWriteFailed) is
+	// reported only when the call has no earlier error to report — the
+	// created edge is already applied either way.
 	var walPending *wal.Pending
-	defer func() { gs.waitWALPending(wal.OpCreateEdge, walPending) }()
+	defer func() {
+		if waitErr := gs.waitWALPending(wal.OpCreateEdge, walPending); err == nil {
+			err = waitErr
+		}
+	}()
 	defer gs.mu.Unlock()
 
 	if err := gs.verifyNodeExists(fromID, "source"); err != nil {
@@ -50,12 +56,16 @@ func (gs *GraphStorage) CreateEdge(fromID, toID uint64, edgeType string, propert
 // /vector-search, /traverse and /shortest-path tenant scoping now
 // rests on this guarantee — see the updated comments in
 // pkg/api/handlers_edges.go and pkg/algorithms/shortest_path.go.
-func (gs *GraphStorage) CreateEdgeWithTenant(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, error) {
+func (gs *GraphStorage) CreateEdgeWithTenant(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (edge *Edge, err error) {
 	gs.mu.Lock()
 	// Deferred WAL wait runs after gs.mu.Unlock (LIFO) — group commit, Track P
-	// item 1. See CreateEdge.
+	// item 1. See CreateEdge for the wait-error / precedence rule.
 	var walPending *wal.Pending
-	defer func() { gs.waitWALPending(wal.OpCreateEdge, walPending) }()
+	defer func() {
+		if waitErr := gs.waitWALPending(wal.OpCreateEdge, walPending); err == nil {
+			err = waitErr
+		}
+	}()
 	defer gs.mu.Unlock()
 
 	if err := gs.verifyNodeExistsForTenant(fromID, "source", tenantID); err != nil {
@@ -95,18 +105,20 @@ func (gs *GraphStorage) CreateEdgesWithTenant(tenantID string, specs []EdgeSpec)
 	for _, s := range specs {
 		if err := gs.verifyNodeExistsForTenant(s.FromID, "source", tenantID); err != nil {
 			gs.mu.Unlock()
-			gs.flushEdgeBatchWAL(pendings)
+			// The verification error, not a WAL wait error, is this call's
+			// result — mirrors the mid-batch contract below.
+			_ = gs.flushEdgeBatchWAL(pendings)
 			return ids, err
 		}
 		if err := gs.verifyNodeExistsForTenant(s.ToID, "target", tenantID); err != nil {
 			gs.mu.Unlock()
-			gs.flushEdgeBatchWAL(pendings)
+			_ = gs.flushEdgeBatchWAL(pendings)
 			return ids, err
 		}
 		edge, p, err := gs.createEdgeWithTenantNoVerify(tenantID, s.FromID, s.ToID, s.Type, s.Properties, s.Weight)
 		if err != nil {
 			gs.mu.Unlock()
-			gs.flushEdgeBatchWAL(pendings)
+			_ = gs.flushEdgeBatchWAL(pendings)
 			return ids, err
 		}
 		ids = append(ids, edge.ID)
@@ -116,17 +128,23 @@ func (gs *GraphStorage) CreateEdgesWithTenant(tenantID string, specs []EdgeSpec)
 	}
 	gs.mu.Unlock()
 
-	gs.flushEdgeBatchWAL(pendings)
-	return ids, nil
+	err := gs.flushEdgeBatchWAL(pendings)
+	return ids, err
 }
 
 // flushEdgeBatchWAL waits on every WAL durability handle from an edge batch
 // once, after the lock is released (group commit, Track P item 1). Caller must
-// NOT hold gs.mu.
-func (gs *GraphStorage) flushEdgeBatchWAL(pendings []*wal.Pending) {
+// NOT hold gs.mu. Every pending is waited on regardless of an earlier
+// failure, and the first wait error (wrapping ErrWALWriteFailed) is returned
+// — every created edge is already applied either way.
+func (gs *GraphStorage) flushEdgeBatchWAL(pendings []*wal.Pending) error {
+	var firstErr error
 	for _, p := range pendings {
-		gs.waitWALPending(wal.OpCreateEdge, p)
+		if err := gs.waitWALPending(wal.OpCreateEdge, p); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
+	return firstErr
 }
 
 // createEdgeWithTenantNoVerify is the shared edge-creation core. It
@@ -197,12 +215,18 @@ func (gs *GraphStorage) getEdgeRefForTenant(edgeID uint64, tenantID string) (*Ed
 // DeleteEdge deletes an edge by ID.
 //
 // Tenant-blind. New callers should prefer DeleteEdgeForTenant.
-func (gs *GraphStorage) DeleteEdge(edgeID uint64) error {
+func (gs *GraphStorage) DeleteEdge(edgeID uint64) (err error) {
 	gs.mu.Lock()
 	// Deferred WAL wait runs after gs.mu.Unlock (LIFO) — group commit, Track P
-	// item 1. nil handle (not-found path) => no-op wait.
+	// item 1. nil handle (not-found path) => no-op wait. A wait error
+	// (wrapping ErrWALWriteFailed) is reported only when the call has no
+	// earlier error to report.
 	var walPending *wal.Pending
-	defer func() { gs.waitWALPending(wal.OpDeleteEdge, walPending) }()
+	defer func() {
+		if waitErr := gs.waitWALPending(wal.OpDeleteEdge, walPending); err == nil {
+			err = waitErr
+		}
+	}()
 	defer gs.mu.Unlock()
 
 	// Lookup + delete on edgeShards under the per-shard write lock so
@@ -323,7 +347,7 @@ func (gs *GraphStorage) UpdateEdgeForTenant(edgeID uint64, properties map[string
 // UpdateEdge updates an edge's properties and/or weight.
 //
 // Tenant-blind. New callers should prefer UpdateEdgeForTenant.
-func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, weight *float64) error {
+func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, weight *float64) (err error) {
 	// Reject a non-finite new weight before taking any lock (#328) — an
 	// Inf/NaN weight can't be WAL-marshaled. nil weight = leave unchanged.
 	if weight != nil {
@@ -333,9 +357,15 @@ func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, w
 	}
 	gs.mu.Lock()
 	// Deferred WAL wait runs after gs.mu.Unlock AND gs.unlockShard (LIFO) —
-	// group commit, Track P item 1. nil handle (not-found path) => no-op wait.
+	// group commit, Track P item 1. nil handle (not-found path) => no-op
+	// wait. A wait error (wrapping ErrWALWriteFailed) is reported only when
+	// the call has no earlier error to report.
 	var walPending *wal.Pending
-	defer func() { gs.waitWALPending(wal.OpUpdateEdge, walPending) }()
+	defer func() {
+		if waitErr := gs.waitWALPending(wal.OpUpdateEdge, walPending); err == nil {
+			err = waitErr
+		}
+	}()
 	defer gs.mu.Unlock()
 
 	// lockShard excludes concurrent GetEdge readers from this edge's
@@ -550,13 +580,19 @@ func (gs *GraphStorage) FindAllEdgesBetweenAcrossTenants(fromID, toID uint64) ([
 // UpsertEdge creates a new edge or updates an existing one between
 // two nodes in the default tenant. Tenant-blind on node verification;
 // see CreateEdge for the rationale. Existence is still validated.
-func (gs *GraphStorage) UpsertEdge(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, bool, error) {
+func (gs *GraphStorage) UpsertEdge(fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (edge *Edge, created bool, err error) {
 	gs.mu.Lock()
 	// Deferred WAL wait runs after gs.mu.Unlock (LIFO) — group commit, Track P
-	// item 1. walOp reflects the branch taken (create vs update) for logging.
+	// item 1. walOp reflects the branch taken (create vs update). A wait
+	// error (wrapping ErrWALWriteFailed) is reported only when the call has
+	// no earlier error to report.
 	var walPending *wal.Pending
 	walOp := wal.OpCreateEdge
-	defer func() { gs.waitWALPending(walOp, walPending) }()
+	defer func() {
+		if waitErr := gs.waitWALPending(walOp, walPending); err == nil {
+			err = waitErr
+		}
+	}()
 	defer gs.mu.Unlock()
 
 	if err := gs.verifyNodeExists(fromID, "source"); err != nil {
@@ -578,13 +614,17 @@ func (gs *GraphStorage) UpsertEdge(fromID, toID uint64, edgeType string, propert
 // between two nodes for a specific tenant. From/to nodes must belong
 // to the same tenant — cross-tenant or missing surfaces as
 // ErrNodeNotFound (audit A6a follow-up; see CreateEdgeWithTenant).
-func (gs *GraphStorage) UpsertEdgeWithTenant(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (*Edge, bool, error) {
+func (gs *GraphStorage) UpsertEdgeWithTenant(tenantID string, fromID, toID uint64, edgeType string, properties map[string]Value, weight float64) (edge *Edge, created bool, err error) {
 	gs.mu.Lock()
 	// Deferred WAL wait runs after gs.mu.Unlock (LIFO) — group commit, Track P
-	// item 1. See UpsertEdge.
+	// item 1. See UpsertEdge for the wait-error / precedence rule.
 	var walPending *wal.Pending
 	walOp := wal.OpCreateEdge
-	defer func() { gs.waitWALPending(walOp, walPending) }()
+	defer func() {
+		if waitErr := gs.waitWALPending(walOp, walPending); err == nil {
+			err = waitErr
+		}
+	}()
 	defer gs.mu.Unlock()
 
 	if err := gs.verifyNodeExistsForTenant(fromID, "source", tenantID); err != nil {
@@ -655,12 +695,18 @@ func (gs *GraphStorage) upsertEdgeWithTenantNoVerify(tenantID string, fromID, to
 // Cross-tenant (see FindEdgeBetweenAcrossTenants): can delete an edge owned by
 // any tenant; no request path uses it. Add a *ForTenant variant for scoped
 // callers before exposing edge deletion by endpoint.
-func (gs *GraphStorage) DeleteEdgeBetweenAcrossTenants(fromID, toID uint64, edgeType string) (bool, error) {
+func (gs *GraphStorage) DeleteEdgeBetweenAcrossTenants(fromID, toID uint64, edgeType string) (deleted bool, err error) {
 	gs.mu.Lock()
 	// Deferred WAL wait runs after gs.mu.Unlock (LIFO) — group commit, Track P
-	// item 1. nil handle (no-matching-edge paths) => no-op wait.
+	// item 1. nil handle (no-matching-edge paths) => no-op wait. A wait
+	// error (wrapping ErrWALWriteFailed) is reported only when the call has
+	// no earlier error to report.
 	var walPending *wal.Pending
-	defer func() { gs.waitWALPending(wal.OpDeleteEdge, walPending) }()
+	defer func() {
+		if waitErr := gs.waitWALPending(wal.OpDeleteEdge, walPending); err == nil {
+			err = waitErr
+		}
+	}()
 	defer gs.mu.Unlock()
 
 	// Find the edge first

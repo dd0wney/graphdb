@@ -6,6 +6,14 @@ import (
 	"math"
 )
 
+// ErrWALWriteFailed is returned by a write whose in-memory change applied
+// but whose WAL append did not. The result the method returns is valid and
+// every reader already sees the change; it becomes durable at the next
+// Snapshot or Close, which the storage forces after any WAL failure. A
+// retry would apply the change a second time. Same contract as
+// Transaction.Commit. The cause is wrapped.
+var ErrWALWriteFailed = errors.New("WAL write failed: change applied in memory, not yet durable")
+
 // Common sentinel errors
 var (
 	ErrNodeNotFound              = errors.New("node not found")

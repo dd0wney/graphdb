@@ -34,14 +34,16 @@ func (gs *GraphStorage) CreateVectorIndex(
 	// logged. Without this, an index created after the last snapshot is lost
 	// on crash (its vectors un-indexed on recovery). Mirrors
 	// CreatePropertyIndex. Tenant-blind create lands under the default tenant.
-	gs.writeToWAL(wal.OpCreateVectorIndex, VectorIndexDef{
+	if err := gs.writeToWALWithError(wal.OpCreateVectorIndex, VectorIndexDef{
 		TenantID:       tenantid.Default.String(),
 		PropertyName:   propertyName,
 		Dimensions:     dimensions,
 		M:              m,
 		EfConstruction: efConstruction,
 		Metric:         metric,
-	})
+	}); err != nil {
+		return fmt.Errorf("%w: %w", ErrWALWriteFailed, err)
+	}
 	return nil
 }
 
@@ -65,10 +67,12 @@ func (gs *GraphStorage) DropVectorIndex(propertyName string) error {
 	}
 	// Durability: a drop applied after the last snapshot must be logged, or
 	// the snapshotted definition resurrects on recovery.
-	gs.writeToWAL(wal.OpDropVectorIndex, dropVectorIndexWAL{
+	if err := gs.writeToWALWithError(wal.OpDropVectorIndex, dropVectorIndexWAL{
 		TenantID:     tenantid.Default.String(),
 		PropertyName: propertyName,
-	})
+	}); err != nil {
+		return fmt.Errorf("%w: %w", ErrWALWriteFailed, err)
+	}
 	return nil
 }
 
@@ -133,14 +137,16 @@ func (gs *GraphStorage) CreateVectorIndexForTenant(
 		return err
 	}
 	// Durability — see CreateVectorIndex. The replayed def routes by TenantID.
-	gs.writeToWAL(wal.OpCreateVectorIndex, VectorIndexDef{
+	if err := gs.writeToWALWithError(wal.OpCreateVectorIndex, VectorIndexDef{
 		TenantID:       tenantID,
 		PropertyName:   propertyName,
 		Dimensions:     dimensions,
 		M:              m,
 		EfConstruction: efConstruction,
 		Metric:         metric,
-	})
+	}); err != nil {
+		return fmt.Errorf("%w: %w", ErrWALWriteFailed, err)
+	}
 	return nil
 }
 
@@ -190,10 +196,12 @@ func (gs *GraphStorage) DropVectorIndexForTenant(tenantID string, propertyName s
 		return err
 	}
 	// Durability — see DropVectorIndex.
-	gs.writeToWAL(wal.OpDropVectorIndex, dropVectorIndexWAL{
+	if err := gs.writeToWALWithError(wal.OpDropVectorIndex, dropVectorIndexWAL{
 		TenantID:     tenantID,
 		PropertyName: propertyName,
-	})
+	}); err != nil {
+		return fmt.Errorf("%w: %w", ErrWALWriteFailed, err)
+	}
 	return nil
 }
 

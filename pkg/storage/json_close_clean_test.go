@@ -10,6 +10,7 @@ package storage
 
 import (
 	"crypto/sha256"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -405,18 +406,18 @@ func TestJSONClose_FailedWALAppendRewritesSnapshot(t *testing.T) {
 	big := StringValue(strings.Repeat("x", 1<<20))
 	faults.FailWrite(vfstest.Once, 0) // the next write is the WAL append for the create
 	n, err := gs.CreateNodeWithTenant(rtTenantA, []string{"Person"}, map[string]Value{"blob": big})
-	if err != nil {
-		t.Fatalf("create: %v (the single-op path logs WAL errors, it does not return them)", err)
+	if !errors.Is(err, ErrWALWriteFailed) {
+		t.Fatalf("create after a WAL write fault: err=%v, want ErrWALWriteFailed", err)
+	}
+	if n == nil {
+		t.Fatal("the create returned no node with its error; the change is applied in memory and the caller needs its ID")
 	}
 	if !faults.Fired() {
 		t.Fatal("the write fault never fired, so the WAL append succeeded and this test proves nothing")
 	}
 	faults.Clear()
-	// The WAL's buffered writer keeps the injected error, so Close reports
-	// a flush failure on the truncate. That is pre-existing; the snapshot
-	// write before it is what this test is about.
 	if err := gs.Close(); err != nil {
-		t.Logf("close: %v", err)
+		t.Fatalf("close: %v", err)
 	}
 
 	gs2 := openJSON(t, cfg)
