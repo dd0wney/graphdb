@@ -75,6 +75,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: Close must not rewrite the snapshot when the session wrote nothing. Surfaced by v1.1-coi-screen-real-corpus (#594): a read-only consumer rewrites the 1.1 GB snapshot.mmap on every exit (8.3 s / 7.9 GB; JSON 25 s / 17.5 GB). Acceptance: mtime and bytes unchanged after a read-only open/close, changed after one write, both seen red first; WAL truncate stays tied to a snapshot that happened. Spec row in NEXT_STEPS_2026-06-18.md section D"
+    },
+    {
+      "id": "v1.4-json-close-no-rewrite-when-clean",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: JSON-mode Close must not rewrite snapshot.json when the session wrote nothing. Same defect as v1.4-close-no-rewrite-when-clean (#598) on the other representation: a read-only consumer pays 25 s / 17.5 GB per exit on the 2.0M-node ICIJ store. JSON has no overlay, so the proof differs: WAL empty at open and LSN unchanged since, plus every unlogged mutation path (index definitions, SetEncryption, DeleteAllNodes) accounted for. BulkImportMode has no WAL and must always write. Acceptance: snapshot.json mtime and bytes unchanged after a read-only open/close, changed after one write, both seen red first; WAL truncate stays tied to a snapshot that happened"
     }
   ],
   "deps": [
