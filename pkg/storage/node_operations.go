@@ -36,10 +36,13 @@ func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, p
 	gs.applyNodeVectorInserts(vectorPlans)
 	// Wait for WAL durability OUTSIDE gs.mu so concurrent writers can fill the
 	// same batch (group commit, Track P item 1). nil handle = synchronous path
-	// (already durable). Fail-soft: a flush error is logged, not propagated,
-	// matching the pre-split writeToWAL contract.
-	gs.waitWALPending(wal.OpCreateNode, walPending)
-	if err == nil && node != nil {
+	// (already durable). A wait error wraps ErrWALWriteFailed; the node is
+	// already applied and notified, so it is still returned alongside the
+	// error rather than rolled back.
+	if waitErr := gs.waitWALPending(wal.OpCreateNode, walPending); err == nil {
+		err = waitErr
+	}
+	if node != nil {
 		gs.notifyNodeCreated(context.Background(), node)
 	}
 	return node, err
@@ -72,7 +75,9 @@ func (gs *GraphStorage) CreateNodesWithTenant(tenantID string, specs []NodeSpec)
 		node, wp, vps, err := gs.createNodeLocked(tenantID, s.Labels, s.Properties)
 		if err != nil {
 			gs.mu.Unlock()
-			gs.flushNodeBatchEffects(plans, pendings, created)
+			// The creation error, not a WAL wait error, is this call's result —
+			// mirrors the pre-existing mid-batch contract below.
+			_ = gs.flushNodeBatchEffects(plans, pendings, created)
 			return ids, err
 		}
 		ids = append(ids, node.ID)
@@ -84,22 +89,29 @@ func (gs *GraphStorage) CreateNodesWithTenant(tenantID string, specs []NodeSpec)
 	}
 	gs.mu.Unlock()
 
-	gs.flushNodeBatchEffects(plans, pendings, created)
-	return ids, nil
+	err := gs.flushNodeBatchEffects(plans, pendings, created)
+	return ids, err
 }
 
 // flushNodeBatchEffects runs the post-lock side effects of a node batch once,
 // in the same order as the single-node path (CreateNodeWithTenant): vector
 // inserts first (so a node's vector is searchable before observers act), then
-// WAL durability waits, then observer notifications. Caller must NOT hold gs.mu.
-func (gs *GraphStorage) flushNodeBatchEffects(plans []vectorInsertPlan, pendings []*wal.Pending, created []*Node) {
+// WAL durability waits, then observer notifications. Caller must NOT hold
+// gs.mu. Every pending is waited on regardless of an earlier failure, and the
+// first wait error (wrapping ErrWALWriteFailed) is returned — every created
+// node is already applied and notified either way.
+func (gs *GraphStorage) flushNodeBatchEffects(plans []vectorInsertPlan, pendings []*wal.Pending, created []*Node) error {
 	gs.applyNodeVectorInserts(plans)
+	var firstErr error
 	for _, wp := range pendings {
-		gs.waitWALPending(wal.OpCreateNode, wp)
+		if err := gs.waitWALPending(wal.OpCreateNode, wp); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
 	for _, node := range created {
 		gs.notifyNodeCreated(context.Background(), node)
 	}
+	return firstErr
 }
 
 // CreateNodeWithUniquePropertyForTenant creates a node only if no other
@@ -180,9 +192,12 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 	// HNSW insert(s) off-lock (Track P item 3 / H2); see CreateNodeWithTenant.
 	gs.applyNodeVectorInserts(vectorPlans)
 	// Wait for WAL durability after lock release (group commit, Track P item 1).
-	gs.waitWALPending(wal.OpCreateNode, walPending)
+	// A wait error wraps ErrWALWriteFailed; see CreateNodeWithTenant.
+	if waitErr := gs.waitWALPending(wal.OpCreateNode, walPending); err == nil {
+		err = waitErr
+	}
 	// R2.1: dispatch after lock release. See CreateNodeWithTenant.
-	if err == nil && node != nil {
+	if node != nil {
 		gs.notifyNodeCreated(context.Background(), node)
 	}
 	return node, err
@@ -574,11 +589,13 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	// HNSW remove+add off-lock (Track P item 3 / H2), before the WAL wait and
 	// observer dispatch so the updated vector is searchable before observers act.
 	gs.applyNodeVectorInserts(vectorPlans)
-	gs.waitWALPending(wal.OpUpdateNode, walPending)
+	// A wait error wraps ErrWALWriteFailed; the update stays applied and
+	// observers are still notified.
+	err = gs.waitWALPending(wal.OpUpdateNode, walPending)
 	if newNode != nil {
 		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
 	}
-	return nil
+	return err
 }
 
 // RemoveNodeProperties removes specified properties from a node.
@@ -650,8 +667,8 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	// Enqueue under gs.mu (preserves WAL order); wait on durability after
 	// releasing gs.mu so concurrent writers can fill the same batch (group
 	// commit, Track P item 1 — the create/update/delete paths already do this;
-	// this finishes RemoveNodeProperties, the last node write path on the
-	// synchronous writeToWAL).
+	// this finishes RemoveNodeProperties, the last node write path that
+	// appended synchronously under the lock).
 	walPending := gs.enqueueWAL(wal.OpUpdateNode, struct {
 		NodeID     uint64
 		Properties map[string]Value
@@ -677,11 +694,13 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 		}
 	}
 
-	gs.waitWALPending(wal.OpUpdateNode, walPending)
+	// A wait error wraps ErrWALWriteFailed; the removal stays applied and
+	// observers are still notified.
+	err = gs.waitWALPending(wal.OpUpdateNode, walPending)
 	if newNode != nil {
 		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
 	}
-	return nil
+	return err
 }
 
 // RemoveNodePropertiesForTenant removes specified properties from a
@@ -861,11 +880,13 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 
 	gs.mu.Unlock()
 
-	gs.waitWALPending(wal.OpDeleteNode, walPending)
+	// A wait error wraps ErrWALWriteFailed; the delete stays applied and
+	// observers are still notified.
+	err = gs.waitWALPending(wal.OpDeleteNode, walPending)
 	// R2.1: dispatch after lock release. See lock-discipline comment in
 	// pkg/storage/observation.go.
 	gs.notifyNodeDeleted(context.Background(), nodeID, tenantID)
-	return nil
+	return err
 }
 
 // GetAllNodeIDs returns all node IDs in the storage.

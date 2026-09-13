@@ -84,6 +84,17 @@ func (p *Pending) Wait() error {
 	return <-p.doneCh
 }
 
+// FailedPending returns a *Pending whose Wait returns err at once. Use it when
+// a write failed before an entry could be enqueued (a marshal, seal, or
+// synchronous-append error) so the caller can still Wait() on a uniform handle
+// instead of special-casing "the enqueue itself never happened."
+func FailedPending(err error) *Pending {
+	doneCh := make(chan error, 1)
+	doneCh <- err
+	close(doneCh) // as Enqueue's flusher does: a second Wait must not block
+	return &Pending{doneCh: doneCh}
+}
+
 // Enqueue appends an entry to the batch buffer and returns a Pending handle
 // WITHOUT waiting for durability. The caller MUST call Wait() on the returned
 // handle before treating the write as durable. Entries become durable in

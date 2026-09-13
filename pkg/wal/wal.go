@@ -305,10 +305,15 @@ func (w *WAL) Truncate() error {
 
 	walPath := filepath.Join(w.dataDir, "wal.log")
 
-	// Flush any pending writes before truncating
-	if err := w.writer.Flush(); err != nil {
-		return fmt.Errorf("failed to flush WAL before truncate: %w", err)
-	}
+	// Discard, do not flush, whatever the buffer holds. Append flushes and
+	// syncs every entry, so on the success path the buffer is empty here.
+	// The only bytes it can hold are the tail of an entry whose write
+	// failed, and bufio keeps that error until Reset: a Flush here would
+	// fail on it and refuse the truncate, and the next open would then
+	// replay the pre-failure entries over a snapshot that already holds
+	// their effects, which resurrects every delete since. Nothing in the
+	// buffer is worth keeping; it is all about to be truncated.
+	w.writer.Reset(w.file)
 
 	// Create the new file BEFORE closing the old one to ensure we have a valid handle
 	newFile, err := w.fs.Open(walPath+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, walFilePerm)

@@ -38,14 +38,18 @@ func (gs *GraphStorage) CreatePropertyIndex(propertyKey string, valueType ValueT
 
 	gs.propertyIndexes[propertyKey] = idx
 
-	// Write to WAL for durability
-	gs.writeToWAL(wal.OpCreatePropertyIndex, struct {
+	// Write to WAL for durability. The index definition is already applied in
+	// memory; a WAL failure is reported so the caller knows the definition is
+	// not yet durable, per ErrWALWriteFailed's contract.
+	if err := gs.writeToWALWithError(wal.OpCreatePropertyIndex, struct {
 		PropertyKey string
 		ValueType   ValueType
 	}{
 		PropertyKey: propertyKey,
 		ValueType:   valueType,
-	})
+	}); err != nil {
+		return fmt.Errorf("%w: %w", ErrWALWriteFailed, err)
+	}
 
 	return nil
 }
@@ -61,12 +65,16 @@ func (gs *GraphStorage) DropPropertyIndex(propertyKey string) error {
 
 	delete(gs.propertyIndexes, propertyKey)
 
-	// Write to WAL for durability
-	gs.writeToWAL(wal.OpDropPropertyIndex, struct {
+	// Write to WAL for durability. The index removal is already applied in
+	// memory; a WAL failure is reported so the caller knows the removal is
+	// not yet durable, per ErrWALWriteFailed's contract.
+	if err := gs.writeToWALWithError(wal.OpDropPropertyIndex, struct {
 		PropertyKey string
 	}{
 		PropertyKey: propertyKey,
-	})
+	}); err != nil {
+		return fmt.Errorf("%w: %w", ErrWALWriteFailed, err)
+	}
 
 	return nil
 }
