@@ -81,6 +81,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: JSON-mode Close must not rewrite snapshot.json when the session wrote nothing. Same defect as v1.4-close-no-rewrite-when-clean (#598) on the other representation: a read-only consumer pays 25 s / 17.5 GB per exit on the 2.0M-node ICIJ store. JSON has no overlay, so the proof differs: WAL empty at open and LSN unchanged since, plus every unlogged mutation path (index definitions, SetEncryption, DeleteAllNodes) accounted for. BulkImportMode has no WAL and must always write. Acceptance: snapshot.json mtime and bytes unchanged after a read-only open/close, changed after one write, both seen red first; WAL truncate stays tied to a snapshot that happened"
+    },
+    {
+      "id": "v1.4-wal-write-errors-reach-the-caller",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: a WAL append failure must not be reported to the caller as success. Today enqueueWAL (9 sites, node and edge ops), waitWALPending (14 sites) and writeToWAL (6 sites, property and vector index definitions) print to stderr and return nil; the in-memory mutation stays, the WAL entry is missing, and until #602 Close could drop it. Decide and implement one contract: the caller gets an error and the in-memory change is rolled back, or the store refuses further writes until a snapshot lands. Acceptance: with a write fault on the WAL file, no public write method returns nil; a test per path family, each seen red first; replay after a crash never lacks a write the API confirmed. Interface change: propose the contract to the user before code"
     }
   ],
   "deps": [
