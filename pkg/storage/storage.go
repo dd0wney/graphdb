@@ -302,6 +302,13 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		}
 	}
 
+	// Everything that construction can log is logged now (replay, the
+	// plaintext purge above). A Close whose boundary still equals this LSN
+	// wrote nothing to the WAL; mmapSnapshotCleanLocked reads it.
+	gs.mu.RLock()
+	gs.walLSNAtOpen = gs.walBoundaryLSNLocked()
+	gs.mu.RUnlock()
+
 	opened = true
 	return gs, nil
 }
