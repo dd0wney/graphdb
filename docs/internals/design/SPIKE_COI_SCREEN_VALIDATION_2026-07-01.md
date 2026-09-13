@@ -57,11 +57,21 @@ Correctness gate: both modes must flag the planted conflict identically and enum
 
 ## Limitations (honest scope)
 
-- **The real `../coi-screen` consumer binary was not run** — that repo isn't checked out in this tree. This spike validates the storage *primitives* coi depends on (label resolve, adjacency BFS, reopen, CC3/CC4) at ICIJ scale, not the consumer's own resolver/soundex/path-ranking logic. See the runbook below to close that gap.
-- **Synthetic corpus**, not the real ICIJ CSVs (not present locally). Structure and scale mirror ICIJ; exact degree distributions differ. The planted conflict and hub nodes reproduce the shapes that matter for the access pattern.
+- **The real `../coi-screen` consumer binary was not run** — that repo isn't checked out in this tree. *(Closed 2026-09-13: `COI_SCREEN_REAL_CORPUS_2026-09-13.md` runs it on the real corpus.)* This spike validates the storage *primitives* coi depends on (label resolve, adjacency BFS, reopen, CC3/CC4) at ICIJ scale, not the consumer's own resolver/soundex/path-ranking logic. See the runbook below to close that gap.
+- **Synthetic corpus**, not the real ICIJ CSVs (not present locally). *(Wrong on 2026-09-13: the 2023-09-06 `full-oldb` package was at `/mnt/ssd2/Workspace/icij/` all along. Probe a recorded "not present" before it costs a decision.)* Structure and scale mirror ICIJ; exact degree distributions differ. The planted conflict and hub nodes reproduce the shapes that matter for the access pattern.
 - **Single machine, single run** per mode. Numbers are directional at the order-of-magnitude that decides B-1, not a statistical benchmark.
 
 ## Runbook — real end-to-end consumer validation (deferred)
+
+> **Corrected 2026-09-13.** Step 3 below could not work as written: the graphdb
+> *library* never reads `GRAPHDB_STORAGE_MODE` (only `cmd/server`,
+> `cmd/graphdb-admin` and `cmd/import-icij` do), and coi-screen did not set
+> `StorageConfig.UseMmapSnapshot`, so graphdb refused every default import at
+> open. coi-screen `28a759d` reads the variable itself; with that commit the env
+> line is correct. For the *real* corpus, replace step 2 with
+> `python3 scripts/icij-merge-nodes.py <unzipped full-oldb dir> all-nodes.csv`
+> and import `all-nodes.csv` + `relationships.csv`. Results, numbers and the
+> `Close`-rewrite finding: `COI_SCREEN_REAL_CORPUS_2026-09-13.md`.
 
 To validate the actual consumer (requires the sibling repo):
 
