@@ -69,6 +69,55 @@ func (gs *GraphStorage) walBoundaryLSNLocked() uint64 {
 	return 0
 }
 
+// recoveredWALLSN returns the active WAL backend's LSN as recoverLSN set it
+// at open — the same switch raiseWALLSNToSnapshotBoundary and
+// walBoundaryLSNLocked use to pick the active backend. Call it before
+// raiseWALLSNToSnapshotBoundary runs: after that call GetCurrentLSN no
+// longer reports what was found on disk, only the raised value.
+// Constructor-only; no locking.
+func (gs *GraphStorage) recoveredWALLSN() uint64 {
+	switch {
+	case gs.useBatching && gs.batchedWAL != nil:
+		return gs.batchedWAL.GetCurrentLSN()
+	case gs.useCompression && gs.compressedWAL != nil:
+		return gs.compressedWAL.GetCurrentLSN()
+	case gs.wal != nil:
+		return gs.wal.GetCurrentLSN()
+	}
+	return 0
+}
+
+// guardWALNotBehindSnapshot refuses the open when the active WAL backend's
+// recovered LSN is below the WAL boundary LSN the loaded snapshot recorded.
+// The constructor calls this before raiseWALLSNToSnapshotBoundary, which
+// would otherwise raise the counter first and erase the evidence.
+//
+// recovered == 0 means an empty WAL (a fresh database, or a clean close with
+// no further writes): nothing to compare against, so it opens.
+// recovered == gs.snapshotBoundaryLSN is what a WAL truncate that failed at
+// a prior Close leaves behind (T1, snapshot_boundary_test.go): the WAL still
+// holds only entries the snapshot already covers, so it opens too.
+// recovered strictly between 0 and the boundary means either a binary built
+// before the WAL boundary LSN fix wrote to this WAL directory and reset the
+// LSN counter to 0 on its own truncate (a downgrade), or the WAL's tail is
+// damaged and ReadAll read short (pkg/wal/wal.go's ReadAll stops at a torn
+// or zero-filled tail without itself returning an error — see that
+// function's doc comment). Either way, opening would replay less than the
+// WAL actually holds without saying so, so this refuses instead.
+func (gs *GraphStorage) guardWALNotBehindSnapshot() error {
+	recovered := gs.recoveredWALLSN()
+	if recovered == 0 || recovered >= gs.snapshotBoundaryLSN {
+		return nil
+	}
+	return fmt.Errorf(
+		"%w: recovered LSN %d, snapshot boundary %d, WAL directory %q — either an older "+
+			"binary (built before the WAL boundary LSN fix) wrote to this WAL directory after "+
+			"the snapshot and reset its LSN counter, or the WAL's tail is damaged and read "+
+			"short. Do not open this data directory with this binary until the WAL is "+
+			"inspected: the entries it currently holds are not all reflected in the snapshot",
+		ErrWALBehindSnapshot, recovered, gs.snapshotBoundaryLSN, gs.dataDir)
+}
+
 // raiseWALLSNToSnapshotBoundary raises the active WAL backend's LSN counter
 // to at least gs.snapshotBoundaryLSN. The constructor calls this once, after
 // the snapshot loads and sets that field, and before replayWAL runs.

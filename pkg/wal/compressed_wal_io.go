@@ -42,12 +42,19 @@ func (w *CompressedWAL) Append(opType OpType, data []byte) (uint64, error) {
 		return 0, fmt.Errorf("failed to write WAL entry: %w", err)
 	}
 
-	// Flush to disk for durability
+	// Flush to disk for durability. Rolls back like writeEntry's branch
+	// above — see WAL.Append's matching comment: a small entry can sit
+	// entirely inside the bufio buffer, so a Flush failure here means none
+	// of its bytes reached the file, and bufio.Writer's sticky error keeps
+	// any later Append from writing past it before Truncate's Reset.
 	if err := w.writer.Flush(); err != nil {
+		w.currentLSN--
 		return 0, fmt.Errorf("failed to flush WAL: %w", err)
 	}
 
-	// Sync to ensure durability
+	// Sync to ensure durability. Does NOT roll back: Flush already handed
+	// the bytes to the file, so reusing this LSN could collide with an
+	// entry that is already on disk — see WAL.Append's Sync comment.
 	if err := w.file.Sync(); err != nil {
 		return 0, fmt.Errorf("failed to sync WAL: %w", err)
 	}

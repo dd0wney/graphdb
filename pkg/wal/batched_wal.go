@@ -248,12 +248,23 @@ func (w *WAL) AppendBatchAtomic(entries []BatchEntry) error {
 		}
 	}
 
-	// Single flush for all entries
+	// Single flush for all entries. Rolls back like the write loop above: a
+	// batch small enough to sit entirely inside the bufio buffer reaches this
+	// Flush with none of its bytes yet handed to the file, so a failure here
+	// means the whole batch is exactly as absent as a writeEntry failure
+	// would have left it. Safe to reuse the LSNs afterwards for the same
+	// reason as WAL.Append: bufio.Writer keeps returning a write error,
+	// unattempted, until Truncate's Reset clears it.
 	if err := w.writer.Flush(); err != nil {
+		w.currentLSN -= uint64(len(entries))
 		return err
 	}
 
-	// Single fsync for all entries (this is the key optimization)
+	// Single fsync for all entries (this is the key optimization). Does NOT
+	// roll back: Flush already handed the bytes to the file, so a later
+	// Append would reuse these LSNs for different entries written right
+	// after bytes that may already be on disk — see WAL.Append's Sync
+	// comment for why that collision is worse than the caller-visible error.
 	if err := w.file.Sync(); err != nil {
 		return err
 	}
