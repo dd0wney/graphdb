@@ -120,7 +120,12 @@ coi-screen validation #444).*
   policy CRUD + REST read-path masking, #122 GraphQL masking, #124 `COMPLIANCE.md` +
   regression row). The only `pkg/compliance` surface without HTTP is the framework report
   (`ComplianceChecker.CheckCompliance`), deferred by design Decision 5 and untracked.
-- SDK parity (Python/TS/Go catch up to the new endpoints).
+- ~~SDK parity (Python/TS/Go catch up to the new endpoints)~~ ✅ done 2026-09-11: Python #591
+  (`edges.list()`, `after` example, 0.2.0), Go #592 (`Compliance` facet, `Edges.List`,
+  `Search.DeleteIndex`), TypeScript #593 (wire-contract fixes, edge/compliance/vector-index
+  methods, 2.0.0 — the 1.0.0 client sent PATCH, read a body cursor the server never sent, and
+  queried GraphQL fields that do not exist). Left out on purpose: the admin routes only Go's
+  `Raw` reaches (users, backup, update, uniqueness rules, schema regenerate) — they predate v1.4.
 - **Gates:** none · **Size:** M · **Risk:** low
 
 ### v1.5.0 — ~~Scale the read path~~ → ecosystem/connectors *(v1.1 decided this)*
