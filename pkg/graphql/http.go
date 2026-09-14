@@ -24,6 +24,10 @@ type GraphQLResponse struct {
 // GraphQLError represents a GraphQL error
 type GraphQLError struct {
 	Message string `json:"message"`
+	// Extensions carries machine-readable error detail (for example
+	// WAL_WRITE_FAILED's code/applied/durable/retry/id) when a resolver's
+	// error implements gqlerrors.ExtendedError. Absent for a plain error.
+	Extensions map[string]interface{} `json:"extensions,omitempty"`
 }
 
 // GraphQLHandler handles GraphQL HTTP requests
@@ -84,12 +88,30 @@ func (h *GraphQLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Data: result.Data,
 	}
 
-	// Convert graphql errors to our error format
+	// Convert graphql errors to our error format.
+	//
+	// Extensions is copied through from gqlerrors.FormattedError.Extensions.
+	// graphql-go populates that field when a resolver's returned error
+	// implements gqlerrors.ExtendedError (Extensions()
+	// map[string]interface{}) — see gqlerrors/formatted.go's FormatError.
+	// The chain that gets there: resolveField panics with the resolver's
+	// raw returned error, handleFieldError wraps it via
+	// NewLocatedErrorWithPath, and newLocatedError (located.go) sets
+	// gqlerrors.Error.OriginalError to that same error value WITHOUT
+	// changing its dynamic type — so FormatError's type-assertion
+	// `origError.(ExtendedError)` still succeeds. This only works if the
+	// resolver returns the extended error directly; fmt.Errorf's %w
+	// produces a *fmt.wrapError with no Extensions() method, which would
+	// lose it. See walWriteFailedError (wal_errors.go) for the type this
+	// project defines, and TestQuery_OriginalErrorExtended in
+	// github.com/graphql-go/graphql's executor_test.go for the same
+	// mechanism exercised inside the library itself.
 	if result.HasErrors() {
 		response.Errors = make([]GraphQLError, len(result.Errors))
 		for i, err := range result.Errors {
 			response.Errors[i] = GraphQLError{
-				Message: err.Message,
+				Message:    err.Message,
+				Extensions: err.Extensions,
 			}
 		}
 	}

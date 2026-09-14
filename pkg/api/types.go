@@ -131,6 +131,57 @@ type ErrorResponse struct {
 	Code    int    `json:"code"`
 }
 
+// notDurableFields are the five status fields shared by every response for
+// a write whose in-memory change applied but whose WAL append failed
+// (storage.ErrWALWriteFailed). Every reader already sees the change, and it
+// becomes durable at the next snapshot or clean shutdown — a retry would
+// apply the change a second time, so Retry is always false here.
+//
+// Message is a fixed sentence. The wrapped disk error never reaches this
+// body (see respondWALWriteFailed in server_helpers.go) — same precedent as
+// ErrRecordUnreadable (handlers_nodes.go's getNode).
+//
+// Embedded anonymously in NodeNotDurableResponse, EdgeNotDurableResponse
+// and WriteNotDurableResponse below: encoding/json promotes an anonymous
+// field's exported members into its parent's JSON object regardless of
+// whether the field's own type name is exported, so each of the three
+// response types below serializes as one flat object.
+type notDurableFields struct {
+	Applied bool   `json:"applied"`
+	Durable bool   `json:"durable"`
+	Retry   bool   `json:"retry"`
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
+// NodeNotDurableResponse is the body createNode returns when its WAL append
+// failed. It is a SUPERSET of the 201 NodeResponse body — same id, labels
+// and properties (masking already applied), plus the five not-durable
+// fields — so a client that treats any 2xx as success and reads only the
+// node fields still builds a correct node; an informed client also reads
+// Applied/Durable/Retry/Error/Message.
+type NodeNotDurableResponse struct {
+	NodeResponse
+	notDurableFields
+}
+
+// EdgeNotDurableResponse mirrors NodeNotDurableResponse for createEdge.
+type EdgeNotDurableResponse struct {
+	EdgeResponse
+	notDurableFields
+}
+
+// WriteNotDurableResponse is the body updateNode, deleteNode, updateEdge,
+// deleteEdge, deleteAllNodes, handleDeleteTenant, and the vector-index
+// create/drop handlers return when the WAL append failed. Unlike the two
+// create paths above, these have no full entity to return — only an id
+// (0, omitted, for deleteAllNodes/handleDeleteTenant's bulk deletes and for
+// the vector-index handlers, which have no single per-write entity id).
+type WriteNotDurableResponse struct {
+	ID uint64 `json:"id,omitempty"`
+	notDurableFields
+}
+
 // BatchNodeRequest represents a batch node creation request
 type BatchNodeRequest struct {
 	Nodes []NodeRequest `json:"nodes"`

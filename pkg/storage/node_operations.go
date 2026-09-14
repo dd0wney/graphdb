@@ -736,18 +736,41 @@ func (gs *GraphStorage) RemoveNodePropertiesForTenant(nodeID uint64, keys []stri
 // claim a compliance erasure request depends on. The deletes still run for
 // every node that DID enumerate, so the caller keeps as much progress as the
 // store can give, and the enumeration error is returned afterwards (ADR 0003).
+//
+// A delete whose WAL append fails (ErrWALWriteFailed) does NOT stop the
+// cascade: the delete already applied in memory, so aborting there would
+// leave the rest of the tenant's nodes behind for no reason — the exact
+// mid-wipe outcome a bulk erasure must not have. The loop continues, and
+// the first such error is remembered and returned (wrapped, so
+// errors.Is(err, ErrWALWriteFailed) holds) after every node has been
+// swept. A returned ErrWALWriteFailed therefore means the cascade
+// completed — every node in the enumeration is gone — and at least one of
+// those deletes is not durable yet. Any other error still aborts
+// immediately, same as before.
 func (gs *GraphStorage) DeleteAllNodesForTenant(tenantID string) error {
 	nodes, enumErr := gs.GetAllNodesForTenant(tenantID) // snapshot before mutating
+	var walErr error
 	for _, n := range nodes {
 		if err := gs.DeleteNodeForTenant(n.ID, tenantID); err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // concurrent delete already removed it — that's the goal
+			}
+			if errors.Is(err, ErrWALWriteFailed) {
+				// The delete applied in memory; keep sweeping the rest of
+				// the tenant's nodes instead of aborting mid-wipe.
+				if walErr == nil {
+					walErr = err
+				}
+				continue
 			}
 			return fmt.Errorf("delete node %d for tenant %s: %w", n.ID, tenantID, err)
 		}
 	}
 	if enumErr != nil {
 		return fmt.Errorf("delete all nodes for tenant %s is incomplete: %w", tenantID, enumErr)
+	}
+	if walErr != nil {
+		return fmt.Errorf("delete all nodes for tenant %s: %w", tenantID, walErr)
 	}
 	return nil
 }

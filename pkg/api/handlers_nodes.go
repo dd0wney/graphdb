@@ -46,8 +46,20 @@ func (s *Server) countNodes(w http.ResponseWriter, r *http.Request) {
 // Used by single-tenant consumers (e.g. wiki-graph) before a full reload.
 // Tenant-scoped (audit/ROADMAP B1): the previous global DeleteAllNodes let any
 // authenticated tenant wipe every tenant's data.
+//
+// DeleteAllNodesForTenant's own cascade tolerates a WAL append failure on
+// one node's delete (it completes the sweep instead of aborting — see its
+// doc comment in node_operations.go), so this handler only needs to map
+// that outcome to 202 instead of falling through to the generic 500.
 func (s *Server) deleteAllNodes(w http.ResponseWriter, r *http.Request) {
 	if err := s.graph.DeleteAllNodesForTenant(getTenantFromContext(r)); err != nil {
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The cascade completed — every node applied as deleted — but
+			// at least one delete's WAL append failed. No single
+			// per-write entity id for a bulk delete.
+			s.respondWALWriteFailed(w, err, 0)
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete all nodes"))
 		return
 	}
@@ -155,6 +167,17 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 			s.respondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The node applied in memory even though the WAL append did
+			// not; tell the caller, don't discard it behind a 500.
+			// CreateNodeWithUniquenessRulesForTenant routes to one of two
+			// storage methods (CreateNodeWithTenant, when no uniqueness
+			// rule matches the labels, or CreateNodeWithUniquePropertyForTenant
+			// otherwise), and both return the created node alongside a
+			// WAL error, so node is non-nil here.
+			s.respondNodeWALWriteFailed(r.Context(), w, err, node)
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create node"))
 		return
 	}
@@ -255,6 +278,12 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 			s.respondError(w, http.StatusNotFound, "Node not found")
 			return
 		}
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The caller already holds nodeID; the update applied in
+			// memory even though the WAL append did not.
+			s.respondWALWriteFailed(w, err, nodeID)
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "update node"))
 		return
 	}
@@ -276,6 +305,12 @@ func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 		// Cross-tenant or missing → 404 (no existence leak).
 		if errors.Is(err, storage.ErrNodeNotFound) {
 			s.respondError(w, http.StatusNotFound, "Node not found")
+			return
+		}
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The caller already holds nodeID; the delete applied in
+			// memory even though the WAL append did not.
+			s.respondWALWriteFailed(w, err, nodeID)
 			return
 		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete node"))

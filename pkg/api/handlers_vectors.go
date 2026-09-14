@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -202,6 +203,12 @@ func (s *Server) createVectorIndex(w http.ResponseWriter, r *http.Request) {
 	// Create the index for this tenant
 	err := s.graph.CreateVectorIndexForTenant(tenantID, req.PropertyName, req.Dimensions, m, efConstruction, metric)
 	if err != nil {
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The index definition applied in memory even though the WAL
+			// append did not. No per-write entity id for an index create.
+			s.respondWALWriteFailed(w, err, 0)
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create vector index"))
 		return
 	}
@@ -248,6 +255,12 @@ func (s *Server) deleteVectorIndex(w http.ResponseWriter, r *http.Request) {
 
 	err := s.graph.DropVectorIndexForTenant(tenantID, propertyName)
 	if err != nil {
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The index removal applied in memory even though the WAL
+			// append did not. No per-write entity id for an index drop.
+			s.respondWALWriteFailed(w, err, 0)
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete vector index"))
 		return
 	}

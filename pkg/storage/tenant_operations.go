@@ -433,16 +433,38 @@ func (gs *GraphStorage) CountEdgesForTenant(tenantID string) uint64 {
 // are collected and returned after the passes run (ADR 0003). The counts still
 // describe what WAS deleted, so a caller can log real progress beside the
 // refusal.
+//
+// A delete whose WAL append fails (ErrWALWriteFailed) does NOT stop either
+// pass: the delete already applied in memory, so aborting there would leave
+// the rest of the tenant's data behind partway through an offboarding —
+// exactly the outcome a right-to-erasure request must not have. Each pass
+// continues, counting the delete (nodesDeleted/edgesDeleted both count a
+// not-yet-durable delete the same as a durable one, since it DID apply),
+// and the first such error from either pass is remembered and returned
+// (wrapped, so errors.Is(err, ErrWALWriteFailed) holds) after both passes
+// and the vector-index cleanup have run. A returned ErrWALWriteFailed
+// therefore means the cascade completed — nodesDeleted/edgesDeleted count
+// every entity that applied — and at least one of those deletes is not
+// durable yet. Any other error still aborts immediately, same as before.
 func (gs *GraphStorage) DeleteTenant(tenantID string) (nodesDeleted, edgesDeleted int, err error) {
 	if effectiveTenantID(tenantID) == tenantid.Default {
 		return 0, 0, fmt.Errorf("cannot delete the default tenant")
 	}
+
+	var walErr error
 
 	nodes, nodeEnumErr := gs.GetAllNodesForTenant(tenantID)
 	for _, n := range nodes {
 		if derr := gs.DeleteNodeForTenant(n.ID, tenantID); derr != nil {
 			if errors.Is(derr, ErrNodeNotFound) {
 				continue // already removed via another node's edge cascade
+			}
+			if errors.Is(derr, ErrWALWriteFailed) {
+				if walErr == nil {
+					walErr = derr
+				}
+				nodesDeleted++
+				continue
 			}
 			return nodesDeleted, edgesDeleted, fmt.Errorf("delete node %d: %w", n.ID, derr)
 		}
@@ -454,6 +476,13 @@ func (gs *GraphStorage) DeleteTenant(tenantID string) (nodesDeleted, edgesDelete
 	for _, e := range edges {
 		if derr := gs.DeleteEdgeForTenant(e.ID, tenantID); derr != nil {
 			if errors.Is(derr, ErrEdgeNotFound) {
+				continue
+			}
+			if errors.Is(derr, ErrWALWriteFailed) {
+				if walErr == nil {
+					walErr = derr
+				}
+				edgesDeleted++
 				continue
 			}
 			return nodesDeleted, edgesDeleted, fmt.Errorf("delete edge %d: %w", e.ID, derr)
@@ -474,6 +503,10 @@ func (gs *GraphStorage) DeleteTenant(tenantID string) (nodesDeleted, edgesDelete
 	if enumErr := errors.Join(nodeEnumErr, edgeEnumErr); enumErr != nil {
 		return nodesDeleted, edgesDeleted,
 			fmt.Errorf("delete tenant is incomplete, records survive that could not be read: %w", enumErr)
+	}
+
+	if walErr != nil {
+		return nodesDeleted, edgesDeleted, fmt.Errorf("delete tenant %s: %w", tenantID, walErr)
 	}
 
 	return nodesDeleted, edgesDeleted, nil

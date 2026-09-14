@@ -566,3 +566,77 @@ func TestWALWriteError_EveryWALBackend(t *testing.T) {
 		})
 	}
 }
+
+// TestWALWriteError_DeleteAllNodesForTenant_CompletesPastFailure is the
+// bulk-delete analogue of the single-op cases above. Before this contract,
+// DeleteAllNodesForTenant's loop aborted on the first WAL append failure and
+// returned early — the node whose delete hit the fault, and every node
+// after it in enumeration order, stayed undeleted, even though the failing
+// delete itself had already applied in memory. The cascade must complete
+// instead: every node ends up deleted, and the returned error wraps
+// ErrWALWriteFailed to say at least one of those deletes is not durable
+// yet — not "the tenant is only partly cleared."
+func TestWALWriteError_DeleteAllNodesForTenant_CompletesPastFailure(t *testing.T) {
+	dir := t.TempDir()
+	faults := vfstest.NewFaults(vfs.OS(), "delete-all-nodes-bulk")
+	cfg := jsonConfig(dir)
+	cfg.FS = faults
+	gs := openJSON(t, cfg)
+	defer func() { _ = gs.Close() }()
+
+	for i := 0; i < 3; i++ {
+		if _, err := gs.CreateNodeWithTenant(rtTenantA, []string{"Person"}, map[string]Value{"name": StringValue("x")}); err != nil {
+			t.Fatalf("setup create %d: %v", i, err)
+		}
+	}
+
+	faults.FailWrite(vfstest.Once, 0)
+	err := gs.DeleteAllNodesForTenant(rtTenantA)
+
+	if !faults.Fired() {
+		t.Fatal("the write fault never fired, so this test proves nothing about the WAL failure path")
+	}
+	if err == nil {
+		t.Fatal("DeleteAllNodesForTenant returned a nil error: the WAL failure was swallowed")
+	}
+	if !errors.Is(err, ErrWALWriteFailed) {
+		t.Fatalf("error does not satisfy errors.Is(err, ErrWALWriteFailed): %v", err)
+	}
+	if c := gs.CountNodesForTenant(rtTenantA); c != 0 {
+		t.Errorf("tenant node count = %d, want 0: the cascade must complete past the WAL failure, not abort mid-sweep", c)
+	}
+}
+
+// TestWALWriteError_DeleteTenant_CompletesPastFailure mirrors
+// TestWALWriteError_DeleteAllNodesForTenant_CompletesPastFailure for
+// DeleteTenant's own node+edge cascade (tenant_operations.go).
+func TestWALWriteError_DeleteTenant_CompletesPastFailure(t *testing.T) {
+	dir := t.TempDir()
+	faults := vfstest.NewFaults(vfs.OS(), "delete-tenant-bulk")
+	cfg := jsonConfig(dir)
+	cfg.FS = faults
+	gs := openJSON(t, cfg)
+	defer func() { _ = gs.Close() }()
+
+	for i := 0; i < 3; i++ {
+		if _, err := gs.CreateNodeWithTenant(rtTenantA, []string{"Person"}, map[string]Value{"name": StringValue("x")}); err != nil {
+			t.Fatalf("setup create %d: %v", i, err)
+		}
+	}
+
+	faults.FailWrite(vfstest.Once, 0)
+	_, _, err := gs.DeleteTenant(rtTenantA)
+
+	if !faults.Fired() {
+		t.Fatal("the write fault never fired, so this test proves nothing about the WAL failure path")
+	}
+	if err == nil {
+		t.Fatal("DeleteTenant returned a nil error: the WAL failure was swallowed")
+	}
+	if !errors.Is(err, ErrWALWriteFailed) {
+		t.Fatalf("error does not satisfy errors.Is(err, ErrWALWriteFailed): %v", err)
+	}
+	if c := gs.CountNodesForTenant(rtTenantA); c != 0 {
+		t.Errorf("tenant node count = %d, want 0: the cascade must complete past the WAL failure, not abort mid-sweep", c)
+	}
+}

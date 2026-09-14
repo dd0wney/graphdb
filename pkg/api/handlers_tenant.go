@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/dd0wney/graphdb/pkg/audit"
 	"github.com/dd0wney/graphdb/pkg/auth"
 	"github.com/dd0wney/graphdb/pkg/search"
+	"github.com/dd0wney/graphdb/pkg/storage"
 	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
@@ -288,10 +290,25 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 	// 1. Cascade the tenant's graph data — nodes, edges, per-tenant indexes,
 	//    and vector-index definitions (#223). Without this the tenant's data
 	//    stayed queryable under its ID after the record was deleted.
+	//
+	//    DeleteTenant's own cascade tolerates a WAL append failure on an
+	//    individual delete (it completes both passes instead of aborting —
+	//    see its doc comment in tenant_operations.go), returning it
+	//    wrapped alongside the counts. That outcome is remembered as
+	//    walErr and does NOT return here: steps 2-4 below (search index
+	//    cleanup, WAL compaction, tenant record delete, audit log) still
+	//    need to run — the cascade completed, so the tenant offboarding
+	//    should too — and the 202-vs-200 choice is made once, after all
+	//    of them, so the response accurately reflects everything this
+	//    request did.
 	nodesDeleted, edgesDeleted, err := s.graph.DeleteTenant(tenantID)
+	var walErr error
 	if err != nil {
-		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete tenant data"))
-		return
+		if !errors.Is(err, storage.ErrWALWriteFailed) {
+			s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete tenant data"))
+			return
+		}
+		walErr = err
 	}
 
 	// 2. Drop the tenant's server-owned search indexes. LSA must be unlinked
@@ -350,6 +367,16 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 		IPAddress:    getIPAddress(r),
 		UserAgent:    r.UserAgent(),
 	})
+
+	// walErr is non-nil when at least one node or edge delete's WAL append
+	// failed during the cascade above (step 1) — the whole cascade still
+	// ran to completion and every later step (search index cleanup, WAL
+	// compaction, tenant record delete, audit log) still happened, but the
+	// deletes it carries are not all durable yet.
+	if walErr != nil {
+		s.respondWALWriteFailed(w, walErr, 0)
+		return
+	}
 
 	s.respondJSON(w, http.StatusOK, map[string]any{
 		"message":       "Tenant deleted successfully",
