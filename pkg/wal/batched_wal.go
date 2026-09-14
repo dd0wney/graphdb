@@ -280,7 +280,9 @@ func (bw *BatchedWAL) Replay(handler func(*Entry) error) error {
 	return bw.wal.Replay(handler)
 }
 
-// Truncate truncates the WAL
+// Truncate truncates the WAL. BatchedWAL keeps no LSN counter of its own —
+// it delegates to the wrapped WAL, whose Truncate is monotonic (does not
+// reset the LSN). See WAL.Truncate.
 func (bw *BatchedWAL) Truncate() error {
 	// Ensure all buffered entries are flushed first
 	bw.flush()
@@ -303,7 +305,14 @@ func (bw *BatchedWAL) Close() error {
 	return closeErr
 }
 
-// GetCurrentLSN returns the current LSN
+// GetCurrentLSN returns the current LSN. Monotonic for the life of the data
+// directory — see WAL.GetCurrentLSN.
 func (bw *BatchedWAL) GetCurrentLSN() uint64 {
 	return bw.wal.GetCurrentLSN()
+}
+
+// RaiseLSNTo sets the underlying WAL's LSN counter to lsn when it is
+// currently lower, and otherwise leaves it unchanged. See WAL.RaiseLSNTo.
+func (bw *BatchedWAL) RaiseLSNTo(lsn uint64) {
+	bw.wal.RaiseLSNTo(lsn)
 }

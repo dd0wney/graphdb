@@ -219,9 +219,11 @@ func TestCompressedWAL_Truncate(t *testing.T) {
 		t.Fatalf("Failed to truncate: %v", err)
 	}
 
-	// LSN should be reset
-	if cw.currentLSN != 0 {
-		t.Errorf("Expected LSN 0 after truncate, got %d", cw.currentLSN)
+	// LSN is preserved: it is monotonic for the life of the data directory,
+	// so the WAL boundary LSN a snapshot records keeps meaning after the
+	// truncate that normally follows writing it.
+	if cw.currentLSN != 5 {
+		t.Errorf("Expected LSN 5 preserved after truncate, got %d", cw.currentLSN)
 	}
 
 	// Reading should return no entries
@@ -232,6 +234,15 @@ func TestCompressedWAL_Truncate(t *testing.T) {
 
 	if len(entries) != 0 {
 		t.Errorf("Expected 0 entries after truncate, got %d", len(entries))
+	}
+
+	// Append after truncate takes the next number after the preserved LSN.
+	nextLSN, err := cw.Append(OpCreateNode, []byte("after truncate"))
+	if err != nil {
+		t.Fatalf("Append after truncate failed: %v", err)
+	}
+	if nextLSN != 6 {
+		t.Errorf("Expected LSN 6 after truncate, got %d", nextLSN)
 	}
 }
 

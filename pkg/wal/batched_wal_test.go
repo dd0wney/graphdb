@@ -217,10 +217,12 @@ func TestBatchedWAL_Truncate(t *testing.T) {
 		t.Fatalf("Failed to truncate: %v", err)
 	}
 
-	// LSN should be reset
+	// LSN is preserved: it is monotonic for the life of the data directory,
+	// so the WAL boundary LSN a snapshot records keeps meaning after the
+	// truncate that normally follows writing it.
 	lsn := bw.GetCurrentLSN()
-	if lsn != 0 {
-		t.Errorf("Expected LSN 0 after truncate, got %d", lsn)
+	if lsn != 5 {
+		t.Errorf("Expected LSN 5 preserved after truncate, got %d", lsn)
 	}
 
 	// Replay should find no entries
@@ -236,6 +238,15 @@ func TestBatchedWAL_Truncate(t *testing.T) {
 
 	if replayCount != 0 {
 		t.Errorf("Expected 0 entries after truncate, got %d", replayCount)
+	}
+
+	// Append after truncate takes the next number after the preserved LSN.
+	nextLSN, err := bw.Append(OpCreateNode, []byte("after truncate"))
+	if err != nil {
+		t.Fatalf("Append after truncate failed: %v", err)
+	}
+	if nextLSN != 6 {
+		t.Errorf("Expected LSN 6 after truncate, got %d", nextLSN)
 	}
 }
 

@@ -87,7 +87,11 @@ func (w *CompressedWAL) Close() error {
 	return errors.Join(flushErr, syncErr, closeErr)
 }
 
-// Truncate truncates the WAL (used after successful snapshot)
+// Truncate truncates the WAL (used after successful snapshot). It does not
+// reset currentLSN: the LSN is monotonic for the life of the data directory,
+// so that the WAL boundary LSN a snapshot records keeps meaning after the
+// truncate that normally follows writing it. RaiseLSNTo restores the counter
+// on the next open. See WAL.Truncate.
 func (w *CompressedWAL) Truncate() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -120,10 +124,10 @@ func (w *CompressedWAL) Truncate() error {
 		return fmt.Errorf("failed to rename WAL file: %w (close error: %v)", err, closeErr)
 	}
 
-	// Update state with new file
+	// Update state with new file. currentLSN is deliberately left alone —
+	// see the Truncate doc comment.
 	w.file = newFile
 	w.writer = bufio.NewWriter(newFile)
-	w.currentLSN = 0
 
 	// Return close error if rename succeeded but close failed (non-fatal but worth logging)
 	if closeErr != nil {
@@ -173,9 +177,22 @@ func (w *CompressedWAL) GetStatistics() CompressedWALStats {
 	}
 }
 
-// GetCurrentLSN returns the current LSN
+// GetCurrentLSN returns the current LSN. It is monotonic for the life of the
+// data directory: Truncate empties the WAL file but never lowers this
+// counter, so a snapshot's recorded WAL boundary LSN stays meaningful across
+// the truncate that normally follows writing it.
 func (w *CompressedWAL) GetCurrentLSN() uint64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.currentLSN
+}
+
+// RaiseLSNTo sets the LSN counter to lsn when the counter is currently lower,
+// and otherwise leaves it unchanged. See WAL.RaiseLSNTo.
+func (w *CompressedWAL) RaiseLSNTo(lsn uint64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.currentLSN < lsn {
+		w.currentLSN = lsn
+	}
 }
