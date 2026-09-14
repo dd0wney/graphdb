@@ -30,9 +30,8 @@ import (
 // writers' entries). The caller is responsible for having captured a
 // snapshot whose state covers every entry with LSN ≤ lsn.
 //
-// currentLSN is intentionally NOT reset (unlike Truncate): kept entries
-// retain their LSNs and new appends must continue past them to stay
-// monotonic within the file.
+// currentLSN is intentionally NOT reset: kept entries retain their LSNs and
+// new appends must continue past them to stay monotonic within the file.
 //
 // Crash safety reuses Truncate's pattern: the rewrite lands in wal.log.new,
 // fsynced, then atomically renamed over wal.log. A crash before the rename

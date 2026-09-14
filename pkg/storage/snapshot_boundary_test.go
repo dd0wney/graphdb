@@ -42,26 +42,44 @@ import (
 // defect in section 1 of the spec requires.
 const roleWALRename = vfstest.Role("wal-rename")
 
-// walRenameClassifier puts only the WAL truncate's rename (old path
-// "<dir>/wal/wal.log.new") into roleWALRename. Every other operation —
-// including the JSON/mmap snapshot's own publish rename — gets roleOther, so
-// arming a fault on roleWALRename cannot touch the snapshot write.
+// walRenameClassifier puts only the WAL truncate's rename into roleWALRename.
+// The plain and batched backends share the old path "<dir>/wal/wal.log.new"
+// (BatchedWAL.Truncate delegates to the wrapped WAL's Truncate); the
+// compressed backend uses "<dir>/wal/wal_compressed.log.new" instead, a
+// distinct name that does not contain "wal.log.new" as a substring, so both
+// must be matched explicitly. Every other operation — including the
+// JSON/mmap snapshot's own publish rename — gets roleOther, so arming a
+// fault on roleWALRename cannot touch the snapshot write.
 func walRenameClassifier(op vfstest.Op, name string, _ int) vfstest.Role {
-	if op == vfstest.OpRename && strings.Contains(name, "wal.log.new") {
+	if op == vfstest.OpRename && (strings.Contains(name, "wal.log.new") || strings.Contains(name, "wal_compressed.log.new")) {
 		return roleWALRename
 	}
 	return vfstest.Role("other")
 }
 
 // snapshotBoundaryFormats is the table every test in this file runs over:
-// both snapshot formats must show the same behaviour, since the boundary
-// LSN and the raise-on-open step are WAL-level, not format-level.
+// both snapshot formats must show the same behaviour, since the boundary LSN
+// and the raise-on-open step are WAL-level, not format-level. jsonConfig and
+// mmapConfig both leave EnableBatching and EnableCompression at
+// DefaultStorageConfig's false, so those two rows alone exercise only the
+// plain WAL's RaiseLSNTo. The batched and compressed rows below exist so
+// BatchedWAL.RaiseLSNTo and CompressedWAL.RaiseLSNTo run under T1 and T2 too.
 var snapshotBoundaryFormats = []struct {
 	name string
 	cfg  func(dir string) StorageConfig
 }{
 	{"json", jsonConfig},
 	{"mmap", mmapConfig},
+	{"json-batched", func(dir string) StorageConfig {
+		cfg := jsonConfig(dir)
+		cfg.EnableBatching = true
+		return cfg
+	}},
+	{"json-compressed", func(dir string) StorageConfig {
+		cfg := jsonConfig(dir)
+		cfg.EnableCompression = true
+		return cfg
+	}},
 }
 
 // T1: a deleted node stays deleted when the WAL truncate fails at Close.
@@ -142,6 +160,14 @@ func TestSnapshotBoundary_DeletedNodeStaysDeletedWhenTruncateFailsAtClose(t *tes
 				t.Fatalf("reopen: %v", err)
 			}
 			defer func() { _ = gs2.Close() }()
+
+			// Pin that the boundary skip actually ran, not only its result: the
+			// leftover WAL holds exactly one entry (create A, LSN 1) at or below
+			// the recorded boundary, and replayEntry must have skipped it rather
+			// than never seeing it.
+			if gs2.walSkippedEntries != 1 {
+				t.Fatalf("walSkippedEntries = %d, want 1", gs2.walSkippedEntries)
+			}
 
 			if _, err := gs2.GetNodeForTenant(a.ID, rtTenantA); !errors.Is(err, ErrNodeNotFound) {
 				t.Fatalf("after reopen: expected ErrNodeNotFound for the deleted node, got %v", err)

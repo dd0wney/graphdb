@@ -114,7 +114,8 @@ func (gs *GraphStorage) noteWALWriteError(err error) error {
 // invalidateJSONSnapshotSyncLocked discards the sync point and moves the
 // epoch, so a publish already in flight cannot record one. Caller holds
 // gs.mu.Lock. Used before the WAL is truncated outside a snapshot publish,
-// which resets the LSN and makes a later equality meaningless.
+// which leaves the LSN unchanged, so a later equality would wrongly look
+// current.
 func (gs *GraphStorage) invalidateJSONSnapshotSyncLocked() {
 	gs.jsonSnapshotSync = jsonSnapshotSync{}
 	gs.jsonSyncEpoch++
