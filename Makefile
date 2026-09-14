@@ -7,6 +7,7 @@
         mutation mutation-selftest \
         dccc dccc-selftest \
         coverage-floors coverage-floors-update coverage-floors-selftest \
+        test-local netns-selftest \
         bench bench-cpu bench-mem build build-all clean fmt vet lint \
         run-server run-cli run-tui install-tools mod-tidy mod-verify \
         integration-test api-test profile-cpu profile-mem
@@ -187,6 +188,28 @@ contract-guard-update:
 ## contract-guard-selftest: Prove the contract guard can fail
 contract-guard-selftest:
 	@bash scripts/contract-guard-selftest.sh
+
+## test-local: Run the package tests inside a private network namespace
+# Portmaster (the Safing application firewall) can drop a loopback SYN to a
+# closed port on this machine and outlast a test's dial timeout — see
+# scripts/lib/netns.sh and CLAUDE.md's "Build, test, lint at CI's surface".
+# A new network namespace has its own loopback, so nothing Portmaster
+# installed sees the traffic. Falls back to a direct run, with a warning
+# line naming the reason, on a host that cannot make one.
+test-local:
+	@bash -c '\
+		source scripts/lib/netns.sh; \
+		if netns_available; then \
+			echo "test-local: running inside a private network namespace"; \
+			in_private_netns $(GO) test ./pkg/... -short -timeout 300s -count=1; \
+		else \
+			echo "WARN  test-local: no private network namespace on this host (unshare/user namespaces unavailable); Portmaster may drop a loopback SYN and hang a dialing test" >&2; \
+			$(GO) test ./pkg/... -short -timeout 300s -count=1; \
+		fi'
+
+## netns-selftest: Prove the private-namespace wrapper isolates and can fail
+netns-selftest:
+	@bash scripts/netns-selftest.sh
 
 ## test-cover-html: Generate HTML coverage report
 test-cover-html: test-cover

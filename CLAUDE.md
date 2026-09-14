@@ -104,6 +104,20 @@ exist.
 
 `/preflight` runs an equivalent set; `/review` checks the diff before commit.
 
+**`make test-local` runs the package tests inside a private network namespace,
+because Portmaster (the Safing application firewall) can drop a loopback SYN
+to a closed port on this machine and outlast a test's dial timeout** — seen as
+`pkg/auth/oidc` `TestOIDCHandler_Callback_Success` hanging to a 136 s timeout
+on a 127.0.0.1 dial (auto-memory `localhost-connect-timeouts-are-portmaster`).
+A new network namespace has its own loopback and none of Portmaster's
+netfilter hooks, so a closed port there is refused at once instead of hanging.
+`scripts/lib/netns.sh` is a copy of graphdb-coord's library of the same name
+(header comment names the origin commit); `make netns-selftest` proves the
+namespace isolates and that the check can report a failure to isolate, not
+only a pass. On a host that cannot make a private network namespace,
+`test-local` falls back to a direct run and prints a warning line naming the
+reason — it does not fail silently into the slower, flakier path.
+
 ### Pre-PR
 
 Per the user's global `CLAUDE.md`, run `/review` then `/preflight` before opening a PR.
