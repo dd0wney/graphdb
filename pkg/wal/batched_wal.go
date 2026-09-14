@@ -264,9 +264,11 @@ func (w *WAL) AppendBatchAtomic(entries []BatchEntry) error {
 
 	// Single flush for all entries. Restores start like the write loop
 	// above: a batch small enough to sit entirely inside the bufio buffer
-	// reaches this Flush with none of its bytes yet handed to the file, so a
-	// failure here means the whole batch is exactly as absent as a
-	// writeEntry failure would have left it. Safe to reuse the LSNs
+	// reaches this Flush with none of its bytes yet handed to the file, or
+	// only a torn prefix that ReadAll stops at (Flush can hand over part of
+	// the buffer before the writer fails), so a failure here means the whole
+	// batch is as absent as a writeEntry failure would have left it. Safe to
+	// reuse the LSNs
 	// afterwards for the same reason as WAL.Append: bufio.Writer keeps
 	// returning a write error, unattempted, until Truncate's Reset clears
 	// it.
