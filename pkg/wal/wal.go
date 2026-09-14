@@ -118,11 +118,34 @@ func (w *WAL) Append(opType OpType, data []byte) (uint64, error) {
 		return 0, err
 	}
 
-	// Flush to disk for durability
+	// Flush to disk for durability. Roll back on failure exactly as
+	// writeEntry's branch above does: a small entry can sit entirely inside
+	// the bufio buffer, so writeEntry itself reports success while the file
+	// holds none of the entry's bytes yet, or only a torn prefix that
+	// ReadAll stops at (bufio.Writer.Flush can write part of its buffered
+	// bytes to the underlying writer before that writer returns an error),
+	// and this Flush is the first call that can fail for it. Left
+	// un-rolled-back, currentLSN would advance past an entry the file never
+	// durably received — the WAL boundary LSN a caller derives from
+	// GetCurrentLSN would then claim more than the file holds. Safe to
+	// reuse the LSN afterwards: bufio.Writer remembers a write error and
+	// returns it, unattempted, from every later Write or Flush until
+	// Truncate's Reset clears it — so no later entry can land past this
+	// one's still-unwritten (or torn) bytes.
 	if err := w.writer.Flush(); err != nil {
+		w.currentLSN--
 		return 0, fmt.Errorf("failed to flush WAL: %w", err)
 	}
 
+	// Sync failure does NOT roll back, unlike the two branches above. Flush
+	// already handed the entry's bytes to the file (the write(2) succeeded);
+	// only the durability confirmation is missing. Rolling back here would
+	// let a later Append reuse this LSN for a DIFFERENT entry, written right
+	// after bytes that are already on disk under the original LSN — two
+	// on-disk entries sharing one LSN, and ReadAll's non-advancing-LSN guard
+	// stops at the first one, silently discarding the second. Leaving
+	// currentLSN advanced keeps LSNs unique on disk at the cost of one
+	// caller-visible error for a write that may in fact land.
 	if err := w.file.Sync(); err != nil {
 		return 0, fmt.Errorf("failed to sync WAL: %w", err)
 	}

@@ -215,6 +215,14 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		}
 	}
 
+	// Refuse the open when the active WAL backend's recovered LSN is below
+	// the boundary the loaded snapshot recorded. Must run before the raise
+	// below: raiseWALLSNToSnapshotBoundary would otherwise overwrite the
+	// recovered value this check needs. See guardWALNotBehindSnapshot.
+	if err := gs.guardWALNotBehindSnapshot(); err != nil {
+		return nil, err
+	}
+
 	// Raise the active WAL backend's LSN counter to at least the boundary the
 	// loaded snapshot recorded, before replay reads gs.snapshotBoundaryLSN to
 	// decide what to skip. See raiseWALLSNToSnapshotBoundary.

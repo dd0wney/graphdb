@@ -70,6 +70,32 @@ var (
 	// surfaces map errors.Is(err, ErrUniquenessRulePropertyMissing) to
 	// HTTP 400 rather than falling into the generic 500 bucket.
 	ErrUniquenessRulePropertyMissing = errors.New("uniqueness rule requires a property the write did not supply")
+
+	// ErrWALBehindSnapshot is returned by NewGraphStorageWithConfig when the
+	// active WAL backend's recovered LSN (GetCurrentLSN right after open,
+	// before raiseWALLSNToSnapshotBoundary runs) is lower than the WAL
+	// boundary LSN the loaded snapshot recorded, and the recovered LSN is
+	// not zero.
+	//
+	// A store that closed cleanly never produces this: recovered equals the
+	// boundary when a post-snapshot WAL truncate failed (the WAL still
+	// holds only entries the snapshot already covers), and exceeds it once
+	// a further write lands. Recovered strictly below the boundary means one
+	// of three things, and this sentinel does not distinguish them: a binary
+	// that does not know about the boundary wrote to this WAL directory and
+	// reset the LSN counter on its own truncate (a downgrade); the WAL's
+	// tail is damaged and read short; or StorageConfig.EnableCompression
+	// changed since the snapshot was written, so this open reads a DIFFERENT
+	// WAL file than the one the snapshot's boundary was measured against —
+	// the previous backend's file is still on disk, untouched, holding
+	// entries whose LSNs the new boundary already covers, with neither a
+	// downgrade nor damage involved. Either way, replay would silently skip
+	// entries the loaded snapshot does not actually cover, so the open
+	// refuses rather than proceed.
+	//
+	// errors.Is(err, ErrWALBehindSnapshot) detects the refusal. The
+	// returned error wraps this sentinel and names both LSNs.
+	ErrWALBehindSnapshot = errors.New("WAL recovered LSN is below the snapshot boundary LSN")
 )
 
 // recordDoesNotDecodePhrase is the exact wording CheckInvariants uses to
