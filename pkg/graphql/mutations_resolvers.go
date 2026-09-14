@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"strconv"
 
 	"github.com/graphql-go/graphql"
 
@@ -85,6 +87,20 @@ func createNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 				// caller needs to fix its own request.
 				return nil, err
 			}
+			if errors.Is(err, storage.ErrWALWriteFailed) {
+				// The node applied in memory (node is non-nil here — see
+				// CreateNodeWithTenant's contract) even though the WAL
+				// append did not. Return the typed error DIRECTLY (not
+				// wrapped by fmt.Errorf's %w) so graphql-go's executor
+				// keeps its dynamic type and reads Extensions() off it —
+				// see http.go's ServeHTTP doc comment.
+				var id string
+				if node != nil {
+					id = strconv.FormatUint(node.ID, 10)
+				}
+				log.Printf("ERROR [graphql create node]: change applied in memory, WAL append failed: %v", err)
+				return nil, newWALWriteFailedError(err, id)
+			}
 			return nil, fmt.Errorf("failed to create node: %w", err)
 		}
 
@@ -128,6 +144,13 @@ func updateNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		// Audit A6c-graphql-resolvers: tenant-scoped update.
 		tenantID := tenant.MustFromContext(p.Context)
 		if err := gs.UpdateNodeForTenant(id, properties, tenantID); err != nil {
+			if errors.Is(err, storage.ErrWALWriteFailed) {
+				// The caller already holds idStr; the update applied in
+				// memory even though the WAL append did not. Return the
+				// typed error directly — see createNodeMutationResolver.
+				log.Printf("ERROR [graphql update node]: change applied in memory, WAL append failed: %v", err)
+				return nil, newWALWriteFailedError(err, idStr)
+			}
 			return nil, fmt.Errorf("node not found: %w", err)
 		}
 
@@ -158,6 +181,13 @@ func deleteNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		// Audit A6c-graphql-resolvers: tenant-scoped delete.
 		tenantID := tenant.MustFromContext(p.Context)
 		if err := gs.DeleteNodeForTenant(id, tenantID); err != nil {
+			if errors.Is(err, storage.ErrWALWriteFailed) {
+				// The caller already holds idStr; the delete applied in
+				// memory even though the WAL append did not. Return the
+				// typed error directly — see createNodeMutationResolver.
+				log.Printf("ERROR [graphql delete node]: change applied in memory, WAL append failed: %v", err)
+				return nil, newWALWriteFailedError(err, idStr)
+			}
 			return nil, fmt.Errorf("node not found: %w", err)
 		}
 

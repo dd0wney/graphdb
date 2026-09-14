@@ -2,7 +2,10 @@ package graphql
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
+	"strconv"
 
 	"github.com/graphql-go/graphql"
 
@@ -124,6 +127,18 @@ func createEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		tenantID := tenant.MustFromContext(p.Context)
 		edge, err := gs.CreateEdgeWithTenant(tenantID, fromNodeID, toNodeID, edgeType, properties, weight)
 		if err != nil {
+			if errors.Is(err, storage.ErrWALWriteFailed) {
+				// The edge applied in memory (edge is non-nil here — see
+				// CreateEdgeWithTenant's contract) even though the WAL
+				// append did not. Return the typed error directly — see
+				// createNodeMutationResolver in mutations_resolvers.go.
+				var id string
+				if edge != nil {
+					id = strconv.FormatUint(edge.ID, 10)
+				}
+				log.Printf("ERROR [graphql create edge]: change applied in memory, WAL append failed: %v", err)
+				return nil, newWALWriteFailedError(err, id)
+			}
 			return nil, fmt.Errorf("failed to create edge: %w", err)
 		}
 
@@ -168,6 +183,12 @@ func updateEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		// Audit A6c-graphql-resolvers: tenant-scoped update.
 		tenantID := tenant.MustFromContext(p.Context)
 		if err := gs.UpdateEdgeForTenant(id, properties, weight, tenantID); err != nil {
+			if errors.Is(err, storage.ErrWALWriteFailed) {
+				// The caller already holds idStr; the update applied in
+				// memory even though the WAL append did not.
+				log.Printf("ERROR [graphql update edge]: change applied in memory, WAL append failed: %v", err)
+				return nil, newWALWriteFailedError(err, idStr)
+			}
 			return nil, fmt.Errorf("failed to update edge: %w", err)
 		}
 
@@ -196,6 +217,12 @@ func deleteEdgeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 		// Audit A6c-graphql-resolvers: tenant-scoped delete.
 		tenantID := tenant.MustFromContext(p.Context)
 		if err := gs.DeleteEdgeForTenant(id, tenantID); err != nil {
+			if errors.Is(err, storage.ErrWALWriteFailed) {
+				// The caller already holds idStr; the delete applied in
+				// memory even though the WAL append did not.
+				log.Printf("ERROR [graphql delete edge]: change applied in memory, WAL append failed: %v", err)
+				return nil, newWALWriteFailedError(err, idStr)
+			}
 			return nil, fmt.Errorf("edge not found: %w", err)
 		}
 
