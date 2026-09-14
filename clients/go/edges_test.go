@@ -27,6 +27,28 @@ func TestEdgesCreate(t *testing.T) {
 	}
 }
 
+// A 202 create returns the built edge and a *NotDurableError that wraps
+// ErrNotDurable and carries the edge's id, mirroring C3's node coverage.
+func TestEdgesCreate202ReturnsEdgeAndNotDurableError(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"id":9,"from_node_id":1,"to_node_id":2,"type":"KNOWS","weight":0.5,` +
+			`"applied":true,"durable":false,"retry":false,"error":"WAL write failed",` +
+			`"message":"write applied, not durable, do not retry"}`))
+	})
+	e, err := c.Edges.Create(context.Background(), 1, 2, "KNOWS", EdgeCreateOptions{Weight: 0.5})
+	if e == nil || e.ID != 9 || e.Type != "KNOWS" {
+		t.Fatalf("edge = %+v, want id=9 type=KNOWS", e)
+	}
+	if !errors.Is(err, ErrNotDurable) {
+		t.Fatalf("err = %v, want errors.Is(err, ErrNotDurable)", err)
+	}
+	var nde *NotDurableError
+	if !errors.As(err, &nde) || nde.ID != 9 {
+		t.Fatalf("err = %v, want *NotDurableError with ID 9", err)
+	}
+}
+
 func TestEdgesUpdateOmitsWeightWhenNil(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any

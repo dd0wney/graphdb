@@ -1,3 +1,10 @@
+// Package graphdb is the first-party Go client for graphdb.
+//
+// Retry policy: a request is retried, up to the configured WithRetries
+// count, only when its status is retryable (429 or 5xx) and its method is
+// idempotent (GET, HEAD, PUT, DELETE, OPTIONS). POST and PATCH are never
+// retried, because a retry after a partial failure can duplicate a
+// mutation (M-11 parity with the TypeScript and Python clients).
 package graphdb
 
 import (
@@ -36,7 +43,12 @@ func WithAPIKey(k string) Option { return func(c *config) { c.apiKey = k; c.auth
 func WithLogin(user, pass string) Option {
 	return func(c *config) { c.username = user; c.password = pass; c.authModes++ }
 }
-func WithTimeout(d time.Duration) Option   { return func(c *config) { c.timeout = d } }
+func WithTimeout(d time.Duration) Option { return func(c *config) { c.timeout = d } }
+
+// WithRetries sets how many times a failed request is retried. Only a
+// retryable status (429 or 5xx) on an idempotent method (GET, HEAD, PUT,
+// DELETE, OPTIONS) is retried; POST and PATCH never are, so a retry never
+// duplicates a mutation. The default is 2.
 func WithRetries(n int) Option             { return func(c *config) { c.retries = n } }
 func WithHTTPClient(h *http.Client) Option { return func(c *config) { c.httpClient = h } }
 

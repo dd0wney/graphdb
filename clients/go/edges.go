@@ -46,7 +46,10 @@ func (e *Edges) Create(ctx context.Context, from, to uint64, edgeType string, op
 		return nil, err
 	}
 	var out Edge
-	return &out, json.Unmarshal(res.data, &out)
+	if err := json.Unmarshal(res.data, &out); err != nil {
+		return nil, err
+	}
+	return &out, notDurableFromResult(res)
 }
 
 func (e *Edges) Get(ctx context.Context, id uint64) (*Edge, error) {
@@ -58,6 +61,9 @@ func (e *Edges) Get(ctx context.Context, id uint64) (*Edge, error) {
 	return &out, json.Unmarshal(res.data, &out)
 }
 
+// Update sets the edge's properties or weight. On a 202 (see ErrNotDurable)
+// the response body carries only the id, so the returned Edge has its other
+// fields empty; call Get again after ErrNotDurable if those fields matter.
 func (e *Edges) Update(ctx context.Context, id uint64, opts EdgeUpdateOptions) (*Edge, error) {
 	body := map[string]any{}
 	if opts.Properties != nil {
@@ -71,12 +77,18 @@ func (e *Edges) Update(ctx context.Context, id uint64, opts EdgeUpdateOptions) (
 		return nil, err
 	}
 	var out Edge
-	return &out, json.Unmarshal(res.data, &out)
+	if err := json.Unmarshal(res.data, &out); err != nil {
+		return nil, err
+	}
+	return &out, notDurableFromResult(res)
 }
 
 func (e *Edges) Delete(ctx context.Context, id uint64) error {
-	_, err := e.t.request(ctx, http.MethodDelete, fmt.Sprintf("/edges/%d", id), nil, nil)
-	return err
+	res, err := e.t.request(ctx, http.MethodDelete, fmt.Sprintf("/edges/%d", id), nil, nil)
+	if err != nil {
+		return err
+	}
+	return notDurableFromResult(res)
 }
 
 func (e *Edges) BatchCreate(ctx context.Context, edges []EdgeInput) ([]Edge, error) {

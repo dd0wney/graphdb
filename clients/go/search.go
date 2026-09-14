@@ -87,6 +87,10 @@ func (s *Search) Vector(ctx context.Context, property string, vector []float64, 
 	return out.Results, json.Unmarshal(res.data, &out)
 }
 
+// CreateIndex builds a vector index on property. On a 202 (see
+// ErrNotDurable) the response body carries only the id, so the returned
+// VectorIndex has empty PropertyName and zero Dimensions; call GetIndex
+// again after ErrNotDurable if those fields matter.
 func (s *Search) CreateIndex(ctx context.Context, property string, dimensions int) (*VectorIndex, error) {
 	res, err := s.t.request(ctx, http.MethodPost, "/vector-indexes",
 		map[string]any{"property_name": property, "dimensions": dimensions}, nil)
@@ -94,7 +98,10 @@ func (s *Search) CreateIndex(ctx context.Context, property string, dimensions in
 		return nil, err
 	}
 	var out VectorIndex
-	return &out, json.Unmarshal(res.data, &out)
+	if err := json.Unmarshal(res.data, &out); err != nil {
+		return nil, err
+	}
+	return &out, notDurableFromResult(res)
 }
 
 func (s *Search) ListIndexes(ctx context.Context) ([]VectorIndex, error) {
@@ -121,7 +128,10 @@ func (s *Search) GetIndex(ctx context.Context, property string) (*VectorIndex, e
 // DeleteIndex drops a vector index. A missing index returns an *Error
 // wrapping ErrNotFound (404).
 func (s *Search) DeleteIndex(ctx context.Context, property string) error {
-	_, err := s.t.request(ctx, http.MethodDelete,
+	res, err := s.t.request(ctx, http.MethodDelete,
 		fmt.Sprintf("/vector-indexes/%s", url.PathEscape(property)), nil, nil)
-	return err
+	if err != nil {
+		return err
+	}
+	return notDurableFromResult(res)
 }

@@ -100,6 +100,25 @@ func TestSearchCreateIndex(t *testing.T) {
 	}
 }
 
+// A 202 create returns a *NotDurableError wrapping ErrNotDurable. The
+// vector-index create handler answers WriteNotDurableResponse, which omits
+// "id" (no single per-write entity id for an index), so ID stays 0.
+func TestSearchCreateIndex202ReturnsNotDurableError(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"applied":true,"durable":false,"retry":false,` +
+			`"error":"WAL write failed","message":"write applied, not durable, do not retry"}`))
+	})
+	_, err := c.Search.CreateIndex(context.Background(), "embedding", 384)
+	if !errors.Is(err, ErrNotDurable) {
+		t.Fatalf("err = %v, want errors.Is(err, ErrNotDurable)", err)
+	}
+	var nde *NotDurableError
+	if !errors.As(err, &nde) || nde.ID != 0 {
+		t.Fatalf("err = %v, want *NotDurableError with ID 0 (no id in the body)", err)
+	}
+}
+
 // A property name containing a slash must be path-escaped, not become an
 // extra URL segment.
 func TestSearchGetIndexEscapesPropertyName(t *testing.T) {

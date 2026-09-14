@@ -128,6 +128,52 @@ func TestNodesListErrorMidPagination(t *testing.T) {
 	}
 }
 
+// C3: a 202 create returns the built node and a *NotDurableError that wraps
+// ErrNotDurable and carries the node's id. Before the fix, request() treated
+// any status below 400 as plain success, so err was nil and the caller had
+// no signal that the write was not yet durable.
+func TestNodesCreate202ReturnsNodeAndNotDurableError(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"id":7,"labels":["Person"],"properties":{"name":"Alice"},` +
+			`"applied":true,"durable":false,"retry":false,"error":"WAL write failed",` +
+			`"message":"write applied, not durable, do not retry"}`))
+	})
+	n, err := c.Nodes.Create(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	if n == nil || n.ID != 7 || len(n.Labels) != 1 || n.Labels[0] != "Person" {
+		t.Fatalf("node = %+v, want id=7 labels=[Person]", n)
+	}
+	if !errors.Is(err, ErrNotDurable) {
+		t.Fatalf("err = %v, want errors.Is(err, ErrNotDurable)", err)
+	}
+	var nde *NotDurableError
+	if !errors.As(err, &nde) || nde.ID != 7 {
+		t.Fatalf("err = %v, want *NotDurableError with ID 7", err)
+	}
+}
+
+// C4: a 202 delete returns a *NotDurableError whose ID comes from the
+// response body's "id" field, matching the #612 WriteNotDurableResponse
+// contract, rather than merely echoing the id the caller passed in.
+func TestNodesDelete202ReturnsNotDurableErrorWithBodyID(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/nodes/7" {
+			t.Errorf("got %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"id":7,"applied":true,"durable":false,"retry":false,` +
+			`"error":"WAL write failed","message":"write applied, not durable, do not retry"}`))
+	})
+	err := c.Nodes.Delete(context.Background(), 7)
+	if !errors.Is(err, ErrNotDurable) {
+		t.Fatalf("err = %v, want errors.Is(err, ErrNotDurable)", err)
+	}
+	var nde *NotDurableError
+	if !errors.As(err, &nde) || nde.ID != 7 {
+		t.Fatalf("err = %v, want *NotDurableError with ID 7", err)
+	}
+}
+
 // A buggy server that echoes the same cursor forever must not cause an
 // infinite pagination loop.
 func TestNodesListStopsOnRepeatedCursor(t *testing.T) {
