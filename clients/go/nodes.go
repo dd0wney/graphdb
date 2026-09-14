@@ -35,7 +35,10 @@ func (n *Nodes) Create(ctx context.Context, labels []string, props map[string]an
 		return nil, err
 	}
 	var out Node
-	return &out, json.Unmarshal(res.data, &out)
+	if err := json.Unmarshal(res.data, &out); err != nil {
+		return nil, err
+	}
+	return &out, notDurableFromResult(res)
 }
 
 func (n *Nodes) Get(ctx context.Context, id uint64) (*Node, error) {
@@ -54,12 +57,18 @@ func (n *Nodes) Update(ctx context.Context, id uint64, props map[string]any) (*N
 		return nil, err
 	}
 	var out Node
-	return &out, json.Unmarshal(res.data, &out)
+	if err := json.Unmarshal(res.data, &out); err != nil {
+		return nil, err
+	}
+	return &out, notDurableFromResult(res)
 }
 
 func (n *Nodes) Delete(ctx context.Context, id uint64) error {
-	_, err := n.t.request(ctx, http.MethodDelete, fmt.Sprintf("/nodes/%d", id), nil, nil)
-	return err
+	res, err := n.t.request(ctx, http.MethodDelete, fmt.Sprintf("/nodes/%d", id), nil, nil)
+	if err != nil {
+		return err
+	}
+	return notDurableFromResult(res)
 }
 
 func (n *Nodes) BatchCreate(ctx context.Context, nodes []NodeInput) ([]Node, error) {

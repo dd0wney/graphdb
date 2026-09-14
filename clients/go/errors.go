@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 )
 
 // Sentinel errors. A non-2xx response returns an *Error whose Unwrap() is one
@@ -15,7 +16,52 @@ var (
 	ErrConflict   = errors.New("graphdb: conflict")
 	ErrRateLimit  = errors.New("graphdb: rate limited")
 	ErrServer     = errors.New("graphdb: server error")
+
+	// ErrNotDurable is the sentinel a write's error unwraps to when the
+	// server answers 202 Accepted: the write applied, but its WAL append
+	// failed, so the write is not yet durable. errors.Is(err, ErrNotDurable)
+	// detects this without matching on the message text.
+	ErrNotDurable = errors.New("graphdb: write applied but not durable")
 )
+
+// NotDurableError is returned alongside a write's normal result when the
+// server answers 202 Accepted for that write (a node or edge create,
+// update, or delete, or a vector-index create or delete). ID is the
+// affected entity's id as the response body reports it; it is 0 when the
+// body omits it (a bulk delete or a vector-index write has no single entity
+// id). A caller that ignores this error keeps the pre-202 behaviour; a
+// caller that checks it must not retry the write, since the server already
+// applied it once.
+type NotDurableError struct {
+	ID      uint64
+	Message string
+}
+
+func (e *NotDurableError) Error() string {
+	return fmt.Sprintf("graphdb: write applied but not durable (id=%d), do not retry: %s", e.ID, e.Message)
+}
+
+func (e *NotDurableError) Unwrap() error { return ErrNotDurable }
+
+// notDurableFromResult returns a *NotDurableError, as an error, when res is
+// a 202 Accepted response; it returns a plain nil error for any other
+// status. Detection is by status only, per the contract, never by parsing
+// the message text. The id and message are read from the response body
+// (the #612 NodeNotDurableResponse / EdgeNotDurableResponse / WriteNotDurableResponse
+// shapes all carry "id" and "message" fields, so one small struct decodes
+// all of them; a malformed body simply yields a zero id and empty message
+// rather than failing the call).
+func notDurableFromResult(res *apiResult) error {
+	if res.status != http.StatusAccepted {
+		return nil
+	}
+	var body struct {
+		ID      uint64 `json:"id"`
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(res.data, &body)
+	return &NotDurableError{ID: body.ID, Message: body.Message}
+}
 
 // Error is the concrete error for any non-2xx API response.
 type Error struct {
