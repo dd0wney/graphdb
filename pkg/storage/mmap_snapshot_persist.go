@@ -83,6 +83,10 @@ func (gs *GraphStorage) snapshotMmapLocked(boundary uint64) (uint64, error) {
 	}
 
 	meta := buildMmapMetadata(gs)
+	// buildMmapMetadata has no access to boundary (it is not a field on gs);
+	// set it explicitly here so the file records the WAL boundary this
+	// snapshot covers, for replay to skip on the next open.
+	meta.WALBoundaryLSN = boundary
 	gs.mu.RUnlock()
 
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })

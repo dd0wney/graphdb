@@ -16,9 +16,12 @@ package storage
 // was known to equal memory. Every logged write moves the LSN past it. The
 // sync point is recorded in exactly three places — a successful JSON
 // snapshot publish, a construction that loaded a snapshot and replayed
-// nothing on top of it, and nowhere else — and it is discarded by the one
-// path that breaks the LSN's monotonicity, DeleteAllNodes, which truncates
-// the WAL back to LSN 0.
+// nothing on top of it, and nowhere else — and it is discarded explicitly by
+// one path whose truncate would otherwise leave it looking current:
+// DeleteAllNodes. The LSN is monotonic (pkg/wal's Truncate no longer resets
+// it), so the boundary right after that truncate can equal — and typically
+// does equal — the boundary a sync point recorded moments before
+// DeleteAllNodes ran, making the discard required rather than defensive.
 //
 // Two mutations never reach the WAL and are covered separately:
 //
@@ -26,11 +29,12 @@ package storage
 //     file was written with, so a swap is a mismatch and forces the rewrite;
 //     a plaintext snapshot must not outlive the operator turning encryption
 //     on, and a snapshot under the old key must not outlive a rotation.
-//   - DeleteAllNodes clears memory, truncates the WAL (LSN back to 0) and
-//     then writes its own empty snapshot. If that snapshot fails, memory is
-//     empty, the WAL is empty and the old data is on disk, with the LSN
-//     equal to what a read-only session would see. It invalidates the sync
-//     point before it truncates; its own snapshot re-records one on success.
+//   - DeleteAllNodes clears memory and truncates the WAL, which leaves the
+//     LSN unchanged, then writes its own empty snapshot. If that snapshot
+//     fails, memory is empty, the WAL is empty and the old data is on disk,
+//     at the same LSN a sync point recorded moments before the clear. It
+//     invalidates the sync point before it truncates; its own snapshot
+//     re-records one on success.
 //
 // A store with no WAL (BulkImportMode, in-memory only) has no LSN to compare
 // and is never clean: it writes on every Close, as it always did.

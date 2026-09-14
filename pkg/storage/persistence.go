@@ -116,6 +116,10 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 		NextNodeID      uint64
 		NextEdgeID      uint64
 		Stats           Statistics
+		// WALBoundaryLSN is additive: absent in a snapshot written before this
+		// field existed, which decodes as 0 and means "the boundary is
+		// unknown, skip nothing" — today's behaviour, unchanged for old files.
+		WALBoundaryLSN uint64
 	}{
 		// ISOLATION: every field below must be a deep copy, never a
 		// reference to a live structure. json.Marshal runs after
@@ -148,6 +152,10 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 		NextNodeID: atomic.LoadUint64(&gs.nextNodeID),
 		NextEdgeID: atomic.LoadUint64(&gs.nextEdgeID),
 		Stats:      stats,
+		// The boundary this snapshot covers: every write visible above has a
+		// WAL LSN ≤ boundary, so replay on the next open can skip WAL entries
+		// at or below it instead of re-applying writes already reflected here.
+		WALBoundaryLSN: boundary,
 	}
 
 	gs.mu.RUnlock()
@@ -302,6 +310,10 @@ func (gs *GraphStorage) loadFromDisk() error {
 		NextNodeID      uint64
 		NextEdgeID      uint64
 		Stats           Statistics
+		// WALBoundaryLSN is additive: absent in a snapshot written before this
+		// field existed, which decodes as 0 and means "the boundary is
+		// unknown, skip nothing" — today's behaviour, unchanged for old files.
+		WALBoundaryLSN uint64
 	}
 
 	prof.mark("decode/decrypt envelope")
@@ -360,6 +372,10 @@ func (gs *GraphStorage) loadFromDisk() error {
 	gs.nextNodeID = snapshot.NextNodeID
 	gs.nextEdgeID = snapshot.NextEdgeID
 	gs.stats = snapshot.Stats
+	// The boundary this snapshot covers. The constructor raises the active
+	// WAL backend's LSN counter to at least this value before replay, and
+	// replayEntry skips every WAL entry at or below it.
+	gs.snapshotBoundaryLSN = snapshot.WALBoundaryLSN
 	// Restore avgQueryTimeBits from AvgQueryTime (needed for atomic operations)
 	atomic.StoreUint64(&gs.avgQueryTimeBits, math.Float64bits(snapshot.Stats.AvgQueryTime))
 

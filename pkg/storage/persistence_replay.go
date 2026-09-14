@@ -30,8 +30,21 @@ func (gs *GraphStorage) replayWAL() error {
 	return nil
 }
 
-// replayEntry replays a single WAL entry
+// replayEntry replays a single WAL entry, or skips it when the loaded
+// snapshot's recorded boundary already covers it.
 func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
+	// The snapshot this store loaded already reflects every write at or
+	// below gs.snapshotBoundaryLSN. Applying such an entry again would
+	// replay a write already merged into the state just loaded — this is
+	// the fix for the defect where a Close writes the snapshot, then a WAL
+	// truncate fails, and the next open replayed the pre-truncate entries
+	// over a snapshot that already superseded them. The LSN is plain
+	// metadata (not sealed), so this check runs before decrypting the
+	// payload and before the OpType dispatch below.
+	if entry.LSN <= gs.snapshotBoundaryLSN {
+		gs.walSkippedEntries++
+		return nil
+	}
 	gs.walReplayedEntries++
 	// H-3: unseal encrypted payloads before dispatch. A legacy plaintext
 	// entry (written before encryption was enabled) passes through; note

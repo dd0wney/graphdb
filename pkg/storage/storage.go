@@ -215,6 +215,11 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		}
 	}
 
+	// Raise the active WAL backend's LSN counter to at least the boundary the
+	// loaded snapshot recorded, before replay reads gs.snapshotBoundaryLSN to
+	// decide what to skip. See raiseWALLSNToSnapshotBoundary.
+	gs.raiseWALLSNToSnapshotBoundary()
+
 	// Replay WAL entries since last snapshot
 	if err := gs.replayWAL(); err != nil {
 		return nil, fmt.Errorf("failed to replay WAL: %w", err)

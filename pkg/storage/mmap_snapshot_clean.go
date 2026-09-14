@@ -74,6 +74,12 @@ func normaliseMmapMetadata(m mmapMetadata) mmapMetadata {
 	m.Stats.TotalQueries = 0
 	m.Stats.AvgQueryTime = 0
 	m.Stats.LastSnapshot = time.Time{}
+	// WALBoundaryLSN is compared directly by mmapSnapshotCleanLocked
+	// (boundary vs gs.walLSNAtOpen), not through this equivalence check.
+	// buildMmapMetadata(gs) — the "live" side of every call here — never
+	// sets it, so it always reads 0 on that side; comparing it against the
+	// base's real recorded value would report every clean session as dirty.
+	m.WALBoundaryLSN = 0
 	m.StickyNodeLabels = sortedCopy(m.StickyNodeLabels)
 	m.StickyEdgeTypes = sortedCopy(m.StickyEdgeTypes)
 	defs := make([]VectorIndexDef, len(m.VectorIndexes))

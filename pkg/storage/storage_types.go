@@ -110,6 +110,16 @@ type GraphStorage struct {
 	// WAL replayed). A Close whose boundary still equals it logged nothing;
 	// mmapSnapshotCleanLocked uses that as one of its four conditions.
 	walLSNAtOpen uint64
+	// snapshotBoundaryLSN is the WAL boundary LSN the loaded snapshot
+	// recorded (WALBoundaryLSN in both the JSON and mmap formats), set by
+	// loadFromDisk / loadFromDiskMmap before replayWAL runs. Every WAL entry
+	// at or below it is already reflected in the state just loaded, so
+	// replayEntry skips it, and the constructor raises the active WAL
+	// backend's counter to at least this value (RaiseLSNTo) before replay
+	// starts. Zero for a snapshot written before this field existed, or for
+	// a fresh database — both read as "skip nothing," today's behaviour.
+	// Constructor-only; no locking.
+	snapshotBoundaryLSN uint64
 
 	// ID generators
 	nextNodeID uint64
@@ -169,6 +179,10 @@ type GraphStorage struct {
 	// applied on top of the loaded snapshot. Constructor-only; no locking.
 	// Non-zero means the snapshot on disk is behind memory at open.
 	walReplayedEntries uint64
+	// walSkippedEntries counts the WAL entries constructor-time replay found
+	// at or below snapshotBoundaryLSN and did not apply, because the loaded
+	// snapshot already reflects them. Constructor-only; no locking.
+	walSkippedEntries uint64
 	// jsonSnapshotLoadedInSync is set by loadFromDisk when the snapshot it
 	// read is in the current envelope format and its encryption matches the
 	// engine, so a rewrite would produce the same file. Constructor-only.

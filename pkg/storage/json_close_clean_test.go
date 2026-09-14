@@ -337,11 +337,12 @@ func TestJSONClose_ExplicitSnapshotThenCloseSkips(t *testing.T) {
 	assertSnapshotUntouched(t, mid, jsonSnapshotFileIdentity(t, cfg.DataDir), "close after explicit snapshot")
 }
 
-// DeleteAllNodes truncates the WAL, which resets the LSN to 0 — the same
-// value a read-only session's boundary holds. If its own empty snapshot then
-// fails to land, the old data is on disk and nothing is in memory, and a
-// Close that reads "LSN unchanged since open" skips the rewrite: the next
-// open resurrects everything the caller was told is gone.
+// DeleteAllNodes truncates the WAL, which leaves the LSN unchanged (the LSN
+// is monotonic — see pkg/wal's Truncate) — the same value the sync point
+// recorded moments before the clear. If its own empty snapshot then fails to
+// land, the old data is on disk and nothing is in memory, and a Close that
+// reads "LSN unchanged since open" skips the rewrite: the next open
+// resurrects everything the caller was told is gone.
 func TestJSONClose_DeleteAllNodesWithFailedSnapshotStillRewrites(t *testing.T) {
 	cfg := jsonConfig(t.TempDir())
 	_, wantData := writeJSONFixture(t, cfg)

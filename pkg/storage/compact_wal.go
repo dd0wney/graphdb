@@ -69,6 +69,28 @@ func (gs *GraphStorage) walBoundaryLSNLocked() uint64 {
 	return 0
 }
 
+// raiseWALLSNToSnapshotBoundary raises the active WAL backend's LSN counter
+// to at least gs.snapshotBoundaryLSN. The constructor calls this once, after
+// the snapshot loads and sets that field, and before replayWAL runs.
+//
+// A freshly constructed WAL backend always starts its own counter at 0, no
+// matter what boundary the snapshot it is paired with recorded. Without this
+// call, a store that closed cleanly at boundary B would reopen with an empty
+// WAL at LSN 0, hand the first post-open write LSN 1, and a crash before the
+// next Close would then have the next replay skip that write as already
+// covered by the boundary-B snapshot (replayEntry, persistence_replay.go).
+// No locking: constructor-only, before any other goroutine can reach gs.
+func (gs *GraphStorage) raiseWALLSNToSnapshotBoundary() {
+	switch {
+	case gs.useBatching && gs.batchedWAL != nil:
+		gs.batchedWAL.RaiseLSNTo(gs.snapshotBoundaryLSN)
+	case gs.useCompression && gs.compressedWAL != nil:
+		gs.compressedWAL.RaiseLSNTo(gs.snapshotBoundaryLSN)
+	case gs.wal != nil:
+		gs.wal.RaiseLSNTo(gs.snapshotBoundaryLSN)
+	}
+}
+
 // CompactWAL checkpoints the WAL: it writes a snapshot of the current
 // state, capturing the boundary LSN under the snapshot's lock, then drops
 // every WAL entry the snapshot already covers (LSN ≤ boundary) while
