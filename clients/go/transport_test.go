@@ -234,6 +234,47 @@ func TestTransportRetries429(t *testing.T) {
 	}
 }
 
+// C1: a POST must not be retried on a 5xx. Before the fix, isRetryable
+// checked only the status, so the persistent 500 was retried twice (three
+// calls total) even though the server may already have applied the write
+// (M-11: a retried POST can duplicate a mutation).
+func TestPostNotRetriedOn5xx(t *testing.T) {
+	var calls int
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/nodes" {
+			t.Errorf("got %s %s", r.Method, r.URL.Path)
+		}
+		calls++
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	if _, err := c.Nodes.Create(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"}); err == nil {
+		t.Fatal("Create: want an error from the persistent 500")
+	}
+	if calls != 1 {
+		t.Errorf("calls = %d, want 1 (a POST must not be retried on a 5xx)", calls)
+	}
+}
+
+// C2: a GET is still retried on a 5xx. This guards the policy in C1 from
+// going too wide and dropping retries for a safe, idempotent method.
+func TestGetStillRetriedOn5xx(t *testing.T) {
+	var calls int
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls <= 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":1,"labels":["Person"],"properties":{}}`))
+	})
+	if _, err := c.Nodes.Get(context.Background(), 1); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if calls != 3 {
+		t.Errorf("calls = %d, want 3 (a GET is retried on a 5xx)", calls)
+	}
+}
+
 func TestBackoffClampsAtLargeAttempts(t *testing.T) {
 	for _, attempt := range []int{0, 1, 5, 40, 63} {
 		d := backoff(attempt)

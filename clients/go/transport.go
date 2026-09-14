@@ -81,7 +81,7 @@ func (t *transport) request(ctx context.Context, method, path string, body any, 
 			}
 			continue // retry once with the new token; does NOT consume the retry budget
 		}
-		if resp.StatusCode >= 400 && retries < t.maxRetries && isRetryable(resp.StatusCode) {
+		if resp.StatusCode >= 400 && retries < t.maxRetries && isRetryable(method, resp.StatusCode) {
 			resp.Body.Close()
 			select {
 			case <-time.After(backoff(retries)):
@@ -148,8 +148,26 @@ func (t *transport) attempt(ctx context.Context, method, path string, body any, 
 	return t.http.Do(req)
 }
 
-func isRetryable(status int) bool {
+// isRetryable reports whether a failed attempt may be retried. A status is
+// retryable at 429 or 5xx (unchanged), but only for an idempotent method:
+// POST and PATCH are never retried, because a retry after a partial failure
+// (for example a proxy timeout after the server already applied the write)
+// can duplicate a mutation. This is M-11 parity with the TypeScript and
+// Python clients.
+func isRetryable(method string, status int) bool {
+	if !isIdempotentMethod(method) {
+		return false
+	}
 	return status == http.StatusTooManyRequests || status >= 500
+}
+
+func isIdempotentMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPut, http.MethodDelete, http.MethodOptions:
+		return true
+	default:
+		return false
+	}
 }
 
 func backoff(attempt int) time.Duration {
