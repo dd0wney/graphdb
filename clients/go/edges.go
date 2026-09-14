@@ -61,6 +61,9 @@ func (e *Edges) Get(ctx context.Context, id uint64) (*Edge, error) {
 	return &out, json.Unmarshal(res.data, &out)
 }
 
+// Update sets the edge's properties or weight. On a 202 (see ErrNotDurable)
+// the response body carries only the id, so the returned Edge has its other
+// fields empty; call Get again after ErrNotDurable if those fields matter.
 func (e *Edges) Update(ctx context.Context, id uint64, opts EdgeUpdateOptions) (*Edge, error) {
 	body := map[string]any{}
 	if opts.Properties != nil {

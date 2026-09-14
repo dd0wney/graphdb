@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -272,6 +273,32 @@ func TestGetStillRetriedOn5xx(t *testing.T) {
 	}
 	if calls != 3 {
 		t.Errorf("calls = %d, want 3 (a GET is retried on a 5xx)", calls)
+	}
+}
+
+// TestIsRetryableMethodAndStatus is the table test the review asked for: it
+// pins isRetryable's method/status matrix directly, rather than only through
+// C1/C2's end-to-end HTTP behaviour.
+func TestIsRetryableMethodAndStatus(t *testing.T) {
+	methodWantsRetry := map[string]bool{
+		http.MethodGet:     true,
+		http.MethodHead:    true,
+		http.MethodPut:     true,
+		http.MethodDelete:  true,
+		http.MethodOptions: true,
+		http.MethodPost:    false,
+		http.MethodPatch:   false,
+	}
+	statuses := []int{http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusServiceUnavailable}
+
+	for method, want := range methodWantsRetry {
+		for _, status := range statuses {
+			t.Run(fmt.Sprintf("%s/%d", method, status), func(t *testing.T) {
+				if got := isRetryable(method, status); got != want {
+					t.Errorf("isRetryable(%q, %d) = %v, want %v", method, status, got, want)
+				}
+			})
+		}
 	}
 }
 

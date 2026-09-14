@@ -10,7 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **The Go client surfaces a 202 applied-not-durable write.** `clients/go` adds `ErrNotDurable`
+  and `NotDurableError`. Every write that can receive a 202 Accepted — `Nodes.Create/Update/
+  Delete`, `Edges.Create/Update/Delete`, and `Search.CreateIndex/DeleteIndex` — now returns its
+  normal result alongside this error when the server applied the write but its WAL append
+  failed. A caller that ignores the error keeps the pre-202 behaviour.
+
+### Changed
+- **The Go client no longer retries a POST or a PATCH on a 5xx (M-11 parity).** `clients/go`'s
+  retry policy now checks the method as well as the status: only GET, HEAD, PUT, DELETE, and
+  OPTIONS retry on 429 or 5xx, matching the TypeScript and Python clients. A retried POST could
+  duplicate a write; a retried PATCH could reapply a partial update.
 
 ## [1.4.0] - 2026-09-08
 

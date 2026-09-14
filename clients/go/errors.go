@@ -16,13 +16,16 @@ var (
 	ErrConflict   = errors.New("graphdb: conflict")
 	ErrRateLimit  = errors.New("graphdb: rate limited")
 	ErrServer     = errors.New("graphdb: server error")
-
-	// ErrNotDurable is the sentinel a write's error unwraps to when the
-	// server answers 202 Accepted: the write applied, but its WAL append
-	// failed, so the write is not yet durable. errors.Is(err, ErrNotDurable)
-	// detects this without matching on the message text.
-	ErrNotDurable = errors.New("graphdb: write applied but not durable")
 )
+
+// ErrNotDurable is a separate sentinel, not one of the block above: those
+// unwrap from a non-2xx *Error, but ErrNotDurable unwraps from a 202
+// Accepted *NotDurableError instead. A 202 is a 2xx, so *Error.Unwrap()
+// never returns ErrNotDurable. The server answers 202 when a write applied
+// but its WAL append failed, so the write is not yet durable.
+// errors.Is(err, ErrNotDurable) detects this without matching on the
+// message text.
+var ErrNotDurable = errors.New("graphdb: write applied but not durable")
 
 // NotDurableError is returned alongside a write's normal result when the
 // server answers 202 Accepted for that write (a node or edge create,
@@ -51,6 +54,12 @@ func (e *NotDurableError) Unwrap() error { return ErrNotDurable }
 // shapes all carry "id" and "message" fields, so one small struct decodes
 // all of them; a malformed body simply yields a zero id and empty message
 // rather than failing the call).
+//
+// Call this only from a write facet method (Nodes, Edges, Search's index
+// create/delete). /admin/update/apply also answers 202, but for an
+// unrelated reason: it accepts an asynchronous update job, not a not-yet-
+// durable write, and Raw does not call this helper at all, so a caller
+// using Raw against that route never sees a *NotDurableError.
 func notDurableFromResult(res *apiResult) error {
 	if res.status != http.StatusAccepted {
 		return nil

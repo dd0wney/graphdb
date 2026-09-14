@@ -50,6 +50,9 @@ func (n *Nodes) Get(ctx context.Context, id uint64) (*Node, error) {
 	return &out, json.Unmarshal(res.data, &out)
 }
 
+// Update sets the node's properties. On a 202 (see ErrNotDurable) the
+// response body carries only the id, so the returned Node has empty Labels
+// and Properties; call Get again after ErrNotDurable if those fields matter.
 func (n *Nodes) Update(ctx context.Context, id uint64, props map[string]any) (*Node, error) {
 	res, err := n.t.request(ctx, http.MethodPut, fmt.Sprintf("/nodes/%d", id),
 		map[string]any{"properties": props}, nil)

@@ -136,7 +136,8 @@ func TestNodesCreate202ReturnsNodeAndNotDurableError(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(`{"id":7,"labels":["Person"],"properties":{"name":"Alice"},` +
-			`"applied":true,"durable":false,"retry":false,"message":"write applied, not durable, do not retry"}`))
+			`"applied":true,"durable":false,"retry":false,"error":"WAL write failed",` +
+			`"message":"write applied, not durable, do not retry"}`))
 	})
 	n, err := c.Nodes.Create(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if n == nil || n.ID != 7 || len(n.Labels) != 1 || n.Labels[0] != "Person" {
@@ -161,7 +162,7 @@ func TestNodesDelete202ReturnsNotDurableErrorWithBodyID(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(`{"id":7,"applied":true,"durable":false,"retry":false,` +
-			`"message":"write applied, not durable, do not retry"}`))
+			`"error":"WAL write failed","message":"write applied, not durable, do not retry"}`))
 	})
 	err := c.Nodes.Delete(context.Background(), 7)
 	if !errors.Is(err, ErrNotDurable) {

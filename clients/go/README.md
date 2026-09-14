@@ -34,6 +34,17 @@ Non-2xx responses return `*graphdb.Error`; match with `errors.Is`:
 if _, err := c.Nodes.Get(ctx, 999); errors.Is(err, graphdb.ErrNotFound) { /* ... */ }
 ```
 
+A write that applies but whose WAL append fails answers 202 Accepted; the client returns its
+normal result alongside a `*graphdb.NotDurableError`. Do not retry the write — the server already
+applied it once:
+
+```go
+n, err := c.Nodes.Create(ctx, []string{"Person"}, map[string]any{"name": "Alice"})
+if errors.Is(err, graphdb.ErrNotDurable) {
+	// n.ID is set; the write applied but is not yet durable. Do not retry.
+}
+```
+
 ## Endpoints not yet faceted
 
 Everything is reachable via the escape hatch:

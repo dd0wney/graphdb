@@ -164,10 +164,15 @@ func logWALWriteFailed(err error) {
 // handleDeleteTenant's bulk deletes and for the vector-index handlers,
 // which have no single per-write entity id) plus the five not-durable
 // fields. Status 202 Accepted, not 201 and not a 5xx: a 2xx stops all
-// three first-party clients from retrying, a 5xx would make the Go client
-// retry (clients/go/transport.go retries every 5xx), and a 4xx would say
-// the request itself was wrong, which it was not. 202 rather than 201 lets
-// a caller that checks the exact status code tell the two apart.
+// three first-party clients from retrying, and a 5xx would still make the
+// Go client retry on an idempotent method (clients/go/transport.go retries
+// a 5xx only on GET, HEAD, PUT, DELETE, and OPTIONS — POST and PATCH are
+// excluded — and PUT/DELETE are what most callers of this helper use: the
+// node/edge update and delete routes, deleteAllNodes, and
+// handleDeleteTenant), so the 202 decision here keeps its reason. A 4xx
+// would say the request itself was wrong, which it was not. 202 rather
+// than 201 lets a caller that checks the exact status code tell the two
+// apart.
 //
 // createNode and createEdge use respondNodeWALWriteFailed /
 // respondEdgeWALWriteFailed instead, which answer with the full entity.
