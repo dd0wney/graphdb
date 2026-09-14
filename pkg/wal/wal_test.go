@@ -126,9 +126,11 @@ func TestWAL_Truncate(t *testing.T) {
 		t.Errorf("Expected 0 entries after truncate, got %d", len(entries))
 	}
 
-	// Verify LSN reset
-	if w.GetCurrentLSN() != 0 {
-		t.Errorf("Expected LSN 0 after truncate, got %d", w.GetCurrentLSN())
+	// Verify LSN is preserved: it is monotonic for the life of the data
+	// directory, so the WAL boundary LSN a snapshot records keeps meaning
+	// after the truncate that normally follows writing it.
+	if w.GetCurrentLSN() != 2 {
+		t.Errorf("Expected LSN 2 preserved after truncate, got %d", w.GetCurrentLSN())
 	}
 
 	w.Close()

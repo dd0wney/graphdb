@@ -102,6 +102,19 @@ type mmapMetadata struct {
 	// TenantStats persists per-tenant counts so reopen restores them without the
 	// (now-lazy) membership build. Keyed by tenant ID string.
 	TenantStats map[string]TenantStats
+	// WALBoundaryLSN is the WAL boundary this snapshot covers: every write
+	// merged into it has a WAL LSN <= this value, so replay on the next open
+	// can skip WAL entries at or below it. Additive: absent (0) in a
+	// snapshot written before this field existed, or on a fresh database —
+	// both mean "the boundary is unknown, skip nothing," today's behaviour.
+	// buildMmapMetadata never sets this (it has no access to the boundary);
+	// snapshotMmapLocked sets it explicitly on its own return value before
+	// writing. mmapMetadataEquivalent normalises it away, because the
+	// boundary is already compared directly in mmapSnapshotCleanLocked
+	// (boundary vs gs.walLSNAtOpen) — comparing it again here through a
+	// live-built value that is always 0 would report every clean session as
+	// dirty and defeat the point of this file.
+	WALBoundaryLSN uint64
 }
 
 func (h *mmapSnapshotHeader) marshal() []byte {

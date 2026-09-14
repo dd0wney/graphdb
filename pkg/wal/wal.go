@@ -298,7 +298,12 @@ func (w *WAL) recoverLSN() error {
 	return nil
 }
 
-// Truncate truncates the WAL (used after snapshot)
+// Truncate truncates the WAL (used after snapshot). It does not reset
+// currentLSN: the LSN is monotonic for the life of the data directory, so
+// that the WAL boundary LSN a snapshot records keeps meaning after the
+// truncate that normally follows writing it. RaiseLSNTo restores the counter
+// on the next open, where a freshly constructed WAL starts its own counter at
+// 0 no matter what this truncate emptied on disk.
 func (w *WAL) Truncate() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -343,10 +348,10 @@ func (w *WAL) Truncate() error {
 		return fmt.Errorf("failed to rename WAL file: %w (close error: %v)", err, closeErr)
 	}
 
-	// Update state with new file
+	// Update state with new file. currentLSN is deliberately left alone —
+	// see the Truncate doc comment.
 	w.file = newFile
 	w.writer = bufio.NewWriter(newFile)
-	w.currentLSN = 0
 
 	// Return close error if rename succeeded but close failed (non-fatal but worth logging)
 	if closeErr != nil {
@@ -365,11 +370,29 @@ func (w *WAL) Truncate() error {
 	return nil
 }
 
-// GetCurrentLSN returns the current LSN
+// GetCurrentLSN returns the current LSN. It is monotonic for the life of the
+// data directory: Truncate empties the WAL file but never lowers this
+// counter, so a snapshot's recorded WAL boundary LSN stays meaningful across
+// the truncate that normally follows writing it.
 func (w *WAL) GetCurrentLSN() uint64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.currentLSN
+}
+
+// RaiseLSNTo sets the LSN counter to lsn when the counter is currently lower,
+// and otherwise leaves it unchanged. The constructor calls this once, at
+// open, with the WAL boundary LSN the loaded snapshot recorded: a freshly
+// constructed WAL always starts its own counter at 0, and without this step
+// a store that closed cleanly at boundary B would reopen with an empty WAL at
+// LSN 0, hand the next write LSN 1, and lose that write on the next replay —
+// which would skip LSN 1 as already covered by the boundary B snapshot.
+func (w *WAL) RaiseLSNTo(lsn uint64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.currentLSN < lsn {
+		w.currentLSN = lsn
+	}
 }
 
 // Close closes the WAL.

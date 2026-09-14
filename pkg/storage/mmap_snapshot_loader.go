@@ -121,6 +121,10 @@ func (gs *GraphStorage) loadFromDiskMmap() error {
 	gs.nextEdgeID = meta.NextEdgeID
 	gs.stats = meta.Stats
 	atomic.StoreUint64(&gs.avgQueryTimeBits, math.Float64bits(meta.Stats.AvgQueryTime))
+	// The boundary this snapshot covers. The constructor raises the active
+	// WAL backend's LSN counter to at least this value before replay, and
+	// replayEntry skips every WAL entry at or below it.
+	gs.snapshotBoundaryLSN = meta.WALBoundaryLSN
 
 	// Per-tenant counts: restored from metadata and intentionally decoupled from
 	// the membership accessors so CountNodesForTenant is correct at open.

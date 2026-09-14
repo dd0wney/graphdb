@@ -337,11 +337,12 @@ func TestJSONClose_ExplicitSnapshotThenCloseSkips(t *testing.T) {
 	assertSnapshotUntouched(t, mid, jsonSnapshotFileIdentity(t, cfg.DataDir), "close after explicit snapshot")
 }
 
-// DeleteAllNodes truncates the WAL, which resets the LSN to 0 — the same
-// value a read-only session's boundary holds. If its own empty snapshot then
-// fails to land, the old data is on disk and nothing is in memory, and a
-// Close that reads "LSN unchanged since open" skips the rewrite: the next
-// open resurrects everything the caller was told is gone.
+// DeleteAllNodes truncates the WAL, which leaves the LSN unchanged (the LSN
+// is monotonic — see pkg/wal's Truncate) — the same value the sync point
+// recorded moments before the clear. If its own empty snapshot then fails to
+// land, the old data is on disk and nothing is in memory, and a Close that
+// reads "LSN unchanged since open" skips the rewrite: the next open
+// resurrects everything the caller was told is gone.
 func TestJSONClose_DeleteAllNodesWithFailedSnapshotStillRewrites(t *testing.T) {
 	cfg := jsonConfig(t.TempDir())
 	_, wantData := writeJSONFixture(t, cfg)
@@ -430,9 +431,10 @@ func TestJSONClose_FailedWALAppendRewritesSnapshot(t *testing.T) {
 // A Snapshot that captured its boundary before DeleteAllNodes can publish
 // after DeleteAllNodes' own empty snapshot. The old data then renames last,
 // and a sync point recorded for it would say the file is clean at the same
-// LSN a read-only Close sees (0, because the truncate reset it). The
-// ordering cannot be produced with a filesystem pause, because the parked
-// publish holds jsonPublishMu, so the test drives the two halves by hand.
+// LSN a read-only Close sees (the same LSN the sync point recorded before
+// the clear). The ordering cannot be produced with a filesystem pause,
+// because the parked publish holds jsonPublishMu, so the test drives the two
+// halves by hand.
 func TestJSONClose_StalePublishAfterDeleteAllNodesIsNotClean(t *testing.T) {
 	cfg := jsonConfig(t.TempDir())
 	_, wantData := writeJSONFixture(t, cfg)
