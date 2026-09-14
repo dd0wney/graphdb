@@ -171,6 +171,18 @@ func TestSnapshotBoundaryGuard_DowngradeWriteIsRefused(t *testing.T) {
 			if !strings.Contains(msg, strconv.FormatUint(boundary, 10)) {
 				t.Errorf("error text %q does not name the snapshot boundary %d", msg, boundary)
 			}
+
+			// A missed release in guardWALNotBehindSnapshot's failed-open
+			// cleanup path would leave the WAL directory unusable for
+			// anything else. Reopening it directly, appending one entry,
+			// and closing it must all succeed with no error.
+			verify := openDirectWAL(t, dir, cfg)
+			if _, err := verify.Append(wal.OpCreateNode, downgradeEntryData(t, 9003)); err != nil {
+				t.Fatalf("append after the refused open: %v — the refusal did not release the WAL directory", err)
+			}
+			if err := verify.Close(); err != nil {
+				t.Fatalf("close after the refused open: %v — the refusal did not release the WAL directory", err)
+			}
 		})
 	}
 }

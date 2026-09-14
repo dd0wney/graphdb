@@ -216,8 +216,8 @@ func (w *WAL) AppendBatch(entries []*pendingEntry) error {
 // AppendBatchAtomic writes all entries then a SINGLE flush + fsync, so the
 // whole batch is durable all-or-none at the fsync boundary — the primitive a
 // transaction commit needs for atomic durability. Synchronous: returns once
-// durable (no done-channel). On a mid-batch write error it rolls back the LSN
-// counter and returns the error.
+// durable (no done-channel). On a mid-batch write or flush error it restores
+// the LSN counter to its value before the call and returns the error.
 func (w *WAL) AppendBatchAtomic(entries []BatchEntry) error {
 	if len(entries) == 0 {
 		return nil
@@ -225,6 +225,21 @@ func (w *WAL) AppendBatchAtomic(entries []BatchEntry) error {
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	// start is the LSN counter's value before this batch touches it. Every
+	// failure branch below restores exactly this value, never a subtraction
+	// of len(entries): nothing in the batch is flushed or synced until the
+	// single Flush/Sync after the loop, so a failure ANYWHERE before that
+	// point means NONE of the batch's entries are durable, regardless of how
+	// many of the loop's iterations had already run their own currentLSN++.
+	// Subtracting len(entries) unconditionally assumed the failure always
+	// landed after every entry had been counted; a failure on an earlier
+	// entry then left currentLSN below every durably-written LSN — or made
+	// it underflow past zero for a small enough start — so the next
+	// successful Append reused an LSN a real, already-durable entry held on
+	// disk. TestAppendBatchAtomic_WriteFailureOnSecondEntryRestoresPreBatchLSN
+	// is the regression test (graphdb:v1.4-boundary-lsn-downgrade-guard, F1).
+	start := w.currentLSN
 
 	// Write all entries to buffer
 	for _, entry := range entries {
@@ -242,21 +257,21 @@ func (w *WAL) AppendBatchAtomic(entries []BatchEntry) error {
 		walEntry.Checksum = walEntry.calculateChecksum()
 
 		if err := w.writeEntry(&walEntry); err != nil {
-			// On error, rollback all LSNs
-			w.currentLSN -= uint64(len(entries))
+			w.currentLSN = start
 			return err
 		}
 	}
 
-	// Single flush for all entries. Rolls back like the write loop above: a
-	// batch small enough to sit entirely inside the bufio buffer reaches this
-	// Flush with none of its bytes yet handed to the file, so a failure here
-	// means the whole batch is exactly as absent as a writeEntry failure
-	// would have left it. Safe to reuse the LSNs afterwards for the same
-	// reason as WAL.Append: bufio.Writer keeps returning a write error,
-	// unattempted, until Truncate's Reset clears it.
+	// Single flush for all entries. Restores start like the write loop
+	// above: a batch small enough to sit entirely inside the bufio buffer
+	// reaches this Flush with none of its bytes yet handed to the file, so a
+	// failure here means the whole batch is exactly as absent as a
+	// writeEntry failure would have left it. Safe to reuse the LSNs
+	// afterwards for the same reason as WAL.Append: bufio.Writer keeps
+	// returning a write error, unattempted, until Truncate's Reset clears
+	// it.
 	if err := w.writer.Flush(); err != nil {
-		w.currentLSN -= uint64(len(entries))
+		w.currentLSN = start
 		return err
 	}
 

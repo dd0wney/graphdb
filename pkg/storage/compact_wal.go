@@ -1,6 +1,9 @@
 package storage
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 // Snapshot-isolation deep-copy helpers — see the ISOLATION comment in
 // snapshotWithBoundary. Each runs under gs.mu.RLock; the copies are what
@@ -74,6 +77,13 @@ func (gs *GraphStorage) walBoundaryLSNLocked() uint64 {
 // walBoundaryLSNLocked use to pick the active backend. Call it before
 // raiseWALLSNToSnapshotBoundary runs: after that call GetCurrentLSN no
 // longer reports what was found on disk, only the raised value.
+//
+// The batched case reads GetCurrentLSN, not walBoundaryLSNLocked's
+// CheckpointLSN (which drains in-flight batches first): the two agree here
+// only because this runs during construction, before any caller can have
+// enqueued a write, so the batch buffer is empty and there is nothing for
+// CheckpointLSN to drain.
+//
 // Constructor-only; no locking.
 func (gs *GraphStorage) recoveredWALLSN() uint64 {
 	switch {
@@ -97,25 +107,34 @@ func (gs *GraphStorage) recoveredWALLSN() uint64 {
 // recovered == gs.snapshotBoundaryLSN is what a WAL truncate that failed at
 // a prior Close leaves behind (T1, snapshot_boundary_test.go): the WAL still
 // holds only entries the snapshot already covers, so it opens too.
-// recovered strictly between 0 and the boundary means either a binary built
-// before the WAL boundary LSN fix wrote to this WAL directory and reset the
-// LSN counter to 0 on its own truncate (a downgrade), or the WAL's tail is
-// damaged and ReadAll read short (pkg/wal/wal.go's ReadAll stops at a torn
-// or zero-filled tail without itself returning an error — see that
-// function's doc comment). Either way, opening would replay less than the
-// WAL actually holds without saying so, so this refuses instead.
+// recovered strictly between 0 and the boundary means one of three things: a
+// binary built before the WAL boundary LSN fix wrote to this WAL directory
+// and reset the LSN counter to 0 on its own truncate (a downgrade); the
+// WAL's tail is damaged and ReadAll read short (pkg/wal/wal.go's ReadAll
+// stops at a torn or zero-filled tail without itself returning an error —
+// see that function's doc comment); or StorageConfig.EnableCompression
+// changed since the snapshot was written, so this open reads a DIFFERENT WAL
+// file (wal.log vs wal_compressed.log — see walFilePath in
+// compact_wal_test.go) than the one the snapshot's boundary was measured
+// against, and the previous backend's file is still sitting in the WAL
+// directory with entries the new boundary already covers. Neither a
+// downgrade nor damage causes that third case, but the effect on replay is
+// the same, so it refuses too. Whichever cause, opening would replay less
+// than the WAL actually holds without saying so, so this refuses instead.
 func (gs *GraphStorage) guardWALNotBehindSnapshot() error {
 	recovered := gs.recoveredWALLSN()
 	if recovered == 0 || recovered >= gs.snapshotBoundaryLSN {
 		return nil
 	}
 	return fmt.Errorf(
-		"%w: recovered LSN %d, snapshot boundary %d, WAL directory %q — either an older "+
-			"binary (built before the WAL boundary LSN fix) wrote to this WAL directory after "+
-			"the snapshot and reset its LSN counter, or the WAL's tail is damaged and read "+
-			"short. Do not open this data directory with this binary until the WAL is "+
-			"inspected: the entries it currently holds are not all reflected in the snapshot",
-		ErrWALBehindSnapshot, recovered, gs.snapshotBoundaryLSN, gs.dataDir)
+		"%w: recovered LSN %d, snapshot boundary %d, WAL directory %q — one of three things: an "+
+			"older binary (built before the WAL boundary LSN fix) wrote to this WAL directory after "+
+			"the snapshot and reset its LSN counter; the WAL's tail is damaged and read short; or "+
+			"the WAL backend changed (StorageConfig.EnableCompression) since the snapshot was "+
+			"written, leaving the previous backend's WAL file in place. Do not open this data "+
+			"directory with this binary until the WAL is inspected: the entries it currently holds "+
+			"are not all reflected in the snapshot",
+		ErrWALBehindSnapshot, recovered, gs.snapshotBoundaryLSN, filepath.Join(gs.dataDir, "wal"))
 }
 
 // raiseWALLSNToSnapshotBoundary raises the active WAL backend's LSN counter
