@@ -99,6 +99,24 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: a snapshot records the WAL boundary LSN it covers, and replay skips entries at or below it. Today a Close whose snapshot lands but whose WAL truncate fails for any cause (disk error at exit) leaves entries the snapshot already holds, and the next open replays them: a create from before a delete resurrects the deleted entity. Additive field in the JSON snapshot and in the mmap metadata tail (no version bump needed if absent means 0); replay compares entry.LSN to it. Acceptance: with the truncate forced to fail after a successful snapshot, a deleted node stays deleted after reopen, on both formats, seen red first"
+    },
+    {
+      "id": "gate-private-netns-graphdb",
+      "track": "infra",
+      "status": "pending",
+      "title": "ci,scripts: run the local go test gate inside a private network namespace so Portmaster cannot drop loopback SYNs. Signature: pkg/auth/oidc TestOIDCHandler_Callback_Success timed out at 136 s on a loopback connect under go test ./pkg/... and passed alone. Reuse in_private_netns and netns_available from graphdb-coord scripts/lib/netns.sh (PR #45 there). Acceptance: with portmaster.service active, a closed loopback port is refused in under 1 s inside the wrapper; the gate runs green with zero dial timeouts; when unshare is refused the gate takes a WARN fallback and still runs the tests"
+    },
+    {
+      "id": "go-client-no-retry-on-post",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "go-client: do not retry POST or PATCH on a 5xx (M-11 parity with the TS and Python clients); read the 202 applied-not-durable body from v1.4-api-wal-error-no-retry and return a typed ErrNotDurable with the entity id. Today clients/go/transport.go isRetryable is 429 or >= 500 and request() retries with no method check, default 2 retries, so a POST /nodes that fails after the write applied creates a second node"
+    },
+    {
+      "id": "v1.4-boundary-lsn-downgrade-guard",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: refuse the open when the recovered WAL LSN is above 0 and below the recorded snapshot boundary (a downgrade to a binary that resets the LSN wrote entries the skip would drop); a failed truncate gives recovered == boundary and never fires; decide what to do about a torn WAL tail that reads low; red first with the measured sequence"
     }
   ],
   "deps": [
@@ -113,6 +131,14 @@
     {
       "from": "v1.4-api-wal-error-no-retry",
       "to": "v1.4-wal-write-errors-reach-the-caller"
+    },
+    {
+      "from": "go-client-no-retry-on-post",
+      "to": "v1.4-api-wal-error-no-retry"
+    },
+    {
+      "from": "v1.4-boundary-lsn-downgrade-guard",
+      "to": "v1.4-snapshot-records-wal-boundary"
     }
   ]
 }
