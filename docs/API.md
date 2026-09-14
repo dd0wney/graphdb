@@ -832,6 +832,7 @@ Rate limits vary by edition:
 |------|-------------|
 | 200 | Success |
 | 201 | Created |
+| 202 | Accepted - the write applied in memory but is not durable yet (WAL append failed); the response body carries `applied: true`, `durable: false`, `retry: false` — do not retry |
 | 400 | Bad Request - Invalid parameters |
 | 401 | Unauthorized - Missing or invalid authentication |
 | 403 | Forbidden - Insufficient permissions |

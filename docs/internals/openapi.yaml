@@ -370,6 +370,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Node'
+        '202':
+          description: >-
+            Accepted - the node applied in memory but its WAL append
+            failed, so it is not durable yet. Do not retry: a retry
+            creates the node a second time.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeNotDurableResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -455,6 +464,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Node'
+        '202':
+          description: >-
+            Accepted - the update applied in memory but its WAL append
+            failed, so it is not durable yet. Do not retry: a retry
+            applies the update a second time.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteNotDurableResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -478,6 +496,16 @@ paths:
                   message:
                     type: string
                     example: Node deleted successfully
+        '202':
+          description: >-
+            Accepted - the delete applied in memory but its WAL append
+            failed, so it is not durable yet. Do not retry: a retry
+            applies the delete a second time (harmless here, but the
+            response contract is the same for every write path).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteNotDurableResponse'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -649,6 +677,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Edge'
+        '202':
+          description: >-
+            Accepted - the edge applied in memory but its WAL append
+            failed, so it is not durable yet. Do not retry: a retry
+            creates the edge a second time.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdgeNotDurableResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -706,6 +743,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Edge'
+        '202':
+          description: >-
+            Accepted - the update applied in memory but its WAL append
+            failed, so it is not durable yet. Do not retry: a retry
+            applies the update a second time.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteNotDurableResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -729,6 +775,14 @@ paths:
                   message:
                     type: string
                     example: Edge deleted successfully
+        '202':
+          description: >-
+            Accepted - the delete applied in memory but its WAL append
+            failed, so it is not durable yet. Do not retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteNotDurableResponse'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -1133,6 +1187,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/VectorIndexResponse'
+        '202':
+          description: >-
+            Accepted - the index definition applied in memory but its WAL
+            append failed, so it is not durable yet. Do not retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteNotDurableResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1179,6 +1241,14 @@ paths:
       responses:
         '204':
           description: Vector index deleted successfully
+        '202':
+          description: >-
+            Accepted - the index removal applied in memory but its WAL
+            append failed, so it is not durable yet. Do not retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteNotDurableResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1819,6 +1889,66 @@ components:
           example:
             since: "2020-01-15"
             strength: high
+
+    WriteNotDurableResponse:
+      type: object
+      description: >-
+        Returned with status 202 when a write's change applied in memory
+        but its WAL (write-ahead log) append failed. Every reader already
+        sees the change, and it becomes durable at the next snapshot or
+        clean shutdown. Do not retry: a retry applies the change a second
+        time. Returned by updateNode, deleteNode, updateEdge, deleteEdge,
+        and the vector index create/delete endpoints, none of which have
+        a single per-write entity to return in full.
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: >-
+            The affected entity's id. Omitted (the field is absent) for
+            the vector index endpoints, which have no per-write entity id.
+          example: 12345
+        applied:
+          type: boolean
+          description: The change applied in memory.
+          example: true
+        durable:
+          type: boolean
+          description: The change is not yet durable on disk.
+          example: false
+        retry:
+          type: boolean
+          description: Always false. A retry would apply the change a second time.
+          example: false
+        error:
+          type: string
+          example: WAL write failed
+        message:
+          type: string
+          example: >-
+            The write applied in memory and is not durable yet. Do not
+            retry: a retry applies the change a second time. A snapshot or
+            a clean shutdown makes it durable.
+
+    NodeNotDurableResponse:
+      description: >-
+        Returned by POST /nodes with status 202 when the WAL append
+        failed. A SUPERSET of the normal 201 Node body — the same id,
+        labels and properties — plus the not-durable status fields below,
+        so a client that treats any 2xx as success and reads only the node
+        fields still builds a correct node.
+      allOf:
+        - $ref: '#/components/schemas/Node'
+        - $ref: '#/components/schemas/WriteNotDurableResponse'
+
+    EdgeNotDurableResponse:
+      description: >-
+        Returned by POST /edges with status 202 when the WAL append
+        failed. A SUPERSET of the normal 201 Edge body, mirroring
+        NodeNotDurableResponse.
+      allOf:
+        - $ref: '#/components/schemas/Edge'
+        - $ref: '#/components/schemas/WriteNotDurableResponse'
 
     Error:
       type: object

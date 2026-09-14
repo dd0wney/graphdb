@@ -136,31 +136,76 @@ func (s *Server) respondError(w http.ResponseWriter, status int, message string)
 // storage's own error wording.
 const walWriteFailedMessage = "The write applied in memory and is not durable yet. Do not retry: a retry applies the change a second time. A snapshot or a clean shutdown makes it durable."
 
-// respondWALWriteFailed answers a write whose in-memory change applied but
-// whose WAL append failed (storage.ErrWALWriteFailed wraps the disk cause).
-// Status 202 Accepted, not 201 and not a 5xx: a 2xx stops all three
-// first-party clients from retrying, a 5xx would make the Go client retry
-// (clients/go/transport.go retries every 5xx), and a 4xx would say the
-// request itself was wrong, which it was not. 202 rather than 201 lets a
-// caller that checks the exact status code tell the two apart.
-//
-// The wrapped disk error never reaches the response body — same precedent
-// as ErrRecordUnreadable (see getNode in handlers_nodes.go) — only the
-// fixed sentence does. It is logged here with the same logger the handlers
-// use for 500s.
-//
-// id is 0 for the property-index and vector-index handlers, which have no
-// per-write entity id; WriteNotDurableResponse.ID omits a zero value.
-func (s *Server) respondWALWriteFailed(w http.ResponseWriter, err error, id uint64) {
-	log.Printf("ERROR [wal write]: change applied in memory, WAL append failed: %v", err)
-	s.respondJSON(w, http.StatusAccepted, WriteNotDurableResponse{
-		ID:      id,
+// newNotDurableFields builds the five status fields every not-durable
+// response body carries (see notDurableFields in types.go). Factored out
+// so the three respond*WALWriteFailed helpers below build it identically.
+func newNotDurableFields() notDurableFields {
+	return notDurableFields{
 		Applied: true,
 		Durable: false,
 		Retry:   false,
 		Error:   "WAL write failed",
 		Message: walWriteFailedMessage,
+	}
+}
+
+// logWALWriteFailed logs a WAL append failure with the same logger the
+// handlers use for 500s. The wrapped disk error never reaches the response
+// body — same precedent as ErrRecordUnreadable (see getNode in
+// handlers_nodes.go) — only the fixed sentence does, so this is the only
+// place err's detail goes.
+func logWALWriteFailed(err error) {
+	log.Printf("ERROR [wal write]: change applied in memory, WAL append failed: %v", err)
+}
+
+// respondWALWriteFailed answers a write whose in-memory change applied but
+// whose WAL append failed (storage.ErrWALWriteFailed wraps the disk cause)
+// with a WriteNotDurableResponse: id (0 for deleteAllNodes/
+// handleDeleteTenant's bulk deletes and for the vector-index handlers,
+// which have no single per-write entity id) plus the five not-durable
+// fields. Status 202 Accepted, not 201 and not a 5xx: a 2xx stops all
+// three first-party clients from retrying, a 5xx would make the Go client
+// retry (clients/go/transport.go retries every 5xx), and a 4xx would say
+// the request itself was wrong, which it was not. 202 rather than 201 lets
+// a caller that checks the exact status code tell the two apart.
+//
+// createNode and createEdge use respondNodeWALWriteFailed /
+// respondEdgeWALWriteFailed instead, which answer with the full entity.
+func (s *Server) respondWALWriteFailed(w http.ResponseWriter, err error, id uint64) {
+	logWALWriteFailed(err)
+	s.respondJSON(w, http.StatusAccepted, WriteNotDurableResponse{
+		ID:               id,
+		notDurableFields: newNotDurableFields(),
 	})
+}
+
+// respondNodeWALWriteFailed answers a createNode whose WAL append failed
+// with a NodeNotDurableResponse: the full node (via nodeToResponse, so
+// tenant masking still applies) plus the five not-durable fields — a
+// SUPERSET of the 201 NodeResponse body, so a client that treats any 2xx as
+// success and reads only the node fields still builds a correct node. node
+// is expected non-nil (CreateNodeWithUniquenessRulesForTenant's two routes,
+// CreateNodeWithTenant and CreateNodeWithUniquePropertyForTenant, both
+// return the node alongside a WAL error); the nil guard is defensive.
+func (s *Server) respondNodeWALWriteFailed(ctx context.Context, w http.ResponseWriter, err error, node *storage.Node) {
+	logWALWriteFailed(err)
+	resp := NodeNotDurableResponse{notDurableFields: newNotDurableFields()}
+	if node != nil {
+		resp.NodeResponse = *s.nodeToResponse(ctx, node)
+	}
+	s.respondJSON(w, http.StatusAccepted, resp)
+}
+
+// respondEdgeWALWriteFailed mirrors respondNodeWALWriteFailed for
+// createEdge. edge is expected non-nil (CreateEdgeWithTenant returns the
+// edge alongside a WAL error); the nil guard is defensive.
+func (s *Server) respondEdgeWALWriteFailed(ctx context.Context, w http.ResponseWriter, err error, edge *storage.Edge) {
+	logWALWriteFailed(err)
+	resp := EdgeNotDurableResponse{notDurableFields: newNotDurableFields()}
+	if edge != nil {
+		resp.EdgeResponse = *s.edgeToResponse(ctx, edge)
+	}
+	s.respondJSON(w, http.StatusAccepted, resp)
 }
 
 // SaveAuthData persists users and API keys to disk

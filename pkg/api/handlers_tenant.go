@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"github.com/dd0wney/graphdb/pkg/audit"
 	"github.com/dd0wney/graphdb/pkg/auth"
 	"github.com/dd0wney/graphdb/pkg/search"
+	"github.com/dd0wney/graphdb/pkg/storage"
 	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
@@ -288,7 +291,17 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 	// 1. Cascade the tenant's graph data — nodes, edges, per-tenant indexes,
 	//    and vector-index definitions (#223). Without this the tenant's data
 	//    stayed queryable under its ID after the record was deleted.
-	nodesDeleted, edgesDeleted, err := s.graph.DeleteTenant(tenantID)
+	//
+	//    deleteTenantGraphData loops directly over
+	//    DeleteNodeForTenant/DeleteEdgeForTenant rather than delegating to
+	//    the storage-level DeleteTenant bulk helper (tenant_operations.go),
+	//    which mirrors this same loop but ABORTS on the first error. A WAL
+	//    append failure on one entity's delete must not stop the cascade
+	//    partway through a tenant offboarding — the delete already applied
+	//    in memory — so the loop remembers that (walErr) and continues.
+	//    Any other error still aborts, matching DeleteTenant's own
+	//    contract.
+	nodesDeleted, edgesDeleted, walErr, err := s.deleteTenantGraphData(tenantID)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete tenant data"))
 		return
@@ -351,12 +364,83 @@ func (s *Server) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 		UserAgent:    r.UserAgent(),
 	})
 
+	// walErr is non-nil when at least one node or edge delete's WAL append
+	// failed during the cascade above (step 1) — the whole cascade still
+	// ran to completion and every later step (search index cleanup, WAL
+	// compaction, tenant record delete, audit log) still happened, but the
+	// deletes it carries are not all durable yet.
+	if walErr != nil {
+		s.respondWALWriteFailed(w, walErr, 0)
+		return
+	}
+
 	s.respondJSON(w, http.StatusOK, map[string]any{
 		"message":       "Tenant deleted successfully",
 		"id":            tenantID,
 		"nodes_deleted": nodesDeleted,
 		"edges_deleted": edgesDeleted,
 	})
+}
+
+// deleteTenantGraphData mirrors storage.GraphStorage.DeleteTenant's cascade
+// (node pass, defensive edge pass, vector-index cleanup) — see
+// tenant_operations.go for the original — but continues past a WAL append
+// failure on an individual delete instead of aborting there: the delete
+// already applied in memory, so stopping would leave the rest of the
+// tenant's data behind mid-offboarding. The first such failure is returned
+// as walErr (non-nil means "cascade complete, not all of it durable yet");
+// any other error still aborts immediately, matching DeleteTenant's own
+// contract.
+func (s *Server) deleteTenantGraphData(tenantID string) (nodesDeleted, edgesDeleted int, walErr, err error) {
+	nodes, nodeEnumErr := s.graph.GetAllNodesForTenant(tenantID)
+	for _, n := range nodes {
+		if derr := s.graph.DeleteNodeForTenant(n.ID, tenantID); derr != nil {
+			if errors.Is(derr, storage.ErrNodeNotFound) {
+				continue // already removed via another node's edge cascade
+			}
+			if errors.Is(derr, storage.ErrWALWriteFailed) {
+				if walErr == nil {
+					walErr = derr
+				}
+				continue
+			}
+			return nodesDeleted, edgesDeleted, walErr, fmt.Errorf("delete node %d: %w", n.ID, derr)
+		}
+		nodesDeleted++
+	}
+
+	// Defensive sweep: any edges the node pass didn't cascade.
+	edges, edgeEnumErr := s.graph.GetAllEdgesForTenant(tenantID)
+	for _, e := range edges {
+		if derr := s.graph.DeleteEdgeForTenant(e.ID, tenantID); derr != nil {
+			if errors.Is(derr, storage.ErrEdgeNotFound) {
+				continue
+			}
+			if errors.Is(derr, storage.ErrWALWriteFailed) {
+				if walErr == nil {
+					walErr = derr
+				}
+				continue
+			}
+			return nodesDeleted, edgesDeleted, walErr, fmt.Errorf("delete edge %d: %w", e.ID, derr)
+		}
+		edgesDeleted++
+	}
+
+	// Drop the tenant's vector-index definitions (WAL-durable). Best-effort:
+	// a concurrently-dropped index just surfaces as an error we can ignore,
+	// and a WAL append failure here does not change this tenant delete's
+	// notDurable outcome — the node/edge passes above already decide that.
+	for _, prop := range s.graph.ListVectorIndexesForTenant(tenantID) {
+		s.graph.DropVectorIndexForTenant(tenantID, prop) //nolint:errcheck // best-effort cleanup, see comment above
+	}
+
+	if enumErr := errors.Join(nodeEnumErr, edgeEnumErr); enumErr != nil {
+		return nodesDeleted, edgesDeleted, walErr,
+			fmt.Errorf("delete tenant is incomplete, records survive that could not be read: %w", enumErr)
+	}
+
+	return nodesDeleted, edgesDeleted, walErr, nil
 }
 
 // handleGetTenantUsage handles GET /tenants/{id}/usage

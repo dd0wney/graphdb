@@ -88,12 +88,16 @@ func createNodeMutationResolver(gs *storage.GraphStorage) graphql.FieldResolveFn
 				return nil, err
 			}
 			if errors.Is(err, storage.ErrWALWriteFailed) {
-				// The node applied in memory (node is non-nil here — see
-				// CreateNodeWithTenant's contract) even though the WAL
-				// append did not. Return the typed error DIRECTLY (not
-				// wrapped by fmt.Errorf's %w) so graphql-go's executor
-				// keeps its dynamic type and reads Extensions() off it —
-				// see http.go's ServeHTTP doc comment.
+				// The node applied in memory even though the WAL append
+				// did not. CreateNodeWithUniquenessRulesForTenant routes
+				// to one of two storage methods (CreateNodeWithTenant,
+				// when no uniqueness rule matches the labels, or
+				// CreateNodeWithUniquePropertyForTenant otherwise), and
+				// both return the created node alongside a WAL error, so
+				// node is non-nil here. Return the typed error DIRECTLY
+				// (not wrapped by fmt.Errorf's %w) so graphql-go's
+				// executor keeps its dynamic type and reads Extensions()
+				// off it — see http.go's ServeHTTP doc comment.
 				var id string
 				if node != nil {
 					id = strconv.FormatUint(node.ID, 10)

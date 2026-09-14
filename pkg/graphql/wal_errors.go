@@ -23,8 +23,11 @@ type walWriteFailedError struct {
 	// precedent as REST's respondWALWriteFailed.
 	cause error
 	// id is the entity id as a string (GraphQL ids are strings). Empty
-	// only if the caller had no id to give, which none of the six mutation
-	// resolvers do.
+	// when the caller had no id to give — none of the six mutation
+	// resolvers normally hits this: createNodeMutationResolver and
+	// createEdgeMutationResolver each hold a nil guard (mutations_resolvers.go,
+	// edges_resolvers.go) before formatting node/edge.ID, defensive against a
+	// storage contract change rather than a path either resolver takes today.
 	id string
 }
 

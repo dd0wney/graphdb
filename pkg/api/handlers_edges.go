@@ -238,11 +238,7 @@ func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
 			// The edge applied in memory (edge is non-nil here — see
 			// CreateEdgeWithTenant's contract) even though the WAL append
 			// did not.
-			var id uint64
-			if edge != nil {
-				id = edge.ID
-			}
-			s.respondWALWriteFailed(w, err, id)
+			s.respondEdgeWALWriteFailed(r.Context(), w, err, edge)
 			return
 		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create edge"))

@@ -46,11 +46,47 @@ func (s *Server) countNodes(w http.ResponseWriter, r *http.Request) {
 // Used by single-tenant consumers (e.g. wiki-graph) before a full reload.
 // Tenant-scoped (audit/ROADMAP B1): the previous global DeleteAllNodes let any
 // authenticated tenant wipe every tenant's data.
+//
+// Loops over DeleteNodeForTenant directly rather than delegating to the
+// storage-level DeleteAllNodesForTenant bulk helper (node_operations.go),
+// which mirrors this same loop but ABORTS on the first error. A WAL append
+// failure on one node's delete must not stop the sweep of the rest of the
+// tenant's nodes — the delete already applied in memory — so this loop
+// remembers that and continues, then answers 202 (not durable) once the
+// whole tenant has been swept instead of a mid-wipe 500. Any other error
+// keeps the pre-existing abort-and-500 path, matching
+// DeleteAllNodesForTenant's own contract.
 func (s *Server) deleteAllNodes(w http.ResponseWriter, r *http.Request) {
-	if err := s.graph.DeleteAllNodesForTenant(getTenantFromContext(r)); err != nil {
-		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete all nodes"))
+	tenantID := getTenantFromContext(r)
+
+	nodes, enumErr := s.graph.GetAllNodesForTenant(tenantID) // snapshot before mutating
+	var walErr error
+	for _, n := range nodes {
+		if err := s.graph.DeleteNodeForTenant(n.ID, tenantID); err != nil {
+			if errors.Is(err, storage.ErrNodeNotFound) {
+				continue // concurrent delete already removed it — that's the goal
+			}
+			if errors.Is(err, storage.ErrWALWriteFailed) {
+				// The delete applied in memory; keep sweeping the rest of
+				// the tenant's nodes instead of aborting mid-wipe.
+				if walErr == nil {
+					walErr = err
+				}
+				continue
+			}
+			s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete all nodes"))
+			return
+		}
+	}
+	if enumErr != nil {
+		s.respondError(w, http.StatusInternalServerError, sanitizeError(enumErr, "delete all nodes"))
 		return
 	}
+	if walErr != nil {
+		s.respondWALWriteFailed(w, walErr, 0)
+		return
+	}
+
 	s.respondJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
 }
 
@@ -156,14 +192,14 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, storage.ErrWALWriteFailed) {
-			// The node applied in memory (node is non-nil here — see
-			// CreateNodeWithTenant's contract) even though the WAL append
-			// did not; tell the caller, don't discard it behind a 500.
-			var id uint64
-			if node != nil {
-				id = node.ID
-			}
-			s.respondWALWriteFailed(w, err, id)
+			// The node applied in memory even though the WAL append did
+			// not; tell the caller, don't discard it behind a 500.
+			// CreateNodeWithUniquenessRulesForTenant routes to one of two
+			// storage methods (CreateNodeWithTenant, when no uniqueness
+			// rule matches the labels, or CreateNodeWithUniquePropertyForTenant
+			// otherwise), and both return the created node alongside a
+			// WAL error, so node is non-nil here.
+			s.respondNodeWALWriteFailed(r.Context(), w, err, node)
 			return
 		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create node"))
