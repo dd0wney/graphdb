@@ -155,6 +155,17 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 			s.respondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The node applied in memory (node is non-nil here — see
+			// CreateNodeWithTenant's contract) even though the WAL append
+			// did not; tell the caller, don't discard it behind a 500.
+			var id uint64
+			if node != nil {
+				id = node.ID
+			}
+			s.respondWALWriteFailed(w, err, id)
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create node"))
 		return
 	}
@@ -255,6 +266,12 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 			s.respondError(w, http.StatusNotFound, "Node not found")
 			return
 		}
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The caller already holds nodeID; the update applied in
+			// memory even though the WAL append did not.
+			s.respondWALWriteFailed(w, err, nodeID)
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "update node"))
 		return
 	}
@@ -276,6 +293,12 @@ func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 		// Cross-tenant or missing → 404 (no existence leak).
 		if errors.Is(err, storage.ErrNodeNotFound) {
 			s.respondError(w, http.StatusNotFound, "Node not found")
+			return
+		}
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The caller already holds nodeID; the delete applied in
+			// memory even though the WAL append did not.
+			s.respondWALWriteFailed(w, err, nodeID)
 			return
 		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete node"))

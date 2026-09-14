@@ -131,6 +131,27 @@ type ErrorResponse struct {
 	Code    int    `json:"code"`
 }
 
+// WriteNotDurableResponse is the body a single-op write returns when its
+// change applied in memory but its WAL append failed
+// (storage.ErrWALWriteFailed). Every reader already sees the change, and it
+// becomes durable at the next snapshot or clean shutdown — a retry would
+// apply the change a second time, so Retry is always false here.
+//
+// Message is a fixed sentence. The wrapped disk error never reaches this
+// body (see respondWALWriteFailed) — same precedent as ErrRecordUnreadable
+// (handlers_nodes.go's getNode).
+//
+// ID is omitted (zero value, "omitempty") for the property-index and
+// vector-index handlers, which have no per-write entity id.
+type WriteNotDurableResponse struct {
+	ID      uint64 `json:"id,omitempty"`
+	Applied bool   `json:"applied"`
+	Durable bool   `json:"durable"`
+	Retry   bool   `json:"retry"`
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
 // BatchNodeRequest represents a batch node creation request
 type BatchNodeRequest struct {
 	Nodes []NodeRequest `json:"nodes"`

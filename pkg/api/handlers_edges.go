@@ -234,6 +234,17 @@ func (s *Server) createEdge(w http.ResponseWriter, r *http.Request) {
 			s.respondError(w, http.StatusBadRequest, "weight must be a finite number")
 			return
 		}
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The edge applied in memory (edge is non-nil here — see
+			// CreateEdgeWithTenant's contract) even though the WAL append
+			// did not.
+			var id uint64
+			if edge != nil {
+				id = edge.ID
+			}
+			s.respondWALWriteFailed(w, err, id)
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "create edge"))
 		return
 	}
@@ -315,6 +326,12 @@ func (s *Server) updateEdge(w http.ResponseWriter, r *http.Request, edgeID uint6
 			s.respondError(w, http.StatusNotFound, "Edge not found")
 			return
 		}
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The caller already holds edgeID; the update applied in
+			// memory even though the WAL append did not.
+			s.respondWALWriteFailed(w, err, edgeID)
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "update edge"))
 		return
 	}
@@ -335,6 +352,12 @@ func (s *Server) deleteEdge(w http.ResponseWriter, r *http.Request, edgeID uint6
 		// Cross-tenant or missing → 404 (no existence leak).
 		if errors.Is(err, storage.ErrEdgeNotFound) {
 			s.respondError(w, http.StatusNotFound, "Edge not found")
+			return
+		}
+		if errors.Is(err, storage.ErrWALWriteFailed) {
+			// The caller already holds edgeID; the delete applied in
+			// memory even though the WAL append did not.
+			s.respondWALWriteFailed(w, err, edgeID)
 			return
 		}
 		s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "delete edge"))

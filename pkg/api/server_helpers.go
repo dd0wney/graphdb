@@ -130,6 +130,39 @@ func (s *Server) respondError(w http.ResponseWriter, status int, message string)
 	s.respondJSON(w, status, response)
 }
 
+// walWriteFailedMessage is the fixed sentence every WriteNotDurableResponse
+// carries. It never varies with the wrapped disk error (see
+// respondWALWriteFailed) so a caller can match on it without depending on
+// storage's own error wording.
+const walWriteFailedMessage = "The write applied in memory and is not durable yet. Do not retry: a retry applies the change a second time. A snapshot or a clean shutdown makes it durable."
+
+// respondWALWriteFailed answers a write whose in-memory change applied but
+// whose WAL append failed (storage.ErrWALWriteFailed wraps the disk cause).
+// Status 202 Accepted, not 201 and not a 5xx: a 2xx stops all three
+// first-party clients from retrying, a 5xx would make the Go client retry
+// (clients/go/transport.go retries every 5xx), and a 4xx would say the
+// request itself was wrong, which it was not. 202 rather than 201 lets a
+// caller that checks the exact status code tell the two apart.
+//
+// The wrapped disk error never reaches the response body — same precedent
+// as ErrRecordUnreadable (see getNode in handlers_nodes.go) — only the
+// fixed sentence does. It is logged here with the same logger the handlers
+// use for 500s.
+//
+// id is 0 for the property-index and vector-index handlers, which have no
+// per-write entity id; WriteNotDurableResponse.ID omits a zero value.
+func (s *Server) respondWALWriteFailed(w http.ResponseWriter, err error, id uint64) {
+	log.Printf("ERROR [wal write]: change applied in memory, WAL append failed: %v", err)
+	s.respondJSON(w, http.StatusAccepted, WriteNotDurableResponse{
+		ID:      id,
+		Applied: true,
+		Durable: false,
+		Retry:   false,
+		Error:   "WAL write failed",
+		Message: walWriteFailedMessage,
+	})
+}
+
 // SaveAuthData persists users and API keys to disk
 func (s *Server) SaveAuthData() error {
 	if s.dataDir == "" {

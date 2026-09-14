@@ -49,6 +49,31 @@ func setupTestServer(t *testing.T) (*Server, func()) {
 	return server, cleanup
 }
 
+// setupTestServerWithConfig mirrors setupTestServer but builds the storage
+// layer from a caller-supplied storage.StorageConfig instead of
+// storage.NewGraphStorage's defaults. Used by tests that need cfg.FS set to
+// a fault-injecting filesystem (pkg/vfs/vfstest) to exercise a WAL failure.
+func setupTestServerWithConfig(t *testing.T, cfg storage.StorageConfig) (*Server, func()) {
+	t.Helper()
+
+	gs, err := storage.NewGraphStorageWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create graph storage: %v", err)
+	}
+
+	server, err := NewServerWithDataDir(gs, 8080, cfg.DataDir)
+	if err != nil {
+		_ = gs.Close()
+		t.Fatalf("Failed to create server: %v", err)
+	}
+
+	cleanup := func() {
+		_ = gs.Close()
+	}
+
+	return server, cleanup
+}
+
 // setupTestServerWithData creates a test server with predefined test data
 func setupTestServerWithData(t *testing.T) (*Server, func()) {
 	t.Helper()
