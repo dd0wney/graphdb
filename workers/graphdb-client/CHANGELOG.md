@@ -2,6 +2,30 @@
 
 All notable changes to `@graphdb/client` are documented in this file.
 
+## Unreleased
+
+### Added
+
+- **`notDurable` on every write result.** The server answers 202 Accepted
+  when a write applied but its WAL append failed. The client detects a 202
+  by status alone and lifts the server's `applied`, `durable`, `retry`,
+  `error` and `message` fields, plus the entity id, into one typed
+  `NotDurable` object on the resolved value. A caller that ignores it keeps
+  the behaviour it had before. A caller that reads it must not retry the
+  write: the server already applied it once, and `POST` is not idempotent.
+  New exported types `NotDurable` and `DeleteResult`.
+
+### Changed
+
+- **`deleteNode`, `deleteEdge` and `deleteVectorIndex` resolve with
+  `DeleteResult` instead of `void`**, so a delete can carry its own
+  `notDurable` report. The object is empty on the ordinary 204. This is not
+  a breaking change: a caller written against `void` ignores the value.
+- **README retry section corrected.** It claimed the client retries every
+  5xx. The client has retried idempotent methods only since the M-11
+  security audit, and `POST` and `PATCH` are never retried. The behaviour
+  was already right; only the document was wrong.
+
 ## 2.0.0
 
 Rewrites the client against the server's actual HTTP contract

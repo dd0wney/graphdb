@@ -1047,3 +1047,205 @@ describe('GraphDBClient', () => {
     });
   });
 });
+
+/**
+ * A 202 Accepted means the write applied in memory but its WAL append
+ * failed, so the write is not yet durable (graphdb:v1.4-ts-client-202-not-
+ * durable, the TypeScript half of #618).
+ *
+ * The server's 202 body is a SUPERSET of the 2xx success body: the whole
+ * entity plus applied/durable/retry/error/message (pkg/api/types.go
+ * NodeNotDurableResponse and EdgeNotDurableResponse). The update, delete
+ * and vector-index handlers send WriteNotDurableResponse instead, which
+ * carries an id and those same five fields but no entity.
+ *
+ * Detection is by status alone, never by reading the message text, which
+ * is the rule clients/go/errors.go notDurableFromResult states.
+ */
+describe('GraphDBClient 202 applied-not-durable', () => {
+  let client: GraphDBClient;
+  const mockEndpoint = 'https://graphdb.example.com';
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    client = new GraphDBClient({
+      endpoint: mockEndpoint,
+      apiKey: 'test-api-key',
+      timeout: 5000,
+      retries: 2,
+    });
+  });
+
+  it('surfaces notDurable on a 202 createNode', async () => {
+    const input = { labels: ['Person'], properties: { name: 'Alice' } };
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        id: 42,
+        ...input,
+        applied: true,
+        durable: false,
+        retry: false,
+        error: 'wal append failed',
+        message: 'write applied but not durable',
+      }),
+    });
+
+    const result = await client.createNode(input);
+
+    expect(result.notDurable).toEqual({
+      applied: true,
+      durable: false,
+      retry: false,
+      error: 'wal append failed',
+      message: 'write applied but not durable',
+      id: 42,
+    });
+    expect(result.id).toBe(42);
+  });
+
+  it('surfaces notDurable on a 202 createEdge', async () => {
+    const input = { from_node_id: 1, to_node_id: 2, type: 'KNOWS', properties: {} };
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        id: 9,
+        ...input,
+        weight: 1,
+        applied: true,
+        durable: false,
+        retry: false,
+        error: 'wal append failed',
+        message: 'write applied but not durable',
+      }),
+    });
+
+    const result = await client.createEdge(input);
+
+    expect(result.notDurable?.id).toBe(9);
+    expect(result.notDurable?.durable).toBe(false);
+    expect(result.id).toBe(9);
+  });
+
+  // pkg/api/types.go WriteNotDurableResponse: an update's 202 body carries
+  // the id and the five fields but no entity, so labels and properties are
+  // absent. The Go client documents the same gap on Nodes.Update and tells
+  // the caller to Get again when those fields matter.
+  it('surfaces notDurable on a 202 updateNode whose body carries no entity', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        id: 5,
+        applied: true,
+        durable: false,
+        retry: false,
+        error: 'wal append failed',
+        message: 'write applied but not durable',
+      }),
+    });
+
+    const result = await client.updateNode(5, { properties: { name: 'Bob' } });
+
+    expect(result.notDurable?.id).toBe(5);
+    expect(result.labels).toBeUndefined();
+  });
+
+  it('surfaces notDurable on a 202 deleteNode', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        id: 7,
+        applied: true,
+        durable: false,
+        retry: false,
+        error: 'wal append failed',
+        message: 'write applied but not durable',
+      }),
+    });
+
+    const result = await client.deleteNode(7);
+
+    expect(result.notDurable?.id).toBe(7);
+    expect(result.notDurable?.applied).toBe(true);
+  });
+
+  it('surfaces notDurable on a 202 createVectorIndex', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        property_name: 'embedding',
+        dimensions: 384,
+        metric: 'cosine',
+        applied: true,
+        durable: false,
+        retry: false,
+        error: 'wal append failed',
+        message: 'write applied but not durable',
+      }),
+    });
+
+    const result = await client.createVectorIndex({
+      property_name: 'embedding',
+      dimensions: 384,
+    });
+
+    expect(result.notDurable?.applied).toBe(true);
+    expect(result.property_name).toBe('embedding');
+  });
+
+  // The bulk and vector-index handlers omit the id, because those writes
+  // have no single entity id.
+  it('surfaces notDurable with no id on a 202 deleteVectorIndex', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        applied: true,
+        durable: false,
+        retry: false,
+        error: 'wal append failed',
+        message: 'write applied but not durable',
+      }),
+    });
+
+    const result = await client.deleteVectorIndex('embeddings');
+
+    expect(result.notDurable?.applied).toBe(true);
+    expect(result.notDurable?.id).toBeUndefined();
+  });
+
+  it('leaves a 204 delete with no notDurable and still resolves', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      json: async () => undefined,
+    });
+
+    const result = await client.deleteNode(3);
+
+    expect(result.notDurable).toBeUndefined();
+  });
+
+  it('leaves a 201 create with no notDurable', async () => {
+    const input = { labels: ['Person'], properties: { name: 'Carol' } };
+    const mockNode = { id: 8, ...input };
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => mockNode,
+    });
+
+    const result = await client.createNode(input);
+
+    expect(result).toEqual(mockNode);
+    expect(result.notDurable).toBeUndefined();
+  });
+});

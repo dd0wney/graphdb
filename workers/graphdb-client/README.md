@@ -436,15 +436,50 @@ enum GraphDBErrorType {
 
 ### Retry Behavior
 
-The client automatically retries on:
+The client retries **idempotent methods only** — `GET`, `HEAD`, `PUT`,
+`DELETE` and `OPTIONS`. A `POST` or `PATCH` is never retried, because a
+write that failed after the server applied it would be duplicated by the
+retry (security audit M-11).
+
+For an idempotent method the client retries on:
 - **Network errors** (up to `retries` times with exponential backoff)
 - **5xx server errors** (up to `retries` times)
 - **Timeout errors** (up to `retries` times)
 
 The client does NOT retry on:
+- **Any `POST` or `PATCH`**, whatever the failure
 - **4xx client errors** (except for potential rate limiting in the future)
 - **Authentication errors** (401/403)
 - **Validation errors** (400)
+
+### Writes that applied but are not durable (202)
+
+The server answers **202 Accepted** when a write applied in memory but its
+write-ahead-log append failed. The write is real, but it is not yet durable.
+
+Every write method resolves normally on a 202 and carries a `notDurable`
+report. A caller that ignores the field behaves exactly as it did before
+this field existed.
+
+```typescript
+const node = await client.createNode({ labels: ['Person'], properties: {} });
+
+if (node.notDurable) {
+  node.notDurable.id;       // the affected entity's id, absent on bulk writes
+  node.notDurable.applied;  // true: the server did apply the write
+  node.notDurable.durable;  // false: it is not on disk yet
+  node.notDurable.message;  // the server's description
+  // Do NOT retry. The server already applied this write once.
+}
+```
+
+`deleteNode`, `deleteEdge` and `deleteVectorIndex` resolve with an object
+rather than `void`, so they can carry the same report. On the ordinary 204
+that object is empty.
+
+On a 202 from `updateNode`, `updateEdge` or a delete, the server's body
+carries the id and the report but **no entity**, so fields such as `labels`
+and `properties` are absent. Call `getNode` again when you need them.
 
 ## Complete Examples
 
