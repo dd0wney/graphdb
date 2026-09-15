@@ -223,6 +223,15 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		return nil, err
 	}
 
+	// Refuse the open when the OTHER WAL backend's file still holds bytes.
+	// The guard above cannot see this: the backend this open selected
+	// usually has no file at all, so its recovered LSN is 0 and that check
+	// returns nil on the zero while the previous backend's writes sit
+	// unread. See guardWALBackendNotSwitched.
+	if err := gs.guardWALBackendNotSwitched(); err != nil {
+		return nil, err
+	}
+
 	// Raise the active WAL backend's LSN counter to at least the boundary the
 	// loaded snapshot recorded, before replay reads gs.snapshotBoundaryLSN to
 	// decide what to skip. See raiseWALLSNToSnapshotBoundary.
