@@ -23,8 +23,26 @@ type PropertyIndexSnapshot struct {
 
 // Snapshot saves the current state to disk
 func (gs *GraphStorage) Snapshot() error {
-	_, err := gs.snapshotWithBoundary(false)
-	return err
+	if _, err := gs.snapshotWithBoundary(false); err != nil {
+		return err
+	}
+	// A poisoned WAL refuses every append until the process restarts (see
+	// wal.ErrWALPoisoned), so from the moment it poisoned it can hold only
+	// entries with LSN at or below the poison LSN — every one of them
+	// already applied to memory, and so captured by the snapshot just
+	// written, before the poison took hold. Truncating it here can never
+	// drop a write the snapshot lacks.
+	//
+	// Without this, a periodic Snapshot (unlike Close, which already
+	// truncates) leaves the WAL boundary this snapshot just recorded ahead
+	// of a WAL file a crash can leave short — the poisoned WAL's own sync
+	// failure is direct evidence that its unflushed-or-unconfirmed tail is
+	// not reliably on disk — and the next open then refuses with
+	// ErrWALBehindSnapshot (graphdb:v1.4-boundary-lsn-downgrade-guard).
+	if gs.activeWALPoisoned() == nil {
+		return nil
+	}
+	return gs.truncateActiveWAL()
 }
 
 // snapshotWithBoundary saves the current state to disk and returns the WAL
@@ -497,13 +515,14 @@ func (gs *GraphStorage) Close() error {
 	//
 	// The Close runs either way. Skipping it on a truncate failure was the same
 	// leak in a second place.
+	if snapErr == nil {
+		if err := gs.truncateActiveWAL(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
 	switch {
 	case gs.useBatching && gs.batchedWAL != nil:
-		if snapErr == nil {
-			if err := gs.batchedWAL.Truncate(); err != nil {
-				errs = append(errs, err)
-			}
-		}
 		if err := gs.batchedWAL.Close(); err != nil {
 			errs = append(errs, err)
 		}
@@ -512,24 +531,45 @@ func (gs *GraphStorage) Close() error {
 	// EnableCompression leaked its handle on an ORDINARY shutdown. Not an error
 	// path: the happy one.
 	case gs.useCompression && gs.compressedWAL != nil:
-		if snapErr == nil {
-			if err := gs.compressedWAL.Truncate(); err != nil {
-				errs = append(errs, err)
-			}
-		}
 		if err := gs.compressedWAL.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	case gs.wal != nil:
-		if snapErr == nil {
-			if err := gs.wal.Truncate(); err != nil {
-				errs = append(errs, err)
-			}
-		}
 		if err := gs.wal.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
 
 	return errors.Join(errs...)
+}
+
+// activeWALPoisoned reports whether the active WAL backend is poisoned by a
+// prior sync failure (nil while healthy, or absent). Mirrors the same
+// useBatching/useCompression/plain dispatch as walBoundaryLSNLocked and
+// raiseWALLSNToSnapshotBoundary (compact_wal.go).
+func (gs *GraphStorage) activeWALPoisoned() error {
+	switch {
+	case gs.useBatching && gs.batchedWAL != nil:
+		return gs.batchedWAL.Poisoned()
+	case gs.useCompression && gs.compressedWAL != nil:
+		return gs.compressedWAL.Poisoned()
+	case gs.wal != nil:
+		return gs.wal.Poisoned()
+	}
+	return nil
+}
+
+// truncateActiveWAL truncates whichever WAL backend is active. The single
+// place both Close and Snapshot's poisoned-WAL truncate call, so the
+// three-way backend dispatch for "which Truncate to call" exists once.
+func (gs *GraphStorage) truncateActiveWAL() error {
+	switch {
+	case gs.useBatching && gs.batchedWAL != nil:
+		return gs.batchedWAL.Truncate()
+	case gs.useCompression && gs.compressedWAL != nil:
+		return gs.compressedWAL.Truncate()
+	case gs.wal != nil:
+		return gs.wal.Truncate()
+	}
+	return nil
 }
