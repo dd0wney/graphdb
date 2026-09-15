@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, AsyncIterator, Mapping, Sequence
 
-from ...models import Node
+from ..._not_durable import attach, delete_result
+from ...models import DeleteResult, Node
 from ..transport import AsyncTransport
 
 
@@ -17,20 +18,20 @@ class AsyncNodesResource:
             "POST", "/nodes",
             json={"labels": list(labels), "properties": dict(properties or {})},
         )
-        return Node.from_dict(res.data)
+        return attach(Node.from_dict(res.data), res)
 
     async def get(self, node_id: int) -> Node:
         res = await self._t.request("GET", f"/nodes/{node_id}")
-        return Node.from_dict(res.data)
+        return attach(Node.from_dict(res.data), res)
 
     async def update(self, node_id: int, properties: Mapping[str, Any]) -> Node:
         res = await self._t.request(
             "PUT", f"/nodes/{node_id}", json={"properties": dict(properties)}
         )
-        return Node.from_dict(res.data)
+        return attach(Node.from_dict(res.data), res)
 
-    async def delete(self, node_id: int) -> None:
-        await self._t.request("DELETE", f"/nodes/{node_id}")
+    async def delete(self, node_id: int) -> DeleteResult:
+        return delete_result(await self._t.request("DELETE", f"/nodes/{node_id}"))
 
     async def batch_create(self, nodes: Sequence[Mapping[str, Any]]) -> list[Node]:
         payload = {"nodes": [

@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The Python client surfaces a 202 applied-not-durable write.** `clients/python` adds the
+  exported `NotDurable` and `DeleteResult` types. Node create and update, edge create and
+  update, and vector index create now resolve normally on a 202 and carry a typed
+  `not_durable` report holding the server's `applied`, `durable`, `retry`, `error` and
+  `message` fields, plus the entity id where the server sends one. Detection is by the 202
+  status alone, never by the body text. A caller that ignores the report keeps the behaviour
+  it had before. A caller that reads it must not retry: the server applied the write once
+  already, and POST is not idempotent. The async client carries the same report.
+
+### Changed
+- **The Python client's deletes return `DeleteResult`, not `None`.** Node, edge and vector
+  index deletes return an object so a delete can carry its own `not_durable` report. It is
+  empty on the ordinary 204. This breaks code that asserts `delete(...) is None`.
+
+### Added
 - **The Go client surfaces a 202 applied-not-durable write.** `clients/go` adds `ErrNotDurable`
   and `NotDurableError`. Every write that can receive a 202 Accepted — `Nodes.Create/Update/
   Delete`, `Edges.Create/Update/Delete`, and `Search.CreateIndex/DeleteIndex` — now returns its
