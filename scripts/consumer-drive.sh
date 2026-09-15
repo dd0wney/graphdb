@@ -6,9 +6,17 @@
 # No external corpus, no API keys.
 #
 # Consumers are expected as sibling checkouts:  ../coi-screen  ../understand-graphdb
+# Override the paths with COI_SCREEN_REPO / UNDERSTAND_GRAPHDB_REPO.
 # Absent consumers are SKIPPED loudly (not a graphdb failure). Exit codes:
-#   0 = all present consumers passed (skips allowed)
-#   1 = a present consumer FAILED
+#   0 = all present consumers passed (skips allowed), and CI is unset or empty
+#   1 = a present consumer FAILED, OR a consumer was skipped while CI is set
+#       to a non-empty value. On a developer machine a missing checkout must
+#       not block the script. In CI a consumer must not vanish from the gate
+#       in silence, so a SKIP there is a failure.
+#
+# CONSUMER_DRIVE_SKIP_BUILD=1 skips the graphdb build step below. Used by
+# scripts/consumer-drive-selftest.sh, which never builds graphdb and never
+# runs a real consumer.
 #
 # PROMOTE TO CI when both prerequisites are met (currently blocked):
 #   - understand-graphdb pushed to a git remote (it is local-only today)
@@ -25,8 +33,25 @@ fail=0; ran=0
 
 log() { echo "[consumer-drive] $*" >&2; }
 
-log "building graphdb server + importer from $REPO"
-( cd "$REPO" && go build -o /tmp/cd-server ./cmd/server && go build -o /tmp/cd-import ./cmd/import-icij ) || { log "graphdb build FAILED"; exit 1; }
+# skip NAME PATH — logs a SKIP line for a missing consumer. On a developer
+# machine (CI unset or empty) the run stays a warning. In CI (CI set to a
+# non-empty value) the SKIP also sets the failure flag, because a consumer
+# must not vanish from the gate in silence.
+skip() {
+  local name="$1" path="$2"
+  log "SKIP $name (not found at $path)"
+  if [ -n "${CI:-}" ]; then
+    log "SKIP $name is a failure under CI (CI is set to a non-empty value)"
+    fail=1
+  fi
+}
+
+if [ -n "${CONSUMER_DRIVE_SKIP_BUILD:-}" ]; then
+  log "CONSUMER_DRIVE_SKIP_BUILD set — skipping the graphdb build (selftest mode)"
+else
+  log "building graphdb server + importer from $REPO"
+  ( cd "$REPO" && go build -o /tmp/cd-server ./cmd/server && go build -o /tmp/cd-import ./cmd/import-icij ) || { log "graphdb build FAILED"; exit 1; }
+fi
 
 # --- coi-screen: embedded library + synthetic-corpus screen ---
 if [ -d "$COI/cmd/coi" ]; then
@@ -43,7 +68,7 @@ if [ -d "$COI/cmd/coi" ]; then
     log "coi-screen: planted conflict NOT flagged — FAIL"; fail=1
   fi
 else
-  log "SKIP coi-screen (not found at $COI)"
+  skip "coi-screen" "$COI"
 fi
 
 # --- understand-graphdb: REST integration suite against a live server ---
@@ -68,7 +93,7 @@ if [ -f "$UG/package.json" ]; then
   kill $SPID $EPID 2>/dev/null
   wait $SPID $EPID 2>/dev/null
 else
-  log "SKIP understand-graphdb (not found at $UG)"
+  skip "understand-graphdb" "$UG"
 fi
 
 [ "$ran" = 0 ] && log "WARNING: no consumers found — nothing driven"
