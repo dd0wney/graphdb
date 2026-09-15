@@ -43,6 +43,11 @@ type WAL struct {
 	currentLSN uint64
 	dataDir    string
 	mu         sync.Mutex
+	// poisoned holds the sync error that poisoned this WAL, or nil while
+	// healthy. Set once, under mu, by Append or AppendBatchAtomic when
+	// file.Sync fails; never cleared, because the poison lasts until the
+	// process restarts. See ErrWALPoisoned.
+	poisoned error
 }
 
 // NewWAL creates a new Write-Ahead Log on the default filesystem driver.
@@ -92,6 +97,13 @@ func NewWALWithFS(dataDir string, fs vfs.FileSystem) (*WAL, error) {
 func (w *WAL) Append(opType OpType, data []byte) (uint64, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	// A poisoned WAL refuses every append until the process restarts — see
+	// ErrWALPoisoned. Checked first, before the LSN is touched or anything
+	// is written.
+	if w.poisoned != nil {
+		return 0, wrapPoisoned(w.poisoned)
+	}
 
 	// Check for LSN overflow (CRITICAL: prevents wraparound).
 	//
@@ -147,10 +159,23 @@ func (w *WAL) Append(opType OpType, data []byte) (uint64, error) {
 	// currentLSN advanced keeps LSNs unique on disk at the cost of one
 	// caller-visible error for a write that may in fact land.
 	if err := w.file.Sync(); err != nil {
+		w.poisoned = err
 		return 0, fmt.Errorf("failed to sync WAL: %w", err)
 	}
 
 	return lsn, nil
+}
+
+// Poisoned reports whether this WAL is poisoned by a prior sync failure. It
+// returns nil while healthy, and otherwise the same wrapped error every
+// later Append or AppendBatchAtomic call refuses with — see ErrWALPoisoned.
+func (w *WAL) Poisoned() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.poisoned == nil {
+		return nil
+	}
+	return wrapPoisoned(w.poisoned)
 }
 
 // ReadAll reads all entries from the WAL

@@ -45,6 +45,57 @@ func TestWAL_OnFaultDriver_AppendSurfacesSyncFailure(t *testing.T) {
 	}
 }
 
+// TestWAL_OnFaultDriver_SyncFailurePoisonsFurtherAppends is T1 of coord task
+// graphdb:v1.4-wal-sync-failure-rollback. A sync failure leaves the on-disk
+// state of the flushed bytes unknown, so a WAL must refuse every append
+// after one, not treat the failure as a one-off. Before the fix, the WAL
+// happily accepted the third append below as if the second append's fsync
+// had never failed.
+func TestWAL_OnFaultDriver_SyncFailurePoisonsFurtherAppends(t *testing.T) {
+	fs := vfstest.NewFaults(vfs.OS(), "wal-sync-poison")
+
+	w, err := NewWALWithFS(t.TempDir(), fs)
+	if err != nil {
+		t.Fatalf("NewWALWithFS: %v", err)
+	}
+	defer func() { fs.Clear(); _ = w.Close() }()
+
+	if _, err := w.Append(OpCreateNode, []byte("first")); err != nil {
+		t.Fatalf("Append before the fault: %v", err)
+	}
+
+	fs.FailSync(vfstest.Once)
+	if _, err := w.Append(OpCreateNode, []byte("during")); !errors.Is(err, vfstest.ErrInjected) {
+		t.Fatalf("Append during the fault: got %v, want the injected fault", err)
+	}
+	if !fs.Fired() {
+		t.Fatal("the sync fault never fired; the assertions below prove nothing about the poison path")
+	}
+	lsnAfterFault := w.GetCurrentLSN()
+
+	// The fault mode was Once, so it is now disarmed. On code that does not
+	// poison, this third append would succeed normally.
+	_, thirdErr := w.Append(OpCreateNode, []byte("after"))
+	if !errors.Is(thirdErr, ErrWALPoisoned) {
+		t.Fatalf("Append after the fault: got %v, want an error satisfying errors.Is(err, ErrWALPoisoned)", thirdErr)
+	}
+
+	if got := w.GetCurrentLSN(); got != lsnAfterFault {
+		t.Fatalf("GetCurrentLSN() = %d after the poisoned append, want unchanged %d (the second append's own LSN)", got, lsnAfterFault)
+	}
+
+	entries, err := w.ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	// Two entries, not three: "first" landed cleanly, "during" was flushed
+	// to the file before its fsync failed (so it is on disk despite the
+	// error), and "after" was refused before it ever reached writeEntry.
+	if len(entries) != 2 {
+		t.Fatalf("ReadAll returned %d entries, want 2 (the poisoned append must not have written a third)", len(entries))
+	}
+}
+
 func TestWAL_OnFaultDriver_OpenFailureIsReported(t *testing.T) {
 	fs := vfstest.NewFaults(vfs.OS(), "wal-open-fault")
 	fs.FailOpen(vfstest.Always)

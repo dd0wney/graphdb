@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failed. A caller that ignores the error keeps the pre-202 behaviour.
 
 ### Changed
+- **A WAL sync failure now poisons the WAL.** After `fsync` fails, every later append on that
+  WAL is refused with `wal.ErrWALPoisoned` (wrapping the original sync error) until the process
+  restarts, on all three backends. A failed `fsync` leaves the on-disk state of the flushed
+  bytes unknown, so a retry after it is not safe. `Snapshot()` now also truncates an already
+  poisoned WAL after it writes the snapshot, the way `Close` does, so the recorded WAL boundary
+  LSN can no longer run ahead of a WAL file that a crash leaves short. Before this change such a
+  store refused its next open with `ErrWALBehindSnapshot`. Storage keeps its existing contract:
+  the refused write is already applied in memory, surfaces as `ErrWALWriteFailed`, and the REST
+  API still answers 202.
+
 - **The Go client no longer retries a POST or a PATCH on a 5xx (M-11 parity).** `clients/go`'s
   retry policy now checks the method as well as the status: only GET, HEAD, PUT, DELETE, and
   OPTIONS retry on 429 or 5xx, matching the TypeScript and Python clients. A retried POST could
