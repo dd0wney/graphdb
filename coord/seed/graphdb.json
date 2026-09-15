@@ -117,6 +117,36 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: refuse the open when the recovered WAL LSN is above 0 and below the recorded snapshot boundary (a downgrade to a binary that resets the LSN wrote entries the skip would drop); a failed truncate gives recovered == boundary and never fires; decide what to do about a torn WAL tail that reads low; red first with the measured sequence"
+    },
+    {
+      "id": "v1.4-ts-client-202-not-durable",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "ts-client: a 202 applied-not-durable response is not a success. Today the TypeScript client returns the body as a normal result and drops the applied and durable fields, so the caller cannot tell a durable write from one that only applied in memory. Same shape as #618 for the Go client: read the 202 body, return a typed NotDurableError that carries the entity id, and never retry it. Acceptance: one test per write method family sees the typed error on a 202, each seen red first; a 201 path is unchanged"
+    },
+    {
+      "id": "v1.4-python-client-202-not-durable",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "python-client: a 202 applied-not-durable response is not a success. Today the Python client returns the body as a normal result and drops the applied and durable fields, so the caller cannot tell a durable write from one that only applied in memory. Same shape as #618 for the Go client: read the 202 body, raise a typed NotDurableError that carries the entity id, and never retry it. Acceptance: one test per write method family sees the typed error on a 202, each seen red first; a 201 path is unchanged"
+    },
+    {
+      "id": "v1.4-wal-backend-switch-policy",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage,docs: decide the contract for a WAL backend switch on one data directory. Since #619 the open refuses, which is loud, but no repair or migration path exists. Decide with the user whether the refusal is the documented contract or a migration is necessary. Acceptance: either docs name the refusal, its error, and the operator repair steps, or a migration opens the directory after a switch with a test seen red first. Small: docs or code"
+    },
+    {
+      "id": "v1.4-wal-sync-failure-rollback",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: poison the WAL after a sync failure. Today a sync failure leaves the LSN counter advanced while the bytes may not be durable, so the recorded snapshot boundary can exceed the durable LSN and a later open refuses with ErrWALBehindSnapshot (#619 residual). Decision: after a sync failure every later Append returns an error; Close still writes the snapshot and truncates the WAL, so no LSN is reused and the boundary never runs ahead of durable bytes. Acceptance: force a sync failure after a successful flush, then append (error), close, reopen (opens clean), seen red first"
+    },
+    {
+      "id": "v1.4-consumer-drive-skip-policy",
+      "track": "infra",
+      "status": "pending",
+      "title": "scripts: consumer-drive.sh SKIP policy. On a SKIP the script prints a warning and exits 0 when CI is unset, and exits 1 when CI=true, so a local run stays usable and a CI run cannot pass on a skipped drive. Small, scripts only. Acceptance: a selftest shows the exit 1 under CI=true and the exit 0 without it, seen red first"
     }
   ],
   "deps": [
