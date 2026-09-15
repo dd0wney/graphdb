@@ -5,10 +5,69 @@ from typing import Any, Mapping
 
 
 @dataclass
+class NotDurable:
+    """The server applied this write but could not make it durable (HTTP 202).
+
+    The write is real: the entity exists in the server's memory and reads will
+    see it. Its write-ahead-log append failed, so it is not on disk yet.
+
+    Do NOT retry a write that carries this report. The server already applied
+    it once, and POST is not idempotent, so a retry duplicates the entity.
+    """
+
+    applied: bool = False
+    durable: bool = False
+    retry: bool = False
+    error: str = ""
+    message: str = ""
+    id: int | None = None
+
+    @classmethod
+    def from_response(cls, status_code: int, body: Any) -> "NotDurable | None":
+        """Build the report for a 202, or None for any other status.
+
+        Detection is by the status code alone, never by the body's text: a
+        server that happens to echo these fields on a 201 has still made the
+        write durable, and a caller must not be told otherwise.
+
+        A 202 whose body is missing or is not an object still yields a report,
+        with false flags and empty strings. The write applied either way, and
+        raising here would invite exactly the retry this type exists to prevent.
+        """
+        if status_code != 202:
+            return None
+        d = body if isinstance(body, Mapping) else {}
+        raw_id = d.get("id")
+        return cls(
+            applied=d.get("applied") is True,
+            durable=d.get("durable") is True,
+            retry=d.get("retry") is True,
+            error=str(d.get("error") or ""),
+            message=str(d.get("message") or ""),
+            id=int(raw_id)
+            if isinstance(raw_id, (int, float)) and not isinstance(raw_id, bool)
+            else None,
+        )
+
+
+@dataclass
+class DeleteResult:
+    """What every delete returns, so a delete can carry a not-durable report.
+
+    Empty on the ordinary 204. This replaces a bare None return, which had no
+    place to put the report.
+    """
+
+    not_durable: NotDurable | None = None
+
+
+@dataclass
 class Node:
     id: int
     labels: list[str] = field(default_factory=list)
     properties: dict[str, Any] = field(default_factory=dict)
+    #: Set only when the server answered 202: the write applied, not durable.
+    not_durable: NotDurable | None = None
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> "Node":
@@ -27,6 +86,8 @@ class Edge:
     type: str
     properties: dict[str, Any] = field(default_factory=dict)
     weight: float = 0.0
+    #: Set only when the server answered 202: the write applied, not durable.
+    not_durable: NotDurable | None = None
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> "Edge":
@@ -102,6 +163,8 @@ class VectorIndex:
     property_name: str
     dimensions: int | None = None
     metric: str | None = None
+    #: Set only when the server answered 202: the write applied, not durable.
+    not_durable: NotDurable | None = None
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> "VectorIndex":

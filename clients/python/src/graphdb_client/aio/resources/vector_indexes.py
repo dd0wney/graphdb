@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..._not_durable import attach, delete_result
 from ..._path import quote_segment
-from ...models import VectorIndex
+from ...models import DeleteResult, VectorIndex
 from ..transport import AsyncTransport
 
 
@@ -30,7 +31,7 @@ class AsyncVectorIndexesResource:
         if metric is not None:
             body["metric"] = metric
         res = await self._t.request("POST", "/vector-indexes", json=body)
-        return VectorIndex.from_dict(res.data)
+        return attach(VectorIndex.from_dict(res.data), res)
 
     async def list(self) -> list[VectorIndex]:
         """List vector indexes (GET /vector-indexes)."""
@@ -40,8 +41,9 @@ class AsyncVectorIndexesResource:
     async def get(self, property_name: str) -> VectorIndex:
         """Get one vector index (GET /vector-indexes/{property_name})."""
         res = await self._t.request("GET", f"/vector-indexes/{quote_segment(property_name)}")
-        return VectorIndex.from_dict(res.data)
+        return attach(VectorIndex.from_dict(res.data), res)
 
-    async def delete(self, property_name: str) -> None:
+    async def delete(self, property_name: str) -> DeleteResult:
         """Drop a vector index (DELETE /vector-indexes/{property_name})."""
-        await self._t.request("DELETE", f"/vector-indexes/{quote_segment(property_name)}")
+        path = f"/vector-indexes/{quote_segment(property_name)}"
+        return delete_result(await self._t.request("DELETE", path))

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Iterator, Mapping, Sequence
 
+from .._not_durable import attach, delete_result
 from .._transport import Transport
-from ..models import Edge
+from ..models import DeleteResult, Edge
 
 
 class EdgesResource:
@@ -26,11 +27,11 @@ class EdgesResource:
             "properties": dict(properties or {}),
             "weight": weight,
         })
-        return Edge.from_dict(res.data)
+        return attach(Edge.from_dict(res.data), res)
 
     def get(self, edge_id: int) -> Edge:
         res = self._t.request("GET", f"/edges/{edge_id}")
-        return Edge.from_dict(res.data)
+        return attach(Edge.from_dict(res.data), res)
 
     def update(
         self,
@@ -51,10 +52,10 @@ class EdgesResource:
         if weight is not None:
             body["weight"] = weight
         res = self._t.request("PUT", f"/edges/{edge_id}", json=body)
-        return Edge.from_dict(res.data)
+        return attach(Edge.from_dict(res.data), res)
 
-    def delete(self, edge_id: int) -> None:
-        self._t.request("DELETE", f"/edges/{edge_id}")
+    def delete(self, edge_id: int) -> DeleteResult:
+        return delete_result(self._t.request("DELETE", f"/edges/{edge_id}"))
 
     def batch_create(self, edges: Sequence[Mapping[str, Any]]) -> list[Edge]:
         payload = {"edges": [

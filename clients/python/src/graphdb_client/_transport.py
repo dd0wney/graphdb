@@ -14,6 +14,10 @@ from .errors import from_response
 class ApiResult:
     data: Any
     headers: Mapping[str, str]
+    #: The HTTP status. A write needs it to tell a durable 201 from a 202 that
+    #: applied but is not durable — the two carry the same body shape, so the
+    #: body alone cannot distinguish them.
+    status_code: int = 200
 
 
 class Transport:
@@ -138,7 +142,8 @@ class Transport:
 
             if resp.status_code >= 400:
                 raise from_response(resp.status_code, _safe_json(resp), method, path)
-            return ApiResult(data=_safe_json(resp), headers=resp.headers)
+            return ApiResult(data=_safe_json(resp), headers=resp.headers,
+                             status_code=resp.status_code)
 
     def close(self) -> None:
         self._http.close()

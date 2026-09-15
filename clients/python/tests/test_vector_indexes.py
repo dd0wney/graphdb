@@ -46,6 +46,8 @@ def test_get(base_url):
 
 
 @respx.mock
-def test_delete_returns_none(base_url):
+def test_delete_returns_an_empty_result_on_204(base_url):
     respx.delete(f"{base_url}/vector-indexes/embedding").mock(return_value=httpx.Response(204))
-    assert _res(base_url).delete("embedding") is None
+    # A delete returns a DeleteResult, not None, so it can carry a
+    # not-durable report on a 202. Empty on the ordinary 204.
+    assert _res(base_url).delete("embedding").not_durable is None
