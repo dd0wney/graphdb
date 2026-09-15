@@ -16,8 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Delete`, `Edges.Create/Update/Delete`, and `Search.CreateIndex/DeleteIndex` — now returns its
   normal result alongside this error when the server applied the write but its WAL append
   failed. A caller that ignores the error keeps the pre-202 behaviour.
+- **The TypeScript client surfaces a 202 applied-not-durable write.**
+  `workers/graphdb-client` adds the exported types `NotDurable` and `DeleteResult`. Every
+  write that can receive a 202 Accepted resolves normally and carries a typed `notDurable`
+  report holding the server's `applied`, `durable`, `retry`, `error` and `message` fields
+  plus the entity id. Detection is by status alone. A TypeScript Promise cannot return a
+  value and an ignorable error together, as Go does, so the report rides the resolved value
+  instead. This keeps the Go contract's property that a caller who ignores the signal sees
+  the pre-202 behaviour, and it avoids a rejection that a normal catch block would answer by
+  retrying a POST the server had already applied.
 
 ### Changed
+- **The TypeScript client's deletes resolve with `DeleteResult`, not `void`.**
+  `deleteNode`, `deleteEdge` and `deleteVectorIndex` in `workers/graphdb-client` resolve with
+  an object so a delete can carry its own `notDurable` report; it is empty on the ordinary
+  204. A caller written against `void` ignores the value and is unaffected. The client's
+  README also claimed the client retries every 5xx; it has retried idempotent methods only
+  since M-11, and the document is now corrected.
 - **The Go client no longer retries a POST or a PATCH on a 5xx (M-11 parity).** `clients/go`'s
   retry policy now checks the method as well as the status: only GET, HEAD, PUT, DELETE, and
   OPTIONS retry on 429 or 5xx, matching the TypeScript and Python clients. A retried POST could
