@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A WAL backend switch no longer drops acknowledged writes in silence.** The plain and batched
+  backends write `wal.log`; the compressed backend writes `wal_compressed.log`, both under
+  `<dataDir>/wal`. Flipping `StorageConfig.EnableCompression` reads a different file rather than
+  the previous one, and nothing merges the two. On a first switch the newly selected file does
+  not exist, so its recovered LSN is 0 and the `ErrWALBehindSnapshot` guard returned early on
+  that zero while the previous backend's file still held writes no snapshot covered. A probe
+  confirmed two acknowledged writes lost that way. The open now refuses with the new
+  `ErrWALBackendSwitched` when the other backend's file still holds bytes, naming the file, its
+  size and the backend selected. A clean `Close` truncates that file to empty, so an ordinary
+  switch after a clean shutdown still opens. The refusal is deliberately coarse: it also fires
+  on the rare non-empty file whose entries the snapshot already covers, because a needless
+  refusal costs one inspection and the opposite mistake costs data. The doc comment and error
+  text of `ErrWALBehindSnapshot` claimed to cover a backend switch; they never did, and both are
+  corrected.
+
+
 ### Added
 - **The Python client surfaces a 202 applied-not-durable write.** `clients/python` adds the
   exported `NotDurable` and `DeleteResult` types. Node create and update, edge create and

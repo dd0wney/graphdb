@@ -85,17 +85,47 @@ var (
 	// that does not know about the boundary wrote to this WAL directory and
 	// reset the LSN counter on its own truncate (a downgrade); the WAL's
 	// tail is damaged and read short; or StorageConfig.EnableCompression
-	// changed since the snapshot was written, so this open reads a DIFFERENT
-	// WAL file than the one the snapshot's boundary was measured against —
-	// the previous backend's file is still on disk, untouched, holding
-	// entries whose LSNs the new boundary already covers, with neither a
-	// downgrade nor damage involved. Either way, replay would silently skip
-	// entries the loaded snapshot does not actually cover, so the open
-	// refuses rather than proceed.
+	// changed and the NEW backend's file already held entries of its own
+	// from an earlier period under that backend. Either way, replay would
+	// silently skip entries the loaded snapshot does not actually cover, so
+	// the open refuses rather than proceed.
+	//
+	// This sentinel does NOT cover the ordinary backend switch. Until
+	// 2026-09-15 this comment claimed it did. It cannot: the two backends
+	// use different files, so a first switch opens a file that does not
+	// exist, its recovered LSN is 0, and the check below returns nil on a
+	// zero. The previous backend's file then sits on disk holding writes no
+	// snapshot covers, and the open drops them without a word. A probe
+	// confirmed two acknowledged writes lost that way. ErrWALBackendSwitched
+	// closes that hole.
 	//
 	// errors.Is(err, ErrWALBehindSnapshot) detects the refusal. The
 	// returned error wraps this sentinel and names both LSNs.
 	ErrWALBehindSnapshot = errors.New("WAL recovered LSN is below the snapshot boundary LSN")
+
+	// ErrWALBackendSwitched is returned by NewGraphStorageWithConfig when the
+	// WAL backend this open selected is not the one that last wrote to the
+	// data directory, and the other backend's WAL file still holds bytes.
+	//
+	// The plain backend writes wal.log and the compressed backend writes
+	// wal_compressed.log, both in <dataDir>/wal. Flipping
+	// StorageConfig.EnableCompression therefore does not read the other
+	// file, it reads a different one. Nothing merges them and nothing warns.
+	//
+	// A clean shutdown leaves the old file empty, because Truncate replaces
+	// it, so an ordinary switch after a clean Close opens normally. Bytes in
+	// the other file mean the opposite: a crash, or writes that no snapshot
+	// covers. Opening would serve a graph missing those writes while the
+	// bytes sit unread on disk, so the open refuses and names the file.
+	//
+	// The refusal is deliberately coarse. It fires on any non-empty foreign
+	// file, including the rare one whose entries the snapshot already covers
+	// (a Close whose truncate failed). A needless refusal costs the operator
+	// one inspection. The opposite mistake costs acknowledged writes.
+	//
+	// errors.Is(err, ErrWALBackendSwitched) detects it. The returned error
+	// names the file found, its size, and the backend this open selected.
+	ErrWALBackendSwitched = errors.New("a different WAL backend last wrote to this data directory")
 )
 
 // recordDoesNotDecodePhrase is the exact wording CheckInvariants uses to
