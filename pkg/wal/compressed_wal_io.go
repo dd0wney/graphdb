@@ -18,6 +18,13 @@ func (w *CompressedWAL) Append(opType OpType, data []byte) (uint64, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	// A poisoned WAL refuses every append until the process restarts — see
+	// ErrWALPoisoned. Checked first, before the LSN is touched or anything
+	// is written.
+	if w.poisoned != nil {
+		return 0, wrapPoisoned(w.poisoned)
+	}
+
 	w.currentLSN++
 	lsn := w.currentLSN
 
@@ -56,6 +63,7 @@ func (w *CompressedWAL) Append(opType OpType, data []byte) (uint64, error) {
 	// the bytes to the file, so reusing this LSN could collide with an
 	// entry that is already on disk — see WAL.Append's Sync comment.
 	if err := w.file.Sync(); err != nil {
+		w.poisoned = err
 		return 0, fmt.Errorf("failed to sync WAL: %w", err)
 	}
 

@@ -134,7 +134,8 @@ class AsyncTransport:
 
             if resp.status_code >= 400:
                 raise from_response(resp.status_code, _safe_json(resp), method, path)
-            return ApiResult(data=_safe_json(resp), headers=resp.headers)
+            return ApiResult(data=_safe_json(resp), headers=resp.headers,
+                             status_code=resp.status_code)
 
     async def aclose(self) -> None:
         await self._http.aclose()

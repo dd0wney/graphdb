@@ -8,6 +8,7 @@
         dccc dccc-selftest \
         coverage-floors coverage-floors-update coverage-floors-selftest \
         test-local netns-selftest \
+        consumer-drive-selftest \
         bench bench-cpu bench-mem build build-all clean fmt vet lint \
         run-server run-cli run-tui install-tools mod-tidy mod-verify \
         integration-test api-test profile-cpu profile-mem
@@ -188,6 +189,10 @@ contract-guard-update:
 ## contract-guard-selftest: Prove the contract guard can fail
 contract-guard-selftest:
 	@bash scripts/contract-guard-selftest.sh
+
+## consumer-drive-selftest: Prove a SKIP fails consumer-drive.sh under CI
+consumer-drive-selftest:
+	@bash scripts/consumer-drive-selftest.sh
 
 ## test-local: Run the package tests inside a private network namespace
 # Portmaster (the Safing application firewall) can drop a loopback SYN to a

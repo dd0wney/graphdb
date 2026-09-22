@@ -107,31 +107,31 @@ func (gs *GraphStorage) recoveredWALLSN() uint64 {
 // recovered == gs.snapshotBoundaryLSN is what a WAL truncate that failed at
 // a prior Close leaves behind (T1, snapshot_boundary_test.go): the WAL still
 // holds only entries the snapshot already covers, so it opens too.
-// recovered strictly between 0 and the boundary means one of three things: a
-// binary built before the WAL boundary LSN fix wrote to this WAL directory
-// and reset the LSN counter to 0 on its own truncate (a downgrade); the
-// WAL's tail is damaged and ReadAll read short (pkg/wal/wal.go's ReadAll
-// stops at a torn or zero-filled tail without itself returning an error —
-// see that function's doc comment); or StorageConfig.EnableCompression
-// changed since the snapshot was written, so this open reads a DIFFERENT WAL
-// file (wal.log vs wal_compressed.log — see walFilePath in
-// compact_wal_test.go) than the one the snapshot's boundary was measured
-// against, and the previous backend's file is still sitting in the WAL
-// directory with entries the new boundary already covers. Neither a
-// downgrade nor damage causes that third case, but the effect on replay is
-// the same, so it refuses too. Whichever cause, opening would replay less
-// than the WAL actually holds without saying so, so this refuses instead.
+// recovered strictly between 0 and the boundary means either a binary built
+// before the WAL boundary LSN fix wrote to this WAL directory and reset the
+// LSN counter to 0 on its own truncate (a downgrade), or the WAL's tail is
+// damaged and ReadAll read short (pkg/wal/wal.go's ReadAll stops at a torn
+// or zero-filled tail without itself returning an error — see that
+// function's doc comment). Either way, opening would replay less than the
+// WAL actually holds without saying so, so this refuses instead.
+//
+// It does NOT catch an ordinary WAL backend switch, though this comment
+// claimed a third cause until 2026-09-15. The two backends write different
+// files (wal.log vs wal_compressed.log — walFilePath in
+// compact_wal_test.go), so a first switch opens a file that does not exist,
+// recovered is 0, and the zero branch above returns nil while the previous
+// backend's file still holds un-snapshotted writes. guardWALBackendNotSwitched
+// below is the check that catches that.
 func (gs *GraphStorage) guardWALNotBehindSnapshot() error {
 	recovered := gs.recoveredWALLSN()
 	if recovered == 0 || recovered >= gs.snapshotBoundaryLSN {
 		return nil
 	}
 	return fmt.Errorf(
-		"%w: recovered LSN %d, snapshot boundary %d, WAL directory %q — one of three things: an "+
+		"%w: recovered LSN %d, snapshot boundary %d, WAL directory %q — one of two things: an "+
 			"older binary (built before the WAL boundary LSN fix) wrote to this WAL directory after "+
-			"the snapshot and reset its LSN counter; the WAL's tail is damaged and read short; or "+
-			"the WAL backend changed (StorageConfig.EnableCompression) since the snapshot was "+
-			"written, leaving the previous backend's WAL file in place. Do not open this data "+
+			"the snapshot and reset its LSN counter; or the WAL's tail is damaged and read short. "+
+			"Do not open this data "+
 			"directory with this binary until the WAL is inspected: the entries it currently holds "+
 			"are not all reflected in the snapshot",
 		ErrWALBehindSnapshot, recovered, gs.snapshotBoundaryLSN, filepath.Join(gs.dataDir, "wal"))
@@ -196,4 +196,59 @@ func (gs *GraphStorage) CompactWAL() error {
 	default:
 		return gs.wal.TruncateUpTo(boundary)
 	}
+}
+
+// walBackendFileNames returns the WAL file this open will use and the file the
+// OTHER backend would use, both inside <dataDir>/wal. The plain and batched
+// backends share wal.log (BatchedWAL wraps a plain *wal.WAL); the compressed
+// backend uses wal_compressed.log.
+func (gs *GraphStorage) walBackendFileNames() (active, foreign string) {
+	if gs.useCompression {
+		return "wal_compressed.log", "wal.log"
+	}
+	return "wal.log", "wal_compressed.log"
+}
+
+// guardWALBackendNotSwitched refuses the open when the OTHER WAL backend's
+// file still holds bytes.
+//
+// Flipping StorageConfig.EnableCompression changes which file the store
+// reads. It does not migrate the old one, and nothing merges the two. After a
+// clean Close the old file is empty, because Truncate replaces it, so an
+// ordinary switch opens normally. Bytes in the other file mean a crash or
+// writes no snapshot covers, and opening would serve a graph missing them
+// while the bytes sit unread. See ErrWALBackendSwitched.
+//
+// guardWALNotBehindSnapshot cannot catch this: the newly selected backend's
+// file usually does not exist, so its recovered LSN is 0 and that check
+// returns nil on the zero.
+//
+// Constructor-only; no locking. A store with no WAL (BulkImportMode, or
+// in-memory only) has nothing to compare and returns nil.
+func (gs *GraphStorage) guardWALBackendNotSwitched() error {
+	if !gs.hasWAL() {
+		return nil
+	}
+
+	active, foreign := gs.walBackendFileNames()
+	foreignPath := filepath.Join(gs.dataDir, "wal", foreign)
+
+	info, err := gs.fs.Stat(foreignPath)
+	if err != nil {
+		return nil // absent, or unreadable: nothing this check can assert
+	}
+	if info.Size() == 0 {
+		return nil // a clean Close leaves the replaced file empty
+	}
+
+	return fmt.Errorf(
+		"%w: this open selected the %s WAL backend and reads %q, but %q still holds %d bytes. "+
+			"StorageConfig.EnableCompression changed since the last write, and the two backends "+
+			"use different files: nothing merges them, so opening would serve a graph missing "+
+			"every write in that file. A clean shutdown leaves it empty, so bytes in it mean a "+
+			"crash or writes no snapshot covers. Reopen with the previous EnableCompression "+
+			"setting and close cleanly, which drains the file, before you switch",
+		ErrWALBackendSwitched,
+		map[bool]string{true: "compressed", false: "plain"}[gs.useCompression],
+		filepath.Join(gs.dataDir, "wal", active), foreignPath, info.Size())
 }

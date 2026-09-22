@@ -196,3 +196,15 @@ func (w *CompressedWAL) RaiseLSNTo(lsn uint64) {
 		w.currentLSN = lsn
 	}
 }
+
+// Poisoned reports whether this WAL is poisoned by a prior sync failure. It
+// returns nil while healthy, and otherwise the same wrapped error every
+// later Append call refuses with — see ErrWALPoisoned.
+func (w *CompressedWAL) Poisoned() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.poisoned == nil {
+		return nil
+	}
+	return wrapPoisoned(w.poisoned)
+}

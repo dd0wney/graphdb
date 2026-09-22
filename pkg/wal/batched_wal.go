@@ -101,6 +101,15 @@ func FailedPending(err error) *Pending {
 // enqueue order (batches flush FIFO), so a caller that enqueues under a lock
 // preserves WAL order even after releasing that lock before Wait().
 func (bw *BatchedWAL) Enqueue(opType OpType, data []byte) *Pending {
+	// A poisoned wrapped WAL refuses every append (see ErrWALPoisoned).
+	// Check before adding to the buffer: past this point the entry would
+	// wait for flushLocked to call AppendBatch, which would refuse the
+	// WHOLE batch once it reaches the poisoned WAL — failing every other
+	// entry sharing that flush, not just this one.
+	if err := bw.wal.Poisoned(); err != nil {
+		return FailedPending(err)
+	}
+
 	doneCh := make(chan error, 1)
 
 	entry := &pendingEntry{
@@ -226,6 +235,13 @@ func (w *WAL) AppendBatchAtomic(entries []BatchEntry) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	// A poisoned WAL refuses every append until the process restarts — see
+	// ErrWALPoisoned. Checked first, before the LSN is touched or anything
+	// is written.
+	if w.poisoned != nil {
+		return wrapPoisoned(w.poisoned)
+	}
+
 	// start is the LSN counter's value before this batch touches it. Every
 	// failure branch below restores exactly this value, never a subtraction
 	// of len(entries): nothing in the batch is flushed or synced until the
@@ -283,6 +299,7 @@ func (w *WAL) AppendBatchAtomic(entries []BatchEntry) error {
 	// after bytes that may already be on disk — see WAL.Append's Sync
 	// comment for why that collision is worse than the caller-visible error.
 	if err := w.file.Sync(); err != nil {
+		w.poisoned = err
 		return err
 	}
 
@@ -343,4 +360,10 @@ func (bw *BatchedWAL) GetCurrentLSN() uint64 {
 // currently lower, and otherwise leaves it unchanged. See WAL.RaiseLSNTo.
 func (bw *BatchedWAL) RaiseLSNTo(lsn uint64) {
 	bw.wal.RaiseLSNTo(lsn)
+}
+
+// Poisoned reports whether the wrapped WAL is poisoned by a prior sync
+// failure. See WAL.Poisoned.
+func (bw *BatchedWAL) Poisoned() error {
+	return bw.wal.Poisoned()
 }

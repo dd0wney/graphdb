@@ -18,6 +18,12 @@ type CompressedWAL struct {
 	fs vfs.FileSystem
 	mu sync.Mutex
 
+	// poisoned holds the sync error that poisoned this WAL, or nil while
+	// healthy. Set once, under mu, by Append when file.Sync fails; never
+	// cleared, because the poison lasts until the process restarts. See
+	// ErrWALPoisoned.
+	poisoned error
+
 	// Statistics
 	totalWrites       uint64
 	bytesUncompressed uint64

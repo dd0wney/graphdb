@@ -10,6 +10,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A WAL backend switch no longer drops acknowledged writes in silence.** The plain and batched
+  backends write `wal.log`; the compressed backend writes `wal_compressed.log`, both under
+  `<dataDir>/wal`. Flipping `StorageConfig.EnableCompression` reads a different file rather than
+  the previous one, and nothing merges the two. On a first switch the newly selected file does
+  not exist, so its recovered LSN is 0 and the `ErrWALBehindSnapshot` guard returned early on
+  that zero while the previous backend's file still held writes no snapshot covered. A probe
+  confirmed two acknowledged writes lost that way. The open now refuses with the new
+  `ErrWALBackendSwitched` when the other backend's file still holds bytes, naming the file, its
+  size and the backend selected. A clean `Close` truncates that file to empty, so an ordinary
+  switch after a clean shutdown still opens. The refusal is deliberately coarse: it also fires
+  on the rare non-empty file whose entries the snapshot already covers, because a needless
+  refusal costs one inspection and the opposite mistake costs data. The doc comment and error
+  text of `ErrWALBehindSnapshot` claimed to cover a backend switch; they never did, and both are
+  corrected.
+
+
+### Added
+- **The Python client surfaces a 202 applied-not-durable write.** `clients/python` adds the
+  exported `NotDurable` and `DeleteResult` types. Node create and update, edge create and
+  update, and vector index create now resolve normally on a 202 and carry a typed
+  `not_durable` report holding the server's `applied`, `durable`, `retry`, `error` and
+  `message` fields, plus the entity id where the server sends one. Detection is by the 202
+  status alone, never by the body text. A caller that ignores the report keeps the behaviour
+  it had before. A caller that reads it must not retry: the server applied the write once
+  already, and POST is not idempotent. The async client carries the same report.
+
+### Changed
+- **The Python client's deletes return `DeleteResult`, not `None`.** Node, edge and vector
+  index deletes return an object so a delete can carry its own `not_durable` report. It is
+  empty on the ordinary 204. This breaks code that asserts `delete(...) is None`.
+
 ### Added
 - **The Go client surfaces a 202 applied-not-durable write.** `clients/go` adds `ErrNotDurable`
   and `NotDurableError`. Every write that can receive a 202 Accepted — `Nodes.Create/Update/
@@ -33,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   204. A caller written against `void` ignores the value and is unaffected. The client's
   README also claimed the client retries every 5xx; it has retried idempotent methods only
   since M-11, and the document is now corrected.
+- **A WAL sync failure now poisons the WAL.** After `fsync` fails, every later append on that
+  WAL is refused with `wal.ErrWALPoisoned` (wrapping the original sync error) until the process
+  restarts, on all three backends. A failed `fsync` leaves the on-disk state of the flushed
+  bytes unknown, so a retry after it is not safe. `Snapshot()` now also truncates an already
+  poisoned WAL after it writes the snapshot, the way `Close` does, so the recorded WAL boundary
+  LSN can no longer run ahead of a WAL file that a crash leaves short. Before this change such a
+  store refused its next open with `ErrWALBehindSnapshot`. Storage keeps its existing contract:
+  the refused write is already applied in memory, surfaces as `ErrWALWriteFailed`, and the REST
+  API still answers 202.
 - **The Go client no longer retries a POST or a PATCH on a 5xx (M-11 parity).** `clients/go`'s
   retry policy now checks the method as well as the status: only GET, HEAD, PUT, DELETE, and
   OPTIONS retry on 429 or 5xx, matching the TypeScript and Python clients. A retried POST could

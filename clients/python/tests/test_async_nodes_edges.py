@@ -49,7 +49,7 @@ async def test_edge_create_and_delete(base_url):
     e = await _edges(base_url).create(1, 2, "LINKS", weight=1.0)
     assert e.id == 9 and e.type == "LINKS"
     respx.delete(f"{base_url}/edges/9").mock(return_value=httpx.Response(204))
-    assert await _edges(base_url).delete(9) is None
+    assert (await _edges(base_url).delete(9)).not_durable is None
 
 
 @respx.mock

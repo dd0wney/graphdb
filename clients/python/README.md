@@ -126,6 +126,33 @@ async def main():
 asyncio.run(main())
 ```
 
+## Writes that applied but are not durable (202)
+
+The server answers **202 Accepted** when a write applied in memory but its
+write-ahead-log append failed. The write is real. Reads see it. It is not on
+disk yet.
+
+Every write resolves normally on a 202 and carries a `not_durable` report. A
+caller that never reads it keeps the behaviour it had before.
+
+```python
+n = db.nodes.create(["Person"], {"name": "Alice"})
+if n.not_durable:
+    n.not_durable.id       # the entity id, absent on a vector index
+    n.not_durable.applied  # True: the server did apply the write
+    n.not_durable.durable  # False: it is not on disk yet
+    n.not_durable.message  # the server's description
+    # Do NOT retry. The server applied this write once already, and POST is
+    # not idempotent, so a retry creates a second entity.
+```
+
+Detection is by the 202 status alone, never by the body text. A 202 with a
+malformed body still yields a report, with false flags and empty strings.
+
+The three delete methods return a `DeleteResult` instead of `None`, so a delete
+can carry the same report. The object is empty on the ordinary 204. **This is a
+breaking change** for code that asserts `delete(...) is None`.
+
 ## Resilience (retry & backoff)
 
 The client retries transient failures automatically. **This is on by default**
