@@ -1,0 +1,36 @@
+name: TypeScript client
+on:
+  push:
+    branches: [main]
+    paths: ["workers/graphdb-client/**", ".github/workflows/ts-client.yml"]
+  pull_request:
+    paths: ["workers/graphdb-client/**", ".github/workflows/ts-client.yml"]
+
+permissions:
+  contents: read
+
+# Every other workflow here runs Go only, so before this job a TS-only PR
+# (#625) showed ten green checks while no check ran its tests.
+jobs:
+  build-test:
+    name: typecheck + lint + test + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workers/graphdb-client
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      # The package tracks no lock file, so npm ci has nothing to install from.
+      - name: install
+        run: npm install --no-audit --no-fund
+      - name: typecheck
+        run: npm run typecheck
+      - name: lint
+        run: npm run lint
+      - name: test
+        run: npm test
+      - name: build
+        run: npm run build
