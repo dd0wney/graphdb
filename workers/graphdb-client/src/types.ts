@@ -59,6 +59,41 @@ export interface GraphQLResponse<T = unknown> {
 export type NodeProperties = Record<string, unknown>;
 
 /**
+ * The not-durable report the server sends with a 202 Accepted. The write
+ * applied in memory, but its WAL append failed, so the write is not yet
+ * durable. Mirrors the five `notDurableFields` in pkg/api/types.go and the
+ * data clients/go/errors.go carries in NotDurableError.
+ *
+ * `id` is the affected entity's id. It is absent when the body omits it,
+ * which the bulk-delete and vector-index handlers do, because those writes
+ * have no single entity id.
+ *
+ * A write that carries this MUST NOT be retried: the server already applied
+ * it once, and POST is not idempotent, so a retry duplicates the mutation.
+ */
+export type NotDurable = {
+  applied: boolean;
+  durable: boolean;
+  retry: boolean;
+  error: string;
+  message: string;
+  id?: number;
+};
+
+/**
+ * What a delete resolves with. It is an empty object on a 204 No Content,
+ * the ordinary success, and carries `notDurable` on a 202 Accepted.
+ *
+ * These methods returned `Promise<void>` before the 202 contract existed.
+ * Resolving with an object instead is not a breaking change: a caller that
+ * ignores the value, which is every caller written against `void`, behaves
+ * exactly as it did.
+ */
+export type DeleteResult = {
+  notDurable?: NotDurable;
+};
+
+/**
  * Graph node. Matches pkg/api/types.go NodeResponse: the id is the JSON
  * number the server's uint64 id marshals to (not a string), and a node's
  * type is carried as `labels` (a node can carry more than one label).
@@ -69,6 +104,8 @@ export type Node = {
   id: number;
   labels: string[];
   properties: NodeProperties;
+  /** Set only on a 202 Accepted; absent on every other status. */
+  notDurable?: NotDurable;
 };
 
 /**
@@ -82,6 +119,8 @@ export type Edge = {
   type: string;
   properties: NodeProperties;
   weight: number;
+  /** Set only on a 202 Accepted; absent on every other status. */
+  notDurable?: NotDurable;
 };
 
 /**
@@ -382,6 +421,8 @@ export type VectorIndex = {
   property_name: string;
   dimensions?: number;
   metric?: string;
+  /** Set only on a 202 Accepted; absent on every other status. */
+  notDurable?: NotDurable;
 };
 
 /**

@@ -45,6 +45,11 @@ export {
   Node,
   Edge,
   NodeProperties,
+
+  // 202 Accepted: the write applied but is not yet durable
+  NotDurable,
+  DeleteResult,
+
   QueryResult,
   QueryNodesFilter,
   QueryNodesOptions,

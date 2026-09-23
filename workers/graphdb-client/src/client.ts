@@ -31,7 +31,36 @@ import {
   VectorIndex,
   VectorIndexList,
   CreateVectorIndexInput,
+  NotDurable,
+  DeleteResult,
 } from './types';
+
+/**
+ * Lifts the server's five flat not-durable fields into one `notDurable`
+ * object, and leaves every other field of the body untouched.
+ *
+ * The flat fields stay in place as well. Removing them would break a caller
+ * that reads them today through an untyped cast, and this change is meant to
+ * add a typed signal, not to take one away.
+ *
+ * A malformed body yields a `notDurable` with false flags and empty strings
+ * rather than failing the call, which matches the Go client: there, a body
+ * that does not decode still yields a NotDurableError with a zero id.
+ */
+function withNotDurable<T>(body: unknown): T {
+  const fields = (body ?? {}) as Record<string, unknown>;
+  const notDurable: NotDurable = {
+    applied: fields.applied === true,
+    durable: fields.durable === true,
+    retry: fields.retry === true,
+    error: typeof fields.error === 'string' ? fields.error : '',
+    message: typeof fields.message === 'string' ? fields.message : '',
+  };
+  if (typeof fields.id === 'number') {
+    notDurable.id = fields.id;
+  }
+  return { ...fields, notDurable } as T;
+}
 
 /**
  * GraphDB Client for Cloudflare Workers
@@ -149,8 +178,11 @@ export class GraphDBClient {
   /**
    * Delete a node (REST API)
    */
-  async deleteNode(id: number): Promise<void> {
-    await this.request<void>('DELETE', `/nodes/${id}`);
+  async deleteNode(id: number): Promise<DeleteResult> {
+    const result = await this.request<DeleteResult | undefined>(
+      'DELETE', `/nodes/${id}`
+    );
+    return result ?? {};
   }
 
   /**
@@ -208,8 +240,11 @@ export class GraphDBClient {
   /**
    * Delete an edge (REST API). DELETE /edges/{id}.
    */
-  async deleteEdge(id: number): Promise<void> {
-    await this.request<void>('DELETE', `/edges/${id}`);
+  async deleteEdge(id: number): Promise<DeleteResult> {
+    const result = await this.request<DeleteResult | undefined>(
+      'DELETE', `/edges/${id}`
+    );
+    return result ?? {};
   }
 
   /**
@@ -355,8 +390,11 @@ export class GraphDBClient {
    * Delete a vector index (REST API). DELETE /vector-indexes/{name}.
    * Responds 204 No Content on success.
    */
-  async deleteVectorIndex(name: string): Promise<void> {
-    await this.request<void>('DELETE', `/vector-indexes/${encodeURIComponent(name)}`);
+  async deleteVectorIndex(name: string): Promise<DeleteResult> {
+    const result = await this.request<DeleteResult | undefined>(
+      'DELETE', `/vector-indexes/${encodeURIComponent(name)}`
+    );
+    return result ?? {};
   }
 
   /**
@@ -427,6 +465,14 @@ export class GraphDBClient {
 
     if (response.status === 204) {
       return undefined as T;
+    }
+
+    // A 202 Accepted means the write applied but its WAL append failed, so
+    // it is not yet durable. Detection is by status alone, never by reading
+    // the message text — the rule clients/go/errors.go states. The body is a
+    // superset of the success body, so the entity fields are still present.
+    if (response.status === 202) {
+      return withNotDurable<T>(await response.json());
     }
 
     return response.json();
