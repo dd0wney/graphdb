@@ -142,7 +142,7 @@ func TestTraverse_NodeCapTruncates(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
-	var resp TraversalResponse
+	var resp wireTraversalResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestTraverse_UnderCapNotTruncated(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
-	var resp TraversalResponse
+	var resp wireTraversalResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -202,4 +202,12 @@ func TestTraverse_UnderCapNotTruncated(t *testing.T) {
 	if rr.Header().Get("X-Truncated") != "" {
 		t.Errorf("X-Truncated header: want unset below cap, got %q", rr.Header().Get("X-Truncated"))
 	}
+}
+
+// wireTraversalResponse spells the JSON keys Ulysses reads, independent of the
+// server's own struct tags. Decoding into TraversalResponse would round-trip a
+// renamed tag and hide the break.
+type wireTraversalResponse struct {
+	Count     int  `json:"count"`
+	Truncated bool `json:"truncated"`
 }

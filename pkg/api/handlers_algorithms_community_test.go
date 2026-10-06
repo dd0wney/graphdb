@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -80,12 +81,19 @@ func TestAlgorithms_LabelPropagationReturnsTenantCommunities(t *testing.T) {
 				if err := json.Unmarshal(c["nodes"], &nodes); err != nil {
 					t.Fatalf("nodes: %v", err)
 				}
+				var size int
+				if err := json.Unmarshal(c["size"], &size); err != nil {
+					t.Fatalf("size: %v", err)
+				}
+				if size != len(nodes) {
+					t.Errorf("community size = %d, want len(nodes) = %d: %s", size, len(nodes), rr.Body.String())
+				}
 				sort.Slice(nodes, func(i, j int) bool { return nodes[i] < nodes[j] })
 				got = append(got, nodes)
 			}
 			sort.Slice(got, func(i, j int) bool { return got[i][0] < got[j][0] })
 			for i, want := range [][]uint64{a, b} {
-				if len(got[i]) != 3 || got[i][0] != want[0] || got[i][2] != want[2] {
+				if !reflect.DeepEqual(got[i], want) {
 					t.Errorf("community %d = %v, want %v", i, got[i], want)
 				}
 			}
@@ -109,5 +117,31 @@ func TestAlgorithms_LabelPropagationRejectsABadIterationCount(t *testing.T) {
 		if !strings.Contains(rr.Body.String(), "max_iterations") {
 			t.Errorf("max_iterations=%v: body %q does not name max_iterations", bad, rr.Body.String())
 		}
+	}
+}
+
+// The accepted range of max_iterations is 1 to 1000. The rejection test above
+// pins the outside of the range, and this pins the edges and the default, so an
+// off-by-one in the bound cannot turn a valid request into a 400.
+func TestAlgorithms_LabelPropagationAcceptsTheIterationBoundaries(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+	cases := map[string]map[string]any{
+		"omitted": {},
+		"one":     {"max_iterations": 1},
+		"max":     {"max_iterations": 1000},
+	}
+	for name, params := range cases {
+		t.Run(name, func(t *testing.T) {
+			req := reqWithTenant(t, http.MethodPost, "/algorithms", map[string]any{
+				"algorithm":  "label_propagation",
+				"parameters": params,
+			}, "owner")
+			rr := httptest.NewRecorder()
+			server.handleAlgorithm(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Errorf("parameters %v: status %d, want 200: %s", params, rr.Code, rr.Body.String())
+			}
+		})
 	}
 }
