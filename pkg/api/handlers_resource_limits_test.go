@@ -105,6 +105,7 @@ func TestVectorSearch_RejectsOversizedEf(t *testing.T) {
 //
 // RED against pre-fix code: the full reachable set is returned, count
 // exceeds the cap, and neither the field nor the header is set.
+// CONSUMER CONTRACT: CC22-traverse-truncation-header — ulysses (this PR)
 func TestTraverse_NodeCapTruncates(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
@@ -158,6 +159,7 @@ func TestTraverse_NodeCapTruncates(t *testing.T) {
 
 // TestTraverse_UnderCapNotTruncated pins that a normal traversal below
 // the cap is unaffected: full result, no truncation signal.
+// CONSUMER CONTRACT: CC22-traverse-truncation-header — ulysses (this PR)
 func TestTraverse_UnderCapNotTruncated(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
