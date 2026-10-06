@@ -21,7 +21,9 @@ const ulyssesTenant = "default"
 
 // wireQueryResponse and wireEdge spell the JSON keys Ulysses reads, independent
 // of the server's own struct tags. Decoding into QueryResponse or EdgeResponse
-// would round-trip a renamed tag and hide the break.
+// would round-trip a renamed tag and hide the break. Request bodies are
+// map[string]any with literal keys for the same reason: encoding a
+// QueryRequest or BatchNodeRequest would rename the key on both sides at once.
 type wireQueryResponse struct {
 	Rows []map[string]any `json:"rows"`
 }
@@ -33,7 +35,8 @@ type wireEdge struct {
 func ulyssesQuery(t *testing.T, s *Server, q string, params map[string]any) *httptest.ResponseRecorder {
 	t.Helper()
 	rr := httptest.NewRecorder()
-	s.handleQuery(rr, reqWithTenant(t, http.MethodPost, "/query", QueryRequest{Query: q, Parameters: params}, ulyssesTenant))
+	s.handleQuery(rr, reqWithTenant(t, http.MethodPost, "/query",
+		map[string]any{"query": q, "parameters": params}, ulyssesTenant))
 	return rr
 }
 
@@ -167,7 +170,7 @@ func TestUlysses_EdgeUpdateMergesProperties(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	server.handleEdge(rr, reqWithTenant(t, http.MethodPut, fmt.Sprintf("/edges/%d", id),
-		EdgeUpdateRequest{Properties: map[string]any{"b": "3"}}, ulyssesTenant))
+		map[string]any{"properties": map[string]any{"b": "3"}}, ulyssesTenant))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("PUT /edges/%d: %d %s", id, rr.Code, rr.Body.String())
 	}
@@ -191,11 +194,11 @@ func TestUlysses_BatchObjectShapeReportsPartialFailure(t *testing.T) {
 	defer cleanup()
 
 	rr := httptest.NewRecorder()
-	server.handleBatchNodes(rr, reqWithTenant(t, http.MethodPost, "/nodes/batch", BatchNodeRequest{
-		Nodes: []NodeRequest{
-			{Labels: []string{"TextEmbedding"}, Properties: map[string]any{"source": "s1"}},
-			{Labels: []string{}, Properties: map[string]any{"source": "bad"}}, // invalid: no labels
-			{Labels: []string{"TextEmbedding"}, Properties: map[string]any{"source": "s2"}},
+	server.handleBatchNodes(rr, reqWithTenant(t, http.MethodPost, "/nodes/batch", map[string]any{
+		"nodes": []map[string]any{
+			{"labels": []string{"TextEmbedding"}, "properties": map[string]any{"source": "s1"}},
+			{"labels": []string{}, "properties": map[string]any{"source": "bad"}}, // invalid: no labels
+			{"labels": []string{"TextEmbedding"}, "properties": map[string]any{"source": "s2"}},
 		},
 	}, ulyssesTenant))
 	if rr.Code != http.StatusCreated {
@@ -212,10 +215,10 @@ func TestUlysses_BatchObjectShapeReportsPartialFailure(t *testing.T) {
 
 	a, b := ulyssesNode(t, server), ulyssesNode(t, server)
 	rr = httptest.NewRecorder()
-	server.handleBatchEdges(rr, reqWithTenant(t, http.MethodPost, "/edges/batch", BatchEdgeRequest{
-		Edges: []EdgeRequest{
-			{FromNodeID: a, ToNodeID: b, Type: "KNOWS", Weight: 1},
-			{FromNodeID: a, ToNodeID: 999999, Type: "KNOWS", Weight: 1}, // invalid: no such node
+	server.handleBatchEdges(rr, reqWithTenant(t, http.MethodPost, "/edges/batch", map[string]any{
+		"edges": []map[string]any{
+			{"from_node_id": a, "to_node_id": b, "type": "KNOWS", "weight": 1},
+			{"from_node_id": a, "to_node_id": 999999, "type": "KNOWS", "weight": 1}, // invalid: no such node
 		},
 	}, ulyssesTenant))
 	if rr.Code != http.StatusCreated {
