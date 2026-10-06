@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -104,6 +105,9 @@ func TestAlgorithms_LabelPropagationRejectsABadIterationCount(t *testing.T) {
 		server.handleAlgorithm(rr, req)
 		if rr.Code != http.StatusBadRequest {
 			t.Errorf("max_iterations=%v: status %d, want 400", bad, rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "max_iterations") {
+			t.Errorf("max_iterations=%v: body %q does not name max_iterations", bad, rr.Body.String())
 		}
 	}
 }

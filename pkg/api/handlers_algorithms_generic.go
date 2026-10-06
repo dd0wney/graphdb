@@ -126,10 +126,14 @@ func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "label_propagation":
-		var err error
-		results, err = s.executeLabelPropagation(ctx, req.Parameters)
+		maxIter, err := intParam(req.Parameters, "max_iterations", 20, 1, 1000)
 		if err != nil {
-			s.respondAlgorithmError(w, err, http.StatusBadRequest)
+			s.respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		results, err = s.executeLabelPropagation(ctx, maxIter)
+		if err != nil {
+			s.respondAlgorithmError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -419,11 +423,7 @@ func intParam(params map[string]any, key string, def, min, max int) (int, error)
 }
 
 // executeLabelPropagation runs tenant-scoped label propagation (A6c).
-func (s *Server) executeLabelPropagation(ctx context.Context, params map[string]any) (map[string]any, error) {
-	maxIter, err := intParam(params, "max_iterations", 20, 1, 1000)
-	if err != nil {
-		return nil, err
-	}
+func (s *Server) executeLabelPropagation(ctx context.Context, maxIter int) (map[string]any, error) {
 	res, err := algorithms.LabelPropagationForTenant(ctx, s.graph, tenant.MustFromContext(ctx), maxIter)
 	if err != nil {
 		return nil, wrapForClient(err, "label propagation")
