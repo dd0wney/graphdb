@@ -19,6 +19,17 @@ import (
 
 const ulyssesTenant = "default"
 
+// wireQueryResponse and wireEdge spell the JSON keys Ulysses reads, independent
+// of the server's own struct tags. Decoding into QueryResponse or EdgeResponse
+// would round-trip a renamed tag and hide the break.
+type wireQueryResponse struct {
+	Rows []map[string]any `json:"rows"`
+}
+
+type wireEdge struct {
+	Properties map[string]any `json:"properties"`
+}
+
 func ulyssesQuery(t *testing.T, s *Server, q string, params map[string]any) *httptest.ResponseRecorder {
 	t.Helper()
 	rr := httptest.NewRecorder()
@@ -48,7 +59,7 @@ func TestUlysses_QueryParametersBindVerbatim(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("read with parameters: %d %s", rr.Code, rr.Body.String())
 	}
-	var resp QueryResponse
+	var resp wireQueryResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -102,14 +113,14 @@ func ulyssesEdge(t *testing.T, s *Server, from, to uint64, typ string, props map
 	return e.ID
 }
 
-func listEdges(t *testing.T, s *Server, query string) []EdgeResponse {
+func listEdges(t *testing.T, s *Server, query string) []wireEdge {
 	t.Helper()
 	rr := httptest.NewRecorder()
 	s.handleEdges(rr, reqWithTenant(t, http.MethodGet, "/edges?"+query, nil, ulyssesTenant))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("GET /edges?%s: %d %s", query, rr.Code, rr.Body.String())
 	}
-	var edges []EdgeResponse
+	var edges []wireEdge
 	if err := json.Unmarshal(rr.Body.Bytes(), &edges); err != nil {
 		t.Fatalf("decode edges: %v body=%s", err, rr.Body.String())
 	}
