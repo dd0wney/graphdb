@@ -1,17 +1,18 @@
 # Session handoff — 2026-10-07 02:13 UTC
 
-**Date**: 2026-10-07 (single session, 10:44–13:45 AEDT; five PRs merged, driven by a request from the Ulysses session)
+**Date**: 2026-10-07 (single session, 10:44–19:15 AEDT; six PRs merged, driven by a request from the Ulysses session)
 **Outgoing model**: Claude Opus 5.5
 **Delegation**:
 - opus `reviewer` on #631: one should-fix (request bodies encoded through the server structs, proved by a tag-rename mutation). The main loop re-read the test lines, fixed it, and repeated the mutation with a control. Used.
 - sonnet `general-purpose` verifying the six Ulysses claims (items 2–7) against `58dd3e5`: used after the main loop opened the code for items 2, 3 and 4. Two claims came back partly wrong (5, 6), which went back to Ulysses.
 - opus `reviewer` on #633 with eight numbered doubts: verdict commit; asked for three more tests and a downgrade note. Both added, each test proved by a mutation.
 - opus `reviewer` on #634 with eight numbered doubts: one should-fix (the vector check ran after the in-memory change, so a refused patch half-applied). Reproduced red by the main loop before the fix.
+- opus `reviewer` on #637 with eight numbered doubts: one blocker (a missing parameter or a failed expression evaluated to nil, and nil now removed the property, so a typo deleted data with a 200) and three should-fixes (IN panicked on two lists; IN matched a list or string against a number; MIN/MAX/AVG mis-handled lists). Each reproduced red by the main loop, then fixed.
 **Format defined in**: `CLAUDE.md` § "Preparing a new session (handoff convention)"
 
 ## 1. TL;DR
 
-Ulysses' graphdb asks are triaged and queued: #631 merged (its blocker), six follow-ups seeded in its priority order. **Task 1 turned up a live durability defect: a node property removed after the last snapshot came back after a crash, in both snapshot modes (#633).** A probe then found a second silent-corruption defect: a Cypher write stores `null`, lists and maps as Go `%v` text (`"<nil>"`, `"[a b]"`), now seeded and not fixed.
+Ulysses' graphdb asks are triaged and queued: #631 merged (its blocker), six follow-ups seeded in its priority order. **Task 1 turned up a live durability defect: a node property removed after the last snapshot came back after a crash, in both snapshot modes (#633).** A probe then found a second silent-corruption defect: a Cypher write stored `null`, lists and maps as Go `%v` text (`"<nil>"`, `"[a b]"`). Fixed in #637, with the read side, comparisons and aggregates it exposed.
 
 ## 2. What's done this session
 
@@ -22,28 +23,33 @@ Ulysses' graphdb asks are triaged and queued: #631 merged (its blocker), six fol
 | #633 | `fix(storage)`: keep a removed node property removed across WAL replay | `f0e553d`. See §6 first bullet. Red first in JSON and mmap; four mutations prove the other tests. |
 | #634 | `feat(api)`: a JSON `null` in `PUT /nodes/{id}` and `/edges/{id}` removes the key | `42c2f1b`. CC23/CC24. Stacked on #633 and retargeted to main before #633 merged; then conflicted in `node_operations.go` (it rewrote #633's lines), resolved with a merge commit after checking main's copy equalled `f3d8a68`'s. coord `graphdb:v1.4-put-null-removes-property` released, done. |
 | #635 | `chore(coord)`: seed the Cypher value conversion task | `b75b940`. |
+| #637 | `fix(query)`: store and read Cypher nulls, lists and maps as values, not `%v` text | `5de951f`. coord `graphdb:v1.4-cypher-value-conversion` released, done. `SET n.x = null` removes the key (user-approved); a SET value that fails to evaluate refuses the query; the two read converters are one; lists and maps compare by JSON encoding. Nine mutations. `-race` on `pkg/api` needs ~20 min (1214 s branch, 1156 s main control); a 600 s timeout reads as FAIL and is not a race. |
 
 ## 3. Current state
 
-- `origin/main` HEAD: `42c2f1b` (#634).
+- `origin/main` HEAD: `5de951f` (#637).
 - **Open PRs**: this handoff only.
 - **Open branches**: this handoff branch, and `feat/ulysses-consumer-contracts`, which is the **Ulysses session's** local branch in `../graphdb-ulysses-contracts` (its remote is deleted; leave it to that session).
 - **Worktrees**: `../graphdb-ulysses-contracts` (Ulysses') only.
 - **Uncommitted changes**: none.
 - **Gates on #634's tree**: `make test-local` 54 packages ok; `-race -count=3` storage ok (150 s); golangci-lint v2.13.2 0 issues; contract-guard 24 contracts / 35 tests pinned.
-- **Coord (graphdb)**: 21 tasks — 15 done, 6 pending, none in progress.
+- **Coord (graphdb)**: 21 tasks — 16 done, 5 pending, none in progress.
 
 ## 4. What's next
 
-1. **A release that contains #634.** Ulysses (`ulysses-d4`) waits for a version number to switch its mappers to send `null` for a cleared field. It needs no change before then (it checked: its one PUT null is document `metadata`, which it reads back as `{}`).
-2. **`graphdb:v1.4-cypher-value-conversion`** — silent data corruption, highest severity in the queue. The `null` decision is open (§6).
-3. The Ulysses follow-ups, in Ulysses' order: `v1.4-label-propagation-cache-neighbours`, `v1.4-vector-index-backfill-on-create`, `v1.4-traverse-truncation-header-alias`, `v1.4-query-sanitizer-skip-literals`. None blocks a Ulysses release.
-4. `v1.4-rest-property-encoding-rule` — user chose "decide later". Ulysses must hear before any change.
-5. Carried: benchmark CI step (premise corrected in §5), `clients/go` tag scheme, and the 2026-09-15 off-path list.
+1. **A release that contains #634 and #637.** `v1.4.0` (7faf8a4) predates all of today's work. Ulysses (`ulysses-d4`) waits for a version number to switch its mappers to send `null` for a cleared field. It needs no change before then (it checked: its one PUT null is document `metadata`, which it reads back as `{}`).
+2. The Ulysses follow-ups, in Ulysses' order: `v1.4-label-propagation-cache-neighbours`, `v1.4-vector-index-backfill-on-create`, `v1.4-traverse-truncation-header-alias`, `v1.4-query-sanitizer-skip-literals`. None blocks a Ulysses release.
+3. `v1.4-rest-property-encoding-rule` — user chose "decide later". Ulysses must hear before any change.
+4. Carried: benchmark CI step (premise corrected in §5), `clients/go` tag scheme, and the 2026-09-15 off-path list.
 
 ### New gaps for the next planning checkpoint
 
-None of the seven tasks seeded today is on `docs/NEXT_STEPS_2026-06-18.md`. A `planning-doc-update` should add them, plus #631/#633/#634 as done.
+None of the seven tasks seeded today is on `docs/NEXT_STEPS_2026-06-18.md`. A `planning-doc-update` should add them, plus #631/#633/#634/#637 as done.
+
+Not seeded, found during #637:
+
+- A lowercase aggregate (`min(n.v)`, `avg(...)`) is not recognised as an aggregate and returns one `null` row per node; only uppercase works. Cypher function names are case-insensitive.
+- The physical MERGE operator (`pkg/query/physical_ops_mutate.go`) discards `UpdateNodeForTenant` errors with `_ =`. `NewPlanner` has no caller, so it is unreachable today.
 
 ## 5. Stale assumptions to retire
 
@@ -57,14 +63,14 @@ None of the seven tasks seeded today is on `docs/NEXT_STEPS_2026-06-18.md`. A `p
 
 ## 6. Open questions for the user
 
-- **Cypher `SET n.x = null`**: remove the key (Cypher semantics; matches PUT after #634; the session's lean) or store a JSON null (matches REST POST)? Recorded in the task title.
-- **Release** containing #634, and its version, for Ulysses.
+- **Release** containing #634 and #637, and its version, for Ulysses.
 - Carried: benchmark CI step (seed a small fix: job `timeout-minutes` plus `-run='^$'`?), `clients/go` tag scheme (`clients/go/vX.Y.Z` was the recommendation), the encoding rule (deferred by choice).
 
 Answered this session, recorded so they are not re-asked:
 
 - WAL removal record → additive `Removed` field on `OpUpdateNode`, not a new op type (an older binary skips an unknown op entirely). Two PRs, not one.
 - `null` on create → **keep storing null**.
+- Cypher `SET n.x = null` → **remove the key** (shipped in #637).
 - Encoding rule → **decide later**, seeded.
 - No coord session running → **seed directly**, with a PR per seed change.
 
