@@ -158,10 +158,7 @@ func (tx *Transaction) Commit() error {
 		}
 		vectorPlans = append(vectorPlans, plans...)
 
-		data, err := json.Marshal(struct {
-			NodeID     uint64
-			Properties map[string]Value
-		}{NodeID: nodeID, Properties: props})
+		data, err := json.Marshal(nodeUpdateRecord{NodeID: nodeID, Properties: props})
 		if err != nil {
 			tx.gs.mu.Unlock()
 			return fmt.Errorf("commit: marshal update %d: %w", nodeID, err)

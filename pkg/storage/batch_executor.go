@@ -218,10 +218,7 @@ func (b *Batch) executeUpdateNode(op batchOp) error {
 
 	// Write to WAL for durability
 	if b.graph.hasWAL() {
-		updateData, err := json.Marshal(struct {
-			NodeID     uint64
-			Properties map[string]Value
-		}{
+		updateData, err := json.Marshal(nodeUpdateRecord{
 			NodeID:     op.nodeID,
 			Properties: op.properties,
 		})

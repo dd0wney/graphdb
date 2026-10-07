@@ -570,10 +570,7 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	// Enqueue to WAL under gs.mu (preserves WAL order); wait on durability
 	// after releasing gs.mu so concurrent writers can fill the batch (group
 	// commit, Track P item 1).
-	walPending := gs.enqueueWAL(wal.OpUpdateNode, struct {
-		NodeID     uint64
-		Properties map[string]Value
-	}{
+	walPending := gs.enqueueWAL(wal.OpUpdateNode, nodeUpdateRecord{
 		NodeID:     nodeID,
 		Properties: properties,
 	})
@@ -638,43 +635,26 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 	var vectorRemovals []string
 
 	gs.lockShard(nodeID)
-	for _, key := range keys {
-		_, hadKey := node.Properties[key]
-		// Remove from property indexes. Gated on type-match (see
-		// updatePropertyIndexes): a mismatched value was never indexed, so
-		// Remove would log a spurious "not found".
-		if idx, exists := gs.propertyIndexes[key]; exists {
-			if oldValue, hasKey := node.Properties[key]; hasKey && oldValue.Type == idx.indexType {
-				if err := idx.Remove(nodeID, oldValue); err != nil {
-					log.Printf("node_operations: property index Remove failed for key %q node %d: %v", key, nodeID, err)
-				}
-			}
-		}
-		if hadKey && gs.vectorIndex.HasIndexForTenant(tid, key) {
+	removed := gs.deleteNodePropertiesLocked(nodeID, node, keys)
+	for _, key := range removed {
+		if gs.vectorIndex.HasIndexForTenant(tid, key) {
 			vectorRemovals = append(vectorRemovals, key)
 		}
-		delete(node.Properties, key)
 	}
 	node.UpdatedAt = time.Now().Unix()
-
-	// Snapshot properties for WAL — avoid passing the live map reference
-	// which could race with concurrent writers after the lock is released.
-	walProps := make(map[string]Value, len(node.Properties))
-	for k, v := range node.Properties {
-		walProps[k] = v
-	}
 	gs.unlockShard(nodeID)
 	// Enqueue under gs.mu (preserves WAL order); wait on durability after
 	// releasing gs.mu so concurrent writers can fill the same batch (group
 	// commit, Track P item 1 — the create/update/delete paths already do this;
 	// this finishes RemoveNodeProperties, the last node write path that
 	// appended synchronously under the lock).
-	walPending := gs.enqueueWAL(wal.OpUpdateNode, struct {
-		NodeID     uint64
-		Properties map[string]Value
-	}{
-		NodeID:     nodeID,
-		Properties: walProps,
+	//
+	// The record names the removed keys, not the keys that remain: replay
+	// merges Properties into the snapshot copy, so a map cannot express a
+	// removal.
+	walPending := gs.enqueueWAL(wal.OpUpdateNode, nodeUpdateRecord{
+		NodeID:  nodeID,
+		Removed: removed,
 	})
 
 	// R2.1: snapshot post-removal state before releasing the lock.
@@ -701,6 +681,30 @@ func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error
 		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
 	}
 	return err
+}
+
+// deleteNodePropertiesLocked deletes keys from node and from the property
+// indexes, and returns the keys the node held. The live removal path and WAL
+// replay share it so a recovered removal leaves the indexes as the live one
+// did. Caller holds gs.mu, plus the node's shard lock outside replay.
+func (gs *GraphStorage) deleteNodePropertiesLocked(nodeID uint64, node *Node, keys []string) []string {
+	var held []string
+	for _, key := range keys {
+		oldValue, hasKey := node.Properties[key]
+		if !hasKey {
+			continue
+		}
+		// Gated on type-match (see updatePropertyIndexes): a mismatched value
+		// was never indexed, so Remove would log a spurious "not found".
+		if idx, exists := gs.propertyIndexes[key]; exists && oldValue.Type == idx.indexType {
+			if err := idx.Remove(nodeID, oldValue); err != nil {
+				log.Printf("node_operations: property index Remove failed for key %q node %d: %v", key, nodeID, err)
+			}
+		}
+		delete(node.Properties, key)
+		held = append(held, key)
+	}
+	return held
 }
 
 // RemoveNodePropertiesForTenant removes specified properties from a

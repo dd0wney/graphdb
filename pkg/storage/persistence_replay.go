@@ -128,11 +128,19 @@ func (gs *GraphStorage) replayCreateNode(entry *wal.Entry) error {
 	return nil
 }
 
+// nodeUpdateRecord is the wal.OpUpdateNode payload. Properties is a delta that
+// replay merges, so it cannot express a removal: Removed carries the deleted
+// keys. Removed is omitempty so an update with no removal encodes exactly as
+// it did before the field existed, and a binary that predates the field still
+// applies the Properties part.
+type nodeUpdateRecord struct {
+	NodeID     uint64
+	Properties map[string]Value
+	Removed    []string `json:",omitempty"`
+}
+
 func (gs *GraphStorage) replayUpdateNode(entry *wal.Entry) error {
-	var updateInfo struct {
-		NodeID     uint64
-		Properties map[string]Value
-	}
+	var updateInfo nodeUpdateRecord
 	if err := json.Unmarshal(entry.Data, &updateInfo); err != nil {
 		return err
 	}
@@ -152,6 +160,7 @@ func (gs *GraphStorage) replayUpdateNode(entry *wal.Entry) error {
 	for key, value := range updateInfo.Properties {
 		node.Properties[key] = value
 	}
+	gs.deleteNodePropertiesLocked(updateInfo.NodeID, node, updateInfo.Removed)
 
 	return nil
 }
