@@ -308,16 +308,18 @@ func (s *Server) updateEdge(w http.ResponseWriter, r *http.Request, edgeID uint6
 		return
 	}
 
-	// Convert and sanitize properties (nil when absent — UpdateEdge merges,
-	// so an absent properties map leaves existing properties untouched).
+	// With Content-Type application/merge-patch+json a null removes its key
+	// (CC23); plain JSON stores it (CC25). The rest merges, so an absent
+	// properties map leaves existing properties untouched.
+	set, remove := putProperties(r, req.Properties)
 	converter := newPropertyConverter()
-	props := converter.ConvertAndSanitize(req.Properties, s.convertToValue)
+	props := converter.ConvertAndSanitize(set, s.convertToValue)
 
 	// Audit A6b: tenant-scoped update. Cross-tenant or missing edge both
 	// surface as ErrEdgeNotFound → 404 (no existence-leak side channel).
 	// req.Weight is a pointer: nil leaves the weight unchanged.
 	tenantID := getTenantFromContext(r)
-	if err := s.graph.UpdateEdgeForTenant(edgeID, props, req.Weight, tenantID); err != nil {
+	if err := s.graph.PatchEdgeForTenant(edgeID, props, remove, req.Weight, tenantID); err != nil {
 		if errors.Is(err, storage.ErrEdgeNotFound) {
 			s.respondError(w, http.StatusNotFound, "Edge not found")
 			return

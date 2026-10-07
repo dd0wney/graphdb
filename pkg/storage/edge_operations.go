@@ -332,22 +332,37 @@ func (gs *GraphStorage) GetEdge(edgeID uint64) (*Edge, error) {
 // UpdateEdgeForTenant updates an edge's properties and/or weight, scoped
 // to the given tenant. Returns ErrEdgeNotFound on missing or cross-tenant.
 func (gs *GraphStorage) UpdateEdgeForTenant(edgeID uint64, properties map[string]Value, weight *float64, tenantID string) error {
-	// Tenant validation under shard read lock; release before delegating
-	// to UpdateEdge (which acquires the global write lock). Same lock-drop
-	// rationale as DeleteEdgeForTenant.
+	return gs.PatchEdgeForTenant(edgeID, properties, nil, weight, tenantID)
+}
+
+// UpdateEdge updates an edge's properties and/or weight.
+//
+// Tenant-blind. New callers should prefer UpdateEdgeForTenant.
+func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, weight *float64) error {
+	return gs.patchEdge(edgeID, properties, nil, weight)
+}
+
+// PatchEdgeForTenant sets the keys in set, removes the keys in remove, and
+// sets the weight when it is not nil, as one write. This is the storage half
+// of JSON Merge Patch on PUT /edges/{id}. A key in both is set and then
+// removed. Returns ErrEdgeNotFound on missing or cross-tenant.
+func (gs *GraphStorage) PatchEdgeForTenant(edgeID uint64, set map[string]Value, remove []string, weight *float64, tenantID string) error {
+	// Tenant validation under the shard read lock; release it before
+	// patchEdge takes the global write lock. Same lock-drop rationale as
+	// DeleteEdgeForTenant.
 	gs.rlockShard(edgeID)
 	if _, err := gs.getEdgeRefForTenant(edgeID, tenantID); err != nil {
 		gs.runlockShard(edgeID)
 		return err
 	}
 	gs.runlockShard(edgeID)
-	return gs.UpdateEdge(edgeID, properties, weight)
+	return gs.patchEdge(edgeID, set, remove, weight)
 }
 
-// UpdateEdge updates an edge's properties and/or weight.
-//
-// Tenant-blind. New callers should prefer UpdateEdgeForTenant.
-func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, weight *float64) (err error) {
+// patchEdge is the one edge property write path. The edge WAL record is the
+// full post-update edge and replay replaces the stored edge with it, so a
+// removed key stays removed across a crash with no change to the record.
+func (gs *GraphStorage) patchEdge(edgeID uint64, set map[string]Value, remove []string, weight *float64) (err error) {
 	// Reject a non-finite new weight before taking any lock (#328) — an
 	// Inf/NaN weight can't be WAL-marshaled. nil weight = leave unchanged.
 	if weight != nil {
@@ -383,9 +398,12 @@ func (gs *GraphStorage) UpdateEdge(edgeID uint64, properties map[string]Value, w
 		return err
 	}
 
-	// Update properties (merge with existing)
-	for k, v := range properties {
+	// Update properties (merge with existing), then remove.
+	for k, v := range set {
 		edge.Properties[k] = v
+	}
+	for _, k := range remove {
+		delete(edge.Properties, k)
 	}
 
 	// Update weight if provided

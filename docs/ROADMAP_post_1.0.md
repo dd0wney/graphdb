@@ -2,9 +2,10 @@
 
 **Status:** proposal / living planning doc. Sketches the minor-version line from the
 v1.0.0 GA to the next major (v2.0.0).
-**Current release:** `v1.4.0` (2026-09-08, GPG-signed). It consolidates the untagged
-v1.1–v1.3 work and the August–September durability programme; `v1.0.0` (2026-06-23) was
-the first GA.
+**Current release:** `v1.5.0` (2026-10-07, GPG-signed). It ships the v1.4 milestone work
+below (GraphQL index paging, SDK parity, the WAL durability arc) and the Ulysses consumer
+contracts. `v1.4.0` (2026-09-08) consolidated the untagged v1.1–v1.3 work and the
+August–September durability programme; `v1.0.0` (2026-06-23) was the first GA.
 **What ✅ DONE means here:** the milestone's work is merged to `main`. It does **not**
 mean a tag was cut. `v1.1.0`, `v1.2.0` and `v1.3.0` were never tagged individually; their
 content shipped in `v1.4.0`. Tagging is deliberate rather than pending: a `v*`
@@ -111,9 +112,9 @@ coi-screen validation #444).*
 
 ### v1.4.0 — Finish the API surface
 *Completes the additive API work carried since pre-1.0.*
-> **Tag note (2026-09-08):** the `v1.4.0` tag was cut before this milestone started. Its
-> content is v1.1–v1.3 plus the durability work and ADR 0001. The items below keep this
-> heading for the dependency spine and ship under a later minor.
+> **Tag note (2026-09-08, updated 2026-10-07):** the `v1.4.0` tag was cut before this
+> milestone started. Its content is v1.1–v1.3 plus the durability work and ADR 0001. The items
+> below keep this heading for the dependency spine; the ones marked done shipped in `v1.5.0`.
 - ~~**GraphQL index-level pagination**~~ ✅ done #585 (`after: ID` cursor on every list field; `offset` kept for existing clients; REST side was #366).
 - ~~**F3 compliance HTTP-API** surface~~ — this row was wrong when written: the endpoints
   shipped in May 2026 (#107 audit collector, #111 `/v1/compliance/audit-log`, #114 masking

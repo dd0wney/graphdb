@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -303,6 +305,42 @@ func (pc *propertyConverter) ConvertAndSanitize(props map[string]any, converter 
 		result[k] = converter(v)
 	}
 	return result
+}
+
+// mergePatchMediaType is RFC 7396's media type. Only a PUT that declares it
+// gets merge-patch semantics, where a null removes its key. Plain JSON keeps
+// storing a null as a value, as v1.4.0 did: STABILITY_POLICY.md makes a new
+// result for an unchanged request a breaking change, so 1.x cannot change the
+// default (CC23, CC25).
+const mergePatchMediaType = "application/merge-patch+json"
+
+// putProperties returns the keys a PUT sets and the keys it removes. Only a
+// merge-patch body removes anything.
+func putProperties(r *http.Request, props map[string]any) (map[string]any, []string) {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != mergePatchMediaType {
+		return props, nil
+	}
+	return splitMergePatch(props)
+}
+
+// splitMergePatch separates the properties of a PUT body into the keys to set
+// and the keys to remove: a JSON null removes its key (JSON Merge Patch, RFC
+// 7396). Only a top-level null counts. A property value is stored whole, so a
+// null nested inside an object or an array is part of that value. The removed
+// keys are sorted so the WAL record does not depend on map order.
+func splitMergePatch(props map[string]any) (map[string]any, []string) {
+	set := make(map[string]any, len(props))
+	var remove []string
+	for k, v := range props {
+		if v == nil {
+			remove = append(remove, k)
+			continue
+		}
+		set[k] = v
+	}
+	sort.Strings(remove)
+	return set, remove
 }
 
 // methodRouter routes requests based on HTTP method.

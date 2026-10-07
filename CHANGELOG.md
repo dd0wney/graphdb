@@ -10,7 +10,190 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-07
+
+This release ships the roadmap's v1.4 milestone work: GraphQL index paging, first-party SDK
+parity, and the WAL durability arc (write errors reach the caller, the snapshot records its WAL
+boundary, a failed `fsync` poisons the WAL, a backend switch or a WAL behind its snapshot refuses
+the open, and a removed property survives a crash). It also fixes Cypher's conversion of `null`,
+lists and maps, and registers Ulysses as a consumer (CC17–CC25). Server changes stay within the
+1.x promise in `docs/STABILITY_POLICY.md`: the PUT `null` removal is opt-in through the
+`application/merge-patch+json` media type, and a write whose WAL append failed now answers 202
+(applied, not durable) where it answered a 500 that was false, because the write had been
+applied. The TypeScript client is versioned separately and is v2.0.0, with breaking changes
+listed below.
+
+### Added
+- **The Python client surfaces a 202 applied-not-durable write.** `clients/python` adds the
+  exported `NotDurable` and `DeleteResult` types. Node create and update, edge create and
+  update, and vector index create now resolve normally on a 202 and carry a typed
+  `not_durable` report holding the server's `applied`, `durable`, `retry`, `error` and
+  `message` fields, plus the entity id where the server sends one. Detection is by the 202
+  status alone, never by the body text. A caller that ignores the report keeps the behaviour
+  it had before. A caller that reads it must not retry: the server applied the write once
+  already, and POST is not idempotent. The async client carries the same report.
+- **The Go client surfaces a 202 applied-not-durable write.** `clients/go` adds `ErrNotDurable`
+  and `NotDurableError`. Every write that can receive a 202 Accepted — `Nodes.Create/Update/
+  Delete`, `Edges.Create/Update/Delete`, and `Search.CreateIndex/DeleteIndex` — now returns its
+  normal result alongside this error when the server applied the write but its WAL append
+  failed. A caller that ignores the error keeps the pre-202 behaviour.
+- **The TypeScript client surfaces a 202 applied-not-durable write.**
+  `workers/graphdb-client` adds the exported types `NotDurable` and `DeleteResult`. Every
+  write that can receive a 202 Accepted resolves normally and carries a typed `notDurable`
+  report holding the server's `applied`, `durable`, `retry`, `error` and `message` fields
+  plus the entity id. Detection is by status alone. A TypeScript Promise cannot return a
+  value and an ignorable error together, as Go does, so the report rides the resolved value
+  instead. This keeps the Go contract's property that a caller who ignores the signal sees
+  the pre-202 behaviour, and it avoids a rejection that a normal catch block would answer by
+  retrying a POST the server had already applied.
+- **GraphQL list fields accept an `after: ID` cursor and page at the index level.** Each per-label
+  plural field and `edges` takes an `after` argument that holds the `id` of the last item the
+  caller received, the same contract as the REST `X-Next-Cursor` header, and a page shorter than
+  `limit` is the last page. A query with none of `offset`, `orderBy` and `where` now makes one
+  call to a storage page method and clones only the page, where the resolvers cloned the full
+  tenant set on each page and cut it at the offset. A `where` filter with `after` materialises the
+  set as `offset` does and finds the cursor with a binary search. `after` refuses `orderBy`, a
+  non-zero `offset` and a cursor that is not an ID with an error, and never falls back to the
+  offset path. `offset` keeps its meaning. A page that meets a damaged record refuses, because a
+  GraphQL field cannot hold a partial list together with an error; the schema has no equivalent of
+  the REST `X-Enumeration-Incomplete` header yet (ADR 0003). The legacy schemas in
+  `edges_schema.go` and `filtering_schema.go` are not installed in production and stay
+  offset-only.
+- **The Python client adds `edges.list()` and its async twin.** `clients/python` pages `GET
+  /edges` with `limit`, `cursor` and an `edge_type` keyword, follows `X-Next-Cursor`, and stops on
+  an absent or non-advancing cursor, as `nodes.list()` does. The `graphql()` docstring and the
+  README now show the `after` argument. The package version moves from 0.1.0 to 0.2.0.
+- **The Go client adds a `Compliance` facet, `Edges.List` and `Search.DeleteIndex`.**
+  `client.Compliance` has `AuditLog` (`GET /v1/compliance/audit-log`), `GetMaskingPolicy` and
+  `SetMaskingPolicy`, with 403 and 404 mapped to the existing sentinel errors. `Edges.List` (an
+  `iter.Seq2`) and `Edges.ListAll` follow `X-Next-Cursor`, as `Nodes.List` does.
+  `Search.DeleteIndex` calls `DELETE /vector-indexes/{property}`. The `Client.GraphQL` doc comment
+  now describes the `after` argument.
+- **`POST /algorithms` serves tenant-scoped `label_propagation` and `connected_components`, and
+  six more consumer contracts (CC17 to CC22) register the Ulysses desktop app.**
+  `LabelPropagationForTenant` and `ConnectedComponentsForTenant` in
+  `pkg/algorithms/community_tenant.go` run over the tenant view, so the nodes of another tenant
+  never join a community. Ties go to the lowest label, so the result is deterministic. The answer
+  is `{"communities": [{"id", "nodes", "size"}], "count"}` with lowercase keys, unlike the `scc`
+  route, which sends `"ID"` and `"Nodes"` because `Community` has no JSON tags. `max_iterations`
+  defaults to 20 and must be from 1 to 1000; a bad value answers 400 and names the parameter.
+  There is no `modularity` value, because `CalculateModularity` reads the whole store and not the
+  tenant view. CC17 to CC22 pin the `parameters` binding, the `GET /edges` filters, `PUT
+  /edges/{id}` keeping unset properties, the batch endpoint shapes, the two community routes, and
+  the `/traverse` truncation header. `scripts/contract-guard.sh` now fails on a registry row that
+  has a CC id and no `Test` name in its guards column; before, a misplaced `\|` moved a test name
+  into the wrong column and the guard still printed "all pinned".
+
+### Changed
+- **A `PUT /nodes/{id}` or `PUT /edges/{id}` sent as `Content-Type: application/merge-patch+json`
+  applies JSON Merge Patch (RFC 7396) to the `properties` object: a `null` as the value of a key
+  directly inside `properties` removes that property.** The body keeps its `properties` wrapper;
+  the patch is not applied to the whole body. Before, no REST
+  request could remove a property, and edges had no removal path at all. The rule is opt-in by
+  media type: plain `application/json` still stores a `null` as a value, exactly as v1.4.0 did,
+  because `docs/STABILITY_POLICY.md` makes a new result for an unchanged request a breaking
+  change. Consumer contracts CC23 (merge-patch removes), CC24 (`POST` stores `null`) and CC25
+  (plain-JSON `PUT` stores `null`) pin the three rules. The set and the removal land as one
+  write with one WAL record, so a crash cannot apply half of a PUT. A `null` nested deeper, inside
+  a property's object or array value, stays part of that value. Library callers get `PatchNodeForTenant` and
+  `PatchEdgeForTenant`; `UpdateNode` and `RemoveNodeProperties` are now thin wrappers over the
+  same path. A node update refused for a bad vector (a wrong dimension, say) now changes
+  nothing; before, the vector check ran after the in-memory change, so a refused update kept its
+  other properties in memory with no WAL record behind them. GraphQL updates do not follow the
+  merge-patch rule and still store a `null` value.
+- **The Python client's deletes return `DeleteResult`, not `None`.** Node, edge and vector
+  index deletes return an object so a delete can carry its own `not_durable` report. It is
+  empty on the ordinary 204. This breaks code that asserts `delete(...) is None`.
+- **The TypeScript client's deletes resolve with `DeleteResult`, not `void`.**
+  `deleteNode`, `deleteEdge` and `deleteVectorIndex` in `workers/graphdb-client` resolve with
+  an object so a delete can carry its own `notDurable` report; it is empty on the ordinary
+  204. A caller written against `void` ignores the value and is unaffected. The client's
+  README also claimed the client retries every 5xx; it has retried idempotent methods only
+  since M-11, and the document is now corrected.
+- **A WAL sync failure now poisons the WAL.** After `fsync` fails, every later append on that
+  WAL is refused with `wal.ErrWALPoisoned` (wrapping the original sync error) until the process
+  restarts, on all three backends. A failed `fsync` leaves the on-disk state of the flushed
+  bytes unknown, so a retry after it is not safe. `Snapshot()` now also truncates an already
+  poisoned WAL after it writes the snapshot, the way `Close` does, so the recorded WAL boundary
+  LSN can no longer run ahead of a WAL file that a crash leaves short. Before this change such a
+  store refused its next open with `ErrWALBehindSnapshot`. Storage keeps its existing contract:
+  the refused write is already applied in memory, surfaces as `ErrWALWriteFailed`, and the REST
+  API still answers 202.
+- **The Go client no longer retries a POST or a PATCH on a 5xx (M-11 parity).** `clients/go`'s
+  retry policy now checks the method as well as the status: only GET, HEAD, PUT, DELETE, and
+  OPTIONS retry on 429 or 5xx, matching the TypeScript and Python clients. A retried POST could
+  duplicate a write; a retried PATCH could reapply a partial update.
+- **The TypeScript client is v2.0.0, and it breaks callers of 1.x: several methods change their
+  contract and two are removed.** `workers/graphdb-client` did not match the server. `updateNode`
+  sent PATCH where the route accepts PUT, and sends PUT now. `queryNodes` read a `cursor` field
+  from the JSON body; it now returns `{ nodes, cursor }` with the cursor from the `X-Next-Cursor`
+  header, and its options narrow to `label`, `limit` and `cursor`. `traverse` built a GraphQL
+  query on a field that no resolver defines, and calls `POST /traverse` now. `CreateNodeInput` and
+  `CreateEdgeInput` carry the server's field names (`labels`, `from_node_id` and `to_node_id`) in
+  place of `type`, `source` and `target`, and IDs are numeric. `getTrustScore` and `findFraudRing`
+  queried GraphQL fields that do not exist, and are removed with their example worker and cache
+  helpers. The client adds `getEdge`, `updateEdge`, `deleteEdge`, `getAuditLog`,
+  `getMaskingPolicy`, `setMaskingPolicy`, and the four vector index methods `listVectorIndexes`,
+  `createVectorIndex`, `getVectorIndex` and `deleteVectorIndex`. `healthCheck()` and
+  `getMetrics()` were not audited: `GET /metrics` serves Prometheus text, and the JSON metrics
+  route is the admin-only `GET /api/metrics`.
+- **A write whose WAL append failed now answers 202 applied-not-durable and says not to retry;
+  before, REST answered a generic 500 and GraphQL a plain error.** Since the `ErrWALWriteFailed`
+  change, a single-operation write can apply in memory and fail to reach the WAL. REST answered
+  500 and dropped the entity, and the Go client then retried the 5xx, so a `POST /nodes` could
+  create a second node. REST now answers `202 Accepted` with `applied: true`, `durable: false`,
+  `retry: false`, a fixed `message` and the entity. For `createNode` and `createEdge` the body is
+  a superset of the 201 body, so a client that treats any 2xx as success still assembles the
+  entity. The update, delete, `delete-all`, `delete-tenant` and vector index handlers carry the id
+  when there is one. GraphQL returns an error whose `extensions` hold `code: WAL_WRITE_FAILED`,
+  `applied`, `durable`, `retry` and `id`, and `pkg/graphql/http.go` forwards them. Neither surface
+  puts the wrapped disk error in the response; both log it on the server. A caller must not retry
+  a 202, because the server applied the write once already.
+- **A single-operation write whose WAL append failed now returns `ErrWALWriteFailed` to the
+  caller; before, it returned success.** The failure put one line on stderr and the caller saw
+  success, although the change was in memory and not in the WAL. The error wraps
+  `ErrWALWriteFailed` and the cause. The change stays applied and observers are told. The caller
+  also gets the new node or edge with the error, so it has the id. A retry is not safe, because it
+  applies the change a second time. The change becomes durable at the next `Snapshot` or `Close`.
+  `Transaction.Commit` already had this contract. `writeToWAL`, the fail-soft wrapper, is removed
+  and the six index definition sites use `writeToWALWithError`. These paths no longer write to
+  stderr. `Snapshot()` and `CompactWAL` are unchanged.
+- **`Close` no longer rewrites the snapshot when the session wrote nothing.**
+  `Close` wrote the full `snapshot.mmap` on each exit. On the 2.0M-node ICIJ corpus a read-only
+  consumer paid 8.3 s and 7.9 GB of peak memory on each exit, and two such consumers that stopped
+  together wrote the same bytes at the same time. `Close` now skips the write when four things all
+  show nothing: the shard overlay, the tombstone sets, any WAL LSN movement since open, and any
+  change in the metadata tail (index definitions, sticky keys, counters, tenant stats; three
+  telemetry fields and map-order slices are normalised first). It also needs the snapshot to be on
+  disk. The same session now closes in 9 ms with 1.0 GB peak memory, and the file's mtime does not
+  move. An explicit `Snapshot` and `CompactWAL` write as before. JSON mode does the same since
+  #602: `Close` skips the `snapshot.json` rewrite when the WAL boundary LSN and the encryption
+  engine both equal those recorded at the last moment the file matched memory. On the same corpus
+  a read-only JSON session paid 25 s and 17.5 GB per exit. A store with no WAL
+  (`BulkImportMode`, in-memory) still writes on each `Close`.
+
 ### Fixed
+- **A Cypher write no longer stores `null`, lists and maps as Go `%v` text.** `SET` and `CREATE`
+  converted any value other than a string, an int, a float or a bool with `fmt.Sprintf("%v")`, so
+  a `null` became the string `"<nil>"`, a list `"[a b]"` and a map `"map[k:1]"`, with a 200 and
+  no error. They now convert through `storage.ValueFromJSON`, the converter REST and GraphQL
+  already share, so a bound list or map is stored as REST stores the same JSON; the scalar
+  conversions are unchanged (a whole float such as `2.0` stays a float), and a numeric list
+  literal in the query text keeps its literal element types (`[1, 2]` is an int array, where the
+  same JSON over REST is a float array). **`SET n.x = null` now removes the property**, as Cypher
+  specifies and as `PUT` does since CC23; an expression that evaluates to null, such as a missing
+  property, removes it too. A `SET` whose value fails to evaluate now refuses the query and
+  changes nothing: a missing parameter or a division by zero used to become null silently, and
+  with null removing the property that would have deleted data. `CREATE` with a `null` stores a
+  JSON null, as `POST` does (CC24). The read side had the matching gap: Cypher returned `null`
+  for every stored list, map or byte value, including ones a REST write stored correctly. The
+  package's two read converters are now one, and lists and maps read back. Comparing a list or
+  a map in `WHERE n.x = $v`, `IN`, or an inline pattern compares by value; `==` on two such
+  values had panicked, which the executor reported as a 500, and `IN` had matched a list or a
+  string against a number. `MIN` and `MAX` skip lists and maps, and `AVG` divides by the numeric
+  values only. An edge timestamp read through Cypher now returns Unix seconds, as a node
+  timestamp always has; it returned `null`. Values already stored as `"<nil>"` or `"[a b]"` stay
+  strings: this fix does not rewrite stored data.
 - **A property removed after the last snapshot no longer comes back after a crash.**
   `RemoveNodeProperties` (Cypher `REMOVE n.prop`) logged `OpUpdateNode` carrying the properties
   that remained, and replay merges an `OpUpdateNode` into the snapshot copy of the node, so the
@@ -36,59 +219,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refusal costs one inspection and the opposite mistake costs data. The doc comment and error
   text of `ErrWALBehindSnapshot` claimed to cover a backend switch; they never did, and both are
   corrected.
-
-
-### Added
-- **The Python client surfaces a 202 applied-not-durable write.** `clients/python` adds the
-  exported `NotDurable` and `DeleteResult` types. Node create and update, edge create and
-  update, and vector index create now resolve normally on a 202 and carry a typed
-  `not_durable` report holding the server's `applied`, `durable`, `retry`, `error` and
-  `message` fields, plus the entity id where the server sends one. Detection is by the 202
-  status alone, never by the body text. A caller that ignores the report keeps the behaviour
-  it had before. A caller that reads it must not retry: the server applied the write once
-  already, and POST is not idempotent. The async client carries the same report.
-
-### Changed
-- **The Python client's deletes return `DeleteResult`, not `None`.** Node, edge and vector
-  index deletes return an object so a delete can carry its own `not_durable` report. It is
-  empty on the ordinary 204. This breaks code that asserts `delete(...) is None`.
-
-### Added
-- **The Go client surfaces a 202 applied-not-durable write.** `clients/go` adds `ErrNotDurable`
-  and `NotDurableError`. Every write that can receive a 202 Accepted — `Nodes.Create/Update/
-  Delete`, `Edges.Create/Update/Delete`, and `Search.CreateIndex/DeleteIndex` — now returns its
-  normal result alongside this error when the server applied the write but its WAL append
-  failed. A caller that ignores the error keeps the pre-202 behaviour.
-- **The TypeScript client surfaces a 202 applied-not-durable write.**
-  `workers/graphdb-client` adds the exported types `NotDurable` and `DeleteResult`. Every
-  write that can receive a 202 Accepted resolves normally and carries a typed `notDurable`
-  report holding the server's `applied`, `durable`, `retry`, `error` and `message` fields
-  plus the entity id. Detection is by status alone. A TypeScript Promise cannot return a
-  value and an ignorable error together, as Go does, so the report rides the resolved value
-  instead. This keeps the Go contract's property that a caller who ignores the signal sees
-  the pre-202 behaviour, and it avoids a rejection that a normal catch block would answer by
-  retrying a POST the server had already applied.
-
-### Changed
-- **The TypeScript client's deletes resolve with `DeleteResult`, not `void`.**
-  `deleteNode`, `deleteEdge` and `deleteVectorIndex` in `workers/graphdb-client` resolve with
-  an object so a delete can carry its own `notDurable` report; it is empty on the ordinary
-  204. A caller written against `void` ignores the value and is unaffected. The client's
-  README also claimed the client retries every 5xx; it has retried idempotent methods only
-  since M-11, and the document is now corrected.
-- **A WAL sync failure now poisons the WAL.** After `fsync` fails, every later append on that
-  WAL is refused with `wal.ErrWALPoisoned` (wrapping the original sync error) until the process
-  restarts, on all three backends. A failed `fsync` leaves the on-disk state of the flushed
-  bytes unknown, so a retry after it is not safe. `Snapshot()` now also truncates an already
-  poisoned WAL after it writes the snapshot, the way `Close` does, so the recorded WAL boundary
-  LSN can no longer run ahead of a WAL file that a crash leaves short. Before this change such a
-  store refused its next open with `ErrWALBehindSnapshot`. Storage keeps its existing contract:
-  the refused write is already applied in memory, surfaces as `ErrWALWriteFailed`, and the REST
-  API still answers 202.
-- **The Go client no longer retries a POST or a PATCH on a 5xx (M-11 parity).** `clients/go`'s
-  retry policy now checks the method as well as the status: only GET, HEAD, PUT, DELETE, and
-  OPTIONS retry on 429 or 5xx, matching the TypeScript and Python clients. A retried POST could
-  duplicate a write; a retried PATCH could reapply a partial update.
+- **A delete or an index drop no longer comes back after a failed WAL append.** `WAL.Truncate`
+  flushed its buffer before it truncated. After an append that did not land, the buffer held the
+  tail of that entry and a permanent `bufio` error, so the flush refused the truncate and the WAL
+  kept its earlier create entries. The next open replayed them on top of a snapshot that held the
+  delete, and a deleted node, a deleted edge, a dropped property index and a dropped vector index
+  returned. The plain WAL now resets the buffer instead of flushing it, as the other two backends
+  did. The defect was older than the `ErrWALWriteFailed` change and stayed invisible because no
+  test asserted a delete after a reopen.
+- **A snapshot records the WAL boundary LSN, and replay skips the entries it covers, so a failed
+  truncate no longer resurrects deleted data.** `Close` writes the snapshot and then truncates the
+  WAL. When the truncate did not land, the next open replayed entries that the snapshot already
+  held, and a removed node came back. Each snapshot now records `WALBoundaryLSN`, in
+  `snapshot.json` and in the mmap metadata blob, and `replayEntry` skips WAL entries at or below
+  it before it decrypts the payload. The field is additive and a missing field reads as 0, which
+  skips nothing, so no format version changes. This works only because the WAL LSN is now
+  monotonic for the life of the data directory: `Truncate` keeps the counter on every backend, and
+  the constructor raises it to the boundary with `RaiseLSNTo` before replay. A binary from before
+  this change resets the LSN to 0 on truncate; see the downgrade refusal below.
+- **The open refuses with `ErrWALBehindSnapshot` when the WAL's recovered LSN is above 0 and below
+  the snapshot boundary.** A binary from before the boundary change resets the LSN on each
+  truncate, so it can write one entry at LSN 1 under a snapshot whose boundary is 3, and the newer
+  binary would then skip that entry as covered. The refusal names both numbers and the data
+  directory, and lists three causes: a previous binary wrote after the snapshot (a downgrade),
+  damaged entries in the WAL, or a change of WAL backend through `EnableCompression`. A recovered
+  LSN of 0, equal to the boundary or above it opens as before. A torn tail that reads low also
+  refuses, by policy, and a refusal removes nothing from disk. The work also repaired two LSN
+  counter defects. A failed flush now sets the counter back in `WAL.Append`,
+  `WAL.AppendBatchAtomic` and `CompressedWAL.Append`; before, the recorded boundary could run one
+  ahead of the durable WAL and the guard would refuse a reopen. `BatchedWAL` subtracted the whole
+  batch length after a write failed at entry i, and now restores the pre-batch value. A failed
+  sync still does not set the counter back, because the bytes are in the file by then, so the
+  recorded boundary can exceed the durable LSN by the number of sync errors and a later open can
+  refuse. That cost remains.
 
 ## [1.4.0] - 2026-09-08
 
@@ -443,7 +606,8 @@ Low backlog from the 2026-06-10 security re-audit (#371), across Waves 1–3.
 - 100x concurrency improvement
 - 650x faster LSM read performance
 
-[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/dd0wney/graphdb/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/dd0wney/graphdb/compare/v1.0.0...v1.4.0
 [1.0.0]: https://github.com/dd0wney/graphdb/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/dd0wney/graphdb/compare/v0.6.0...v0.8.0

@@ -265,12 +265,14 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 		}
 	}
 
-	// Convert and sanitize properties
+	// With Content-Type application/merge-patch+json a null removes its key
+	// (CC23); plain JSON stores it (CC25). The rest merges.
+	set, remove := putProperties(r, req.Properties)
 	converter := newPropertyConverter()
-	props := converter.ConvertAndSanitize(req.Properties, s.convertToValue)
+	props := converter.ConvertAndSanitize(set, s.convertToValue)
 
 	tenantID := getTenantFromContext(r)
-	if err := s.graph.UpdateNodeForTenant(nodeID, props, tenantID); err != nil {
+	if err := s.graph.PatchNodeForTenant(nodeID, props, remove, tenantID); err != nil {
 		// Cross-tenant update or genuinely-missing node both surface as
 		// ErrNodeNotFound — return 404 to avoid an existence-leak side
 		// channel. Only true storage errors should 500.
