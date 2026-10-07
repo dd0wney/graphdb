@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -303,6 +304,25 @@ func (pc *propertyConverter) ConvertAndSanitize(props map[string]any, converter 
 		result[k] = converter(v)
 	}
 	return result
+}
+
+// splitMergePatch separates the properties of a PUT body into the keys to set
+// and the keys to remove: a JSON null removes its key (JSON Merge Patch, RFC
+// 7396). Only a top-level null counts. A property value is stored whole, so a
+// null nested inside an object or an array is part of that value. The removed
+// keys are sorted so the WAL record does not depend on map order.
+func splitMergePatch(props map[string]any) (map[string]any, []string) {
+	set := make(map[string]any, len(props))
+	var remove []string
+	for k, v := range props {
+		if v == nil {
+			remove = append(remove, k)
+			continue
+		}
+		set[k] = v
+	}
+	sort.Strings(remove)
+	return set, remove
 }
 
 // methodRouter routes requests based on HTTP method.
