@@ -265,8 +265,9 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 		}
 	}
 
-	// A null removes its key (CC23); the rest merges.
-	set, remove := splitMergePatch(req.Properties)
+	// With Content-Type application/merge-patch+json a null removes its key
+	// (CC23); plain JSON stores it (CC25). The rest merges.
+	set, remove := putProperties(r, req.Properties)
 	converter := newPropertyConverter()
 	props := converter.ConvertAndSanitize(set, s.convertToValue)
 
