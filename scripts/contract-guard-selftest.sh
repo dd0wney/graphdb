@@ -128,6 +128,16 @@ fixture "$WORK/wrongtree"
 rm "$WORK/wrongtree/pkg/fake/fixture_test.go"
 expect "no tags and no test files" 2 "$WORK/wrongtree"
 
+# 11. A row whose guards column holds no test name, because a stray pipe in the
+#     invariant text shifted the columns. The lock is written AFTER the damage,
+#     as a developer's `make contract-guard-update` would: the lock then agrees
+#     with the registry, and only a check on the row itself can catch it. This is
+#     how CC20 went unpinned while the guard printed "all pinned".
+fixture "$WORK/shifted-guards"
+sed -i.bak 's#| A second fixture invariant |#| A second \\| fixture invariant |#' "$WORK/shifted-guards/docs/CONSUMER_CONTRACTS.md"
+bash "$GUARD" --root "$WORK/shifted-guards" --update >/dev/null 2>&1
+expect "row with no guarding test name" 1 "$WORK/shifted-guards"
+
 # 10. The lock must be in byte order, whatever locale the caller has. This is
 #     the defect CI found on the first run of this gate: the digests matched
 #     exactly, only the order differed, and a lock written on a developer
@@ -168,7 +178,7 @@ fi
 
 echo
 if [ "$FAILURES" = "0" ]; then
-  echo "contract-guard-selftest: all 11 cases behaved"
+  echo "contract-guard-selftest: all 12 cases behaved"
   exit 0
 fi
 echo "contract-guard-selftest: $FAILURES case(s) did not behave"

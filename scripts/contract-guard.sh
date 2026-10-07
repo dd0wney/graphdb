@@ -147,6 +147,22 @@ if [ -z "$GUARDS" ]; then
   exit 2
 fi
 
+# A row with a CC id and no guarding test name in column 5 is an error. The usual
+# cause is a literal pipe (even escaped, inside a code span) in the invariant
+# text: awk splits on every pipe, the guards column shifts to field 6, and the
+# row silently drops out of the lock while the check still prints "all pinned".
+UNGUARDED="$(awk -F'|' '
+  /^\| *CC[0-9]+-/ {
+    id = $2; gsub(/^ +| +$/, "", id)
+    n = split($5, parts, "`")
+    found = 0
+    for (i = 2; i <= n; i += 2) if (parts[i] ~ /^Test/) found = 1
+    if (!found) print id
+  }' "$REGISTRY")"
+for id in $UNGUARDED; do
+  report "$id has no guarding test name in its guards column (a '|' inside the row shifts the columns; write the row without one)"
+done
+
 while read -r id pkg fn; do
   [ -z "${fn:-}" ] && continue
   dir="$ROOT/$pkg"

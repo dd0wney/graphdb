@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"time"
 
@@ -124,8 +125,28 @@ func (s *Server) handleAlgorithm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+	case "label_propagation":
+		maxIter, err := intParam(req.Parameters, "max_iterations", 20, 1, 1000)
+		if err != nil {
+			s.respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		results, err = s.executeLabelPropagation(ctx, maxIter)
+		if err != nil {
+			s.respondAlgorithmError(w, err, http.StatusInternalServerError)
+			return
+		}
+
+	case "connected_components":
+		var err error
+		results, err = s.executeConnectedComponents(ctx)
+		if err != nil {
+			s.respondAlgorithmError(w, err, http.StatusInternalServerError)
+			return
+		}
+
 	default:
-		s.respondError(w, http.StatusBadRequest, "Unknown algorithm (supported: pagerank, betweenness, edge_betweenness, detect_cycles, has_cycle, triangles, scc, node_similarity, link_prediction, khop)")
+		s.respondError(w, http.StatusBadRequest, "Unknown algorithm (supported: pagerank, betweenness, edge_betweenness, detect_cycles, has_cycle, triangles, scc, node_similarity, link_prediction, khop, label_propagation, connected_components)")
 		return
 	}
 
@@ -361,6 +382,62 @@ func (s *Server) executeSCC(ctx context.Context) (map[string]any, error) {
 		"largest_scc":     largestSize,
 		"singleton_count": result.SingletonCount,
 	}, nil
+}
+
+// communitiesPayload builds the community answer with explicit lowercase keys.
+// Go's Community struct has no JSON tags, so marshalling it directly would send
+// "ID"/"Nodes" (as the scc route does); consumers rely on this shape (CC21).
+func communitiesPayload(res *algorithms.CommunityDetectionResult) map[string]any {
+	communities := make([]map[string]any, 0, len(res.Communities))
+	for _, c := range res.Communities {
+		communities = append(communities, map[string]any{
+			"id":    c.ID,
+			"nodes": c.Nodes,
+			"size":  c.Size,
+		})
+	}
+	return map[string]any{"communities": communities, "count": len(communities)}
+}
+
+// intParam reads an integer parameter that arrived as a JSON number (float64)
+// or as a Go int (in-process callers). A fractional or out-of-range value is a
+// caller error.
+func intParam(params map[string]any, key string, def, min, max int) (int, error) {
+	v, ok := params[key]
+	if !ok {
+		return def, nil
+	}
+	var f float64
+	switch n := v.(type) {
+	case float64:
+		f = n
+	case int:
+		f = float64(n)
+	default:
+		return 0, fmt.Errorf("%s must be an integer from %d to %d", key, min, max)
+	}
+	if f != math.Trunc(f) || f < float64(min) || f > float64(max) {
+		return 0, fmt.Errorf("%s must be an integer from %d to %d", key, min, max)
+	}
+	return int(f), nil
+}
+
+// executeLabelPropagation runs tenant-scoped label propagation (A6c).
+func (s *Server) executeLabelPropagation(ctx context.Context, maxIter int) (map[string]any, error) {
+	res, err := algorithms.LabelPropagationForTenant(ctx, s.graph, tenant.MustFromContext(ctx), maxIter)
+	if err != nil {
+		return nil, wrapForClient(err, "label propagation")
+	}
+	return communitiesPayload(res), nil
+}
+
+// executeConnectedComponents finds tenant-scoped weakly connected components (A6c).
+func (s *Server) executeConnectedComponents(ctx context.Context) (map[string]any, error) {
+	res, err := algorithms.ConnectedComponentsForTenant(ctx, s.graph, tenant.MustFromContext(ctx))
+	if err != nil {
+		return nil, wrapForClient(err, "connected components")
+	}
+	return communitiesPayload(res), nil
 }
 
 // executeNodeSimilarity computes pairwise or per-node similarity
