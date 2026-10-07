@@ -153,6 +153,36 @@
       "track": "v1.4",
       "status": "pending",
       "title": "api: decide one storage rule for string property values. A REST write (POST/PUT /nodes, /edges, batch) stores html.EscapeString text (pkg/storage/sanitizer.go:24, called from pkg/api/handler_helper.go:300). A bound Cypher write stores raw text (pkg/api/server_handlers.go:173). Reads do not decode, so CONTAINS matches entity text. Ulysses encodes on write and decodes on read to match; a change must ship with the Ulysses client in the same release, and Ulysses must hear first. Acceptance: one documented rule, a consumer contract that pins it, a note for data already stored encoded, seen red first"
+    },
+    {
+      "id": "v1.4-put-null-removes-property",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: a JSON null in PUT /nodes/{id} and PUT /edges/{id} removes the key (JSON Merge Patch, RFC 7396). Ulysses priority 1 of 5: its mappers omit a cleared field and PUT merges, so a cleared value stays in the graph. Today a null is stored as a TypeJSON null (pkg/storage/value_from_json.go), UpdateNode (node_operations.go:522) and UpdateEdge (edge_operations.go:350) only merge, and only nodes have a removal path (RemoveNodeProperties, node_operations.go:605, via Cypher REMOVE). Lines read at ac4f79f. Decide what a null does on create. Ulysses writes metadata null on its create paths and reads a missing key as {}. Visible change: tell ulysses-d4 the release that ships it. Acceptance: a consumer contract for nodes and edges, the vector entry removed with the key, seen red first"
+    },
+    {
+      "id": "v1.4-label-propagation-cache-neighbours",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "algorithms: label propagation reads the edges of every node again in each iteration. Build the neighbour lists once for each run. Ulysses priority 2 of 5, performance only. Both versions do it: labelPropagationView (pkg/algorithms/community_tenant.go:59, loop at :69, neighbours at :44) and LabelPropagation (community_propagation.go:25). Lines read at ac4f79f. Acceptance: the same communities on the existing tests, a benchmark before and after"
+    },
+    {
+      "id": "v1.4-vector-index-backfill-on-create",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: CreateVectorIndexForTenant (pkg/storage/vector_operations.go:123) builds an empty index, so a node written before the index exists joins it only at the next open (rebuildVectorIndexesFromNodes, :352). Insert the existing vectors at create time. Ulysses priority 3 of 5, additive. Lines read at ac4f79f. Acceptance: a node created before the index is found by a search right after the create, seen red first"
+    },
+    {
+      "id": "v1.4-traverse-truncation-header-alias",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: /traverse sends X-Truncated (handlers_algorithms_traversal.go:106) and /query sends X-Traversal-Truncated. Send X-Traversal-Truncated from /traverse as well and keep X-Truncated as an alias. Ulysses priority 4 of 5. Ulysses reads X-Truncated on /traverse, so do not remove it without telling ulysses-d4 first. Lines read at ac4f79f. Acceptance: CC22 pins both names"
+    },
+    {
+      "id": "v1.4-query-sanitizer-skip-literals",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: the query-text sanitizer (pkg/query/sanitizer.go) refuses data: and file: (:36, :38) and collapses whitespace (:76) over the whole text, string literals included. Run both on non-literal tokens only, so a literal keeps its exact text. Ulysses priority 5 of 5: it binds every string and gets nothing from this. Lines read at ac4f79f. Acceptance: a literal with file: and two spaces comes back byte for byte, the refusal still fires outside a literal, seen red first"
     }
   ],
   "deps": [
