@@ -60,6 +60,11 @@ func (ms *MatchStep) valuesEqual(nodeValue storage.Value, patternValue any) bool
 		}
 		return nodeBool == v
 	}
+	// Lists and maps: the comparison WHERE n.x = $v uses, so the inline
+	// pattern and the WHERE form agree.
+	if isCollection(patternValue) {
+		return valuesEqual(extractStorageValue(nodeValue), patternValue)
+	}
 	return false
 }
 

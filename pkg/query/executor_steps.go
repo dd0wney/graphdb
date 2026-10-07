@@ -63,7 +63,12 @@ func convertToStorageValue(val any) storage.Value {
 	case bool:
 		return storage.BoolValue(v)
 	default:
-		return storage.StringValue(fmt.Sprintf("%v", v))
+		// nil, lists and maps: the converter REST and GraphQL share, so a
+		// Cypher write stores what a REST write stores. This used to be
+		// fmt.Sprintf("%v"), which stored null as "<nil>" and a list as
+		// "[a b]" with no error. The scalar cases above stay Cypher's own:
+		// ValueFromJSON would turn a whole float such as 2.0 into an int.
+		return storage.ValueFromJSON(v)
 	}
 }
 
@@ -266,12 +271,23 @@ func (ss *SetStep) executeAssignment(ctx *ExecutionContext, binding *BindingSet,
 		return nil // Not a node, skip
 	}
 
-	// Resolve the value: expression RHS takes precedence over literal
-	var val any
+	// Resolve the value: expression RHS takes precedence over literal. An
+	// evaluation error refuses the query: extractValue would turn it into
+	// nil, and nil removes the property, so a failed expression would
+	// delete data.
+	val := assignment.Value
 	if assignment.ValueExpr != nil {
-		val = extractValue(assignment.ValueExpr, binding.bindings)
-	} else {
-		val = assignment.Value
+		v, err := assignment.ValueExpr.EvalValue(binding.bindings)
+		if err != nil {
+			return fmt.Errorf("SET %s.%s: %w", assignment.Variable, assignment.Property, err)
+		}
+		val = v
+	}
+
+	// SET n.x = null removes the property (Cypher semantics, and the rule
+	// PUT follows since #634).
+	if val == nil {
+		return ss.removeAssignedProperty(ctx, node, assignment.Property)
 	}
 
 	// Create updated properties map
@@ -289,6 +305,23 @@ func (ss *SetStep) executeAssignment(ctx *ExecutionContext, binding *BindingSet,
 	// Keep binding in sync so subsequent assignments in the same SET see updated values
 	node.Properties = updatedProps
 
+	return nil
+}
+
+// removeAssignedProperty removes key from node for SET n.key = null and keeps
+// the binding in sync, so later assignments in the same SET see the removal.
+func (ss *SetStep) removeAssignedProperty(ctx *ExecutionContext, node *storage.Node, key string) error {
+	// Audit A6c-query: tenant-scoped property removal.
+	if err := ctx.graph.RemoveNodePropertiesForTenant(node.ID, []string{key}, ctx.tenantID); err != nil {
+		return fmt.Errorf("failed to remove property %s from node %d: %w", key, node.ID, err)
+	}
+	remaining := make(map[string]storage.Value, len(node.Properties))
+	for k, v := range node.Properties {
+		if k != key {
+			remaining[k] = v
+		}
+	}
+	node.Properties = remaining
 	return nil
 }
 

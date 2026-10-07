@@ -1,7 +1,10 @@
 package query
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -43,11 +46,12 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 			if item == nil {
 				continue // skip null elements in list
 			}
-			if leftVal == item {
-				return true, nil
-			}
-			// Handle numeric type coercion (int64 vs float64)
-			if compareValues(leftVal, item) == 0 {
+			// valuesEqual coerces int64 against float64, compares lists and
+			// maps by value, and never reaches == with an uncomparable
+			// type. compareValues was the fallback here, and it reports 0
+			// for any two types it does not know, so a list or a string
+			// matched a number.
+			if valuesEqual(leftVal, item) {
 				return true, nil
 			}
 		}
@@ -181,7 +185,33 @@ func valuesEqual(left, right any) bool {
 	if isNumericValue(left) && isNumericValue(right) {
 		return compareValues(left, right) == 0
 	}
+	if isCollection(left) || isCollection(right) {
+		return collectionsEqual(left, right)
+	}
 	return left == right
+}
+
+// isCollection reports a list or a map. == on two interface values holding the
+// same such type panics at run time, so valuesEqual must not reach it with one.
+func isCollection(v any) bool {
+	if v == nil {
+		return false
+	}
+	switch reflect.TypeOf(v).Kind() {
+	case reflect.Slice, reflect.Map:
+		return true
+	}
+	return false
+}
+
+// collectionsEqual compares lists and maps by their JSON encoding, so the
+// []string a stored list reads back as equals the []any a client bound, and
+// map key order does not matter (encoding/json sorts map keys). Element order
+// in a list does matter, as in Cypher.
+func collectionsEqual(left, right any) bool {
+	l, errL := json.Marshal(left)
+	r, errR := json.Marshal(right)
+	return errL == nil && errR == nil && bytes.Equal(l, r)
 }
 
 // isNumericValue reports whether v is one of the numeric kinds compareValues can

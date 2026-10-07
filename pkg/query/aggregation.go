@@ -94,33 +94,7 @@ func (ac *AggregationComputer) extractValues(ctx *ExecutionContext, item *Return
 
 // ExtractValue extracts the actual value from storage.Value
 func (ac *AggregationComputer) ExtractValue(val storage.Value) any {
-	switch val.Type {
-	case storage.TypeInt:
-		if intVal, err := val.AsInt(); err == nil {
-			return intVal
-		}
-	case storage.TypeFloat:
-		if floatVal, err := val.AsFloat(); err == nil {
-			return floatVal
-		}
-	case storage.TypeString:
-		if strVal, err := val.AsString(); err == nil {
-			return strVal
-		}
-	case storage.TypeBool:
-		if boolVal, err := val.AsBool(); err == nil {
-			return boolVal
-		}
-	case storage.TypeVector:
-		if vecVal, err := val.AsVector(); err == nil {
-			return vecVal
-		}
-	case storage.TypeTimestamp:
-		if timeVal, err := val.AsTimestamp(); err == nil {
-			return timeVal.Unix()
-		}
-	}
-	return nil
+	return extractStorageValue(val)
 }
 
 // hasAggregates checks if any return item has an aggregate function
