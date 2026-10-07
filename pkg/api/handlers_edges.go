@@ -308,9 +308,10 @@ func (s *Server) updateEdge(w http.ResponseWriter, r *http.Request, edgeID uint6
 		return
 	}
 
-	// A null removes its key (CC23); the rest merges, so an absent
+	// With Content-Type application/merge-patch+json a null removes its key
+	// (CC23); plain JSON stores it (CC25). The rest merges, so an absent
 	// properties map leaves existing properties untouched.
-	set, remove := splitMergePatch(req.Properties)
+	set, remove := putProperties(r, req.Properties)
 	converter := newPropertyConverter()
 	props := converter.ConvertAndSanitize(set, s.convertToValue)
 

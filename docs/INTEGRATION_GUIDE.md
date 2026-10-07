@@ -119,7 +119,7 @@ The production API server provides:
 
 - `POST /nodes` - Create a new node
 - `GET /nodes/{id}` - Get a node by ID
-- `PUT /nodes/{id}` - Update a node. The body's `properties` merge into the node; a JSON `null` removes that key (JSON Merge Patch, RFC 7396). A `null` on `POST` is stored as a value.
+- `PUT /nodes/{id}` - Update a node. The body's `properties` merge into the node. Send `Content-Type: application/merge-patch+json` and a JSON `null` removes that key (JSON Merge Patch, RFC 7396); with plain `application/json`, and on `POST`, a `null` is stored as a value.
 - `DELETE /nodes/{id}` - Delete a node
 - `GET /nodes?label={label}` - Find nodes by label
 
@@ -127,7 +127,7 @@ The production API server provides:
 
 - `POST /edges` - Create a new edge
 - `GET /edges/{id}` - Get an edge by ID
-- `PUT /edges/{id}` - Update an edge's `properties` and `weight`, with the same merge and `null` rule as nodes
+- `PUT /edges/{id}` - Update an edge's `properties` and `weight`, with the same merge and `null` rules as nodes
 - `DELETE /edges/{id}` - Delete an edge
 
 **Query Operations:**

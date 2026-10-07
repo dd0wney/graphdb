@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime"
 	"net/http"
 	"sort"
 	"strconv"
@@ -304,6 +305,23 @@ func (pc *propertyConverter) ConvertAndSanitize(props map[string]any, converter 
 		result[k] = converter(v)
 	}
 	return result
+}
+
+// mergePatchMediaType is RFC 7396's media type. Only a PUT that declares it
+// gets merge-patch semantics, where a null removes its key. Plain JSON keeps
+// storing a null as a value, as v1.4.0 did: STABILITY_POLICY.md makes a new
+// result for an unchanged request a breaking change, so 1.x cannot change the
+// default (CC23, CC25).
+const mergePatchMediaType = "application/merge-patch+json"
+
+// putProperties returns the keys a PUT sets and the keys it removes. Only a
+// merge-patch body removes anything.
+func putProperties(r *http.Request, props map[string]any) (map[string]any, []string) {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != mergePatchMediaType {
+		return props, nil
+	}
+	return splitMergePatch(props)
 }
 
 // splitMergePatch separates the properties of a PUT body into the keys to set

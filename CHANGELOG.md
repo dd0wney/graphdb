@@ -70,19 +70,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already, and POST is not idempotent. The async client carries the same report.
 
 ### Changed
-- **A JSON `null` in `PUT /nodes/{id}` or `PUT /edges/{id}` now removes that key** (JSON Merge
-  Patch, RFC 7396). Before, PUT merged the body and stored a `null` as a value, so no REST
-  request could remove a property, and edges had no removal path at all. The set and the
-  removal land as one write with one WAL record, so a crash cannot apply half of a PUT. Only a
-  top-level `null` removes; a `null` nested inside an object or an array stays part of that
-  value. A `null` on `POST` is still stored as a value. Consumer contracts CC23 and CC24 pin
-  both rules. A client that sends `null` on PUT to mean "store null" now loses the key instead.
-  Library callers get `PatchNodeForTenant` and `PatchEdgeForTenant`; `UpdateNode` and
-  `RemoveNodeProperties` are now thin wrappers over the same path. A node update refused for a
-  bad vector (a wrong dimension, say) now changes nothing; before, the vector check ran after
-  the in-memory change, so a refused update kept its other properties in memory with no WAL
-  record behind them. Only REST PUT follows the `null` rule: a GraphQL update still stores a
-  `null` value, and Cypher `SET n.x = null` is unchanged.
+- **A `PUT /nodes/{id}` or `PUT /edges/{id}` sent as `Content-Type: application/merge-patch+json`
+  follows JSON Merge Patch (RFC 7396): a top-level `null` removes that key.** Before, no REST
+  request could remove a property, and edges had no removal path at all. The rule is opt-in by
+  media type: plain `application/json` still stores a `null` as a value, exactly as v1.4.0 did,
+  because `docs/STABILITY_POLICY.md` makes a new result for an unchanged request a breaking
+  change. Consumer contracts CC23 (merge-patch removes), CC24 (`POST` stores `null`) and CC25
+  (plain-JSON `PUT` stores `null`) pin the three rules. The set and the removal land as one
+  write with one WAL record, so a crash cannot apply half of a PUT. A `null` nested inside an
+  object or an array stays part of that value. Library callers get `PatchNodeForTenant` and
+  `PatchEdgeForTenant`; `UpdateNode` and `RemoveNodeProperties` are now thin wrappers over the
+  same path. A node update refused for a bad vector (a wrong dimension, say) now changes
+  nothing; before, the vector check ran after the in-memory change, so a refused update kept its
+  other properties in memory with no WAL record behind them. GraphQL updates do not follow the
+  merge-patch rule and still store a `null` value.
 - **The Python client's deletes return `DeleteResult`, not `None`.** Node, edge and vector
   index deletes return an object so a delete can carry its own `not_durable` report. It is
   empty on the ordinary 204. This breaks code that asserts `delete(...) is None`.
