@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A property removed after the last snapshot no longer comes back after a crash.**
+  `RemoveNodeProperties` (Cypher `REMOVE n.prop`) logged `OpUpdateNode` carrying the properties
+  that remained, and replay merges an `OpUpdateNode` into the snapshot copy of the node, so the
+  removed key reappeared on recovery with no error, in both the JSON and the mmap snapshot modes.
+  A removed vector-indexed property also became searchable again, because the index is rebuilt
+  from the recovered nodes. The record now carries the removed keys in a new `Removed` field and
+  replay deletes them, property-index entries included. The field is additive and `omitempty`,
+  so an update with no removal encodes byte for byte as before. **Downgrade limit:** a binary
+  from before this fix ignores `Removed`, so a removal still in the WAL when you downgrade comes
+  back on that binary's next open, as it did before the fix. Close cleanly before a downgrade so
+  the snapshot carries the removal.
 - **A WAL backend switch no longer drops acknowledged writes in silence.** The plain and batched
   backends write `wal.log`; the compressed backend writes `wal_compressed.log`, both under
   `<dataDir>/wal`. Flipping `StorageConfig.EnableCompression` reads a different file rather than
