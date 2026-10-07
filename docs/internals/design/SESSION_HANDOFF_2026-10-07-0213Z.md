@@ -1,6 +1,6 @@
 # Session handoff — 2026-10-07 02:13 UTC
 
-**Date**: 2026-10-07 (single session, 10:44–19:15 AEDT; six PRs merged, driven by a request from the Ulysses session)
+**Date**: 2026-10-07 (single session, 10:44–20:40 AEDT; eight PRs merged and `v1.5.0` released, driven by a request from the Ulysses session)
 **Outgoing model**: Claude Opus 5.5
 **Delegation**:
 - opus `reviewer` on #631: one should-fix (request bodies encoded through the server structs, proved by a tag-rename mutation). The main loop re-read the test lines, fixed it, and repeated the mutation with a control. Used.
@@ -12,7 +12,7 @@
 
 ## 1. TL;DR
 
-Ulysses' graphdb asks are triaged and queued: #631 merged (its blocker), six follow-ups seeded in its priority order. **Task 1 turned up a live durability defect: a node property removed after the last snapshot came back after a crash, in both snapshot modes (#633).** A probe then found a second silent-corruption defect: a Cypher write stored `null`, lists and maps as Go `%v` text (`"<nil>"`, `"[a b]"`). Fixed in #637, with the read side, comparisons and aggregates it exposed.
+Ulysses' graphdb asks are triaged and queued: #631 merged (its blocker), six follow-ups seeded in its priority order. **Task 1 turned up a live durability defect: a node property removed after the last snapshot came back after a crash, in both snapshot modes (#633).** A probe then found a second silent-corruption defect: a Cypher write stored `null`, lists and maps as Go `%v` text (`"<nil>"`, `"[a b]"`). Fixed in #637, with the read side, comparisons and aggregates it exposed. **Released as `v1.5.0`**, after #638 made the PUT-null removal opt-in to keep the 1.x stability promise.
 
 ## 2. What's done this session
 
@@ -23,11 +23,13 @@ Ulysses' graphdb asks are triaged and queued: #631 merged (its blocker), six fol
 | #633 | `fix(storage)`: keep a removed node property removed across WAL replay | `f0e553d`. See §6 first bullet. Red first in JSON and mmap; four mutations prove the other tests. |
 | #634 | `feat(api)`: a JSON `null` in `PUT /nodes/{id}` and `/edges/{id}` removes the key | `42c2f1b`. CC23/CC24. Stacked on #633 and retargeted to main before #633 merged; then conflicted in `node_operations.go` (it rewrote #633's lines), resolved with a merge commit after checking main's copy equalled `f3d8a68`'s. coord `graphdb:v1.4-put-null-removes-property` released, done. |
 | #635 | `chore(coord)`: seed the Cypher value conversion task | `b75b940`. |
+| #638 | `fix(api)`: make the PUT null removal opt-in through the merge-patch media type | `2416369`. `docs/STABILITY_POLICY.md` line 31 made #634's default change a breaking change for 1.x. The removal now needs `Content-Type: application/merge-patch+json`; plain JSON stores null as v1.4.0 did (CC25). The rule applies to keys directly inside `properties`, not the whole body. |
+| #639 | `chore(release)`: v1.5.0 changelog, release pointers and chart appVersion | `e3626de`, tagged `v1.5.0` (annotated, unsigned, like v1.4.0). Merged the duplicate Added/Changed blocks and added entries for 12 post-1.4.0 PRs that had none (#585, #591–#593, #598/#602, #606, #611, #612, #619, #631); a Sonnet agent drafted them from PR bodies, the main loop checked #606/#612 and the unchanged-entry claim. Release and Docker Publish green; 4 platform archives with `.asc`. Signatures not verified locally (no release download without asking). |
 | #637 | `fix(query)`: store and read Cypher nulls, lists and maps as values, not `%v` text | `5de951f`. coord `graphdb:v1.4-cypher-value-conversion` released, done. `SET n.x = null` removes the key (user-approved); a SET value that fails to evaluate refuses the query; the two read converters are one; lists and maps compare by JSON encoding. Nine mutations. `-race` on `pkg/api` needs ~20 min (1214 s branch, 1156 s main control); a 600 s timeout reads as FAIL and is not a race. |
 
 ## 3. Current state
 
-- `origin/main` HEAD: `5de951f` (#637).
+- `origin/main` HEAD: `e3626de` (#639), tagged `v1.5.0`.
 - **Open PRs**: this handoff only.
 - **Open branches**: this handoff branch, and `feat/ulysses-consumer-contracts`, which is the **Ulysses session's** local branch in `../graphdb-ulysses-contracts` (its remote is deleted; leave it to that session).
 - **Worktrees**: `../graphdb-ulysses-contracts` (Ulysses') only.
@@ -37,7 +39,7 @@ Ulysses' graphdb asks are triaged and queued: #631 merged (its blocker), six fol
 
 ## 4. What's next
 
-1. **A release that contains #634 and #637.** `v1.4.0` (7faf8a4) predates all of today's work. Ulysses (`ulysses-d4`) waits for a version number to switch its mappers to send `null` for a cleared field. It needs no change before then (it checked: its one PUT null is document `metadata`, which it reads back as `{}`).
+1. **Ulysses' rollout on `v1.5.0`** is Ulysses' work, gated on the user's approval in that session: rebuild the vendored binary from the tag, then a merge-patch client method used only by `NodeStore::update`. graphdb owes nothing here unless Ulysses reports a problem.
 2. The Ulysses follow-ups, in Ulysses' order: `v1.4-label-propagation-cache-neighbours`, `v1.4-vector-index-backfill-on-create`, `v1.4-traverse-truncation-header-alias`, `v1.4-query-sanitizer-skip-literals`. None blocks a Ulysses release.
 3. `v1.4-rest-property-encoding-rule` — user chose "decide later". Ulysses must hear before any change.
 4. Carried: benchmark CI step (premise corrected in §5), `clients/go` tag scheme, and the 2026-09-15 off-path list.
@@ -55,7 +57,7 @@ Not seeded, found during #637:
 
 - **2026-09-15 handoff §5, "the benchmark step is on track to fail at Go's 10-minute default per package": FALSE.** `go test` injects `-test.timeout=10m`, but the testing package stops that alarm before benchmarks run (`testing/testing.go:2598-2616` in go1.27.0: `startAlarm` → tests and examples → `stopAlarm` → `runBenchmarks`). `pkg/storage` ran 1470 s and passed on 2026-10-06. The real gaps: the job has no `timeout-minutes` (a hang holds a runner for GitHub's 360-minute default), and `-bench=.` has no `-run='^$'`, so the step runs the unit tests again first.
 - **Anything saying Cypher `REMOVE n.prop` is durable before `f0e553d` is FALSE.** `RemoveNodeProperties` logged `OpUpdateNode` with the remaining properties and `replayUpdateNode` merges, so a post-snapshot removal reappeared on recovery, and a removed vector property became searchable again. Fixed in #633 with an additive `omitempty` `Removed` field. **Downgrade limit**: a pre-#633 binary ignores `Removed`; close cleanly before downgrading.
-- **"`PUT` merges and no REST request can remove a property"** — false since `42c2f1b` (#634): a top-level JSON `null` removes the key. A `null` on POST is still stored (CC24). GraphQL updates and Cypher `SET n.x = null` do not follow the PUT rule.
+- **"`PUT` merges and no REST request can remove a property"** — false since `v1.5.0`, but only for a PUT sent as `application/merge-patch+json` (#634, made opt-in by #638): a top-level JSON `null` removes the key. A `null` on POST is still stored (CC24). GraphQL updates and Cypher `SET n.x = null` do not follow the PUT rule.
 - **2026-09-15 `NEXT_SESSION_PROMPT.md` item 2, "Do not touch PR #625"** — #625 merged 2026-09-23.
 - **"No graphdb coord task is pending"** (2026-09-15 handoff §3) — seven seeded today.
 - **Ulysses' 2026-10-07 request, item 5 ("a client cannot remove a property") and item 6 ("no backfill")** — both partly wrong at `58dd3e5`: Cypher `REMOVE` existed (nodes only), and every open runs `rebuildVectorIndexesFromNodes`. Ulysses was told.
@@ -63,7 +65,6 @@ Not seeded, found during #637:
 
 ## 6. Open questions for the user
 
-- **Release** containing #634 and #637, and its version, for Ulysses.
 - Carried: benchmark CI step (seed a small fix: job `timeout-minutes` plus `-run='^$'`?), `clients/go` tag scheme (`clients/go/vX.Y.Z` was the recommendation), the encoding rule (deferred by choice).
 
 Answered this session, recorded so they are not re-asked:
@@ -71,6 +72,7 @@ Answered this session, recorded so they are not re-asked:
 - WAL removal record → additive `Removed` field on `OpUpdateNode`, not a new op type (an older binary skips an unknown op entirely). Two PRs, not one.
 - `null` on create → **keep storing null**.
 - Cypher `SET n.x = null` → **remove the key** (shipped in #637).
+- PUT-null versus the stability policy → **opt-in via `application/merge-patch+json`, then `v1.5.0`** (#638, #639).
 - Encoding rule → **decide later**, seeded.
 - No coord session running → **seed directly**, with a PR per seed change.
 
