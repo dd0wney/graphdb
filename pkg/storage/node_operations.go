@@ -497,29 +497,54 @@ func (gs *GraphStorage) getNodeRefForTenant(nodeID uint64, tenantID string) (*No
 // tenant. Returns ErrNodeNotFound on missing or cross-tenant (same
 // rationale as GetNodeForTenant).
 func (gs *GraphStorage) UpdateNodeForTenant(nodeID uint64, properties map[string]Value, tenantID string) error {
-	// Validate tenant ownership *before* delegating to UpdateNode. We
-	// hold the per-shard read lock just long enough for the check (A4),
-	// then drop it so UpdateNode can acquire the write lock without
-	// deadlocking.
+	return gs.PatchNodeForTenant(nodeID, properties, nil, tenantID)
+}
+
+// UpdateNode updates a node's properties.
+//
+// Tenant-blind. New callers should prefer UpdateNodeForTenant.
+func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) error {
+	return gs.patchNode(nodeID, properties, nil)
+}
+
+// RemoveNodeProperties removes specified properties from a node.
+// Unlike UpdateNode (which merges), this deletes keys from the
+// properties map. Tenant-blind — new callers in tenant-scoped code
+// paths should prefer RemoveNodePropertiesForTenant.
+func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error {
+	return gs.patchNode(nodeID, nil, keys)
+}
+
+// PatchNodeForTenant sets the keys in set and removes the keys in remove, as
+// one write with one WAL record, so a crash cannot leave half of it applied.
+// This is the storage half of JSON Merge Patch on PUT /nodes/{id}. A key in
+// both is set and then removed, the order replay applies. Returns
+// ErrNodeNotFound on missing or cross-tenant.
+func (gs *GraphStorage) PatchNodeForTenant(nodeID uint64, set map[string]Value, remove []string, tenantID string) error {
+	// Check ownership under the shard read lock, release it, then take the
+	// write locks in patchNode. The window between is benign: tenant IDs are
+	// immutable after creation and node IDs don't recycle, so the only race is
+	// "node deleted by another goroutine first", which patchNode reports as
+	// ErrNodeNotFound.
 	gs.rlockShard(nodeID)
 	if _, err := gs.getNodeRefForTenant(nodeID, tenantID); err != nil {
 		gs.runlockShard(nodeID)
 		return err
 	}
 	gs.runlockShard(nodeID)
-	return gs.UpdateNode(nodeID, properties)
+	return gs.patchNode(nodeID, set, remove)
 }
 
-// UpdateNode updates a node's properties.
-//
-// Tenant-blind. New callers should prefer UpdateNodeForTenant.
+// patchNode is the one node property write path: UpdateNode, RemoveNodeProperties
+// and PatchNodeForTenant all come here, so the locks, the indexes, the vector
+// work and the WAL record cannot drift apart between them.
 //
 // Lock discipline (R2.1, S11 spike §7.4): notifyNodeUpdated dispatches
 // after gs.mu.Lock is released. The oldNode / newNode clones are taken
 // inside the lock window (when the live shard pointer is safe) and are
 // only allocated when observers are registered — observerless callers pay
 // zero clone cost.
-func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) error {
+func (gs *GraphStorage) patchNode(nodeID uint64, set map[string]Value, remove []string) error {
 	gs.mu.Lock()
 
 	// mmap mode: promote a base-resident node into the shard overlay (copy-on-write)
@@ -539,40 +564,63 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 		oldNode = node.Clone()
 	}
 
+	// Plan vector-index inserts before anything changes, on a preview of the
+	// patched properties, so a bad vector refuses the whole patch and leaves
+	// the node, its indexes and the HNSW index as they were. The expensive
+	// HNSW remove+add runs after the lock is released (Track P item 3 / H2);
+	// the plan holds decoded copies of the vectors, which is what makes that
+	// off-lock insert race-free. A pure removal sets nothing, so it re-inserts
+	// nothing, and with no vector index at all there is nothing to plan, so
+	// the hot path skips the preview copy.
+	var vectorPlans []vectorInsertPlan
+	if len(set) > 0 && gs.vectorIndex.HasAnyIndex() {
+		preview := &Node{ID: node.ID, TenantID: node.TenantID, Properties: patchedProperties(node.Properties, set, remove)}
+		vectorPlans, err = gs.planNodeVectorInserts(preview)
+		if err != nil {
+			gs.mu.Unlock()
+			return err
+		}
+	}
+
 	// Update property indexes (global structures — under gs.mu.Lock).
-	if err := gs.updatePropertyIndexes(nodeID, node, properties); err != nil {
+	if err := gs.updatePropertyIndexes(nodeID, node, set); err != nil {
 		gs.mu.Unlock()
 		return err
 	}
 
-	// Per-shard write lock (A4) excludes shard.RLock readers during
-	// the in-place Node-struct mutation that follows.
+	// Per-shard write lock (A4) excludes shard.RLock readers during the
+	// in-place Node-struct mutation that follows. The removals walk
+	// node.Properties for the index Remove calls before they delete, so
+	// they stay inside the same window.
+	//
+	// A removed vector-indexed property must also leave the HNSW index, or
+	// VectorSearch keeps returning the stale vector. HasIndexForTenant reads
+	// the index map, so the removals are planned here and applied off-lock,
+	// per key, so the node's other vector properties are untouched.
+	tid := effectiveTenantID(node.TenantID)
+	var vectorRemovals []string
 	gs.lockShard(nodeID)
-	for k, v := range properties {
+	for k, v := range set {
 		node.Properties[k] = v
+	}
+	removed := gs.deleteNodePropertiesLocked(nodeID, node, remove)
+	for _, key := range removed {
+		if gs.vectorIndex.HasIndexForTenant(tid, key) {
+			vectorRemovals = append(vectorRemovals, key)
+		}
 	}
 	node.UpdatedAt = time.Now().Unix()
 	gs.unlockShard(nodeID)
 
-	// Plan vector-index inserts under gs.mu (the decode reads node.Properties,
-	// the live shard pointer's map), but defer the expensive HNSW remove+add to
-	// after the lock is released (Track P item 3 / H2). Snapshotting the vectors
-	// here is also what makes the off-lock insert race-free: a concurrent
-	// UpdateNode/RemoveNodeProperties on this node mutates node.Properties under
-	// the locks, so the off-lock path must never read it. A bad vector aborts
-	// the update before the WAL enqueue below.
-	vectorPlans, err := gs.planNodeVectorInserts(node)
-	if err != nil {
-		gs.mu.Unlock()
-		return err
-	}
-
 	// Enqueue to WAL under gs.mu (preserves WAL order); wait on durability
 	// after releasing gs.mu so concurrent writers can fill the batch (group
-	// commit, Track P item 1).
+	// commit, Track P item 1). The record names the removed keys, not the
+	// keys that remain: replay merges Properties into the snapshot copy, so a
+	// map cannot express a removal.
 	walPending := gs.enqueueWAL(wal.OpUpdateNode, nodeUpdateRecord{
 		NodeID:     nodeID,
-		Properties: properties,
+		Properties: set,
+		Removed:    removed,
 	})
 
 	// R2.1: snapshot post-update state before releasing the lock so the
@@ -583,8 +631,16 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	}
 	gs.mu.Unlock()
 
-	// HNSW remove+add off-lock (Track P item 3 / H2), before the WAL wait and
-	// observer dispatch so the updated vector is searchable before observers act.
+	// HNSW work off-lock (Track P item 3 / H2), before the WAL wait and
+	// observer dispatch so the index matches the node before observers act.
+	// RemoveVectorForTenant is idempotent; its errors are logged fail-soft
+	// (the property is already removed, and the index is rebuilt from the
+	// node set on restart).
+	for _, prop := range vectorRemovals {
+		if err := gs.vectorIndex.RemoveVectorForTenant(tid, prop, nodeID); err != nil {
+			log.Printf("node_operations: vector index removal failed for prop %q node %d tenant %s: %v", prop, nodeID, tid, err)
+		}
+	}
 	gs.applyNodeVectorInserts(vectorPlans)
 	// A wait error wraps ErrWALWriteFailed; the update stays applied and
 	// observers are still notified.
@@ -595,92 +651,21 @@ func (gs *GraphStorage) UpdateNode(nodeID uint64, properties map[string]Value) e
 	return err
 }
 
-// RemoveNodeProperties removes specified properties from a node.
-// Unlike UpdateNode (which merges), this deletes keys from the
-// properties map. Tenant-blind — new callers in tenant-scoped code
-// paths should prefer RemoveNodePropertiesForTenant.
-func (gs *GraphStorage) RemoveNodeProperties(nodeID uint64, keys []string) error {
-	gs.mu.Lock()
-
-	// mmap mode: promote a base-resident node into the overlay before mutation.
-	gs.lockShard(nodeID)
-	node, err := gs.materializeNodeLocked(nodeID)
-	gs.unlockShard(nodeID)
-	if err != nil {
-		gs.mu.Unlock()
-		return err
+// patchedProperties returns a copy of props with set applied and then remove,
+// the order patchNode and replay use. It lets a patch be checked before it
+// changes the node.
+func patchedProperties(props, set map[string]Value, remove []string) map[string]Value {
+	out := make(map[string]Value, len(props)+len(set))
+	for k, v := range props {
+		out[k] = v
 	}
-
-	// R2.1: snapshot pre-removal state for observer dispatch. Only
-	// allocate when observers are registered.
-	var oldNode *Node
-	if len(gs.observers) > 0 {
-		oldNode = node.Clone()
+	for k, v := range set {
+		out[k] = v
 	}
-
-	// Per-shard write lock (A4) covers the property-map mutations and
-	// the live-map snapshot that follows. The propertyIndexes lookups
-	// touch a global map under gs.mu, but the index Remove calls walk
-	// node.Properties (read) before mutation — keep those inside the
-	// shard.Lock window so a concurrent reader on this shard never sees
-	// a torn state.
-	// Vector-indexed properties being removed must also leave the HNSW index, or
-	// VectorSearch keeps returning the stale vector after the property is gone.
-	// Plan the removals under gs.mu (HasIndexForTenant reads the index map) and
-	// apply them off-lock after unlock — the same plan-under-lock / apply-off-
-	// lock discipline as the insert path (planNodeVectorInserts /
-	// applyNodeVectorInserts). Per-key (not RemoveNodeFromVectorIndexes), so a
-	// node's OTHER vector-indexed properties are untouched.
-	tid := effectiveTenantID(node.TenantID)
-	var vectorRemovals []string
-
-	gs.lockShard(nodeID)
-	removed := gs.deleteNodePropertiesLocked(nodeID, node, keys)
-	for _, key := range removed {
-		if gs.vectorIndex.HasIndexForTenant(tid, key) {
-			vectorRemovals = append(vectorRemovals, key)
-		}
+	for _, k := range remove {
+		delete(out, k)
 	}
-	node.UpdatedAt = time.Now().Unix()
-	gs.unlockShard(nodeID)
-	// Enqueue under gs.mu (preserves WAL order); wait on durability after
-	// releasing gs.mu so concurrent writers can fill the same batch (group
-	// commit, Track P item 1 — the create/update/delete paths already do this;
-	// this finishes RemoveNodeProperties, the last node write path that
-	// appended synchronously under the lock).
-	//
-	// The record names the removed keys, not the keys that remain: replay
-	// merges Properties into the snapshot copy, so a map cannot express a
-	// removal.
-	walPending := gs.enqueueWAL(wal.OpUpdateNode, nodeUpdateRecord{
-		NodeID:  nodeID,
-		Removed: removed,
-	})
-
-	// R2.1: snapshot post-removal state before releasing the lock.
-	var newNode *Node
-	if oldNode != nil {
-		newNode = node.Clone()
-	}
-	gs.mu.Unlock()
-
-	// Drop each removed vector property's vector from the HNSW index off-lock
-	// (mirrors applyNodeVectorInserts). RemoveVectorForTenant.Delete is
-	// idempotent; errors are logged fail-soft (the property is already durably
-	// removed, and the index is rebuilt from the node set on restart).
-	for _, prop := range vectorRemovals {
-		if err := gs.vectorIndex.RemoveVectorForTenant(tid, prop, nodeID); err != nil {
-			log.Printf("node_operations: vector index removal failed for prop %q node %d tenant %s: %v", prop, nodeID, tid, err)
-		}
-	}
-
-	// A wait error wraps ErrWALWriteFailed; the removal stays applied and
-	// observers are still notified.
-	err = gs.waitWALPending(wal.OpUpdateNode, walPending)
-	if newNode != nil {
-		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
-	}
-	return err
+	return out
 }
 
 // deleteNodePropertiesLocked deletes keys from node and from the property
@@ -710,22 +695,8 @@ func (gs *GraphStorage) deleteNodePropertiesLocked(nodeID uint64, node *Node, ke
 // RemoveNodePropertiesForTenant removes specified properties from a
 // node, scoped to the given tenant. Returns ErrNodeNotFound on
 // missing or cross-tenant. Audit A6c-query (2026-05-08).
-//
-// Mirrors UpdateNodeForTenant's lock-then-delegate pattern: tenant
-// validation under read lock, brief lock-drop window before
-// RemoveNodeProperties acquires the write lock. Race window is
-// benign — tenant IDs are immutable after node creation and node IDs
-// don't recycle, so the only race is "node deleted by another
-// goroutine before ours" which RemoveNodeProperties handles via
-// ErrNodeNotFound.
 func (gs *GraphStorage) RemoveNodePropertiesForTenant(nodeID uint64, keys []string, tenantID string) error {
-	gs.rlockShard(nodeID)
-	if _, err := gs.getNodeRefForTenant(nodeID, tenantID); err != nil {
-		gs.runlockShard(nodeID)
-		return err
-	}
-	gs.runlockShard(nodeID)
-	return gs.RemoveNodeProperties(nodeID, keys)
+	return gs.PatchNodeForTenant(nodeID, nil, keys, tenantID)
 }
 
 // DeleteAllNodesForTenant removes every node (and its edges) belonging to one
