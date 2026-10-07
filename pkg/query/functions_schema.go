@@ -125,8 +125,10 @@ func fnProperties(args []any) (any, error) {
 	return result, nil
 }
 
-// extractStorageValue converts a storage.Value to its native Go type.
-// Shared helper used by edge property access and schema functions.
+// extractStorageValue converts a storage.Value to its native Go type. It is
+// the one read converter in this package: node and edge property access,
+// aggregation and the schema functions all come here, so a type cannot read
+// back on one path and as null on another.
 func extractStorageValue(val storage.Value) any {
 	switch val.Type {
 	case storage.TypeInt:
@@ -149,6 +151,17 @@ func extractStorageValue(val storage.Value) any {
 		if v, err := val.AsVector(); err == nil {
 			return v
 		}
+	case storage.TypeTimestamp:
+		// Unix seconds, as node reads have always returned; ValueToJSON
+		// would give an RFC3339 string.
+		if t, err := val.AsTimestamp(); err == nil {
+			return t.Unix()
+		}
+	default:
+		// Arrays, JSON and bytes: the decoder REST and GraphQL share. These
+		// returned nil, so a list or a map read through Cypher came back as
+		// null even when a REST write had stored it correctly.
+		return storage.ValueToJSON(val)
 	}
 	return nil
 }

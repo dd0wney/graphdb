@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A Cypher write no longer stores `null`, lists and maps as Go `%v` text.** `SET` and `CREATE`
+  converted any value other than a string, an int, a float or a bool with `fmt.Sprintf("%v")`, so
+  a `null` became the string `"<nil>"`, a list `"[a b]"` and a map `"map[k:1]"`, with a 200 and
+  no error. They now convert through `storage.ValueFromJSON`, the converter REST and GraphQL
+  already share, so a bound list or map is stored as REST stores the same JSON; the scalar
+  conversions are unchanged (a whole float such as `2.0` stays a float), and a numeric list
+  literal in the query text keeps its literal element types (`[1, 2]` is an int array, where the
+  same JSON over REST is a float array). **`SET n.x = null` now removes the property**, as Cypher
+  specifies and as `PUT` does since CC23; an expression that evaluates to null, such as a missing
+  property, removes it too. A `SET` whose value fails to evaluate now refuses the query and
+  changes nothing: a missing parameter or a division by zero used to become null silently, and
+  with null removing the property that would have deleted data. `CREATE` with a `null` stores a
+  JSON null, as `POST` does (CC24). The read side had the matching gap: Cypher returned `null`
+  for every stored list, map or byte value, including ones a REST write stored correctly. The
+  package's two read converters are now one, and lists and maps read back. Comparing a list or
+  a map in `WHERE n.x = $v`, `IN`, or an inline pattern compares by value; `==` on two such
+  values had panicked, which the executor reported as a 500, and `IN` had matched a list or a
+  string against a number. `MIN` and `MAX` skip lists and maps, and `AVG` divides by the numeric
+  values only. An edge timestamp read through Cypher now returns Unix seconds, as a node
+  timestamp always has; it returned `null`. Values already stored as `"<nil>"` or `"[a b]"` stay
+  strings: this fix does not rewrite stored data.
 - **A property removed after the last snapshot no longer comes back after a crash.**
   `RemoveNodeProperties` (Cypher `REMOVE n.prop`) logged `OpUpdateNode` carrying the properties
   that remained, and replay merges an `OpUpdateNode` into the snapshot copy of the node, so the

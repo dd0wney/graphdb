@@ -34,8 +34,19 @@ func (ac *AggregationComputer) avg(values []any) any {
 		return nil
 	}
 
+	// Divide by the numeric values only: sum skips the rest, so counting
+	// them too (a list, a string) shrank the average.
+	numeric := 0
+	for _, v := range values {
+		if isNumericValue(v) {
+			numeric++
+		}
+	}
+	if numeric == 0 {
+		return nil
+	}
 	sumVal := ac.sum(values)
-	count := float64(len(values))
+	count := float64(numeric)
 
 	switch s := sumVal.(type) {
 	case int64:
@@ -49,36 +60,29 @@ func (ac *AggregationComputer) avg(values []any) any {
 
 // min finds the minimum value
 func (ac *AggregationComputer) min(values []any) any {
-	if len(values) == 0 {
-		return nil
-	}
-
-	minVal := values[0]
-
-	for i := 1; i < len(values); i++ {
-		if ac.compare(values[i], minVal) < 0 {
-			minVal = values[i]
-		}
-	}
-
-	return minVal
+	return ac.extreme(values, -1)
 }
 
 // max finds the maximum value
 func (ac *AggregationComputer) max(values []any) any {
-	if len(values) == 0 {
-		return nil
-	}
+	return ac.extreme(values, 1)
+}
 
-	maxVal := values[0]
-
-	for i := 1; i < len(values); i++ {
-		if ac.compare(values[i], maxVal) > 0 {
-			maxVal = values[i]
+// extreme returns the value furthest in the direction of sign (-1 for the
+// minimum, 1 for the maximum), or nil when there is none. Lists and maps have
+// no order against scalars (compare reports 0, so one in first place was never
+// displaced); they are skipped as nulls are.
+func (ac *AggregationComputer) extreme(values []any, sign int) any {
+	var best any
+	for _, v := range values {
+		if isCollection(v) {
+			continue
+		}
+		if best == nil || sign*ac.compare(v, best) > 0 {
+			best = v
 		}
 	}
-
-	return maxVal
+	return best
 }
 
 // collect returns all non-nil values as a slice, preserving order
