@@ -147,6 +147,12 @@
       "track": "infra",
       "status": "pending",
       "title": "scripts: consumer-drive.sh SKIP policy. On a SKIP the script prints a warning and exits 0 when CI is unset, and exits 1 when CI=true, so a local run stays usable and a CI run cannot pass on a skipped drive. Small, scripts only. Acceptance: a selftest shows the exit 1 under CI=true and the exit 0 without it, seen red first"
+    },
+    {
+      "id": "v1.4-rest-property-encoding-rule",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: decide one storage rule for string property values. A REST write (POST/PUT /nodes, /edges, batch) stores html.EscapeString text (pkg/storage/sanitizer.go:24, called from pkg/api/handler_helper.go:300). A bound Cypher write stores raw text (pkg/api/server_handlers.go:173). Reads do not decode, so CONTAINS matches entity text. Ulysses encodes on write and decodes on read to match; a change must ship with the Ulysses client in the same release, and Ulysses must hear first. Acceptance: one documented rule, a consumer contract that pins it, a note for data already stored encoded, seen red first"
     }
   ],
   "deps": [
