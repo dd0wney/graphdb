@@ -183,6 +183,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: the query-text sanitizer (pkg/query/sanitizer.go) refuses data: and file: (:36, :38) and collapses whitespace (:76) over the whole text, string literals included. Run both on non-literal tokens only, so a literal keeps its exact text. Ulysses priority 5 of 5: it binds every string and gets nothing from this. Lines read at ac4f79f. Acceptance: a literal with file: and two spaces comes back byte for byte, the refusal still fires outside a literal, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-value-conversion",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a Cypher write stores any value that is not a string, int, float or bool as its Go %v text with TypeString, and answers 200 with no error. Probed through REST /query at 7c6705c: SET n.x = null and SET n.x = $v with v null both store the string <nil>, a bound list stores [a b], a bound map stores map[k:1]; a string control stores correctly. Cause: the default branch of convertToStorageValue (pkg/query/executor_steps.go:65-66, read at 7c6705c) runs StringValue(fmt.Sprintf(%v)). It has 8 callers, the SET paths and the MATCH and MERGE property comparisons (physical_ops_scan.go:277, physical_ops_mutate.go:313). REST already converts through storage.ValueFromJSON. Likely fix: route the default branch through ValueFromJSON so Cypher and REST store the same value. Decide null: Cypher semantics say SET n.x = null removes the key, which also matches PUT after #634 (the lean), or store a JSON null as REST POST does. CREATE with null was not measured. Acceptance: null, list and map round-trip on SET, CREATE and a MATCH comparison, seen red first"
     }
   ],
   "deps": [
