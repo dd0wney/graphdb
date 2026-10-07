@@ -71,14 +71,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **A `PUT /nodes/{id}` or `PUT /edges/{id}` sent as `Content-Type: application/merge-patch+json`
-  follows JSON Merge Patch (RFC 7396): a top-level `null` removes that key.** Before, no REST
+  applies JSON Merge Patch (RFC 7396) to the `properties` object: a `null` as the value of a key
+  directly inside `properties` removes that property.** The body keeps its `properties` wrapper;
+  the patch is not applied to the whole body. Before, no REST
   request could remove a property, and edges had no removal path at all. The rule is opt-in by
   media type: plain `application/json` still stores a `null` as a value, exactly as v1.4.0 did,
   because `docs/STABILITY_POLICY.md` makes a new result for an unchanged request a breaking
   change. Consumer contracts CC23 (merge-patch removes), CC24 (`POST` stores `null`) and CC25
   (plain-JSON `PUT` stores `null`) pin the three rules. The set and the removal land as one
-  write with one WAL record, so a crash cannot apply half of a PUT. A `null` nested inside an
-  object or an array stays part of that value. Library callers get `PatchNodeForTenant` and
+  write with one WAL record, so a crash cannot apply half of a PUT. A `null` nested deeper, inside
+  a property's object or array value, stays part of that value. Library callers get `PatchNodeForTenant` and
   `PatchEdgeForTenant`; `UpdateNode` and `RemoveNodeProperties` are now thin wrappers over the
   same path. A node update refused for a bad vector (a wrong dimension, say) now changes
   nothing; before, the vector check ran after the in-memory change, so a refused update kept its
