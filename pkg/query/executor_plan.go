@@ -43,6 +43,9 @@ type ExecutionContext struct {
 	// enumeration rule, applied to traversal.
 	truncation error
 
+	// notices collects non-fatal messages for ResultSet.Notices.
+	notices []Notice
+
 	// pathOpts is the per-call variable-length traversal policy. The zero
 	// value is today's behaviour, so a caller that does not opt in is
 	// unchanged by construction. Read by traverseVariablePath and nowhere
@@ -165,12 +168,27 @@ type StepProfile struct {
 	RowsOut  int
 }
 
+// Notice is a non-fatal message about how a query ran. Code is a stable
+// identifier a caller can match on; Message is for people and may change.
+type Notice struct {
+	Code    string
+	Message string
+}
+
+// NoticePlainDeleteDetach is the Code of the deprecation notice a plain
+// DELETE records when it removes relationships the query did not name.
+const NoticePlainDeleteDetach = "plain-delete-detach"
+
 // ResultSet represents query results
 type ResultSet struct {
 	Columns []string
 	Rows    []map[string]any
 	Count   int
 	Profile []StepProfile // Populated when PROFILE is used
+	// Notices are non-fatal messages about how the query ran, such as a
+	// deprecated form it used. The query still succeeded; REST /query maps a
+	// deprecation notice's Code to a response header.
+	Notices []Notice
 }
 
 // buildExecutionPlan creates an execution plan from a query
@@ -278,7 +296,9 @@ func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPl
 	// Build final result set. execCtx.truncation travels WITH the results,
 	// never instead of them.
 	if query.Return != nil {
-		return e.buildResultSet(execCtx, query.Return, query.Limit, query.Skip), execCtx.truncation
+		result := e.buildResultSet(execCtx, query.Return, query.Limit, query.Skip)
+		result.Notices = execCtx.notices
+		return result, execCtx.truncation
 	}
 
 	// For write queries, return count
@@ -286,5 +306,6 @@ func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPl
 		Columns: []string{"affected"},
 		Rows:    []map[string]any{{"affected": len(execCtx.results)}},
 		Count:   len(execCtx.results),
+		Notices: execCtx.notices,
 	}, execCtx.truncation
 }
