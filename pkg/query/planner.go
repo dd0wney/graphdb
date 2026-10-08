@@ -159,12 +159,12 @@ func (p *Planner) PlanSub(ctx context.Context, q *Query, input PhysicalOperator)
 	}
 
 	// 2.5 Handle MERGE clause
-	if q.Merge != nil {
+	for _, merge := range q.Merges {
 		op = &MergeOperator{
 			Input:    op,
-			Pattern:  q.Merge.Pattern,
-			OnMatch:  q.Merge.OnMatch,
-			OnCreate: q.Merge.OnCreate,
+			Pattern:  merge.Pattern,
+			OnMatch:  merge.OnMatch,
+			OnCreate: merge.OnCreate,
 		}
 	}
 

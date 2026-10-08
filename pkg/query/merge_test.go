@@ -19,37 +19,37 @@ func TestParser_Merge(t *testing.T) {
 		t.Fatalf("Parse failed: %v", err)
 	}
 
-	if query.Merge == nil {
-		t.Fatal("Expected non-nil Merge clause")
+	if len(query.Merges) != 1 {
+		t.Fatalf("Expected 1 MERGE clause, got %d", len(query.Merges))
 	}
-	if query.Merge.Pattern == nil {
+	if query.Merges[0].Pattern == nil {
 		t.Fatal("Expected non-nil Merge pattern")
 	}
-	if len(query.Merge.Pattern.Nodes) != 1 {
-		t.Fatalf("Expected 1 node in pattern, got %d", len(query.Merge.Pattern.Nodes))
+	if len(query.Merges[0].Pattern.Nodes) != 1 {
+		t.Fatalf("Expected 1 node in pattern, got %d", len(query.Merges[0].Pattern.Nodes))
 	}
-	if query.Merge.Pattern.Nodes[0].Variable != "n" {
-		t.Errorf("Expected variable 'n', got %q", query.Merge.Pattern.Nodes[0].Variable)
+	if query.Merges[0].Pattern.Nodes[0].Variable != "n" {
+		t.Errorf("Expected variable 'n', got %q", query.Merges[0].Pattern.Nodes[0].Variable)
 	}
 
-	if query.Merge.OnCreate == nil {
+	if query.Merges[0].OnCreate == nil {
 		t.Fatal("Expected non-nil OnCreate")
 	}
-	if len(query.Merge.OnCreate.Assignments) != 1 {
-		t.Fatalf("Expected 1 OnCreate assignment, got %d", len(query.Merge.OnCreate.Assignments))
+	if len(query.Merges[0].OnCreate.Assignments) != 1 {
+		t.Fatalf("Expected 1 OnCreate assignment, got %d", len(query.Merges[0].OnCreate.Assignments))
 	}
-	if query.Merge.OnCreate.Assignments[0].Property != "created" {
-		t.Errorf("Expected OnCreate property 'created', got %q", query.Merge.OnCreate.Assignments[0].Property)
+	if query.Merges[0].OnCreate.Assignments[0].Property != "created" {
+		t.Errorf("Expected OnCreate property 'created', got %q", query.Merges[0].OnCreate.Assignments[0].Property)
 	}
 
-	if query.Merge.OnMatch == nil {
+	if query.Merges[0].OnMatch == nil {
 		t.Fatal("Expected non-nil OnMatch")
 	}
-	if len(query.Merge.OnMatch.Assignments) != 1 {
-		t.Fatalf("Expected 1 OnMatch assignment, got %d", len(query.Merge.OnMatch.Assignments))
+	if len(query.Merges[0].OnMatch.Assignments) != 1 {
+		t.Fatalf("Expected 1 OnMatch assignment, got %d", len(query.Merges[0].OnMatch.Assignments))
 	}
-	if query.Merge.OnMatch.Assignments[0].Property != "seen" {
-		t.Errorf("Expected OnMatch property 'seen', got %q", query.Merge.OnMatch.Assignments[0].Property)
+	if query.Merges[0].OnMatch.Assignments[0].Property != "seen" {
+		t.Errorf("Expected OnMatch property 'seen', got %q", query.Merges[0].OnMatch.Assignments[0].Property)
 	}
 }
 
@@ -66,13 +66,13 @@ func TestParser_Merge_Simple(t *testing.T) {
 		t.Fatalf("Parse failed: %v", err)
 	}
 
-	if query.Merge == nil {
-		t.Fatal("Expected non-nil Merge clause")
+	if len(query.Merges) != 1 {
+		t.Fatalf("Expected 1 MERGE clause, got %d", len(query.Merges))
 	}
-	if query.Merge.OnCreate != nil {
+	if query.Merges[0].OnCreate != nil {
 		t.Error("Expected nil OnCreate for simple MERGE")
 	}
-	if query.Merge.OnMatch != nil {
+	if query.Merges[0].OnMatch != nil {
 		t.Error("Expected nil OnMatch for simple MERGE")
 	}
 }
@@ -85,7 +85,7 @@ func TestMerge_CreateWhenNotExists(t *testing.T) {
 
 	// MERGE should create the node since it doesn't exist
 	query := &Query{
-		Merge: &MergeClause{
+		Merges: []*MergeClause{{
 			Pattern: &Pattern{
 				Nodes: []*NodePattern{
 					{
@@ -98,7 +98,7 @@ func TestMerge_CreateWhenNotExists(t *testing.T) {
 				},
 				Relationships: []*RelationshipPattern{},
 			},
-		},
+		}},
 	}
 
 	_, err := executor.Execute(query)
@@ -127,7 +127,7 @@ func TestMerge_MatchWhenExists(t *testing.T) {
 
 	// MERGE should find the existing node, not create a duplicate
 	query := &Query{
-		Merge: &MergeClause{
+		Merges: []*MergeClause{{
 			Pattern: &Pattern{
 				Nodes: []*NodePattern{
 					{
@@ -140,7 +140,7 @@ func TestMerge_MatchWhenExists(t *testing.T) {
 				},
 				Relationships: []*RelationshipPattern{},
 			},
-		},
+		}},
 	}
 
 	_, err := executor.Execute(query)
@@ -163,7 +163,7 @@ func TestMerge_OnCreateSet(t *testing.T) {
 
 	// MERGE with ON CREATE SET
 	query := &Query{
-		Merge: &MergeClause{
+		Merges: []*MergeClause{{
 			Pattern: &Pattern{
 				Nodes: []*NodePattern{
 					{
@@ -181,7 +181,7 @@ func TestMerge_OnCreateSet(t *testing.T) {
 					{Variable: "n", Property: "created", Value: true},
 				},
 			},
-		},
+		}},
 	}
 
 	_, err := executor.Execute(query)
@@ -218,7 +218,7 @@ func TestMerge_OnMatchSet(t *testing.T) {
 
 	// MERGE with ON MATCH SET
 	query := &Query{
-		Merge: &MergeClause{
+		Merges: []*MergeClause{{
 			Pattern: &Pattern{
 				Nodes: []*NodePattern{
 					{
@@ -236,7 +236,7 @@ func TestMerge_OnMatchSet(t *testing.T) {
 					{Variable: "n", Property: "seen", Value: true},
 				},
 			},
-		},
+		}},
 	}
 
 	_, err := executor.Execute(query)

@@ -217,8 +217,10 @@ func (e *Executor) buildExecutionPlan(query *Query) *ExecutionPlan {
 	}
 
 	// Add MERGE step
-	if query.Merge != nil {
-		plan.Steps = append(plan.Steps, &MergeStep{merge: query.Merge})
+	// One step per MERGE, in text order. Keeping one slot here once made a
+	// second MERGE replace the first.
+	for _, merge := range query.Merges {
+		plan.Steps = append(plan.Steps, &MergeStep{merge: merge})
 	}
 
 	// Add UNWIND step (after filter, before create)
