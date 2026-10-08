@@ -600,6 +600,10 @@ func (gs *GraphStorage) patchNode(nodeID uint64, set map[string]Value, remove []
 	tid := effectiveTenantID(node.TenantID)
 	var vectorRemovals []string
 	gs.lockShard(nodeID)
+	// A node created with nil properties has no map to write into.
+	if node.Properties == nil && len(set) > 0 {
+		node.Properties = make(map[string]Value, len(set))
+	}
 	for k, v := range set {
 		node.Properties[k] = v
 	}
