@@ -144,70 +144,44 @@ type CreateStep struct {
 }
 
 func (cs *CreateStep) Execute(ctx *ExecutionContext) error {
-	for _, pattern := range cs.create.Patterns {
-		// Create nodes first
-		if err := cs.createNodes(ctx, pattern); err != nil {
-			return err
-		}
-
-		// Create relationships
-		if err := cs.createRelationships(ctx, pattern); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// createNodes creates nodes for a pattern
-func (cs *CreateStep) createNodes(ctx *ExecutionContext, pattern *Pattern) error {
-	for _, nodePattern := range pattern.Nodes {
-		// Convert properties
-		props := make(map[string]storage.Value)
-		for key, val := range nodePattern.Properties {
-			sv, err := convertCreateProperty(val)
-			if err != nil {
+	// CREATE acts once for each row, and with no rows it creates nothing.
+	for _, row := range ctx.results {
+		for _, pattern := range cs.create.Patterns {
+			if err := cs.createPattern(ctx, pattern, row); err != nil {
 				return err
 			}
-			props[key] = sv
-		}
-
-		// Audit A6c-query: tenant-scoped node create.
-		node, err := ctx.graph.CreateNodeWithTenant(ctx.tenantID, nodePattern.Labels, props)
-		if err != nil {
-			return err
-		}
-
-		// Bind variable
-		if nodePattern.Variable != "" {
-			for _, binding := range ctx.results {
-				binding.bindings[nodePattern.Variable] = node
-			}
 		}
 	}
 	return nil
 }
 
-// createRelationships creates relationships for a pattern
-func (cs *CreateStep) createRelationships(ctx *ExecutionContext, pattern *Pattern) error {
-	for _, relPattern := range pattern.Relationships {
-		// Safe type assertions with validation
-		if len(ctx.results) == 0 {
-			return fmt.Errorf("no bindings available for relationship creation")
-		}
-
-		fromNode, err := cs.getNodeFromBinding(ctx, relPattern.From.Variable, "from")
+// createPattern creates one pattern for one row. A node whose variable the row
+// already binds is reused, never created again; the new nodes and the new
+// relationship are bound into the row so later clauses see them.
+func (cs *CreateStep) createPattern(ctx *ExecutionContext, pattern *Pattern, row *BindingSet) error {
+	// Pattern nodes without a variable are found again by pointer: the
+	// relationship's From and To are the same *NodePattern values.
+	nodes := make(map[*NodePattern]*storage.Node, len(pattern.Nodes))
+	for _, np := range pattern.Nodes {
+		node, err := cs.bindOrCreateNode(ctx, np, row)
 		if err != nil {
 			return err
 		}
+		nodes[np] = node
+	}
 
-		toNode, err := cs.getNodeFromBinding(ctx, relPattern.To.Variable, "to")
+	for _, rel := range pattern.Relationships {
+		from, err := createEndpoint(nodes, rel.From, row)
+		if err != nil {
+			return err
+		}
+		to, err := createEndpoint(nodes, rel.To, row)
 		if err != nil {
 			return err
 		}
 
 		props := make(map[string]storage.Value)
-		for key, val := range relPattern.Properties {
+		for key, val := range rel.Properties {
 			sv, err := convertCreateProperty(val)
 			if err != nil {
 				return err
@@ -220,23 +194,66 @@ func (cs *CreateStep) createRelationships(ctx *ExecutionContext, pattern *Patter
 		// node verification (A6a follow-up #20), so a Cypher CREATE
 		// referencing a foreign-tenant node ID surfaces
 		// ErrNodeNotFound.
-		_, err = ctx.graph.CreateEdgeWithTenant(ctx.tenantID, fromNode.ID, toNode.ID, relPattern.Type, props, 1.0)
+		edge, err := ctx.graph.CreateEdgeWithTenant(ctx.tenantID, from.ID, to.ID, rel.Type, props, 1.0)
 		if err != nil {
 			return err
+		}
+		if rel.Variable != "" {
+			row.bindings[rel.Variable] = edge
 		}
 	}
 	return nil
 }
 
-// getNodeFromBinding extracts a node from bindings with proper error handling
-func (cs *CreateStep) getNodeFromBinding(ctx *ExecutionContext, variable, role string) (*storage.Node, error) {
-	nodeInterface, exists := ctx.results[0].bindings[variable]
-	if !exists {
-		return nil, fmt.Errorf("%s node variable '%s' not bound", role, variable)
+// createEndpoint resolves a relationship endpoint: the node the pattern just
+// bound or created, or, for an endpoint that is not one of the pattern's
+// nodes (a hand-built AST), the node the row binds to its variable.
+func createEndpoint(nodes map[*NodePattern]*storage.Node, np *NodePattern, row *BindingSet) (*storage.Node, error) {
+	if np == nil {
+		return nil, fmt.Errorf("CREATE: relationship has no endpoint")
 	}
-	node, ok := nodeInterface.(*storage.Node)
-	if !ok {
-		return nil, fmt.Errorf("%s node variable '%s' is not a Node", role, variable)
+	if node := nodes[np]; node != nil {
+		return node, nil
+	}
+	if node, ok := row.bindings[np.Variable].(*storage.Node); ok && node != nil {
+		return node, nil
+	}
+	return nil, fmt.Errorf("CREATE: relationship endpoint %q is not bound to a node", np.Variable)
+}
+
+// bindOrCreateNode returns the node the row binds to np's variable, or
+// creates one. openCypher refuses labels or properties on a bound variable,
+// because they would describe a node the query already has.
+func (cs *CreateStep) bindOrCreateNode(ctx *ExecutionContext, np *NodePattern, row *BindingSet) (*storage.Node, error) {
+	if np.Variable != "" {
+		if existing, ok := row.bindings[np.Variable]; ok {
+			node, isNode := existing.(*storage.Node)
+			if !isNode || node == nil {
+				return nil, fmt.Errorf("CREATE: variable %s is not bound to a node", np.Variable)
+			}
+			if len(np.Labels) > 0 || len(np.Properties) > 0 {
+				return nil, fmt.Errorf("CREATE: variable %s is already bound; it cannot take labels or properties here", np.Variable)
+			}
+			return node, nil
+		}
+	}
+
+	props := make(map[string]storage.Value)
+	for key, val := range np.Properties {
+		sv, err := convertCreateProperty(val)
+		if err != nil {
+			return nil, err
+		}
+		props[key] = sv
+	}
+
+	// Audit A6c-query: tenant-scoped node create.
+	node, err := ctx.graph.CreateNodeWithTenant(ctx.tenantID, np.Labels, props)
+	if err != nil {
+		return nil, err
+	}
+	if np.Variable != "" {
+		row.bindings[np.Variable] = node
 	}
 	return node, nil
 }
@@ -438,52 +455,46 @@ type MergeStep struct {
 	merge *MergeClause
 }
 
+// Execute decides match-or-create for each row on its own, from that row's
+// bindings. It used to match with an empty binding, ignoring every variable
+// the row bound, and to decide for all rows at once: one matching row dropped
+// the rows that had no match, and created nothing for them.
 func (ms *MergeStep) Execute(ctx *ExecutionContext) error {
-	// Try to match the pattern
 	matchStep := &MatchStep{match: &MatchClause{Patterns: []*Pattern{ms.merge.Pattern}}}
+	createStep := &CreateStep{create: &CreateClause{Patterns: []*Pattern{ms.merge.Pattern}}}
 
-	// Save current results, try matching. Inherit tenantID from
-	// parent ctx (audit A6c-query) — sub-context must scope to the
-	// same tenant.
-	savedResults := ctx.results
-	matchCtx := ctx.subContext()
-
-	if err := matchStep.Execute(matchCtx); err != nil {
-		return err
-	}
-
-	// The match half's truncation belongs to the caller. Dropping it made a
-	// MERGE whose match stopped at an engine limit report a complete answer.
-	if matchCtx.truncation != nil {
-		ctx.noteTruncation(matchCtx.truncation)
-	}
-
-	if len(matchCtx.results) > 0 {
-		// Found — apply ON MATCH SET if present
-		ctx.results = matchCtx.results
-		if ms.merge.OnMatch != nil {
-			setStep := &SetStep{set: ms.merge.OnMatch}
-			if err := setStep.Execute(ctx); err != nil {
-				return err
-			}
-		}
-	} else {
-		// Not found — create via pattern
-		ctx.results = savedResults
-		createStep := &CreateStep{create: &CreateClause{Patterns: []*Pattern{ms.merge.Pattern}}}
-		if err := createStep.Execute(ctx); err != nil {
+	out := make([]*BindingSet, 0, len(ctx.results))
+	for _, row := range ctx.results {
+		// Inherit tenantID from parent ctx (audit A6c-query) — the
+		// sub-context must scope to the same tenant.
+		rowCtx := ctx.subContext()
+		rowCtx.results = []*BindingSet{row}
+		if err := matchStep.Execute(rowCtx); err != nil {
 			return err
 		}
+		// The match half's truncation belongs to the caller. Dropping it made
+		// a MERGE whose match stopped at an engine limit report a complete
+		// answer.
+		if rowCtx.truncation != nil {
+			ctx.noteTruncation(rowCtx.truncation)
+		}
 
-		// Apply ON CREATE SET if present
-		if ms.merge.OnCreate != nil {
-			setStep := &SetStep{set: ms.merge.OnCreate}
-			if err := setStep.Execute(ctx); err != nil {
+		set := ms.merge.OnMatch
+		if len(rowCtx.results) == 0 {
+			rowCtx.results = []*BindingSet{row}
+			if err := createStep.Execute(rowCtx); err != nil {
+				return err
+			}
+			set = ms.merge.OnCreate
+		}
+		if set != nil {
+			if err := (&SetStep{set: set}).Execute(rowCtx); err != nil {
 				return err
 			}
 		}
+		out = append(out, rowCtx.results...)
 	}
-
+	ctx.results = out
 	return nil
 }
 
