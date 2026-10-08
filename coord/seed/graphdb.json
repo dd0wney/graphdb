@@ -393,6 +393,30 @@
       "track": "v2.0",
       "status": "pending",
       "title": "query (v2.0, breaking): refuse a plain Cypher DELETE of a node that still has relationships, as openCypher does, unless the query says DETACH DELETE. Deprecated in the release after v1.6.0 (user decision 2026-10-08, option C): 1.x keeps removing the relationships and reports query.Notice code plain-delete-detach in ResultSet.Notices and the REST header X-Cypher-Deprecation. For v2.0: check every node to delete before any delete, so a refused query changes nothing; the error names the node and says to use DETACH DELETE; remove the notice and header for this code; update the CHANGELOG Removed entry and docs/STABILITY_POLICY.md deprecation record. Check the deprecation log lines and consumers (syntopica-timer-spec uses DETACH DELETE for nodes) before shipping. Acceptance: plain DELETE of a connected node errors and leaves node and relationships in place, DELETE r, a with all relationships bound still works, seen red first"
+    },
+    {
+      "id": "v1.4-batched-wal-flush-interval-validation",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: with EnableBatching true, a FlushInterval of 0 (or less) panics at open: BatchedWAL.backgroundFlusher calls time.NewTicker(bw.flushInterval) (pkg/wal/batched_wal.go:152) and storage passes config.FlushInterval with no check. Verified by a probe on fce5328. Refuse a non-positive FlushInterval (and a non-positive BatchSize, if it misbehaves the same way) at open with a typed config error naming the field. Asked by mapper-6b. Acceptance: open with FlushInterval 0 returns the error and leaves no goroutine, seen red first"
+    },
+    {
+      "id": "v1.4-mmap-close-memory",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: an mmap Close builds the whole snapshot in memory before writing it: it clones every overlay record, decodes the base records, sorts both lists, and builds adjacency maps and the membership index (pkg/storage/mmap_snapshot_persist.go:26-96, mmap_snapshot_writer.go:104-177; read at fce5328). A probe with 200,000 nodes and 199,999 edges raised HeapAlloc from 188 MiB to a 487 MiB peak, about 0.75 KB per record. On a consultant laptop (mapper-6b, 585,000 records) that is an estimated +440 MiB at Close. Design first: a streaming or two-pass writer that keeps only IDs and offsets, measured with TMPDIR on a real disk; the format must not change without a version bump"
+    },
+    {
+      "id": "v1.4-foreach-node-tenant-and-lock",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: ForEachNode (pkg/storage/node_operations.go:947, read at fce5328) visits every tenant's nodes and holds gs.mu.RLock while the callback runs, so a callback blocks every writer and a write inside it deadlocks. GetEdgesByTypeForTenant (tenant_operations.go:192) skips a damaged record with no report. Add a tenant-scoped iterator that does not hold the global lock across the callback (the paged readers NodesByLabelPageForTenant/EdgesByTypePageForTenant are the model), document or deprecate the tenant-blind form, and make the bulk readers report a damaged record (ADR 0003 enumeration rule). Found answering mapper-6b. Acceptance: a write inside the new iterator's callback does not deadlock; a damaged record surfaces as an error, seen red first"
+    },
+    {
+      "id": "v1.4-telemetry-stop-waits",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "licensing: TelemetryReporter.Stop (pkg/licensing/telemetry.go:83) only cancels the context and does not wait for reportLoop, so a report already in flight can arrive after Stop returns. TestTelemetryReporter_reportLoop_Cancellation caught it once under make test-local load on 2026-10-08 (passes alone); the test also reads callCount from the handler goroutine without synchronisation. Make Stop wait for the loop (WaitGroup) and make the test's counter atomic. Acceptance: the test passes under -race -count=200, and fails with the wait removed"
     }
   ],
   "deps": [
