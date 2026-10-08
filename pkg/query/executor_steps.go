@@ -363,35 +363,75 @@ type DeleteStep struct {
 	delete *DeleteClause
 }
 
+// Execute collects every node and edge the rows bind before deleting any of
+// them. One entity can appear in many rows, and a node delete cascades to its
+// edges, so deleting row by row either deletes twice or deletes an edge its
+// node already took with it; both surface as a spurious "not found" after the
+// delete has happened. Edges go first for the same reason.
 func (ds *DeleteStep) Execute(ctx *ExecutionContext) error {
+	targets := newDeleteTargets()
 	for _, binding := range ctx.results {
 		for _, variable := range ds.delete.Variables {
-			if err := ds.deleteVariable(ctx, binding, variable); err != nil {
+			if err := targets.add(binding, variable); err != nil {
 				return err
 			}
 		}
 	}
 
+	// Audit A6c-query: the *ForTenant deletes refuse an entity of another
+	// tenant, so a row can never delete outside the caller's tenant.
+	for _, id := range targets.edgeIDs {
+		if err := ctx.graph.DeleteEdgeForTenant(id, ctx.tenantID); err != nil {
+			return fmt.Errorf("failed to delete edge %d: %w", id, err)
+		}
+	}
+	for _, id := range targets.nodeIDs {
+		if err := ctx.graph.DeleteNodeForTenant(id, ctx.tenantID); err != nil {
+			return fmt.Errorf("failed to delete node %d: %w", id, err)
+		}
+	}
 	return nil
 }
 
-// deleteVariable deletes a single variable from bindings
-func (ds *DeleteStep) deleteVariable(ctx *ExecutionContext, binding *BindingSet, variable string) error {
+// deleteTargets holds the distinct nodes and edges a DELETE names, in the
+// order they were first bound.
+type deleteTargets struct {
+	nodeIDs, edgeIDs []uint64
+	seenNodes        map[uint64]struct{}
+	seenEdges        map[uint64]struct{}
+}
+
+func newDeleteTargets() *deleteTargets {
+	return &deleteTargets{seenNodes: map[uint64]struct{}{}, seenEdges: map[uint64]struct{}{}}
+}
+
+// add records what variable is bound to in binding. Anything it cannot delete
+// is refused rather than skipped: a skipped DELETE still reports its rows as
+// affected, which is how DELETE r on an edge used to change nothing.
+func (dt *deleteTargets) add(binding *BindingSet, variable string) error {
 	obj, ok := binding.bindings[variable]
 	if !ok {
-		return nil // Variable not bound, skip
+		return fmt.Errorf("DELETE %s: variable is not defined by the query", variable)
 	}
 
-	node, ok := obj.(*storage.Node)
-	if !ok {
-		return nil // Not a node, skip
+	switch v := obj.(type) {
+	case nil:
+		return nil // OPTIONAL MATCH found nothing; deleting null is a no-op
+	case *storage.Node:
+		if _, seen := dt.seenNodes[v.ID]; !seen {
+			dt.seenNodes[v.ID] = struct{}{}
+			dt.nodeIDs = append(dt.nodeIDs, v.ID)
+		}
+	case *storage.Edge:
+		if _, seen := dt.seenEdges[v.ID]; !seen {
+			dt.seenEdges[v.ID] = struct{}{}
+			dt.edgeIDs = append(dt.edgeIDs, v.ID)
+		}
+	case []*storage.Edge:
+		return fmt.Errorf("DELETE %s: deleting a variable-length relationship is not supported; match each relationship with a one-hop pattern and delete that", variable)
+	default:
+		return fmt.Errorf("DELETE %s: cannot delete a value of type %T", variable, obj)
 	}
-
-	// Audit A6c-query: tenant-scoped delete (handles edge deletion).
-	if err := ctx.graph.DeleteNodeForTenant(node.ID, ctx.tenantID); err != nil {
-		return fmt.Errorf("failed to delete node %d: %w", node.ID, err)
-	}
-
 	return nil
 }
 
