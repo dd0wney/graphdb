@@ -321,6 +321,18 @@
       "track": "v1.4",
       "status": "pending",
       "title": "api: POST has no Idempotency-Key. After a timeout a client cannot know whether its POST applied, so a manual retry can duplicate a node. The Go client never retries POST (clients/go/graphdb.go:4-5), so this is not an automatic duplicate. Add an optional Idempotency-Key header with a bounded server-side record. Read at 5988924"
+    },
+    {
+      "id": "v1.4-wal-default-remeasure",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: the per-write fsync default (DefaultStorageConfig, pkg/storage/storage.go:24-33) was justified by BenchmarkWALFlushInterval numbers that reproduce exactly on tmpfs: b.TempDir() is /tmp, and /tmp is tmpfs on the dev box. Same binary, only TMPDIR changed, 32 writers, 5988924: tmpfs per-write 8 us/op vs batched-1ms 138 us/op; LUKS ext4 19,520 vs 2,794; plain btrfs NVMe 36,004 vs 4,996. Batched is about 7x faster on real disks. Make the benchmark refuse tmpfs (or take a data-dir variable and print the filesystem), add a single sequential writer case (batched adds up to one flush interval per write there), measure on real disks, fix the comment, then put the default decision to the user with numbers. Durability is the same in both modes. Found from a mapper-6b bulk-ingest spike on dm-crypt (about 20 KB/s WAL)"
+    },
+    {
+      "id": "v1.4-bulk-create-group-commit",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: CreateNodesWithTenant and CreateEdgesWithTenant on the default synchronous WAL write and fsync each record alone (createNodeLocked in a loop, pkg/storage/node_operations.go:67-90), so a 1,000-node call costs 1,000 fsyncs. Write the call as one WAL group with one fsync (appendWALBatch, as Transaction.Commit does), the Postgres COPY shape. Keep the documented partial-on-error contract or change it deliberately with v1.4-storage-batch-atomic-commit. The REST batch handlers loop single creates (handlers_nodes.go handleBatchNodes) and gain nothing unless they move to the bulk call; CC7 and CC20 pin their partial-success shape. Read at 5988924. Acceptance: fsync count per bulk call is 1 on the sync WAL, crash replay is all-or-nothing for the group, seen red first"
     }
   ],
   "deps": [
