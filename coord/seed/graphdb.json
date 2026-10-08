@@ -357,6 +357,18 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: TypeTimestamp keeps whole Unix seconds (TimestampValue stores uint64(t.Unix()), AsTimestamp returns time.Unix(sec, 0) in the local zone; pkg/storage/types.go:93-97, :218-223), so time.Now() loses its sub-second part with no error. Existing stores hold 8-byte seconds, so sub-second precision needs a new value type or a format version: design first (on-disk impact, REST and GraphQL encoding, index ordering across the two types). Raised by mapper-6b, which now documents whole seconds UTC. Read at e3e49e1"
+    },
+    {
+      "id": "v1.4-mmap-record-width-refusal",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: the mmap snapshot encoder writes property count, key length, tenant ID length, label count and label length as uint16 (pkg/storage/mmap_snapshot_format.go, the AppendUint16 calls in the node and edge record encoders), so a larger value wraps with no error. Probed at 07feb22 in the default mmap mode: a node with a 70,000-byte property key, or a 70,000-byte label, was created and closed with no error, and after reopen GetNode returned record unreadable: record did not decode. Fix (user decision 2026-10-08, ship in v1.6.0): refuse at create and update, in both snapshot modes, a key, label or tenant ID over 65,535 bytes and over 65,535 properties or labels, with a typed error (REST 400); and make the encoder return an error instead of wrapping, so an existing JSON store holding such data fails loudly on its first mmap Close. Edge type length too if the edge encoder narrows it. Found by a review of mapper-6b's embedded backend. Acceptance: the probe refuses at create, a direct encoder call with an oversize record errors, the 65,535 boundary still round-trips, seen red first"
+    },
+    {
+      "id": "v1.4-mapper-consumer-contracts",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "contracts: pin the six pkg/storage behaviours mapper (oit-cyber/mapper, embedded backend) depends on as CONSUMER CONTRACT tests and docs/CONSUMER_CONTRACTS.md rows (user decision 2026-10-08): (1) CreateNodesWithTenant/CreateEdgesWithTenant give each record a unique non-zero ID, (2) GetNodeForTenant errors with ErrNodeNotFound for an unknown or cross-tenant ID, (3) Get{Outgoing,Incoming}EdgesForTenant return an empty list and no error for an unknown node, (4) PatchNodeForTenant adds, changes and keeps keys, (5) BulkImportMode Close then a normal open reads all data, in mmap and JSON mode, (6) TimestampValue/AsTimestamp keep whole Unix seconds. A review at v1.5.0 found no test for (3), none for unique IDs in (1), none for a changed key in (4), and JSON-only coverage for (5). Note the library API is outside docs/STABILITY_POLICY.md; the rows record that graphdb tests these, not a versioned promise. Each test seen red against a deliberately broken variant"
     }
   ],
   "deps": [
