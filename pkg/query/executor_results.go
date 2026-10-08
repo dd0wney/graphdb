@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
@@ -51,12 +52,13 @@ func buildColumnName(item *ReturnItem) string {
 
 // buildResultSet builds the final result set
 func (e *Executor) buildResultSet(ctx *ExecutionContext, returnClause *ReturnClause, limit, skip int) *ResultSet {
-	// Check if we have GROUP BY
-	if len(returnClause.GroupBy) > 0 {
+	// Group when the query says GROUP BY, or, as openCypher does, when it
+	// aggregates next to a non-aggregate item: that item is a grouping key.
+	if len(returnClause.GroupBy) > 0 || (hasAggregates(returnClause.Items) && len(nonAggregateItems(returnClause.Items)) > 0) {
 		return e.buildGroupedResultSet(ctx, returnClause, limit, skip)
 	}
 
-	// Check if we have aggregates (without GROUP BY)
+	// Aggregates with no key: one row over all bindings.
 	if hasAggregates(returnClause.Items) {
 		return e.buildAggregateResultSet(ctx, returnClause)
 	}
@@ -86,28 +88,111 @@ func (e *Executor) buildAggregateResultSet(ctx *ExecutionContext, returnClause *
 	return resultSet
 }
 
-// buildGroupedResultSet builds results for GROUP BY queries
+// buildGroupedResultSet groups the bindings and computes the aggregates of
+// each group. The key is the non-aggregate RETURN items' values, or the GROUP
+// BY expressions when the query has them. Groups keep the order in which they
+// first appear, and each output row takes its key columns from the first
+// binding of its group, so a key keeps its type: an int stays an int, a node
+// stays a node.
 func (e *Executor) buildGroupedResultSet(ctx *ExecutionContext, returnClause *ReturnClause, limit, skip int) *ResultSet {
 	resultSet := &ResultSet{
-		Columns: make([]string, 0),
+		Columns: make([]string, 0, len(returnClause.Items)),
 		Rows:    make([]map[string]any, 0),
 	}
-
-	computer := &AggregationComputer{}
-	groupedResults := computer.ComputeGroupedAggregates(ctx, returnClause.Items, returnClause.GroupBy)
-
-	// Build columns
 	for _, item := range returnClause.Items {
 		resultSet.Columns = append(resultSet.Columns, buildColumnName(item))
 	}
 
-	resultSet.Rows = groupedResults
-	resultSet.Count = len(groupedResults)
+	computer := &AggregationComputer{}
+	keyItems := nonAggregateItems(returnClause.Items)
+	keyCols := make([]string, len(keyItems))
+	for i, item := range keyItems {
+		keyCols[i] = buildColumnName(item)
+	}
+
+	type group struct {
+		first   *BindingSet
+		members []*BindingSet
+	}
+	var order []*group
+	byKey := make(map[string]*group)
+	for _, binding := range ctx.results {
+		var parts []any
+		if len(returnClause.GroupBy) > 0 {
+			for _, expr := range returnClause.GroupBy {
+				parts = append(parts, e.extractValueFromBinding(binding, expr, computer))
+			}
+		} else {
+			row := e.buildRow(binding, keyItems, keyCols, computer)
+			for _, col := range keyCols {
+				parts = append(parts, row[col])
+			}
+		}
+		key := groupKey(parts)
+		g, ok := byKey[key]
+		if !ok {
+			g = &group{first: binding}
+			byKey[key] = g
+			order = append(order, g)
+		}
+		g.members = append(g.members, binding)
+	}
+
+	for _, g := range order {
+		row := computer.ComputeAggregates(ctx.aggregationContext(g.members), returnClause.Items)
+		for col, val := range e.buildRow(g.first, keyItems, keyCols, computer) {
+			row[col] = val
+		}
+		// GROUP BY expressions are also columns under their own name, as
+		// they were before implicit grouping existed.
+		for _, expr := range returnClause.GroupBy {
+			name := fmt.Sprintf("%s.%s", expr.Variable, expr.Property)
+			if _, present := row[name]; !present {
+				row[name] = e.extractValueFromBinding(g.first, expr, computer)
+			}
+		}
+		resultSet.Rows = append(resultSet.Rows, row)
+	}
+	resultSet.Count = len(resultSet.Rows)
 
 	// Apply post-processing (ORDER BY, SKIP, LIMIT)
 	e.applyPostProcessing(resultSet, returnClause, limit, skip, false)
 
 	return resultSet
+}
+
+// nonAggregateItems returns the RETURN items that are grouping keys.
+func nonAggregateItems(items []*ReturnItem) []*ReturnItem {
+	keys := make([]*ReturnItem, 0, len(items))
+	for _, item := range items {
+		if item.Aggregate == "" {
+			keys = append(keys, item)
+		}
+	}
+	return keys
+}
+
+// groupKey encodes a group's key values so that two values share a group only
+// when they are equal and of the same type: a node or relationship by its ID,
+// null as its own value, anything else by type and value. Each part is length
+// prefixed, so no value can contain a separator.
+func groupKey(parts []any) string {
+	var b strings.Builder
+	for _, p := range parts {
+		var s string
+		switch v := p.(type) {
+		case nil:
+			s = "null"
+		case *storage.Node:
+			s = fmt.Sprintf("node:%d", v.ID)
+		case *storage.Edge:
+			s = fmt.Sprintf("edge:%d", v.ID)
+		default:
+			s = fmt.Sprintf("%T:%v", v, v)
+		}
+		fmt.Fprintf(&b, "%d:%s|", len(s), s)
+	}
+	return b.String()
 }
 
 // buildRegularResultSet builds results for regular (non-aggregate) queries

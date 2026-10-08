@@ -69,22 +69,34 @@ func (ac *AggregationComputer) extractValues(ctx *ExecutionContext, item *Return
 		return make([]any, len(ctx.results))
 	}
 
+	// A node and a relationship are read the same way. Reading only nodes made
+	// every aggregate over a relationship empty (count(r) was 0), and a bare
+	// node was collected as the number 1 instead of the node.
 	for _, binding := range ctx.results {
-		if obj, ok := binding.bindings[item.Expression.Variable]; ok {
-			if node, ok := obj.(*storage.Node); ok {
-				if item.Expression.Property != "" {
-					// Extract specific property
-					if prop, exists := node.Properties[item.Expression.Property]; exists {
-						// Extract actual value based on type
-						val := ac.ExtractValue(prop)
-						if val != nil {
-							values = append(values, val)
-						}
-					}
-				} else {
-					// No property specified - count the node itself
-					values = append(values, 1)
-				}
+		obj, ok := binding.bindings[item.Expression.Variable]
+		if !ok || obj == nil {
+			continue // null is not counted or collected
+		}
+		var props map[string]storage.Value
+		switch v := obj.(type) {
+		case *storage.Node:
+			props = v.Properties
+		case *storage.Edge:
+			props = v.Properties
+		default:
+			// A plain value bound by WITH or UNWIND has no properties.
+			if item.Expression.Property == "" {
+				values = append(values, v)
+			}
+			continue
+		}
+		if item.Expression.Property == "" {
+			values = append(values, obj)
+			continue
+		}
+		if prop, exists := props[item.Expression.Property]; exists {
+			if val := ac.ExtractValue(prop); val != nil {
+				values = append(values, val)
 			}
 		}
 	}

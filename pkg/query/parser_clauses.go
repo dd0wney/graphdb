@@ -141,9 +141,12 @@ func (p *Parser) parseReturn() (*ReturnClause, error) {
 	return returnClause, nil
 }
 
-// isAggregateFunction checks if a name is a known aggregate function
+// isAggregateFunction checks if a name is a known aggregate function. Cypher
+// function names are case-insensitive: count(n) is COUNT(n). Matching only the
+// upper-case spelling made count(n) an ordinary per-row function call that
+// returned null.
 func isAggregateFunction(name string) bool {
-	switch name {
+	switch strings.ToUpper(name) {
 	case "COUNT", "SUM", "AVG", "MIN", "MAX", "COLLECT":
 		return true
 	default:
@@ -173,7 +176,7 @@ func (p *Parser) parseReturnItem() (*ReturnItem, error) {
 			return nil, err
 		}
 
-		item.Aggregate = funcName
+		item.Aggregate = strings.ToUpper(funcName)
 	} else {
 		// Everything else: delegate to parseExpression which handles
 		// arithmetic, unary minus/NOT, IS NULL, function calls, properties, etc.
