@@ -333,6 +333,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: CreateNodesWithTenant and CreateEdgesWithTenant on the default synchronous WAL write and fsync each record alone (createNodeLocked in a loop, pkg/storage/node_operations.go:67-90), so a 1,000-node call costs 1,000 fsyncs. Write the call as one WAL group with one fsync (appendWALBatch, as Transaction.Commit does), the Postgres COPY shape. Keep the documented partial-on-error contract or change it deliberately with v1.4-storage-batch-atomic-commit. The REST batch handlers loop single creates (handlers_nodes.go handleBatchNodes) and gain nothing unless they move to the bulk call; CC7 and CC20 pin their partial-success shape. Read at 5988924. Acceptance: fsync count per bulk call is 1 on the sync WAL, crash replay is all-or-nothing for the group, seen red first"
+    },
+    {
+      "id": "v1.4-bulk-mode-refuses-unreplayed-wal",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: a BulkImportMode open skips WAL creation (pkg/storage/storage.go:138) and therefore replay (persistence_replay.go:13-30 returns nil with no WAL object), so WAL entries from a session that never closed are ignored. Probed at 5988924 with a sync-WAL store: a normal session created A (id 1) and stopped without Close; the bulk open saw 0 nodes and gave a new node B id 1; after the bulk Close a normal reopen held only B. A durable, acknowledged write was lost with no error, and CheckInvariants reported clean. Fix (user decision 2026-10-08): the bulk-mode open refuses with a typed error naming the data directory when the WAL holds entries past the snapshot boundary, and tells the operator to open in normal mode and Close first. Reported to mapper-6b (oit-cyber/mapper), which now uses bulk mode only on an empty directory. Acceptance: the probe sequence refuses at the bulk open and A survives, an empty or fully checkpointed WAL still opens in bulk mode, seen red first"
     }
   ],
   "deps": [
