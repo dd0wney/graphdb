@@ -398,7 +398,11 @@ func (gs *GraphStorage) patchEdge(edgeID uint64, set map[string]Value, remove []
 		return err
 	}
 
-	// Update properties (merge with existing), then remove.
+	// Update properties (merge with existing), then remove. An edge created
+	// with nil properties has no map to merge into.
+	if edge.Properties == nil && len(set) > 0 {
+		edge.Properties = make(map[string]Value, len(set))
+	}
 	for k, v := range set {
 		edge.Properties[k] = v
 	}
