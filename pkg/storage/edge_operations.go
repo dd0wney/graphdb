@@ -397,6 +397,9 @@ func (gs *GraphStorage) patchEdge(edgeID uint64, set map[string]Value, remove []
 	if err != nil {
 		return err
 	}
+	if err := checkPatchWidths(edge.Properties, set, remove); err != nil {
+		return err
+	}
 
 	// Update properties (merge with existing), then remove. An edge created
 	// with nil properties has no map to merge into.
@@ -475,6 +478,9 @@ func (gs *GraphStorage) createEdgeLocked(tenantID string, fromID, toID uint64, e
 // create path including Transaction.Commit. Returns ErrInvalidEdgeWeight.
 func (gs *GraphStorage) persistEdgeLocked(edge *Edge) error {
 	if err := validateEdgeWeight(edge.Weight); err != nil {
+		return err
+	}
+	if err := checkEdgeWidths(edge.TenantID, edge.Type, edge.Properties); err != nil {
 		return err
 	}
 	// lockShard excludes concurrent GetEdge readers from this edge's shard
@@ -688,8 +694,16 @@ func (gs *GraphStorage) upsertEdgeWithTenantNoVerify(tenantID string, fromID, to
 			gs.unlockShard(existing.ID)
 			return nil, false, nil, fmt.Errorf("upsert edge %d: %w", existing.ID, err)
 		}
+		if err := checkPatchWidths(edge.Properties, properties, nil); err != nil {
+			gs.unlockShard(existing.ID)
+			return nil, false, nil, err
+		}
 
-		// Merge properties (new values override existing)
+		// Merge properties (new values override existing). An edge created
+		// with nil properties has no map to merge into.
+		if edge.Properties == nil && len(properties) > 0 {
+			edge.Properties = make(map[string]Value, len(properties))
+		}
 		for k, v := range properties {
 			edge.Properties[k] = v
 		}

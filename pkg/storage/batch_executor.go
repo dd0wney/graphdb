@@ -119,6 +119,11 @@ func (b *Batch) executeCreateEdge(op batchOp) error {
 	// Reject non-finite weight (#328) before any in-memory mutation — the WAL
 	// marshal below would otherwise fail after the edge is already in the shard
 	// map (a partial apply).
+	// AddEdge checked at queue time, but the caller still owns the property
+	// map and can grow it before Commit.
+	if err := checkEdgeWidths(DefaultTenantID, op.edgeType, op.properties); err != nil {
+		return err
+	}
 	if err := validateEdgeWeight(op.weight); err != nil {
 		return err
 	}
@@ -176,6 +181,14 @@ func (b *Batch) executeUpdateNode(op batchOp) error {
 	var oldNode *Node
 	if b.haveObservers {
 		oldNode = node.Clone()
+	}
+
+	if err := checkPatchWidths(node.Properties, op.properties, nil); err != nil {
+		return err
+	}
+	// A node created with nil properties has no map to merge into.
+	if node.Properties == nil && len(op.properties) > 0 {
+		node.Properties = make(map[string]Value, len(op.properties))
 	}
 
 	// Update property indexes (remove old, add new). Gated on type-match,

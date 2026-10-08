@@ -228,6 +228,36 @@ func (tx *Transaction) validateLocked() error {
 			return fmt.Errorf("commit: update target %d not found in tenant", nodeID)
 		}
 	}
+	return tx.validateWidthsLocked()
+}
+
+// validateWidthsLocked refuses the commit before any mutation when a record
+// it would write is too wide for the snapshot format. Checking in the apply
+// phase instead would fail the commit with part of it already applied.
+func (tx *Transaction) validateWidthsLocked() error {
+	tenant := effectiveTenantID(tx.tenantID).String()
+	for _, node := range tx.createdNodes {
+		if err := checkNodeWidths(tenant, node.Labels, node.Properties); err != nil {
+			return fmt.Errorf("commit: node %d: %w", node.ID, err)
+		}
+	}
+	for _, edge := range tx.createdEdges {
+		if err := checkEdgeWidths(tenant, edge.Type, edge.Properties); err != nil {
+			return fmt.Errorf("commit: edge %d: %w", edge.ID, err)
+		}
+	}
+	for nodeID, props := range tx.updatedNodes {
+		if _, created := tx.createdNodes[nodeID]; created {
+			continue // merged into the created node, checked above
+		}
+		existing, err := tx.gs.getNodeRefForTenant(nodeID, tx.tenantID)
+		if err != nil {
+			return fmt.Errorf("commit: update target %d: %w", nodeID, err)
+		}
+		if err := checkPatchWidths(existing.Properties, props, nil); err != nil {
+			return fmt.Errorf("commit: update of node %d: %w", nodeID, err)
+		}
+	}
 	return nil
 }
 
