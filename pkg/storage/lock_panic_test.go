@@ -349,3 +349,12 @@ func TestLockPanic_EdgeStore(t *testing.T) {
 		})
 	}
 }
+
+// Snapshot compresses the edge lists under gs.mu.Lock when compression is on,
+// which is the default.
+func TestLockPanic_SnapshotCompress(t *testing.T) {
+	gs, n := newPanicTestStore(t)
+	assertPanicReleasesLock(t, gs, "snapshotWithBoundary",
+		func() { _ = gs.Snapshot() },
+		updateAgain(gs, n))
+}

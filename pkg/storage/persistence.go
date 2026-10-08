@@ -45,6 +45,23 @@ func (gs *GraphStorage) Snapshot() error {
 	return gs.truncateActiveWAL()
 }
 
+// compressEdgeListsForSnapshot is the gs.mu.Lock section of
+// snapshotWithBoundary. The comment there says why an mmap-backed store is
+// skipped. The deferred unlock matters: the Cypher executor and net/http
+// recover panics, so a panic here that left gs.mu held would hang every later
+// call, Close included.
+func (gs *GraphStorage) compressEdgeListsForSnapshot() {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	panicPoint("snapshotWithBoundary")
+	if gs.mmapSnap == nil {
+		gs.compressAllEdgeLists()
+		// Clear uncompressed maps to free memory
+		gs.outgoingEdges = make(map[uint64][]uint64)
+		gs.incomingEdges = make(map[uint64][]uint64)
+	}
+}
+
 // snapshotWithBoundary saves the current state to disk and returns the WAL
 // boundary LSN captured under the same gs.mu.RLock as the serialized state:
 // every write visible in the snapshot has LSN ≤ boundary, every write that
@@ -79,14 +96,7 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 	// mmap base is already compact in its CSR form, so skipping compression
 	// there costs only the (post-open-write-bounded) overlay.
 	if gs.useEdgeCompression {
-		gs.mu.Lock()
-		if gs.mmapSnap == nil {
-			gs.compressAllEdgeLists()
-			// Clear uncompressed maps to free memory
-			gs.outgoingEdges = make(map[uint64][]uint64)
-			gs.incomingEdges = make(map[uint64][]uint64)
-		}
-		gs.mu.Unlock()
+		gs.compressEdgeListsForSnapshot()
 	}
 
 	gs.mu.RLock()
