@@ -387,6 +387,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "test: no graphdb test proves that an encrypted store writes no plaintext anywhere. Add one that writes a random marker as a property value, label, property key, edge type and edge value, closes the store (and separately leaves it unclosed, as a crash), walks every file under the data directory and searches each for every marker in raw and base64 form, with a positive control on an unencrypted store that must find them. Cover UseMmapSnapshot=false with EnableBatching and EnableCompression too (not probed yet), and document the files that are plaintext by design (the edge store under UseDiskBackedEdges holds the graph shape; the WAL keeps LSN and op type). mapper-6b offers its own marker test, which already searches raw and base64, as a consumer contract; consider tagging this test as that contract. Read at 82efd5c"
+    },
+    {
+      "id": "v2.0-cypher-plain-delete-refuses-attached-node",
+      "track": "v2.0",
+      "status": "pending",
+      "title": "query (v2.0, breaking): refuse a plain Cypher DELETE of a node that still has relationships, as openCypher does, unless the query says DETACH DELETE. Deprecated in the release after v1.6.0 (user decision 2026-10-08, option C): 1.x keeps removing the relationships and reports query.Notice code plain-delete-detach in ResultSet.Notices and the REST header X-Cypher-Deprecation. For v2.0: check every node to delete before any delete, so a refused query changes nothing; the error names the node and says to use DETACH DELETE; remove the notice and header for this code; update the CHANGELOG Removed entry and docs/STABILITY_POLICY.md deprecation record. Check the deprecation log lines and consumers (syntopica-timer-spec uses DETACH DELETE for nodes) before shipping. Acceptance: plain DELETE of a connected node errors and leaves node and relationships in place, DELETE r, a with all relationships bound still works, seen red first"
     }
   ],
   "deps": [
@@ -425,6 +431,10 @@
     {
       "from": "v1.4-encrypt-uniqueness-rules-file",
       "to": "v1.4-encryption-no-plaintext-test"
+    },
+    {
+      "from": "v2.0-cypher-plain-delete-refuses-attached-node",
+      "to": "v1.4-cypher-delete-without-detach"
     }
   ]
 }
