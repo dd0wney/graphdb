@@ -138,12 +138,59 @@ func (p *Parser) parseReturn() (*ReturnClause, error) {
 		}
 	}
 
+	if err := checkGroupedOrderBy(returnClause); err != nil {
+		return nil, err
+	}
 	return returnClause, nil
 }
 
-// isAggregateFunction checks if a name is a known aggregate function
+// checkGroupedOrderBy refuses an ORDER BY that names neither a result column
+// nor a grouping key when the RETURN aggregates. After grouping, such an
+// expression has no single value per row, and sorting by it was silently a
+// no-op.
+func checkGroupedOrderBy(rc *ReturnClause) error {
+	if !hasAggregates(rc.Items) && len(rc.GroupBy) == 0 {
+		return nil
+	}
+	for _, ob := range rc.OrderBy {
+		if ob.Expression == nil || groupedOrderColumn(rc, ob.Expression) != "" {
+			continue
+		}
+		return fmt.Errorf("ORDER BY %s after aggregation must name a RETURN column or a grouping key", orderByColKey(ob.Expression))
+	}
+	return nil
+}
+
+// groupedOrderColumn returns the result column an ORDER BY expression sorts
+// grouped rows by: a column of that name, or the column of the grouping key
+// written with the same expression.
+func groupedOrderColumn(rc *ReturnClause, expr *PropertyExpression) string {
+	name := orderByColKey(expr)
+	for _, item := range rc.Items {
+		if buildColumnName(item) == name {
+			return name
+		}
+	}
+	for _, item := range rc.Items {
+		if item.Aggregate == "" && item.Expression != nil &&
+			item.Expression.Variable == expr.Variable && item.Expression.Property == expr.Property {
+			return buildColumnName(item)
+		}
+	}
+	for _, g := range rc.GroupBy {
+		if g.Variable == expr.Variable && g.Property == expr.Property {
+			return name
+		}
+	}
+	return ""
+}
+
+// isAggregateFunction checks if a name is a known aggregate function. Cypher
+// function names are case-insensitive: count(n) is COUNT(n). Matching only the
+// upper-case spelling made count(n) an ordinary per-row function call that
+// returned null.
 func isAggregateFunction(name string) bool {
-	switch name {
+	switch strings.ToUpper(name) {
 	case "COUNT", "SUM", "AVG", "MIN", "MAX", "COLLECT":
 		return true
 	default:
@@ -173,7 +220,7 @@ func (p *Parser) parseReturnItem() (*ReturnItem, error) {
 			return nil, err
 		}
 
-		item.Aggregate = funcName
+		item.Aggregate = strings.ToUpper(funcName)
 	} else {
 		// Everything else: delegate to parseExpression which handles
 		// arithmetic, unary minus/NOT, IS NULL, function calls, properties, etc.

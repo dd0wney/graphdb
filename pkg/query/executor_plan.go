@@ -298,7 +298,10 @@ func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPl
 	// Build final result set. execCtx.truncation travels WITH the results,
 	// never instead of them.
 	if query.Return != nil {
-		result := e.buildResultSet(execCtx, query.Return, query.Limit, query.Skip)
+		result, err := e.buildResultSet(execCtx, query.Return, query.Limit, query.Skip)
+		if err != nil {
+			return nil, err
+		}
 		result.Notices = execCtx.notices
 		return result, execCtx.truncation
 	}
