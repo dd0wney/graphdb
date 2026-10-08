@@ -140,3 +140,65 @@ func TestLockPanic_TransactionCommit(t *testing.T) {
 		})
 	}
 }
+
+func TestLockPanic_CreateNode(t *testing.T) {
+	gs, n := newPanicTestStore(t)
+	assertPanicReleasesLock(t, gs, "CreateNodeWithTenant",
+		func() { _, _ = gs.CreateNode([]string{"P"}, map[string]Value{"k": IntValue(3)}) },
+		updateAgain(gs, n))
+}
+
+func TestLockPanic_CreateNodesWithTenant(t *testing.T) {
+	gs, n := newPanicTestStore(t)
+	assertPanicReleasesLock(t, gs, "CreateNodesWithTenant",
+		func() {
+			_, _ = gs.CreateNodesWithTenant(DefaultTenantID, []NodeSpec{{Labels: []string{"P"}, Properties: map[string]Value{"k": IntValue(3)}}})
+		},
+		updateAgain(gs, n))
+}
+
+func TestLockPanic_CreateNodeWithUniqueProperty(t *testing.T) {
+	gs, n := newPanicTestStore(t)
+	assertPanicReleasesLock(t, gs, "CreateNodeWithUniquePropertyForTenant",
+		func() {
+			_, _ = gs.CreateNodeWithUniquePropertyForTenant(DefaultTenantID, []string{"P"}, map[string]Value{"k": IntValue(3)}, "P", "k")
+		},
+		updateAgain(gs, n))
+}
+
+func TestLockPanic_DeleteNode(t *testing.T) {
+	for _, site := range []string{"DeleteNode", "DeleteNode.shard"} {
+		t.Run(site, func(t *testing.T) {
+			gs, n := newPanicTestStore(t)
+			assertPanicReleasesLock(t, gs, site,
+				func() { _ = gs.DeleteNode(n.ID) },
+				updateAgain(gs, n))
+		})
+	}
+}
+
+func TestLockPanic_DeleteAllNodes(t *testing.T) {
+	gs, n := newPanicTestStore(t)
+	assertPanicReleasesLock(t, gs, "DeleteAllNodes",
+		func() { _ = gs.DeleteAllNodes() },
+		updateAgain(gs, n))
+}
+
+// PatchNodeForTenant and DeleteNodeForTenant share checkNodeTenant, which holds
+// a shard read lock. A leaked read lock blocks the shard write in updateAgain.
+func TestLockPanic_NodeTenantCheck(t *testing.T) {
+	ops := map[string]func(gs *GraphStorage, n *Node){
+		"PatchNodeForTenant": func(gs *GraphStorage, n *Node) {
+			_ = gs.PatchNodeForTenant(n.ID, map[string]Value{"k": IntValue(3)}, nil, DefaultTenantID)
+		},
+		"DeleteNodeForTenant": func(gs *GraphStorage, n *Node) { _ = gs.DeleteNodeForTenant(n.ID, DefaultTenantID) },
+	}
+	for name, op := range ops {
+		t.Run(name, func(t *testing.T) {
+			gs, n := newPanicTestStore(t)
+			assertPanicReleasesLock(t, gs, "checkNodeTenant",
+				func() { op(gs, n) },
+				updateAgain(gs, n))
+		})
+	}
+}
