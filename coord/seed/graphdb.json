@@ -339,6 +339,36 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: a BulkImportMode open skips WAL creation (pkg/storage/storage.go:138) and therefore replay (persistence_replay.go:13-30 returns nil with no WAL object), so WAL entries from a session that never closed are ignored. Probed at 5988924 with a sync-WAL store: a normal session created A (id 1) and stopped without Close; the bulk open saw 0 nodes and gave a new node B id 1; after the bulk Close a normal reopen held only B. A durable, acknowledged write was lost with no error, and CheckInvariants reported clean. Fix (user decision 2026-10-08): the bulk-mode open refuses with a typed error naming the data directory when the WAL holds entries past the snapshot boundary, and tells the operator to open in normal mode and Close first. Reported to mapper-6b (oit-cyber/mapper), which now uses bulk mode only on an empty directory. Acceptance: the probe sequence refuses at the bulk open and A survives, an empty or fully checkpointed WAL still opens in bulk mode, seen red first"
+    },
+    {
+      "id": "v1.4-value-decoders-check-length",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: Value.AsInt, AsFloat and AsTimestamp read 8 bytes of v.Data and AsBool reads Data[0] with no length check (pkg/storage/types.go:201, :208, :222, :215), so a short or empty value panics: a Value{Type: TypeTimestamp} with 2 data bytes gives index out of range [7] with length 2. A damaged snapshot record or a Value built in Go code reaches them; the array decoders and AsVector already check. Return an error instead. Found by mapper-6b (TestFromValueRejectsForeignTypes). Read at e3e49e1. Acceptance: each scalar decoder errors on short and empty data, seen red first"
+    },
+    {
+      "id": "v1.4-lock-panic-safety",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: patchNode took a shard lock with no defer (pkg/storage/node_operations.go, lockShard before the property writes), so the nil-map panic fixed in #646 left the shard locked. The Cypher executor and net/http both recover a panic, so the store kept running with that shard held: later reads of it and Close waited forever (seen by mapper-6b as a test that hung to its timeout). Audit the write paths for locks released without defer and make each one panic-safe, or show why a panic cannot occur while it is held. Read at e3e49e1. Acceptance: a test that injects a panic under each audited lock and then calls Close returns, seen red first"
+    },
+    {
+      "id": "v1.4-subsecond-timestamps",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: TypeTimestamp keeps whole Unix seconds (TimestampValue stores uint64(t.Unix()), AsTimestamp returns time.Unix(sec, 0) in the local zone; pkg/storage/types.go:93-97, :218-223), so time.Now() loses its sub-second part with no error. Existing stores hold 8-byte seconds, so sub-second precision needs a new value type or a format version: design first (on-disk impact, REST and GraphQL encoding, index ordering across the two types). Raised by mapper-6b, which now documents whole seconds UTC. Read at e3e49e1"
+    },
+    {
+      "id": "v1.4-mmap-record-width-refusal",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: the mmap snapshot encoder writes property count, key length, tenant ID length, label count and label length as uint16 (pkg/storage/mmap_snapshot_format.go, the AppendUint16 calls in the node and edge record encoders), so a larger value wraps with no error. Probed at 07feb22 in the default mmap mode: a node with a 70,000-byte property key, or a 70,000-byte label, was created and closed with no error, and after reopen GetNode returned record unreadable: record did not decode. Fix (user decision 2026-10-08, ship in v1.6.0): refuse at create and update, in both snapshot modes, a key, label or tenant ID over 65,535 bytes and over 65,535 properties or labels, with a typed error (REST 400); and make the encoder return an error instead of wrapping, so an existing JSON store holding such data fails loudly on its first mmap Close. Edge type length too if the edge encoder narrows it. Found by a review of mapper-6b's embedded backend. Acceptance: the probe refuses at create, a direct encoder call with an oversize record errors, the 65,535 boundary still round-trips, seen red first"
+    },
+    {
+      "id": "v1.4-mapper-consumer-contracts",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "contracts: pin the six pkg/storage behaviours mapper (oit-cyber/mapper, embedded backend) depends on as CONSUMER CONTRACT tests and docs/CONSUMER_CONTRACTS.md rows (user decision 2026-10-08): (1) CreateNodesWithTenant/CreateEdgesWithTenant give each record a unique non-zero ID, (2) GetNodeForTenant errors with ErrNodeNotFound for an unknown or cross-tenant ID, (3) Get{Outgoing,Incoming}EdgesForTenant return an empty list and no error for an unknown node, (4) PatchNodeForTenant adds, changes and keeps keys, (5) BulkImportMode Close then a normal open reads all data, in mmap and JSON mode, (6) TimestampValue/AsTimestamp keep whole Unix seconds. A review at v1.5.0 found no test for (3), none for unique IDs in (1), none for a changed key in (4), and JSON-only coverage for (5). Note the library API is outside docs/STABILITY_POLICY.md; the rows record that graphdb tests these, not a versioned promise. Each test seen red against a deliberately broken variant"
     }
   ],
   "deps": [
