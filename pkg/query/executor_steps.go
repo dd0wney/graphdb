@@ -260,15 +260,9 @@ func (ss *SetStep) Execute(ctx *ExecutionContext) error {
 
 // executeAssignment executes a single property assignment
 func (ss *SetStep) executeAssignment(ctx *ExecutionContext, binding *BindingSet, assignment *Assignment) error {
-	// Get node from binding
-	obj, ok := binding.bindings[assignment.Variable]
-	if !ok {
-		return nil // Variable not bound, skip
-	}
-
-	node, ok := obj.(*storage.Node)
-	if !ok {
-		return nil // Not a node, skip
+	target, err := resolvePropertyTarget(binding, "SET", assignment.Variable)
+	if err != nil || target == nil {
+		return err
 	}
 
 	// Resolve the value: expression RHS takes precedence over literal. An
@@ -287,45 +281,12 @@ func (ss *SetStep) executeAssignment(ctx *ExecutionContext, binding *BindingSet,
 	// SET n.x = null removes the property (Cypher semantics, and the rule
 	// PUT follows since #634).
 	if val == nil {
-		return ss.removeAssignedProperty(ctx, node, assignment.Property)
+		return target.removeProperty(ctx, assignment.Property)
 	}
-
-	// Create updated properties map
-	updatedProps := make(map[string]storage.Value)
-	for k, v := range node.Properties {
-		updatedProps[k] = v
-	}
-	updatedProps[assignment.Property] = convertToStorageValue(val)
-
-	// Audit A6c-query: tenant-scoped update.
-	if err := ctx.graph.UpdateNodeForTenant(node.ID, updatedProps, ctx.tenantID); err != nil {
-		return fmt.Errorf("failed to update node %d: %w", node.ID, err)
-	}
-
-	// Keep binding in sync so subsequent assignments in the same SET see updated values
-	node.Properties = updatedProps
-
-	return nil
+	return target.setProperty(ctx, assignment.Property, convertToStorageValue(val))
 }
 
-// removeAssignedProperty removes key from node for SET n.key = null and keeps
-// the binding in sync, so later assignments in the same SET see the removal.
-func (ss *SetStep) removeAssignedProperty(ctx *ExecutionContext, node *storage.Node, key string) error {
-	// Audit A6c-query: tenant-scoped property removal.
-	if err := ctx.graph.RemoveNodePropertiesForTenant(node.ID, []string{key}, ctx.tenantID); err != nil {
-		return fmt.Errorf("failed to remove property %s from node %d: %w", key, node.ID, err)
-	}
-	remaining := make(map[string]storage.Value, len(node.Properties))
-	for k, v := range node.Properties {
-		if k != key {
-			remaining[k] = v
-		}
-	}
-	node.Properties = remaining
-	return nil
-}
-
-// RemoveStep executes a REMOVE clause — removes properties from nodes
+// RemoveStep executes a REMOVE clause — removes properties from nodes and edges
 type RemoveStep struct {
 	remove *RemoveClause
 }
@@ -342,17 +303,11 @@ func (rs *RemoveStep) Execute(ctx *ExecutionContext) error {
 }
 
 func (rs *RemoveStep) removeProperty(ctx *ExecutionContext, binding *BindingSet, item *RemoveItem) error {
-	obj, ok := binding.bindings[item.Variable]
-	if !ok {
-		return nil
+	target, err := resolvePropertyTarget(binding, "REMOVE", item.Variable)
+	if err != nil || target == nil {
+		return err
 	}
-	node, ok := obj.(*storage.Node)
-	if !ok {
-		return nil
-	}
-
-	// Audit A6c-query: tenant-scoped property removal.
-	return ctx.graph.RemoveNodePropertiesForTenant(node.ID, []string{item.Property}, ctx.tenantID)
+	return target.removeProperty(ctx, item.Property)
 }
 
 func (rs *RemoveStep) StepName() string   { return "RemoveStep" }
