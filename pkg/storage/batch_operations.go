@@ -5,6 +5,11 @@ func (b *Batch) AddNode(labels []string, properties map[string]Value) (uint64, e
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	// Refuse at queue time, before an ID is spent; Commit checks again.
+	if err := checkNodeWidths(effectiveTenantID("").String(), labels, properties); err != nil {
+		return 0, err
+	}
+
 	// Allocate ID using thread-safe method
 	nodeID, err := b.graph.allocateNodeID()
 	if err != nil {
@@ -25,6 +30,10 @@ func (b *Batch) AddNode(labels []string, properties map[string]Value) (uint64, e
 func (b *Batch) AddEdge(fromNodeID, toNodeID uint64, edgeType string, properties map[string]Value, weight float64) (uint64, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	if err := checkEdgeWidths(effectiveTenantID("").String(), edgeType, properties); err != nil {
+		return 0, err
+	}
 
 	// Allocate ID using thread-safe method
 	edgeID, err := b.graph.allocateEdgeID()

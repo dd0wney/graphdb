@@ -50,6 +50,12 @@ func writeMmapSnapshotDataWithFS(fs vfs.FileSystem, path string, nodes []*Node, 
 		dir := newDirectory(hdr.minNodeID, hdr.maxNodeID)
 		for _, n := range nodes {
 			dir[n.ID-hdr.minNodeID] = offset
+			// The write paths refuse such a node; one that reaches here anyway
+			// (written in JSON mode by an older binary) must fail the snapshot,
+			// not wrap a uint16 length and be unreadable after reopen.
+			if err := checkNodeWidths(n.TenantID, n.Labels, n.Properties); err != nil {
+				return fmt.Errorf("node %d: %w", n.ID, err)
+			}
 			rec := encodeNodeRecord(n)
 			if _, err := w.Write(rec); err != nil {
 				return err
@@ -72,6 +78,9 @@ func writeMmapSnapshotDataWithFS(fs vfs.FileSystem, path string, nodes []*Node, 
 		dir := newDirectory(hdr.minEdgeID, hdr.maxEdgeID)
 		for _, e := range edges {
 			dir[e.ID-hdr.minEdgeID] = offset
+			if err := checkEdgeWidths(e.TenantID, e.Type, e.Properties); err != nil {
+				return fmt.Errorf("edge %d: %w", e.ID, err)
+			}
 			rec := encodeEdgeRecord(e)
 			if _, err := w.Write(rec); err != nil {
 				return err

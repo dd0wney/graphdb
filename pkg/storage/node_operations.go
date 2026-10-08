@@ -277,6 +277,11 @@ func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, prope
 // two cannot drift (the drift is what left the pre-2026-06-03 Commit bypassing
 // the tenant/vector/property indexes entirely).
 func (gs *GraphStorage) persistNodeLocked(node *Node) ([]vectorInsertPlan, error) {
+	// Refuse before any index or shard sees the node: the mmap snapshot
+	// cannot record it, and a wrapped length loses it at the next reopen.
+	if err := checkNodeWidths(node.TenantID, node.Labels, node.Properties); err != nil {
+		return nil, err
+	}
 	vectorPlans, err := gs.planNodeVectorInserts(node)
 	if err != nil {
 		return nil, err
@@ -562,6 +567,11 @@ func (gs *GraphStorage) patchNode(nodeID uint64, set map[string]Value, remove []
 	var oldNode *Node
 	if len(gs.observers) > 0 {
 		oldNode = node.Clone()
+	}
+
+	if err := checkPatchWidths(node.Properties, set, remove); err != nil {
+		gs.mu.Unlock()
+		return err
 	}
 
 	// Plan vector-index inserts before anything changes, on a preview of the

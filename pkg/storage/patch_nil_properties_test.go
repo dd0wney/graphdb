@@ -57,3 +57,49 @@ func TestPatch_EntityCreatedWithNilProperties(t *testing.T) {
 		t.Fatalf("CreateNode after the patches: %v", err)
 	}
 }
+
+// UpsertEdge's update branch merges into the existing edge's map the same way.
+func TestUpsertEdge_ExistingEdgeCreatedWithNilProperties(t *testing.T) {
+	gs, err := NewGraphStorageWithConfig(DefaultStorageConfig(t.TempDir()))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer gs.Close()
+
+	a, _ := gs.CreateNode([]string{"P"}, nil)
+	b, _ := gs.CreateNode([]string{"Q"}, nil)
+	if _, err := gs.CreateEdge(a.ID, b.ID, "R", nil, 1); err != nil {
+		t.Fatalf("CreateEdge: %v", err)
+	}
+
+	e, created, err := gs.UpsertEdge(a.ID, b.ID, "R", map[string]Value{"w": IntValue(5)}, 1)
+	if err != nil || created {
+		t.Fatalf("UpsertEdge over the existing edge: created=%v err=%v", created, err)
+	}
+	if v, err := e.Properties["w"].AsInt(); err != nil || v != 5 {
+		t.Fatalf("w = %v (err %v), want 5", e.Properties["w"], err)
+	}
+}
+
+// Batch.UpdateNode merges into the existing node's map the same way.
+func TestBatchUpdateNode_NodeCreatedWithNilProperties(t *testing.T) {
+	gs, err := NewGraphStorageWithConfig(DefaultStorageConfig(t.TempDir()))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer gs.Close()
+
+	n, _ := gs.CreateNode([]string{"P"}, nil)
+	batch := gs.BeginBatch()
+	batch.UpdateNode(n.ID, map[string]Value{"w": IntValue(5)})
+	if err := batch.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	got, err := gs.GetNode(n.ID)
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if v, err := got.Properties["w"].AsInt(); err != nil || v != 5 {
+		t.Fatalf("w = %v (err %v), want 5", got.Properties["w"], err)
+	}
+}
