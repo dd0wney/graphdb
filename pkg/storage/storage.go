@@ -223,6 +223,15 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		return nil, err
 	}
 
+	// BulkImportMode opened no WAL, so the replay below reads nothing. Refuse
+	// when a WAL file holds writes the snapshot does not cover, instead of
+	// dropping them. See guardBulkImportWALReplayed.
+	if config.BulkImportMode {
+		if err := gs.guardBulkImportWALReplayed(); err != nil {
+			return nil, err
+		}
+	}
+
 	// Refuse the open when the OTHER WAL backend's file still holds bytes.
 	// The guard above cannot see this: the backend this open selected
 	// usually has no file at all, so its recovered LSN is 0 and that check

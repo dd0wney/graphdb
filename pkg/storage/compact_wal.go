@@ -69,7 +69,12 @@ func (gs *GraphStorage) walBoundaryLSNLocked() uint64 {
 	case gs.wal != nil:
 		return gs.wal.GetCurrentLSN()
 	}
-	return 0
+	// No WAL (BulkImportMode): nothing past the loaded boundary can exist,
+	// because guardBulkImportWALReplayed refused the open otherwise, and this
+	// session logs nothing. Returning 0 here made a bulk Close record that no
+	// WAL entry was covered, so the next normal open applied covered entries
+	// a second time, bringing back a node the bulk session had deleted.
+	return gs.snapshotBoundaryLSN
 }
 
 // recoveredWALLSN returns the active WAL backend's LSN as recoverLSN set it

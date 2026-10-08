@@ -103,6 +103,17 @@ var (
 	// returned error wraps this sentinel and names both LSNs.
 	ErrWALBehindSnapshot = errors.New("WAL recovered LSN is below the snapshot boundary LSN")
 
+	// ErrBulkImportUnreplayedWAL is returned when a BulkImportMode open finds
+	// WAL entries past the snapshot boundary. Bulk mode opens no WAL and so
+	// cannot replay them; proceeding would reuse their node and edge IDs and
+	// publish a snapshot without them, losing acknowledged writes with no
+	// error. Open the directory once without BulkImportMode and Close it, so
+	// the entries reach a snapshot, then open it in bulk mode.
+	//
+	// errors.Is(err, ErrBulkImportUnreplayedWAL) detects the refusal. The
+	// returned error wraps this sentinel and names the WAL file and both LSNs.
+	ErrBulkImportUnreplayedWAL = errors.New("bulk import mode cannot open a directory whose WAL holds writes past the snapshot")
+
 	// ErrWALBackendSwitched is returned by NewGraphStorageWithConfig when the
 	// WAL backend this open selected is not the one that last wrote to the
 	// data directory, and the other backend's WAL file still holds bytes.
