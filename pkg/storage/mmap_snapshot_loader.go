@@ -247,6 +247,16 @@ func (gs *GraphStorage) materializeNodeLocked(id uint64) (*Node, error) {
 	return n, nil
 }
 
+// materializeNode is materializeNodeLocked under the node's shard lock, for a
+// caller that holds gs.mu but not the shard. The deferred unlock keeps a panic
+// in the mmap decode from leaving the shard locked.
+func (gs *GraphStorage) materializeNode(id uint64) (*Node, error) {
+	gs.lockShard(id)
+	defer gs.unlockShard(id)
+	panicPoint("materializeNode")
+	return gs.materializeNodeLocked(id)
+}
+
 func (gs *GraphStorage) materializeEdgeLocked(id uint64) (*Edge, error) {
 	if e, ok := gs.lookupEdgeShard(id); ok {
 		return e, nil
