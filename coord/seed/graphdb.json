@@ -447,6 +447,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "encryption: encryption.Engine copies the key into masterKey and has no Close, Destroy or Zero method (pkg/encryption/engine.go), and GraphStorage.Close does not touch the engine, so the key stays in memory for the life of the process (found by the encryption review for mapper-6b, which stores client data on laptops). Add a method that zeroes the key and makes the engine refuse further use, and call it from GraphStorage.Close when the store owns the engine. Go cannot guarantee no other copy exists (GC moves, string conversions); document that limit. Read at f9d28ed"
+    },
+    {
+      "id": "v1.4-snapshot-rlock-panic-safety",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: snapshotWithBoundary takes gs.mu.RLock (pkg/storage/persistence.go) and releases it by hand, once on the JSON path and on three paths inside snapshotMmapLocked (mmap_snapshot_persist.go), so the lock is owned by two functions. A panic while it is held, for example decodeNodeRecordAt on an out-of-range mmap record (mmap is the default), leaves the read lock held: every later write and Close then waits forever. #665 made the other 37 sites panic-safe and left this one out. Proposed: one captureSnapshotState method takes the RLock with defer, calls panicPoint, reads the boundary and collects the mmap or JSON state; snapshotMmapLocked stops touching the lock; encode, rename and dir sync stay off-lock. Benchmark the RLock hold time before and after. Acceptance: a TestLockPanic_ case for the capture site, seen red first. Read at 2834586"
     }
   ],
   "deps": [
@@ -493,6 +499,10 @@
     {
       "from": "v1.4-cypher-with-aggregates",
       "to": "v1.4-cypher-implicit-grouping"
+    },
+    {
+      "from": "v1.4-snapshot-rlock-panic-safety",
+      "to": "v1.4-lock-panic-safety"
     }
   ]
 }
