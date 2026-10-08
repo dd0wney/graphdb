@@ -141,6 +141,9 @@ func (ils *IndexLookupStep) Execute(ctx *ExecutionContext) error {
 // CreateStep executes a CREATE clause
 type CreateStep struct {
 	create *CreateClause
+	// allowUndirected lets MERGE create a relationship written without a
+	// direction, left to right, as openCypher does. CREATE refuses one.
+	allowUndirected bool
 }
 
 func (cs *CreateStep) Execute(ctx *ExecutionContext) error {
@@ -159,6 +162,12 @@ func (cs *CreateStep) Execute(ctx *ExecutionContext) error {
 // already binds is reused, never created again; the new nodes and the new
 // relationship are bound into the row so later clauses see them.
 func (cs *CreateStep) createPattern(ctx *ExecutionContext, pattern *Pattern, row *BindingSet) error {
+	// Refuse before creating anything, so a refused pattern leaves no node
+	// behind.
+	if err := cs.checkPattern(pattern, row); err != nil {
+		return err
+	}
+
 	// Pattern nodes without a variable are found again by pointer: the
 	// relationship's From and To are the same *NodePattern values.
 	nodes := make(map[*NodePattern]*storage.Node, len(pattern.Nodes))
@@ -178,6 +187,11 @@ func (cs *CreateStep) createPattern(ctx *ExecutionContext, pattern *Pattern, row
 		to, err := createEndpoint(nodes, rel.To, row)
 		if err != nil {
 			return err
+		}
+		// (a)<-[:R]-(b) is b -> a; MATCH reads it that way, so creating it
+		// a -> b made MERGE miss its own edge and add another each run.
+		if rel.Direction == DirectionIncoming {
+			from, to = to, from
 		}
 
 		props := make(map[string]storage.Value)
@@ -205,6 +219,53 @@ func (cs *CreateStep) createPattern(ctx *ExecutionContext, pattern *Pattern, row
 	return nil
 }
 
+// checkPattern refuses what CREATE cannot write: a bound variable with labels
+// or properties, a variable bound to something other than a node, a
+// relationship variable the row already binds, and, outside MERGE, a
+// relationship without a direction.
+func (cs *CreateStep) checkPattern(pattern *Pattern, row *BindingSet) error {
+	for _, np := range pattern.Nodes {
+		if err := checkBoundCreateNode(np, row); err != nil {
+			return err
+		}
+	}
+	for _, rel := range pattern.Relationships {
+		for _, end := range []*NodePattern{rel.From, rel.To} {
+			if end != nil {
+				if err := checkBoundCreateNode(end, row); err != nil {
+					return err
+				}
+			}
+		}
+		if rel.Direction == DirectionBoth && !cs.allowUndirected {
+			return fmt.Errorf("CREATE: relationship %s needs a direction", rel.Type)
+		}
+		if rel.Variable != "" {
+			if _, bound := row.bindings[rel.Variable]; bound {
+				return fmt.Errorf("CREATE: relationship variable %s is already bound", rel.Variable)
+			}
+		}
+	}
+	return nil
+}
+
+func checkBoundCreateNode(np *NodePattern, row *BindingSet) error {
+	if np.Variable == "" {
+		return nil
+	}
+	existing, bound := row.bindings[np.Variable]
+	if !bound {
+		return nil
+	}
+	if node, isNode := existing.(*storage.Node); !isNode || node == nil {
+		return fmt.Errorf("CREATE: variable %s is not bound to a node", np.Variable)
+	}
+	if len(np.Labels) > 0 || len(np.Properties) > 0 {
+		return fmt.Errorf("CREATE: variable %s is already bound; it cannot take labels or properties here", np.Variable)
+	}
+	return nil
+}
+
 // createEndpoint resolves a relationship endpoint: the node the pattern just
 // bound or created, or, for an endpoint that is not one of the pattern's
 // nodes (a hand-built AST), the node the row binds to its variable.
@@ -225,17 +286,9 @@ func createEndpoint(nodes map[*NodePattern]*storage.Node, np *NodePattern, row *
 // creates one. openCypher refuses labels or properties on a bound variable,
 // because they would describe a node the query already has.
 func (cs *CreateStep) bindOrCreateNode(ctx *ExecutionContext, np *NodePattern, row *BindingSet) (*storage.Node, error) {
-	if np.Variable != "" {
-		if existing, ok := row.bindings[np.Variable]; ok {
-			node, isNode := existing.(*storage.Node)
-			if !isNode || node == nil {
-				return nil, fmt.Errorf("CREATE: variable %s is not bound to a node", np.Variable)
-			}
-			if len(np.Labels) > 0 || len(np.Properties) > 0 {
-				return nil, fmt.Errorf("CREATE: variable %s is already bound; it cannot take labels or properties here", np.Variable)
-			}
-			return node, nil
-		}
+	// checkPattern has refused a bound variable that is not a node.
+	if node, ok := row.bindings[np.Variable].(*storage.Node); ok && np.Variable != "" {
+		return node, nil
 	}
 
 	props := make(map[string]storage.Value)
@@ -456,37 +509,50 @@ type MergeStep struct {
 }
 
 // Execute decides match-or-create for each row on its own, from that row's
-// bindings. It used to match with an empty binding, ignoring every variable
-// the row bound, and to decide for all rows at once: one matching row dropped
-// the rows that had no match, and created nothing for them.
+// bindings, in row order, so a later row sees what an earlier row created.
+//
+// A pattern that uses none of the row's variables gets the same answer for
+// every row: the first row matches or creates, and every later row matches
+// that result. Deciding it once keeps the openCypher outcome (ON CREATE for
+// the first row, ON MATCH after) without a full scan for every row.
 func (ms *MergeStep) Execute(ctx *ExecutionContext) error {
 	matchStep := &MatchStep{match: &MatchClause{Patterns: []*Pattern{ms.merge.Pattern}}}
-	createStep := &CreateStep{create: &CreateClause{Patterns: []*Pattern{ms.merge.Pattern}}}
+	createStep := &CreateStep{create: &CreateClause{Patterns: []*Pattern{ms.merge.Pattern}}, allowUndirected: true}
+	vars := patternVariables(ms.merge.Pattern)
+	unbound := len(ctx.results) > 0 && !bindsAny(ctx.results[0], vars)
 
+	var decided []*BindingSet // pattern bindings of the first row, when unbound
 	out := make([]*BindingSet, 0, len(ctx.results))
 	for _, row := range ctx.results {
 		// Inherit tenantID from parent ctx (audit A6c-query) — the
 		// sub-context must scope to the same tenant.
 		rowCtx := ctx.subContext()
-		rowCtx.results = []*BindingSet{row}
-		if err := matchStep.Execute(rowCtx); err != nil {
-			return err
-		}
-		// The match half's truncation belongs to the caller. Dropping it made
-		// a MERGE whose match stopped at an engine limit report a complete
-		// answer.
-		if rowCtx.truncation != nil {
-			ctx.noteTruncation(rowCtx.truncation)
-		}
-
 		set := ms.merge.OnMatch
-		if len(rowCtx.results) == 0 {
+
+		if unbound && decided != nil {
+			rowCtx.results = joinPatternBindings(row, decided)
+		} else {
 			rowCtx.results = []*BindingSet{row}
-			if err := createStep.Execute(rowCtx); err != nil {
+			if err := matchStep.Execute(rowCtx); err != nil {
 				return err
 			}
-			set = ms.merge.OnCreate
+			// The match half's truncation belongs to the caller; dropping it
+			// would report a complete answer for a match that stopped early.
+			if rowCtx.truncation != nil {
+				ctx.noteTruncation(rowCtx.truncation)
+			}
+			if len(rowCtx.results) == 0 {
+				rowCtx.results = []*BindingSet{row}
+				if err := createStep.Execute(rowCtx); err != nil {
+					return err
+				}
+				set = ms.merge.OnCreate
+			}
+			if unbound {
+				decided = onlyVariables(rowCtx.results, vars)
+			}
 		}
+
 		if set != nil {
 			if err := (&SetStep{set: set}).Execute(rowCtx); err != nil {
 				return err
@@ -496,6 +562,63 @@ func (ms *MergeStep) Execute(ctx *ExecutionContext) error {
 	}
 	ctx.results = out
 	return nil
+}
+
+// patternVariables lists the node and relationship variables a pattern names.
+func patternVariables(p *Pattern) []string {
+	var vars []string
+	for _, n := range p.Nodes {
+		if n.Variable != "" {
+			vars = append(vars, n.Variable)
+		}
+	}
+	for _, r := range p.Relationships {
+		if r.Variable != "" {
+			vars = append(vars, r.Variable)
+		}
+	}
+	return vars
+}
+
+func bindsAny(row *BindingSet, vars []string) bool {
+	for _, v := range vars {
+		if _, ok := row.bindings[v]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// onlyVariables keeps just vars from each row, so the decision can be joined
+// onto other rows without carrying the first row's other bindings.
+func onlyVariables(rows []*BindingSet, vars []string) []*BindingSet {
+	kept := make([]*BindingSet, len(rows))
+	for i, r := range rows {
+		b := &BindingSet{bindings: make(map[string]any, len(vars))}
+		for _, v := range vars {
+			if val, ok := r.bindings[v]; ok {
+				b.bindings[v] = val
+			}
+		}
+		kept[i] = b
+	}
+	return kept
+}
+
+// joinPatternBindings gives row one copy for each decided pattern binding.
+func joinPatternBindings(row *BindingSet, decided []*BindingSet) []*BindingSet {
+	joined := make([]*BindingSet, len(decided))
+	for i, d := range decided {
+		b := &BindingSet{bindings: make(map[string]any, len(row.bindings)+len(d.bindings))}
+		for k, v := range row.bindings {
+			b.bindings[k] = v
+		}
+		for k, v := range d.bindings {
+			b.bindings[k] = v
+		}
+		joined[i] = b
+	}
+	return joined
 }
 
 func (ms *MergeStep) StepName() string   { return "MergeStep" }

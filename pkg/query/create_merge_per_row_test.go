@@ -188,3 +188,88 @@ func TestMerge_RepeatedClausesRunInTextOrder(t *testing.T) {
 		}
 	}
 }
+
+// CREATE (a)<-[:R]-(b) makes b -> a; the direction used to be ignored, so
+// MERGE with <- never found what it had created and added an edge each run.
+func TestCreateAndMerge_IncomingDirection(t *testing.T) {
+	gs, ex, x, y := newCreateGraph(t)
+
+	mustRun(t, ex, "MATCH (a:P {name: 'x'}), (b:P {name: 'y'}) CREATE (a)<-[:R]-(b)")
+	for run := 1; run <= 2; run++ {
+		mustRun(t, ex, "MATCH (a:P {name: 'x'}), (b:P {name: 'y'}) MERGE (a)<-[:M]-(b)")
+	}
+
+	for _, typ := range []string{"R", "M"} {
+		edges := edgesOfType(t, gs, typ)
+		if len(edges) != 1 || edges[0].FromNodeID != y.ID || edges[0].ToNodeID != x.ID {
+			t.Fatalf("%s edges = %v, want exactly one from y (%d) to x (%d)", typ, edges, y.ID, x.ID)
+		}
+	}
+}
+
+// Each refusal must happen before anything is created.
+func TestCreate_RefusesWithoutPartialWrites(t *testing.T) {
+	cases := []string{
+		// openCypher requires a direction in CREATE.
+		"CREATE (a:X)-[:R]-(b:Y)",
+		// A relationship variable the row already binds cannot be created again.
+		"MATCH (a:P {name: 'x'})-[r:HAS]->(t) CREATE (z:Z)-[r:HAS]->(a)",
+		// A null variable cannot be an endpoint; y must not be left behind.
+		"OPTIONAL MATCH (x:Nobody) WITH x MERGE (y:Y)<-[:R]-(x)",
+	}
+	for _, query := range cases {
+		t.Run(query, func(t *testing.T) {
+			gs, ex, x, _ := newCreateGraph(t)
+			tag := mustOracleNode(t, gs, "Tag", nil)
+			if _, err := gs.CreateEdge(x.ID, tag.ID, "HAS", map[string]storage.Value{}, 1); err != nil {
+				t.Fatalf("CreateEdge: %v", err)
+			}
+			before := labelCounts(gs)
+
+			if _, err := ex.Execute(parseCallInput(t, query)); err == nil {
+				t.Fatal("query succeeded; want a refusal")
+			}
+			if after := labelCounts(gs); len(after) != len(before) || after["P"] != before["P"] || after["Tag"] != before["Tag"] {
+				t.Fatalf("nodes changed from %v to %v", before, after)
+			}
+		})
+	}
+}
+
+// With no variable of the pattern bound, the first row creates and every
+// later row matches what it created: one Tag, ON CREATE once, ON MATCH after.
+func TestMerge_UnboundPatternOverSeveralRows(t *testing.T) {
+	gs, ex, _, _ := newCreateGraph(t)
+
+	mustRun(t, ex, "MATCH (p:P) MERGE (t:Tag {name: 'x'}) ON CREATE SET t.created = 1 ON MATCH SET t.matched = 1")
+
+	var tags []*storage.Node
+	for _, n := range gs.GetAllNodesAcrossTenants() {
+		if n.Labels[0] == "Tag" {
+			tags = append(tags, n)
+		}
+	}
+	if len(tags) != 1 {
+		t.Fatalf("Tag nodes = %d, want 1", len(tags))
+	}
+	if _, ok := tags[0].Properties["created"]; !ok {
+		t.Errorf("ON CREATE SET did not run: %v", tags[0].Properties)
+	}
+	if _, ok := tags[0].Properties["matched"]; !ok {
+		t.Errorf("ON MATCH SET did not run for the second row: %v", tags[0].Properties)
+	}
+}
+
+// MERGE may name an undirected relationship: it matches either direction and,
+// when nothing matches, creates one left to right. A second run matches it.
+func TestMerge_UndirectedRelationshipIsAllowedAndIdempotent(t *testing.T) {
+	gs, ex, x, y := newCreateGraph(t)
+
+	for run := 1; run <= 2; run++ {
+		mustRun(t, ex, "MATCH (a:P {name: 'x'}), (b:P {name: 'y'}) MERGE (a)-[:U]-(b)")
+	}
+	edges := edgesOfType(t, gs, "U")
+	if len(edges) != 1 || edges[0].FromNodeID != x.ID || edges[0].ToNodeID != y.ID {
+		t.Fatalf("U edges = %v, want exactly one from x to y", edges)
+	}
+}
