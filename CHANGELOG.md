@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-08
+
+This release finishes the Cypher correctness work v1.6.0 started: patterns in a `MATCH` now join,
+a repeated clause is kept or refused instead of silently replacing the first, and `CREATE` and
+`MERGE` act once per row, reuse nodes the query already bound and honour relationship direction.
+It also deprecates a plain `DELETE` of a node that still has relationships, ahead of a v2.0
+refusal. Each change makes a query do what openCypher specifies; queries that used to lose a
+clause or write the wrong data now get a parse or execution error. Within the 1.x promise in
+`docs/STABILITY_POLICY.md`.
+
 ### Deprecated
 - **A plain Cypher `DELETE` of a node that still has relationships.** graphdb removes the
   relationships with the node, where openCypher refuses the delete unless the query says
@@ -22,6 +32,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **`query.ResultSet.Notices`** and the REST `/query` header `X-Cypher-Deprecation`, for a query
   that used a deprecated form and still succeeded.
+
+### Changed
+- **Cypher refuses clauses it cannot keep, where it used to drop one.** The parser kept one slot per
+  clause, so a second `MATCH`, `WHERE`, `SET`, `REMOVE`, `DELETE` or `MERGE` silently replaced the
+  first. Consecutive `MATCH` clauses now join (their `WHERE` conditions are ANDed), a repeated
+  `SET`, `REMOVE` or `DELETE` applies in text order, and repeated `MERGE` clauses run in text order.
+  A repeated `CREATE`, `RETURN`, `CALL` or `UNWIND`, a `WHERE` that does not follow `MATCH`, a
+  `MATCH` after `OPTIONAL MATCH` or after a write, a `MERGE` after a write, and `DELETE` mixed with
+  `DETACH DELETE` now fail to parse, because the fixed plan order would run them wrongly (#657).
+- **Cypher `CREATE` refuses what it cannot write as written.** Labels or properties on a variable
+  the query already bound, a relationship variable the row already binds, a null endpoint, and a
+  relationship without a direction are refused before anything is created (#659).
+
+### Fixed
+- **Patterns in one `MATCH`, and several `MATCH` clauses, join.** `MATCH (p:Person), (c:Company)`
+  returned rows binding only `p` and rows binding only `c`; every row now binds every pattern. A
+  path, relationship or variable-length pattern no longer overwrites a variable an earlier pattern
+  bound, and a variable bound to null matches nothing (#657).
+- **Cypher `CREATE` acts once per row and reuses bound nodes.** `MATCH (a:P {name:'x'}) CREATE
+  (a)-[:R]->(b:Q)` used to create a new unlabeled node and use it as `a`; with two matching rows it
+  created one `Q` and one edge; it created even when no row matched; and it never bound the
+  relationship variable. Each row now creates its own pattern from its own bindings (#659).
+- **Cypher `CREATE` honours relationship direction.** `CREATE (a)<-[:R]-(b)` created `a -> b`,
+  which `MATCH` reads the other way, so `MERGE` with `<-` added a new edge on every run (#659).
+- **Cypher `MERGE` decides per row.** It used to match with an empty binding, ignoring the row's
+  variables, and decide for all rows at once, dropping rows that had no match. Each row now matches
+  or creates from its own bindings, in row order; a pattern that uses none of the row's variables is
+  decided once, keeping `ON CREATE` for the first row and `ON MATCH` after (#659).
 
 ## [1.6.0] - 2026-10-08
 
@@ -690,7 +728,8 @@ Low backlog from the 2026-06-10 security re-audit (#371), across Waves 1–3.
 - 100x concurrency improvement
 - 650x faster LSM read performance
 
-[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/dd0wney/graphdb/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/dd0wney/graphdb/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/dd0wney/graphdb/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/dd0wney/graphdb/compare/v1.0.0...v1.4.0
