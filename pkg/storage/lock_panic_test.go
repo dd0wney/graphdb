@@ -358,3 +358,34 @@ func TestLockPanic_SnapshotCompress(t *testing.T) {
 		func() { _ = gs.Snapshot() },
 		updateAgain(gs, n))
 }
+
+// The page methods collect IDs under gs.mu.RLock and clone each entity under its
+// shard read lock. A leaked read lock blocks the write in the second operation.
+func TestLockPanic_Pagination(t *testing.T) {
+	nodeOps := map[string]func(gs *GraphStorage){
+		"nodeIDsForTenant":          func(gs *GraphStorage) { _, _, _ = gs.NodesPageForTenant(DefaultTenantID, 0, 10) },
+		"NodesByLabelPageForTenant": func(gs *GraphStorage) { _, _, _ = gs.NodesByLabelPageForTenant(DefaultTenantID, "P", 0, 10) },
+		"cloneNodeAt":               func(gs *GraphStorage) { _, _, _ = gs.NodesPageForTenant(DefaultTenantID, 0, 10) },
+	}
+	for site, op := range nodeOps {
+		t.Run(site, func(t *testing.T) {
+			gs, n := newPanicTestStore(t)
+			assertPanicReleasesLock(t, gs, site,
+				func() { op(gs) },
+				updateAgain(gs, n))
+		})
+	}
+	edgeOps := map[string]func(gs *GraphStorage){
+		"edgeIDsForTenant":         func(gs *GraphStorage) { _, _, _ = gs.EdgesPageForTenant(DefaultTenantID, 0, 10) },
+		"EdgesByTypePageForTenant": func(gs *GraphStorage) { _, _, _ = gs.EdgesByTypePageForTenant(DefaultTenantID, "R", 0, 10) },
+		"cloneEdgeAt":              func(gs *GraphStorage) { _, _, _ = gs.EdgesPageForTenant(DefaultTenantID, 0, 10) },
+	}
+	for site, op := range edgeOps {
+		t.Run(site, func(t *testing.T) {
+			gs, _, _, e := newPanicEdgeStore(t)
+			assertPanicReleasesLock(t, gs, site,
+				func() { op(gs) },
+				updateEdgeAgain(gs, e))
+		})
+	}
+}

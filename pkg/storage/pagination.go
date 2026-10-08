@@ -1,6 +1,10 @@
 package storage
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/dd0wney/graphdb/pkg/tenantid"
+)
 
 // pageFromSortedIDs returns up to `limit` cloned entities whose ID is > afterID,
 // in ascending-ID order, plus the next cursor (the last returned item's ID, or 0
@@ -86,13 +90,50 @@ func pageFromSortedIDs[T any](ids []uint64, afterID uint64, limit int,
 func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limit int) ([]*Node, uint64, error) {
 	tid := effectiveTenantID(tenantID)
 
-	gs.mu.RLock()
-	ids := gs.membershipNodeIDsForTenantLocked(tid)
-	gs.mu.RUnlock()
+	ids := gs.nodeIDsForTenant(tid)
 
 	var damage enumerationDamage
 	page, next := pageFromSortedIDs(ids, afterID, limit, &damage, gs.cloneNodeAt)
 	return page, next, damage.err("nodes-page")
+}
+
+// The four ID collectors below take gs.mu.RLock, copy the IDs out and release.
+// The deferred unlock matters: the Cypher executor and net/http recover panics,
+// so a panic here that left the read lock held would block every later write,
+// Close included.
+
+// nodeIDsForTenant returns the sorted IDs of the tenant's nodes. It is shared
+// by NodesPageForTenant and GetAllNodesForTenant.
+func (gs *GraphStorage) nodeIDsForTenant(tid tenantid.TenantID) []uint64 {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+	panicPoint("nodeIDsForTenant")
+	return gs.membershipNodeIDsForTenantLocked(tid)
+}
+
+// nodeIDsByLabel is the collector for NodesByLabelPageForTenant.
+func (gs *GraphStorage) nodeIDsByLabel(tid tenantid.TenantID, label string) []uint64 {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+	panicPoint("NodesByLabelPageForTenant")
+	return gs.membershipNodeIDsByLabelLocked(tid, label)
+}
+
+// edgeIDsForTenant returns the sorted IDs of the tenant's edges. It is shared
+// by EdgesPageForTenant and GetAllEdgesForTenant.
+func (gs *GraphStorage) edgeIDsForTenant(tid tenantid.TenantID) []uint64 {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+	panicPoint("edgeIDsForTenant")
+	return gs.membershipEdgeIDsForTenantLocked(tid)
+}
+
+// edgeIDsByType is the collector for EdgesByTypePageForTenant.
+func (gs *GraphStorage) edgeIDsByType(tid tenantid.TenantID, edgeType string) []uint64 {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+	panicPoint("EdgesByTypePageForTenant")
+	return gs.membershipEdgeIDsByTypeLocked(tid, edgeType)
 }
 
 // cloneNodeAt reads one node under its shard RLock and returns a copy the
@@ -103,6 +144,7 @@ func (gs *GraphStorage) NodesPageForTenant(tenantID string, afterID uint64, limi
 func (gs *GraphStorage) cloneNodeAt(id uint64) (*Node, error) {
 	gs.rlockShard(id)
 	defer gs.runlockShard(id)
+	panicPoint("cloneNodeAt")
 	n, owned, err := gs.resolveNodeRefOwnedLocked(id)
 	if err != nil {
 		return nil, err
@@ -117,6 +159,7 @@ func (gs *GraphStorage) cloneNodeAt(id uint64) (*Node, error) {
 func (gs *GraphStorage) cloneEdgeAt(id uint64) (*Edge, error) {
 	gs.rlockShard(id)
 	defer gs.runlockShard(id)
+	panicPoint("cloneEdgeAt")
 	e, owned, err := gs.resolveEdgeRefOwnedLocked(id)
 	if err != nil {
 		return nil, err
@@ -140,9 +183,7 @@ func (gs *GraphStorage) cloneEdgeAt(id uint64) (*Edge, error) {
 func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterID uint64, limit int) ([]*Node, uint64, error) {
 	tid := effectiveTenantID(tenantID)
 
-	gs.mu.RLock()
-	ids := gs.membershipNodeIDsByLabelLocked(tid, label)
-	gs.mu.RUnlock()
+	ids := gs.nodeIDsByLabel(tid, label)
 
 	if len(ids) == 0 {
 		// No IDs to walk, so nothing could have been skipped: the enumeration
@@ -166,9 +207,7 @@ func (gs *GraphStorage) NodesByLabelPageForTenant(tenantID, label string, afterI
 func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limit int) ([]*Edge, uint64, error) {
 	tid := effectiveTenantID(tenantID)
 
-	gs.mu.RLock()
-	ids := gs.membershipEdgeIDsForTenantLocked(tid)
-	gs.mu.RUnlock()
+	ids := gs.edgeIDsForTenant(tid)
 
 	var damage enumerationDamage
 	page, next := pageFromSortedIDs(ids, afterID, limit, &damage, gs.cloneEdgeAt)
@@ -188,9 +227,7 @@ func (gs *GraphStorage) EdgesPageForTenant(tenantID string, afterID uint64, limi
 func (gs *GraphStorage) EdgesByTypePageForTenant(tenantID, edgeType string, afterID uint64, limit int) ([]*Edge, uint64, error) {
 	tid := effectiveTenantID(tenantID)
 
-	gs.mu.RLock()
-	ids := gs.membershipEdgeIDsByTypeLocked(tid, edgeType)
-	gs.mu.RUnlock()
+	ids := gs.edgeIDsByType(tid, edgeType)
 
 	if len(ids) == 0 {
 		// Nothing to walk, so nothing could have been skipped.
