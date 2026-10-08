@@ -198,12 +198,18 @@ func (v Value) AsInt() (int64, error) {
 	if v.Type != TypeInt {
 		return 0, fmt.Errorf("value is not an int")
 	}
+	if err := v.checkWidth(8); err != nil {
+		return 0, err
+	}
 	return int64(binary.LittleEndian.Uint64(v.Data)), nil
 }
 
 func (v Value) AsFloat() (float64, error) {
 	if v.Type != TypeFloat {
 		return 0, fmt.Errorf("value is not a float")
+	}
+	if err := v.checkWidth(8); err != nil {
+		return 0, err
 	}
 	return math.Float64frombits(binary.LittleEndian.Uint64(v.Data)), nil
 }
@@ -212,6 +218,9 @@ func (v Value) AsBool() (bool, error) {
 	if v.Type != TypeBool {
 		return false, fmt.Errorf("value is not a bool")
 	}
+	if err := v.checkWidth(1); err != nil {
+		return false, err
+	}
 	return v.Data[0] == 1, nil
 }
 
@@ -219,7 +228,21 @@ func (v Value) AsTimestamp() (time.Time, error) {
 	if v.Type != TypeTimestamp {
 		return time.Time{}, fmt.Errorf("value is not a timestamp")
 	}
+	if err := v.checkWidth(8); err != nil {
+		return time.Time{}, err
+	}
 	return time.Unix(int64(binary.LittleEndian.Uint64(v.Data)), 0), nil
+}
+
+// checkWidth refuses Data of any length other than the fixed width the
+// scalar encoders write. A value of another length did not come from them (a
+// damaged snapshot record, or a Value built by hand); decoding it would index
+// past the end of the slice and panic, or read a prefix and call it the value.
+func (v Value) checkWidth(width int) error {
+	if len(v.Data) != width {
+		return fmt.Errorf("invalid value data: type %v needs %d bytes, got %d", v.Type, width, len(v.Data))
+	}
+	return nil
 }
 
 func (v Value) AsVector() ([]float32, error) {
@@ -257,6 +280,12 @@ func (v Value) AsStringArray() ([]string, error) {
 	}
 
 	count := binary.LittleEndian.Uint32(v.Data[0:4])
+	// Each element carries at least a 4-byte length, so a count the data
+	// cannot hold is damage. Check before sizing the slice: the count is four
+	// untrusted bytes, and 2^32-1 strings is a 64 GiB allocation.
+	if uint64(count) > uint64(len(v.Data)-4)/4 {
+		return nil, fmt.Errorf("invalid string array data: count %d does not fit in %d bytes", count, len(v.Data))
+	}
 	result := make([]string, count)
 
 	offset := 4
