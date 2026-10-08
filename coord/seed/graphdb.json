@@ -231,6 +231,108 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: CreateNodeWithUniquePropertyForTenant scans every node of the label under gs.mu (membershipNodeIDsByLabelLocked, node_operations.go:163), so N unique creates cost O(N^2). Use the property index when one exists on the key. The index is global per key (index_operations.go:119), so filter by tenant and label. It holds only values of its own type (:26), so keep the scan for other types. Prove the index covers mmap base records after reopen. Wait for the mapper-6b /16 spike numbers before sizing. Lines read at 5988924. Acceptance: a teeth test that removes an index entry makes the check fail, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-index-lookup-drops-expansion",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MATCH (a:P)-[:R]->(b:Q) WHERE a.pid = 1 RETURN b.name returns x with no index and null once a property index exists on pid. The optimizer swaps the whole MatchStep for an IndexLookupStep (pkg/query/optimizer.go:97) without checking for relationships, so the expansion is lost. Creating an index changes query results. Probed at 5988924 (scratchpad zz_gap_probe_test.go.keep). Acceptance: same rows with and without the index, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-delete-edge-noop",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MATCH ()-[r:R]->() DELETE r answers affected=1 and leaves the edge in storage. DeleteStep.deleteVariable returns nil for anything that is not a node (pkg/query/executor_steps.go:386-388). Probed at 5988924. Acceptance: the edge is gone from storage after DELETE r, and an unsupported binding type refuses instead of skipping, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-set-edge-noop",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MATCH ()-[r:R]->() SET r.w = 5 answers affected=1 and writes nothing; the stored edge has no properties. SetStep.executeAssignment returns nil for anything that is not a node (pkg/query/executor_steps.go:270-272). Probed at 5988924. Acceptance: SET and REMOVE on an edge property persist (read back from storage), seen red first"
+    },
+    {
+      "id": "v1.4-cypher-multiple-match-clauses",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MATCH (a:P) MATCH (b:Q) RETURN a.pid, b.name returns a.pid = null. The parser keeps one slot per clause (pkg/query/parser.go:64 query.Match = matchClause), so a second MATCH, SET or MERGE replaces the first, and buildExecutionPlan (executor_plan.go:177) runs clauses in a fixed order, not text order. Probed at 5988924. Acceptance: either both MATCH clauses bind, or the parser refuses a repeated clause; never a silent drop. Seen red first"
+    },
+    {
+      "id": "v1.4-cypher-implicit-grouping",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MATCH (n:Person) RETURN n.city, count(n) over cities A, A, B returns 3 rows with count = null instead of 2 grouped rows. Grouping only happens with the non-Cypher GROUP BY (pkg/query/executor_results.go:55). openCypher groups by every non-aggregate RETURN item. Probed at 5988924. Acceptance: (A, 2) and (B, 1), GROUP BY keeps working, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-delete-without-detach",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: plain DELETE of a node that has edges deletes the node and its edges with no error (DeleteStep ignores Detach and calls DeleteNodeForTenant, pkg/query/executor_steps.go:379-395). Neo4j refuses this unless the query says DETACH DELETE. Decide: refuse (openCypher) or document the divergence; refusing may break a consumer, so check docs/CONSUMER_CONTRACTS.md first. Probed at 5988924"
+    },
+    {
+      "id": "v1.4-readiness-reflects-storage",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: the /health/ready storage check always passes; it calls graph.GetStatistics() and returns nil (pkg/api/server_init.go:181-184). A poisoned WAL (#624) or a closed store is invisible to a load balancer or orchestrator. Report not-ready when the WAL is poisoned or the store is closed. Read at 5988924. Acceptance: readiness goes 503 after a forced WAL sync failure, seen red first"
+    },
+    {
+      "id": "v1.4-tenant-quota-enforcement",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "tenant: quotas are stored and shown but never enforced. CheckNodeQuota and CheckEdgeQuota (pkg/tenant/store.go:381, :403) have no caller outside pkg/tenant. Wire them into the node and edge create paths, enforcing only when a quota is set so an unset quota keeps today's behaviour. Read at 5988924. Acceptance: a create past the quota refuses with a typed error and HTTP 429 or 403, seen red first"
+    },
+    {
+      "id": "v1.4-storage-batch-atomic-commit",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: Batch.Commit returns at the first failing op and keeps every earlier op, in memory and in the WAL (each op calls appendToWAL alone, pkg/storage/batch_executor.go:110-380; early return at :40-42). The same return skips the vector inserts and observer notifications of the ops already applied. Callers are cmd/import-dimacs and cmd/import-icij. Make it all-or-nothing (one appendWALBatch, as Transaction.Commit does) or document and test partial semantics; do not leave vector state behind. Read at 5988924"
+    },
+    {
+      "id": "v1.4-rest-edge-upsert",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api + clients: storage has UpsertEdgeWithTenant (pkg/storage/edge_operations.go:635) but REST has no route and no client has an edge upsert. Add it beside the node upsert flag (v1.4-rest-upsert-node) with the same 201/200 created signal, plus Go, TS and Python client functions. Read at 5988924"
+    },
+    {
+      "id": "v1.4-node-label-mutation",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage + api + query: a node's labels cannot change after create. No storage method adds or removes a label; PUT /nodes/{id} patches properties only (pkg/api/handlers_nodes.go:248); Cypher SET n:L and REMOVE n:L fail to parse because both parsers expect a dot (pkg/query/parser_clauses.go:280, :332). Add AddNodeLabelsForTenant and RemoveNodeLabelsForTenant that keep the label, tenant and membership indexes, the WAL and the uniqueness rules consistent. Read at 5988924. Acceptance: invariants pass after label changes on JSON and mmap reopen"
+    },
+    {
+      "id": "v1.4-optimistic-concurrency",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage + api: every node and edge write is last-writer-wins. Node and Edge have no version (pkg/storage/types.go:437) and REST has no ETag or If-Match. Design a version field (on-disk format impact: both snapshot formats need a version bump or an additive field) and a conditional update that refuses a stale write with 412. Design task first; read at 5988924"
+    },
+    {
+      "id": "v1.4-rest-schema-introspection",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: no REST route lists a tenant's labels, edge types or property keys. Storage has GetLabelsForTenant and GetEdgeTypesForTenant (pkg/storage/tenant_operations.go:516, :525) but nothing lists property keys. Add a read-only schema route that also lists property indexes, vector indexes and uniqueness rules. Read at 5988924"
+    },
+    {
+      "id": "v1.4-rest-property-index-routes",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: property indexes can only be created or dropped through the storage API (CreatePropertyIndex, DropPropertyIndex, pkg/storage/index_operations.go:10, :58). Add REST routes and client functions. An unmerged branch, origin/feat/expose-property-indexes-and-uniqueness (2026-05-24), did this before ADR 0001; check it before starting. Read at 5988924"
+    },
+    {
+      "id": "v1.4-rest-idempotency-key",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: POST has no Idempotency-Key. After a timeout a client cannot know whether its POST applied, so a manual retry can duplicate a node. The Go client never retries POST (clients/go/graphdb.go:4-5), so this is not an automatic duplicate. Add an optional Idempotency-Key header with a bounded server-side record. Read at 5988924"
+    },
+    {
+      "id": "v1.4-wal-default-remeasure",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: the per-write fsync default (DefaultStorageConfig, pkg/storage/storage.go:24-33) was justified by BenchmarkWALFlushInterval numbers that reproduce exactly on tmpfs: b.TempDir() is /tmp, and /tmp is tmpfs on the dev box. Same binary, only TMPDIR changed, 32 writers, 5988924: tmpfs per-write 8 us/op vs batched-1ms 138 us/op; LUKS ext4 19,520 vs 2,794; plain btrfs NVMe 36,004 vs 4,996. Batched is about 7x faster on real disks. Make the benchmark refuse tmpfs (or take a data-dir variable and print the filesystem), add a single sequential writer case (batched adds up to one flush interval per write there), measure on real disks, fix the comment, then put the default decision to the user with numbers. Durability is the same in both modes. Found from a mapper-6b bulk-ingest spike on dm-crypt (about 20 KB/s WAL)"
+    },
+    {
+      "id": "v1.4-bulk-create-group-commit",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: CreateNodesWithTenant and CreateEdgesWithTenant on the default synchronous WAL write and fsync each record alone (createNodeLocked in a loop, pkg/storage/node_operations.go:67-90), so a 1,000-node call costs 1,000 fsyncs. Write the call as one WAL group with one fsync (appendWALBatch, as Transaction.Commit does), the Postgres COPY shape. Keep the documented partial-on-error contract or change it deliberately with v1.4-storage-batch-atomic-commit. The REST batch handlers loop single creates (handlers_nodes.go handleBatchNodes) and gain nothing unless they move to the bulk call; CC7 and CC20 pin their partial-success shape. Read at 5988924. Acceptance: fsync count per bulk call is 1 on the sync WAL, crash replay is all-or-nothing for the group, seen red first"
     }
   ],
   "deps": [
@@ -260,6 +362,10 @@
     },
     {
       "from": "v1.4-go-client-upsert-node",
+      "to": "v1.4-rest-upsert-node"
+    },
+    {
+      "from": "v1.4-rest-edge-upsert",
       "to": "v1.4-rest-upsert-node"
     }
   ]
