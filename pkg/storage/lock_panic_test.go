@@ -120,3 +120,23 @@ func TestLockPanic_BatchCommit(t *testing.T) {
 		},
 		updateAgain(gs, n))
 }
+
+func TestLockPanic_TransactionCommit(t *testing.T) {
+	for _, site := range []string{"Transaction.Commit", "materializeNode", "Transaction.Commit.shard", "Transaction.Commit.wal"} {
+		t.Run(site, func(t *testing.T) {
+			gs, n := newPanicTestStore(t)
+			assertPanicReleasesLock(t, gs, site,
+				func() {
+					tx, err := gs.BeginTransaction()
+					if err != nil {
+						t.Fatalf("BeginTransaction: %v", err)
+					}
+					if err := tx.UpdateNode(n.ID, map[string]Value{"k": IntValue(3)}); err != nil {
+						t.Fatalf("tx.UpdateNode: %v", err)
+					}
+					_ = tx.Commit()
+				},
+				updateAgain(gs, n))
+		})
+	}
+}
