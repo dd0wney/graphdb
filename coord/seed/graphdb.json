@@ -369,6 +369,24 @@
       "track": "v1.4",
       "status": "pending",
       "title": "contracts: pin the six pkg/storage behaviours mapper (oit-cyber/mapper, embedded backend) depends on as CONSUMER CONTRACT tests and docs/CONSUMER_CONTRACTS.md rows (user decision 2026-10-08): (1) CreateNodesWithTenant/CreateEdgesWithTenant give each record a unique non-zero ID, (2) GetNodeForTenant errors with ErrNodeNotFound for an unknown or cross-tenant ID, (3) Get{Outgoing,Incoming}EdgesForTenant return an empty list and no error for an unknown node, (4) PatchNodeForTenant adds, changes and keeps keys, (5) BulkImportMode Close then a normal open reads all data, in mmap and JSON mode, (6) TimestampValue/AsTimestamp keep whole Unix seconds. A review at v1.5.0 found no test for (3), none for unique IDs in (1), none for a changed key in (4), and JSON-only coverage for (5). Note the library API is outside docs/STABILITY_POLICY.md; the rows record that graphdb tests these, not a versioned promise. Each test seen red against a deliberately broken variant"
+    },
+    {
+      "id": "v1.4-encrypt-uniqueness-rules-file",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: with an EncryptionEngine set, rules.json (the uniqueness-rule registry, ADR 0001) is written in plaintext: pkg/storage/uniqueness_rules.go writes json.Marshal output and a rename with no encryption. A probe at 82efd5c with UseMmapSnapshot=false found a registered rule's label and property key in rules.json and in a backup archive, while snapshot.json and the WAL held no marker. Only schema names leak, not values, but an encrypted store should hold no plaintext it can avoid. Encrypt the file with the store's engine (rules.json has its own version field, so this needs a version bump and a read path for the old plaintext form), or document it as plaintext by design. Found by the encryption review for mapper-6b. Acceptance: the whole-directory marker test (v1.4-encryption-no-plaintext-test) finds no rule name in rules.json, seen red first"
+    },
+    {
+      "id": "v1.4-encryption-envelope-test-cannot-fail",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "test: TestSnapshot_EncryptedEnvelopeFlagAndOpaquePayload (pkg/storage/snapshot_envelope_test.go:103) checks that an encrypted snapshot does not contain the raw text envelope-roundtrip. A property value is a []byte, and JSON encodes it as base64, so the raw text never appears even in a plaintext snapshot: a control by the reviewer found the raw search false and the base64 search true on a plaintext file. The test passes whether or not the snapshot is encrypted. Make it search raw and base64, and give it a positive control on a plaintext store that must find the marker. Read at 82efd5c. Acceptance: the test fails when the engine is removed from the config"
+    },
+    {
+      "id": "v1.4-encryption-no-plaintext-test",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "test: no graphdb test proves that an encrypted store writes no plaintext anywhere. Add one that writes a random marker as a property value, label, property key, edge type and edge value, closes the store (and separately leaves it unclosed, as a crash), walks every file under the data directory and searches each for every marker in raw and base64 form, with a positive control on an unencrypted store that must find them. Cover UseMmapSnapshot=false with EnableBatching and EnableCompression too (not probed yet), and document the files that are plaintext by design (the edge store under UseDiskBackedEdges holds the graph shape; the WAL keeps LSN and op type). mapper-6b offers its own marker test, which already searches raw and base64, as a consumer contract; consider tagging this test as that contract. Read at 82efd5c"
     }
   ],
   "deps": [
@@ -403,6 +421,10 @@
     {
       "from": "v1.4-rest-edge-upsert",
       "to": "v1.4-rest-upsert-node"
+    },
+    {
+      "from": "v1.4-encrypt-uniqueness-rules-file",
+      "to": "v1.4-encryption-no-plaintext-test"
     }
   ]
 }
