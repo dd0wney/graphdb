@@ -389,3 +389,28 @@ func TestLockPanic_Pagination(t *testing.T) {
 		})
 	}
 }
+
+// GetAllNodesForTenant and GetAllEdgesForTenant reach the collectors and the
+// per-ID clone through the page methods' helpers, so they need their own test.
+func TestLockPanic_GetAllForTenant(t *testing.T) {
+	cases := []struct {
+		site string
+		op   func(gs *GraphStorage)
+		node bool // the second operation writes the node, not the edge
+	}{
+		{"nodeIDsForTenant", func(gs *GraphStorage) { _, _ = gs.GetAllNodesForTenant(DefaultTenantID) }, true},
+		{"cloneNodeAt", func(gs *GraphStorage) { _, _ = gs.GetAllNodesForTenant(DefaultTenantID) }, true},
+		{"edgeIDsForTenant", func(gs *GraphStorage) { _, _ = gs.GetAllEdgesForTenant(DefaultTenantID) }, false},
+		{"cloneEdgeAt", func(gs *GraphStorage) { _, _ = gs.GetAllEdgesForTenant(DefaultTenantID) }, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.site, func(t *testing.T) {
+			gs, a, _, e := newPanicEdgeStore(t)
+			next := updateEdgeAgain(gs, e)
+			if tc.node {
+				next = updateAgain(gs, a)
+			}
+			assertPanicReleasesLock(t, gs, tc.site, func() { tc.op(gs) }, next)
+		})
+	}
+}

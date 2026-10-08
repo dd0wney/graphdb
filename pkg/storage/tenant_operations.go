@@ -230,22 +230,16 @@ func (gs *GraphStorage) GetEdgesByTypeForTenant(tenantID, edgeType string) []*Ed
 func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) ([]*Node, error) {
 	tid := effectiveTenantID(tenantID)
 
-	gs.mu.RLock()
-	ids := gs.membershipNodeIDsForTenantLocked(tid)
-	gs.mu.RUnlock()
+	ids := gs.nodeIDsForTenant(tid)
 
 	nodes := make([]*Node, 0, len(ids))
 	var damage enumerationDamage
 	for _, id := range ids {
-		gs.rlockShard(id)
-		node, owned, err := gs.resolveNodeRefOwnedLocked(id)
-		exists := err == nil
-		// owned (mmap-base) nodes are already heap-safe — no Clone and safe to keep after unlock.
-		if exists && !owned {
-			node = node.Clone()
-		}
-		gs.runlockShard(id)
-		if exists {
+		// cloneNodeAt covers one iteration: the shard read lock, the resolve
+		// and the clone (owned mmap-base nodes are already heap-safe and are
+		// not cloned again), released by defer.
+		node, err := gs.cloneNodeAt(id)
+		if err == nil {
 			nodes = append(nodes, node)
 			continue
 		}
@@ -273,22 +267,14 @@ func (gs *GraphStorage) GetAllNodesForTenant(tenantID string) ([]*Node, error) {
 func (gs *GraphStorage) GetAllEdgesForTenant(tenantID string) ([]*Edge, error) {
 	tid := effectiveTenantID(tenantID)
 
-	gs.mu.RLock()
-	ids := gs.membershipEdgeIDsForTenantLocked(tid)
-	gs.mu.RUnlock()
+	ids := gs.edgeIDsForTenant(tid)
 
 	edges := make([]*Edge, 0, len(ids))
 	var damage enumerationDamage
 	for _, id := range ids {
-		gs.rlockShard(id)
-		edge, owned, err := gs.resolveEdgeRefOwnedLocked(id)
-		exists := err == nil
-		// owned (mmap-base) edges are already heap-safe — no Clone and safe to keep after unlock.
-		if exists && !owned {
-			edge = edge.Clone()
-		}
-		gs.runlockShard(id)
-		if exists {
+		// cloneEdgeAt covers one iteration: see GetAllNodesForTenant.
+		edge, err := gs.cloneEdgeAt(id)
+		if err == nil {
 			edges = append(edges, edge)
 			continue
 		}
