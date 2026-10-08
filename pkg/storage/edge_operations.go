@@ -206,14 +206,15 @@ func (gs *GraphStorage) checkEdgeTenant(edgeID uint64, tenantID string) error {
 	return err
 }
 
-// resolveAndRemoveEdgeShard looks the edge up and, if found, deletes it from
-// its shard map and masks the base-resident copy in mmap mode, all under one
-// hold of the shard write lock. Caller holds gs.mu. The deferred unlock keeps a
-// panic from leaving the shard write-locked.
-func (gs *GraphStorage) resolveAndRemoveEdgeShard(edgeID uint64) (*Edge, error) {
+// detachEdgeFromShard looks the edge up and, if found, deletes it from its
+// shard map and masks the base-resident copy in mmap mode, all under one hold
+// of the shard write lock. DeleteEdge and the DeleteNode cascades share it.
+// Caller holds gs.mu. The deferred unlock keeps a panic from leaving the shard
+// write-locked.
+func (gs *GraphStorage) detachEdgeFromShard(edgeID uint64) (*Edge, error) {
 	gs.lockShard(edgeID)
 	defer gs.unlockShard(edgeID)
-	panicPoint("DeleteEdge.shard")
+	panicPoint("detachEdgeFromShard")
 	edge, err := gs.resolveEdgeRefLocked(edgeID)
 	if err != nil {
 		return nil, err
@@ -273,7 +274,7 @@ func (gs *GraphStorage) DeleteEdge(edgeID uint64) (err error) {
 	// Lookup + delete on edgeShards under the per-shard write lock so
 	// concurrent GetEdge readers see a consistent map. gs.mu.Lock above
 	// excludes other writers; lockShard excludes the readers. A4-edges.
-	edge, err := gs.resolveAndRemoveEdgeShard(edgeID)
+	edge, err := gs.detachEdgeFromShard(edgeID)
 	if err != nil {
 		return fmt.Errorf("edge %d not found: %w", edgeID, err)
 	}
@@ -815,7 +816,7 @@ func (gs *GraphStorage) DeleteEdgeBetweenAcrossTenants(fromID, toID uint64, edge
 	}
 
 	// Delete from edges shard under write lock.
-	gs.removeEdgeShardEntry(edgeToDelete.ID)
+	gs.dropResolvedEdgeFromShard(edgeToDelete.ID)
 
 	// Remove from global type index
 	gs.removeEdgeFromTypeIndex(edgeType, edgeToDelete.ID)
@@ -848,13 +849,14 @@ func (gs *GraphStorage) resolveEdgeRefShared(edgeID uint64) (*Edge, error) {
 	return gs.resolveEdgeRefLocked(edgeID)
 }
 
-// removeEdgeShardEntry deletes the edge from its shard map and masks the
-// base-resident copy in mmap mode, under the shard write lock. Caller holds
+// dropResolvedEdgeFromShard is detachEdgeFromShard for a caller that has
+// already resolved the edge: it deletes the edge from its shard map and masks
+// the base-resident copy in mmap mode, under the shard write lock. Caller holds
 // gs.mu. The deferred unlock keeps a panic from leaving the shard write-locked.
-func (gs *GraphStorage) removeEdgeShardEntry(edgeID uint64) {
+func (gs *GraphStorage) dropResolvedEdgeFromShard(edgeID uint64) {
 	gs.lockShard(edgeID)
 	defer gs.unlockShard(edgeID)
-	panicPoint("DeleteEdgeBetweenAcrossTenants.shard")
+	panicPoint("dropResolvedEdgeFromShard")
 	gs.deleteEdgeShardEntry(edgeID)
 	gs.markEdgeDeletedLocked(edgeID) // mmap mode: mask the base-resident edge
 }

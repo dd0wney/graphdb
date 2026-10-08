@@ -861,7 +861,7 @@ func (gs *GraphStorage) checkNodeTenant(nodeID uint64, tenantID string) error {
 // Lock discipline (R2.1, S11 spike §7.4): deleteNodeUnderLock holds gs.mu
 // with a deferred unlock, so notifyNodeDeleted dispatches strictly after
 // gs.mu.Lock is released. The deleted node's TenantID is
-// captured under lock (from the lookup at line 514) and passed to the
+// captured under lock (from the resolveNodeRefLocked lookup) and passed to the
 // notify call after unlock — the node's data is not accessible by then.
 func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	walPending, tenantID, err := gs.deleteNodeUnderLock(nodeID)

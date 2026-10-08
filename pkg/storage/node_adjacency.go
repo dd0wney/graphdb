@@ -58,29 +58,11 @@ func (gs *GraphStorage) removeEdgeFromTypeIndex(edgeType string, edgeID uint64) 
 	removeFromLabelIndexKeepEmpty(gs.edgesByType, edgeType, edgeID)
 }
 
-// detachCascadedEdge resolves the edge and, if it resolves, deletes it from its
-// shard map and masks the base-resident copy in mmap mode, all under one hold
-// of the shard write lock. ok is false when the edge does not resolve. Caller
-// (DeleteNode) holds gs.mu.Lock. The deferred unlock keeps a panic from leaving
-// the shard write-locked.
-func (gs *GraphStorage) detachCascadedEdge(edgeID uint64) (edge *Edge, ok bool) {
-	gs.lockShard(edgeID)
-	defer gs.unlockShard(edgeID)
-	panicPoint("cascadeDeleteEdge.shard")
-	edge, err := gs.resolveEdgeRefLocked(edgeID)
-	if err != nil {
-		return nil, false
-	}
-	gs.deleteEdgeShardEntry(edgeID)
-	gs.markEdgeDeletedLocked(edgeID) // mmap mode: mask the base-resident edge
-	return edge, true
-}
-
 // cascadeDeleteOutgoingEdge deletes an outgoing edge and removes it from the target node's incoming list.
 // Caller (DeleteNode) holds gs.mu.Lock; we add lockShard for the edgeShards mutation per A4-edges.
 func (gs *GraphStorage) cascadeDeleteOutgoingEdge(edgeID uint64) error {
-	edge, ok := gs.detachCascadedEdge(edgeID)
-	if !ok {
+	edge, err := gs.detachEdgeFromShard(edgeID)
+	if err != nil {
 		return nil // PR B: an unreadable edge must not silently skip its cascade
 	}
 
@@ -104,8 +86,8 @@ func (gs *GraphStorage) cascadeDeleteOutgoingEdge(edgeID uint64) error {
 // cascadeDeleteIncomingEdge deletes an incoming edge and removes it from the source node's outgoing list.
 // Caller (DeleteNode) holds gs.mu.Lock; we add lockShard for the edgeShards mutation per A4-edges.
 func (gs *GraphStorage) cascadeDeleteIncomingEdge(edgeID uint64) error {
-	edge, ok := gs.detachCascadedEdge(edgeID)
-	if !ok {
+	edge, err := gs.detachEdgeFromShard(edgeID)
+	if err != nil {
 		return nil // PR B: an unreadable edge must not silently skip its cascade
 	}
 

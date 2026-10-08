@@ -255,7 +255,7 @@ func TestLockPanic_EdgeTenantCheck(t *testing.T) {
 
 func TestLockPanic_DeleteEdge(t *testing.T) {
 	gs, _, _, e := newPanicEdgeStore(t)
-	assertPanicReleasesLock(t, gs, "DeleteEdge.shard",
+	assertPanicReleasesLock(t, gs, "detachEdgeFromShard",
 		func() { _ = gs.DeleteEdge(e.ID) },
 		updateEdgeAgain(gs, e))
 }
@@ -268,7 +268,7 @@ func TestLockPanic_UpsertEdge(t *testing.T) {
 }
 
 func TestLockPanic_DeleteEdgeBetweenAcrossTenants(t *testing.T) {
-	for _, site := range []string{"DeleteEdgeBetweenAcrossTenants", "DeleteEdgeBetweenAcrossTenants.shard"} {
+	for _, site := range []string{"DeleteEdgeBetweenAcrossTenants", "dropResolvedEdgeFromShard"} {
 		t.Run(site, func(t *testing.T) {
 			gs, a, b, e := newPanicEdgeStore(t)
 			assertPanicReleasesLock(t, gs, site,
@@ -278,8 +278,8 @@ func TestLockPanic_DeleteEdgeBetweenAcrossTenants(t *testing.T) {
 	}
 }
 
-// cascadeDeleteOutgoingEdge and cascadeDeleteIncomingEdge share
-// detachCascadedEdge. Deleting the source node reaches the outgoing cascade, and
+// cascadeDeleteOutgoingEdge and cascadeDeleteIncomingEdge reach
+// detachEdgeFromShard. Deleting the source node reaches the outgoing cascade, and
 // deleting the target node reaches the incoming one.
 func TestLockPanic_CascadeDeleteEdge(t *testing.T) {
 	for _, tc := range []struct {
@@ -291,7 +291,7 @@ func TestLockPanic_CascadeDeleteEdge(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			gs, a, b, e := newPanicEdgeStore(t)
-			assertPanicReleasesLock(t, gs, "cascadeDeleteEdge.shard",
+			assertPanicReleasesLock(t, gs, "detachEdgeFromShard",
 				func() { _ = gs.DeleteNode(tc.victim(a, b)) },
 				updateEdgeAgain(gs, e))
 		})

@@ -30,8 +30,12 @@ func TestTransactionCommit_UpdateOfNodeWithNilProperties(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
-	if v, ok := got.Properties["k"]; !ok || v.Data == nil {
+	v, ok := got.Properties["k"]
+	if !ok {
 		t.Fatalf("properties after commit = %v, want k=7", got.Properties)
+	}
+	if k, err := v.AsInt(); err != nil || k != 7 {
+		t.Fatalf("k after commit = %v (%v), want 7", k, err)
 	}
 	if err := gs.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
