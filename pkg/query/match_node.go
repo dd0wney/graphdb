@@ -14,7 +14,11 @@ func (ms *MatchStep) matchNode(ctx *ExecutionContext, nodePattern *NodePattern, 
 
 	// If the variable is already bound, validate the bound node instead of scanning
 	if nodePattern.Variable != "" {
-		if existing, ok := existingBinding.bindings[nodePattern.Variable]; ok && existing != nil {
+		existing, ok := existingBinding.bindings[nodePattern.Variable]
+		if ok && existing == nil {
+			return results, nil // bound to null: a pattern on it matches nothing
+		}
+		if ok {
 			if node, ok := existing.(*storage.Node); ok {
 				if len(nodePattern.Labels) > 0 && !ms.hasLabels(node, nodePattern.Labels) {
 					return results, nil
@@ -92,6 +96,11 @@ func (ms *MatchStep) matchCartesianProduct(ctx *ExecutionContext, pattern *Patte
 		// For each existing binding, combine with each matching node
 		for _, existingResult := range results {
 			for _, nodeMatch := range nodeMatches {
+				// matchNode ran on an empty binding, so it did not see a
+				// variable this row already binds; enforce it here.
+				if boundToOther(existingResult, nodePattern.Variable, nodeMatch.bindings[nodePattern.Variable]) {
+					continue
+				}
 				// Create new binding combining existing and new
 				newBinding := ms.copyBinding(existingResult)
 

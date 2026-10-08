@@ -19,8 +19,8 @@ func TestIndexSelection_SameRowsWithAndWithoutIndex(t *testing.T) {
 	}{
 		{"single node", "MATCH (a:P) WHERE a.pid = 1 RETURN a.name"},
 		{"relationship expansion", "MATCH (a:P)-[:R]->(b:Q) WHERE a.pid = 1 RETURN a.name, b.name"},
-		// At 5988924 the scan also leaves b unbound (graphdb:v1.4-cypher-multiple-match-clauses),
-		// so this case cannot fail yet. It keeps the two paths together once that is fixed.
+		// Before graphdb:v1.4-cypher-multiple-match-clauses the scan also left b
+		// unbound, so this case could not fail; the patterns now join on both paths.
 		{"second pattern", "MATCH (a:P), (b:Q) WHERE a.pid = 1 RETURN a.name, b.name"},
 		{"inline property map", "MATCH (a:P {name: 'p1'}) WHERE a.pid = 1 RETURN a.name"},
 		{"value of another type", "MATCH (a:P) WHERE a.pid = 'one' RETURN a.name"},

@@ -12,7 +12,7 @@ type Query struct {
 	Set             *SetClause
 	Remove          *RemoveClause
 	Unwind          *UnwindClause
-	Merge           *MergeClause
+	Merges          []*MergeClause // in text order; each runs on the rows the one before it left
 	With            *WithClause
 	OptionalMatches []*OptionalMatchClause
 	Union           *UnionClause

@@ -299,8 +299,8 @@ func resolveParameters(query *Query, params map[string]any) error {
 			}
 		}
 	}
-	if query.Merge != nil {
-		if err := resolvePatternParams(query.Merge.Pattern, params); err != nil {
+	for _, merge := range query.Merges {
+		if err := resolvePatternParams(merge.Pattern, params); err != nil {
 			return err
 		}
 	}

@@ -19,23 +19,33 @@ type MatchStep struct {
 func (ms *MatchStep) Execute(ctx *ExecutionContext) error {
 	newResults := make([]*BindingSet, 0)
 
-	// For each existing binding
+	// The patterns of a MATCH are a join: each row is extended through every
+	// pattern in turn, and a variable an earlier pattern bound constrains the
+	// later ones. Appending each pattern's matches as separate rows, as this
+	// once did, returned rows that bound only one pattern's variables.
 	for _, binding := range ctx.results {
-		// For each pattern
+		rows := []*BindingSet{binding}
 		for _, pattern := range ms.match.Patterns {
-			// Find matches for this pattern
-			matches, err := ms.matchPattern(ctx, pattern, binding)
-			if err != nil {
-				return err
-			}
-			newResults = append(newResults, matches...)
+			next := make([]*BindingSet, 0, len(rows))
+			for _, row := range rows {
+				matches, err := ms.matchPattern(ctx, pattern, row)
+				if err != nil {
+					return err
+				}
+				next = append(next, matches...)
 
-			// Check intermediate result limit to prevent memory exhaustion
-			if len(newResults) > MaxIntermediateResults {
-				return fmt.Errorf("query produced %d intermediate results, exceeding limit of %d; consider adding more specific filters or LIMIT clause",
-					len(newResults), MaxIntermediateResults)
+				// Check intermediate result limit to prevent memory exhaustion
+				if len(newResults)+len(next) > MaxIntermediateResults {
+					return fmt.Errorf("query produced %d intermediate results, exceeding limit of %d; consider adding more specific filters or LIMIT clause",
+						len(newResults)+len(next), MaxIntermediateResults)
+				}
+			}
+			rows = next
+			if len(rows) == 0 {
+				break
 			}
 		}
+		newResults = append(newResults, rows...)
 	}
 
 	// Always update results, even if empty

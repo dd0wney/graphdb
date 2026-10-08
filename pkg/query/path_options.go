@@ -162,8 +162,10 @@ func refuseUnsupportedMinHops(q *Query) error {
 	for _, om := range q.OptionalMatches {
 		groups = append(groups, om.Patterns)
 	}
-	if q.Merge != nil && q.Merge.Pattern != nil {
-		groups = append(groups, []*Pattern{q.Merge.Pattern})
+	for _, merge := range q.Merges {
+		if merge.Pattern != nil {
+			groups = append(groups, []*Pattern{merge.Pattern})
+		}
 	}
 
 	for _, patterns := range groups {

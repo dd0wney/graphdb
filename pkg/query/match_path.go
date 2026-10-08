@@ -89,6 +89,9 @@ func (ms *MatchStep) traverseFixedPath(ctx *ExecutionContext, currentNode *stora
 		if !ms.nodeMatchesPattern(targetNode, targetNodePattern) {
 			continue
 		}
+		if boundToOther(currentBinding, targetNodePattern.Variable, targetNode) || boundToOther(currentBinding, rel.Variable, edge) {
+			continue
+		}
 
 		newBinding := ms.copyBinding(currentBinding)
 		if rel.Variable != "" {
@@ -335,12 +338,15 @@ func (ms *MatchStep) traverseVariablePath(ctx *ExecutionContext, currentNode *st
 
 		// Collect results at depths within [MinHops, MaxHops]
 		if entry.depth >= rel.MinHops && entry.depth <= maxHops {
-			if ms.nodeMatchesPattern(entry.node, targetNodePattern) {
+			if ms.nodeMatchesPattern(entry.node, targetNodePattern) && !boundToOther(currentBinding, targetNodePattern.Variable, entry.node) {
 				newBinding := ms.copyBinding(currentBinding)
 				if rel.Variable != "" {
 					path, err := f.pathTo(entry)
 					if err != nil {
 						return results, err
+					}
+					if boundToOther(currentBinding, rel.Variable, path) {
+						continue
 					}
 					newBinding.bindings[rel.Variable] = path
 				}
@@ -477,4 +483,43 @@ func (ms *MatchStep) nodeMatchesPattern(node *storage.Node, pattern *NodePattern
 		return false
 	}
 	return ms.matchProperties(node.Properties, pattern.Properties)
+}
+
+// boundToOther reports whether variable is already bound in binding to an
+// entity other than candidate. An earlier pattern of the same MATCH bound it,
+// and the join requires the same node or relationship here; overwriting the
+// binding would pair rows that do not share it.
+func boundToOther(binding *BindingSet, variable string, candidate any) bool {
+	if variable == "" || binding == nil {
+		return false
+	}
+	existing, ok := binding.bindings[variable]
+	if !ok {
+		return false
+	}
+	// Bound to null (an OPTIONAL MATCH miss carried through WITH): in
+	// openCypher a pattern on a null variable matches nothing.
+	if existing == nil {
+		return true
+	}
+	switch c := candidate.(type) {
+	case *storage.Node:
+		e, ok := existing.(*storage.Node)
+		return !ok || e.ID != c.ID
+	case *storage.Edge:
+		e, ok := existing.(*storage.Edge)
+		return !ok || e.ID != c.ID
+	case []*storage.Edge:
+		e, ok := existing.([]*storage.Edge)
+		if !ok || len(e) != len(c) {
+			return true
+		}
+		for i := range c {
+			if e[i].ID != c[i].ID {
+				return true
+			}
+		}
+		return false
+	}
+	return true
 }
