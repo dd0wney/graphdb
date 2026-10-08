@@ -423,6 +423,30 @@
       "track": "v1.4",
       "status": "pending",
       "title": "licensing: TelemetryReporter.Stop (pkg/licensing/telemetry.go:83) only cancels the context and does not wait for reportLoop, so a report already in flight can arrive after Stop returns. TestTelemetryReporter_reportLoop_Cancellation caught it once under make test-local load on 2026-10-08 (passes alone); the test also reads callCount from the handler goroutine without synchronisation. Make Stop wait for the loop (WaitGroup) and make the test's counter atomic. Acceptance: the test passes under -race -count=200, and fails with the wait removed"
+    },
+    {
+      "id": "v1.4-cypher-with-aggregates",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: an aggregate inside WITH is not computed: WITH n.city AS city, count(n) AS c RETURN city, c does not group or count (found by the #657 review; the WITH projection in pkg/query/executor.go builds each row from one binding). Apply the implicit-grouping rule from v1.4-cypher-implicit-grouping to WITH: the non-aggregate items are the keys. Read at f9d28ed. Acceptance: the query above returns one row per city with its count, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-with-undefined-variable",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: WITH x AS y binds y to nil when the query never defined x (pkg/query/executor.go, the WITH projection copies binding.bindings[name] with no presence check), so a misspelled name after WITH matches nothing and writes nothing with no error; after #657 a null-bound variable matches nothing. Refuse an undefined variable in WITH the way DELETE, SET and REMOVE now do. Read at f9d28ed. Acceptance: WITH of an undefined variable errors, WITH of an OPTIONAL MATCH null still passes null, seen red first"
+    },
+    {
+      "id": "v1.4-float-index-nan-negative-zero",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage + query: a property index on a float key may disagree with the scan for NaN and for -0 versus 0: the index keys on the encoded bytes while the scan compares numerically (raised in the #641 review, not checked). Probe first: index on a float property holding 0.0, -0.0 and NaN, then compare MATCH with and without the index for each value, using the #641 oracle (pkg/query/optimizer_index_oracle_test.go). If they differ, make the index path agree with the scan or keep such values off the index path. Not yet confirmed"
+    },
+    {
+      "id": "v1.4-encryption-key-zeroing",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "encryption: encryption.Engine copies the key into masterKey and has no Close, Destroy or Zero method (pkg/encryption/engine.go), and GraphStorage.Close does not touch the engine, so the key stays in memory for the life of the process (found by the encryption review for mapper-6b, which stores client data on laptops). Add a method that zeroes the key and makes the engine refuse further use, and call it from GraphStorage.Close when the store owns the engine. Go cannot guarantee no other copy exists (GC moves, string conversions); document that limit. Read at f9d28ed"
     }
   ],
   "deps": [
@@ -465,6 +489,10 @@
     {
       "from": "v2.0-cypher-plain-delete-refuses-attached-node",
       "to": "v1.4-cypher-delete-without-detach"
+    },
+    {
+      "from": "v1.4-cypher-with-aggregates",
+      "to": "v1.4-cypher-implicit-grouping"
     }
   ]
 }
