@@ -297,3 +297,55 @@ func TestLockPanic_CascadeDeleteEdge(t *testing.T) {
 		})
 	}
 }
+
+// newPanicDiskEdgeStore opens a store with UseDiskBackedEdges, the only
+// configuration that reaches the EdgeStore.
+func newPanicDiskEdgeStore(t *testing.T) *GraphStorage {
+	t.Helper()
+	gs, err := NewGraphStorageWithConfig(StorageConfig{
+		DataDir:            t.TempDir(),
+		UseDiskBackedEdges: true,
+		EdgeCacheSize:      100,
+	})
+	if err != nil {
+		t.Fatalf("NewGraphStorageWithConfig: %v", err)
+	}
+	if gs.edgeStore == nil {
+		t.Fatal("UseDiskBackedEdges did not create an edge store")
+	}
+	return gs
+}
+
+// The Get* sites hold es.mu.RLock, and a leaked read lock blocks the write in
+// the second operation. Node 777 is never cached, so the read reaches the LSM.
+// The Store* sites hold es.mu.Lock, and the second operation writes again.
+func TestLockPanic_EdgeStore(t *testing.T) {
+	const nodeID = 777
+	cases := []struct {
+		site string
+		op   func(es *EdgeStore)
+		next func(es *EdgeStore) error
+	}{
+		{"StoreOutgoingEdges",
+			func(es *EdgeStore) { _ = es.StoreOutgoingEdges(nodeID, []uint64{1}) },
+			func(es *EdgeStore) error { return es.StoreOutgoingEdges(nodeID, []uint64{2}) }},
+		{"StoreIncomingEdges",
+			func(es *EdgeStore) { _ = es.StoreIncomingEdges(nodeID, []uint64{1}) },
+			func(es *EdgeStore) error { return es.StoreIncomingEdges(nodeID, []uint64{2}) }},
+		{"GetOutgoingEdges",
+			func(es *EdgeStore) { _, _ = es.GetOutgoingEdges(nodeID) },
+			func(es *EdgeStore) error { return es.StoreOutgoingEdges(nodeID, []uint64{2}) }},
+		{"GetIncomingEdges",
+			func(es *EdgeStore) { _, _ = es.GetIncomingEdges(nodeID) },
+			func(es *EdgeStore) error { return es.StoreIncomingEdges(nodeID, []uint64{2}) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.site, func(t *testing.T) {
+			gs := newPanicDiskEdgeStore(t)
+			es := gs.edgeStore
+			assertPanicReleasesLock(t, gs, tc.site,
+				func() { tc.op(es) },
+				func() error { return tc.next(es) })
+		})
+	}
+}

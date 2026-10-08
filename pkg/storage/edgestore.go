@@ -77,6 +77,25 @@ func NewEdgeStoreWithFS(fsys vfs.FileSystem, dataDir string, cacheSize int) (*Ed
 	}, nil
 }
 
+// lsmPut writes one record under es.mu. The deferred unlock matters: the Cypher
+// executor and net/http recover panics, so a panic in the LSM that left es.mu
+// held would block every later edge-list read and write. site names the public
+// caller for the panic hook.
+func (es *EdgeStore) lsmPut(site, key string, data []byte) error {
+	es.mu.Lock()
+	defer es.mu.Unlock()
+	panicPoint(site)
+	return es.lsm.Put([]byte(key), data)
+}
+
+// lsmGet reads one record under es.mu.RLock, with a deferred unlock. See lsmPut.
+func (es *EdgeStore) lsmGet(site, key string) ([]byte, bool) {
+	es.mu.RLock()
+	defer es.mu.RUnlock()
+	panicPoint(site)
+	return es.lsm.Get([]byte(key))
+}
+
 // StoreOutgoingEdges stores the outgoing edge list for a node
 func (es *EdgeStore) StoreOutgoingEdges(nodeID uint64, edges []uint64) error {
 	key := makeEdgeStoreKey("out", nodeID)
@@ -94,9 +113,7 @@ func (es *EdgeStore) StoreOutgoingEdges(nodeID uint64, edges []uint64) error {
 	}
 
 	// Store in LSM
-	es.mu.Lock()
-	err = es.lsm.Put([]byte(key), data)
-	es.mu.Unlock()
+	err = es.lsmPut("StoreOutgoingEdges", key, data)
 
 	if err != nil {
 		return fmt.Errorf("failed to write to LSM: %w", err)
@@ -118,9 +135,7 @@ func (es *EdgeStore) GetOutgoingEdges(nodeID uint64) ([]uint64, error) {
 	}
 
 	// Cache miss - load from LSM
-	es.mu.RLock()
-	data, found := es.lsm.Get([]byte(key))
-	es.mu.RUnlock()
+	data, found := es.lsmGet("GetOutgoingEdges", key)
 
 	if !found {
 		// Key not found - return empty list
@@ -156,9 +171,7 @@ func (es *EdgeStore) StoreIncomingEdges(nodeID uint64, edges []uint64) error {
 	}
 
 	// Store in LSM
-	es.mu.Lock()
-	err = es.lsm.Put([]byte(key), data)
-	es.mu.Unlock()
+	err = es.lsmPut("StoreIncomingEdges", key, data)
 
 	if err != nil {
 		return fmt.Errorf("failed to write to LSM: %w", err)
@@ -180,9 +193,7 @@ func (es *EdgeStore) GetIncomingEdges(nodeID uint64) ([]uint64, error) {
 	}
 
 	// Cache miss - load from LSM
-	es.mu.RLock()
-	data, found := es.lsm.Get([]byte(key))
-	es.mu.RUnlock()
+	data, found := es.lsmGet("GetIncomingEdges", key)
 
 	if !found {
 		// Key not found - return empty list
