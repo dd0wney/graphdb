@@ -202,3 +202,78 @@ func TestLockPanic_NodeTenantCheck(t *testing.T) {
 		})
 	}
 }
+
+// newPanicEdgeStore opens a store with two nodes and one edge between them. The
+// second operation of an edge test updates that edge, so it needs gs.mu and the
+// edge's shard lock.
+func newPanicEdgeStore(t *testing.T) (*GraphStorage, *Node, *Node, *Edge) {
+	t.Helper()
+	gs, a := newPanicTestStore(t)
+	b, err := gs.CreateNode([]string{"P"}, map[string]Value{"k": IntValue(2)})
+	if err != nil {
+		t.Fatalf("CreateNode: %v", err)
+	}
+	e, err := gs.CreateEdge(a.ID, b.ID, "R", map[string]Value{"k": IntValue(1)}, 1)
+	if err != nil {
+		t.Fatalf("CreateEdge: %v", err)
+	}
+	return gs, a, b, e
+}
+
+// updateEdgeAgain is the second operation for a test whose store holds e.
+func updateEdgeAgain(gs *GraphStorage, e *Edge) func() error {
+	return func() error { return gs.UpdateEdge(e.ID, map[string]Value{"k": IntValue(9)}, nil) }
+}
+
+func TestLockPanic_CreateEdgesWithTenant(t *testing.T) {
+	gs, a, b, e := newPanicEdgeStore(t)
+	assertPanicReleasesLock(t, gs, "CreateEdgesWithTenant",
+		func() {
+			_, _ = gs.CreateEdgesWithTenant(DefaultTenantID, []EdgeSpec{{FromID: a.ID, ToID: b.ID, Type: "R2", Weight: 1}})
+		},
+		updateEdgeAgain(gs, e))
+}
+
+// DeleteEdgeForTenant and PatchEdgeForTenant share checkEdgeTenant, which holds
+// a shard read lock. A leaked read lock blocks the shard write in UpdateEdge.
+func TestLockPanic_EdgeTenantCheck(t *testing.T) {
+	ops := map[string]func(gs *GraphStorage, e *Edge){
+		"PatchEdgeForTenant": func(gs *GraphStorage, e *Edge) {
+			_ = gs.PatchEdgeForTenant(e.ID, map[string]Value{"k": IntValue(3)}, nil, nil, DefaultTenantID)
+		},
+		"DeleteEdgeForTenant": func(gs *GraphStorage, e *Edge) { _ = gs.DeleteEdgeForTenant(e.ID, DefaultTenantID) },
+	}
+	for name, op := range ops {
+		t.Run(name, func(t *testing.T) {
+			gs, _, _, e := newPanicEdgeStore(t)
+			assertPanicReleasesLock(t, gs, "checkEdgeTenant",
+				func() { op(gs, e) },
+				updateEdgeAgain(gs, e))
+		})
+	}
+}
+
+func TestLockPanic_DeleteEdge(t *testing.T) {
+	gs, _, _, e := newPanicEdgeStore(t)
+	assertPanicReleasesLock(t, gs, "DeleteEdge.shard",
+		func() { _ = gs.DeleteEdge(e.ID) },
+		updateEdgeAgain(gs, e))
+}
+
+func TestLockPanic_UpsertEdge(t *testing.T) {
+	gs, a, b, e := newPanicEdgeStore(t)
+	assertPanicReleasesLock(t, gs, "UpsertEdge.shard",
+		func() { _, _, _ = gs.UpsertEdge(a.ID, b.ID, "R", map[string]Value{"k": IntValue(3)}, 1) },
+		updateEdgeAgain(gs, e))
+}
+
+func TestLockPanic_DeleteEdgeBetweenAcrossTenants(t *testing.T) {
+	for _, site := range []string{"DeleteEdgeBetweenAcrossTenants", "DeleteEdgeBetweenAcrossTenants.shard"} {
+		t.Run(site, func(t *testing.T) {
+			gs, a, b, e := newPanicEdgeStore(t)
+			assertPanicReleasesLock(t, gs, site,
+				func() { _, _ = gs.DeleteEdgeBetweenAcrossTenants(a.ID, b.ID, "R") },
+				updateEdgeAgain(gs, e))
+		})
+	}
+}
