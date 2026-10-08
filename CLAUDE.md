@@ -9,7 +9,7 @@ Keep this file under ~200 lines. If something only matters once a quarter, it do
 In this order:
 
 1. **`docs/CAPABILITIES_2026-05-10.md`** — what exists in `pkg/` + `cmd/` + the enterprise repo, with maturity tags. Read this before claiming anything is "missing" or "scaffolding only" — coarse grep is misleading because the codebase is large.
-2. **`docs/NEXT_STEPS_2026-06-18.md`** — current planning checkpoint (reconciles the shipped ask-#1 "cheap reopen" arc + v0.6.0, flags the stale-audit hazard, and carries the outstanding inventory). Critical-path queue + already-tracked work. The header date is the source of truth; if a newer `NEXT_STEPS_<DATE>.md` exists, that supersedes. (Chain: `2026-05-10` → `05-13` → `05-14` → `05-15` → `06-03` → `06-17` → `06-18`; earlier docs are historical only.)
+2. **`docs/NEXT_STEPS_2026-10-08.md`** — current planning checkpoint (rebuilds the queue from coord after v1.5.0–v1.7.0 in five ranked tracks; records that roadmap themes are milestones, not version numbers). Task state lives in coord (`coord status graphdb`); this file ranks it. The header date is the source of truth; if a newer `NEXT_STEPS_<DATE>.md` exists, that supersedes. (Chain: `2026-05-10` → `05-13` → `05-14` → `05-15` → `06-03` → `06-17` → `06-18` → `10-08`; earlier docs are historical only.)
 3. **`docs/internals/design/AUDIT_*_2026-05-06.md`** — multi-specialist audits (architecture, security, performance, code-quality). Most of the current work derives from these. Skim only if your task touches the named area.
 
 If the user names a task by track letter (`A4-edges`, `H2`, `F1.1`, `S1`, etc.) or audit-finding ID (`CRIT-1`, `HIGH-2`), that resolves via `NEXT_STEPS_<DATE>.md` or the audit docs. Don't guess what these mean — look them up.

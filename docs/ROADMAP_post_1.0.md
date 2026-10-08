@@ -56,6 +56,13 @@ work are gated on the same corpus run; do it once, up front.
 
 ## The minor line (v1.1 → v1.9)
 
+> **Themes are milestones, not version numbers (decided 2026-10-08).** Releases stopped following
+> this list: v1.5.0 shipped the v1.4 milestone, and v1.6.0 and v1.7.0 shipped Cypher and storage
+> correctness fixes. From here a theme below is a **named milestone** that ships in whichever minor
+> is next when it is ready. A version number says only what `STABILITY_POLICY.md` requires. The
+> shipped milestones (v1.1–v1.4) keep their headings as history; the open ones are renamed. The
+> ranked work queue is in [`NEXT_STEPS_2026-10-08.md`](./NEXT_STEPS_2026-10-08.md).
+
 ### v1.1.0 — Validate & observe ✅ **DONE (2026-07-01)**
 *Front-load the evidence that gates later releases; ship one easy adoption win.*
 - ✅ **coi-screen validation (#444)**: ICIJ-scale (~937K) mmap-vs-JSON measurement of the
@@ -145,7 +152,7 @@ coi-screen workload, so the DoD-Levers track does not earn this slot.*
 - This release becomes **additional ecosystem/connectors work** instead (see v1.8).
 - **Gates:** v1.1 decision ✅ · **Size:** M (was L) · **Risk:** low (no longer a public-type refactor)
 
-### v1.6.0 — Query maturity & developer experience
+### Milestone: Query maturity & developer experience *(listed as v1.6.0 before 2026-10-08)*
 *Make the engine pleasant to use, not just fast.*
 - **`EXPLAIN` / query-plan inspection** — productionize the `physical_plan.go` spike residuals
   (CallOperator, edge-direction) and expose a plan endpoint.
@@ -157,7 +164,7 @@ coi-screen workload, so the DoD-Levers track does not earn this slot.*
   (standing TODO in `pkg/graphql/mutations_resolvers.go`) — internal, additive.
 - **Gates:** none · **Size:** M · **Risk:** low
 
-### v1.7.0 — Backup, DR & data protection
+### Milestone: Backup, DR & data protection *(listed as v1.7.0 before 2026-10-08)*
 *OSS-appropriate backup hardening (scheduling/retention/remote targets stay enterprise-plugin
 territory per the v0.8.0 design).*
 - **Archive encryption / signing** (follow-up scoped out of v0.8.0) — protect the sensitive
@@ -167,14 +174,14 @@ territory per the v0.8.0 design).*
   v0.8.0; needs a design spike + its own equivalence oracle first.
 - **Gates:** live-restore needs a design spike · **Size:** M–L · **Risk:** medium
 
-### v1.8.0 — Connectors & SDK completion
+### Milestone: Connectors & SDK completion *(listed as v1.8.0 before 2026-10-08)*
 *Meet teams where their data already lives.*
 - **Data-platform connectors** (§G): Kafka source/sink, CSV/Parquet ETL, lakehouse export, BI
   drivers.
 - **Java + Rust SDKs** — complete the client matrix (Go/Python/TS exist after v1.3).
 - **Gates:** none · **Size:** L (likely the longest single minor) · **Risk:** low
 
-### v1.9.0 — Residuals + quiet v2 prep
+### Milestone: Residuals + quiet v2 prep *(listed as v1.9.0 before 2026-10-08)*
 *The last 1.x: finish the long tail and shrink v2.0's breaking surface from the inside.*
 - **RAG/intelligence depth** — auto-embed R2.x re-entry (`pkg/intelligence` Track-R), reranking
   on hybrid search, larger corpora via external `/v1/embeddings`.
@@ -231,6 +238,9 @@ Only v1.2 and v1.5 have hard gates (both on v1.1). Everything else is independen
 schedulable; the order above reflects leverage, not a strict chain.
 
 ## Cut-line summary
+
+> Since 2026-10-08 the rows v1.6.0–v1.9.0 below are **milestones**, not version numbers; see the
+> note under "The minor line".
 
 | Release | Theme | Headline contents | Gate | Size |
 |---|---|---|---|---|
