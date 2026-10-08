@@ -189,6 +189,48 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: a Cypher write stores any value that is not a string, int, float or bool as its Go %v text with TypeString, and answers 200 with no error. Probed through REST /query at 7c6705c: SET n.x = null and SET n.x = $v with v null both store the string <nil>, a bound list stores [a b], a bound map stores map[k:1]; a string control stores correctly. Cause: the default branch of convertToStorageValue (pkg/query/executor_steps.go:65-66, read at 7c6705c) runs StringValue(fmt.Sprintf(%v)). It has 8 callers, the SET paths and the MATCH and MERGE property comparisons (physical_ops_scan.go:277, physical_ops_mutate.go:313). REST already converts through storage.ValueFromJSON. Likely fix: route the default branch through ValueFromJSON so Cypher and REST store the same value. Decide null: Cypher semantics say SET n.x = null removes the key, which also matches PUT after #634 (the lean), or store a JSON null as REST POST does. CREATE with null was not measured. Acceptance: null, list and map round-trip on SET, CREATE and a MATCH comparison, seen red first"
+    },
+    {
+      "id": "v1.4-storage-upsert-node",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: add UpsertNodeForTenant(tenantID, labels, properties, keyLabel, keyProperty) (node, created, err) and UpsertNodeWithUniquenessRulesForTenant(tenantID, labels, properties), the node twin of UpsertEdgeWithTenant (pkg/storage/edge_operations.go:635). Find and create in one gs.mu hold, as CreateNodeWithUniquePropertyForTenant (node_operations.go:134). On a match: new properties override, absent ones stay, labels do not change. More than one match is an error, never a silent choice. Asked by mapper-6b (oit-cyber/mapper, embeds pkg/storage). Lines read at 5988924. Acceptance: concurrent upserts of one key make one node, the duplicate case errors, seen red first"
+    },
+    {
+      "id": "v1.4-rest-upsert-node",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: an atomic upsert on POST /nodes and POST /nodes/batch (flag, for example on_conflict=merge), keyed by the registered uniqueness rule for the labels (option B, as POST /nodes already routes through CreateNodeWithUniquenessRulesForTenant, handlers_nodes.go:143). 201 on create, 200 on match, 400 when no rule matches. Needed by mapper team mode, where two assessors ingest one host at the same time. Lines read at 5988924. Acceptance: two concurrent requests for one key give one node and one 201, seen red first"
+    },
+    {
+      "id": "v1.4-go-client-upsert-node",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "clients/go: Nodes.Upsert and Nodes.BatchUpsert over the REST upsert, returning the node and a created flag. The client has no node or edge upsert today (clients/go/edges.go). For mapper team mode. Acceptance: client tests cover created true, created false and the no-rule 400"
+    },
+    {
+      "id": "v1.4-rest-conflict-node-id",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: the 409 from POST /nodes on a uniqueness conflict (handlers_nodes.go:160-162) names the existing node only in the error text (UniqueConstraintError.Error, pkg/storage/errors.go:168). Add a structured conflicting_node_id field to the body and expose it on the Go client Error. mapper uses 409 then a lookup until this lands. Lines read at 5988924. Acceptance: the field equals the node that holds the key, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-merge-update-errors",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: Cypher MERGE discards UpdateNodeForTenant errors with _ = on ON MATCH and ON CREATE (pkg/query/physical_ops_mutate.go:344, :377) and then writes the value into the returned node anyway, so a failed update returns 200 and a row that the store does not hold. Return the error and do not change the row. Found by mapper-6b. Lines read at 5988924. Acceptance: a failing update (for example a closed store or a WAL failure) surfaces from MERGE, seen red first"
+    },
+    {
+      "id": "v1.4-datadir-flock",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: nothing stops two processes opening one data directory (a word search for flock in pkg and cmd finds 0). Take flock(LOCK_EX|LOCK_NB) on <DataDir>/LOCK at open, hold it until Close, refuse with a typed error naming the directory. Not fcntl (released by any close in-process) and not a PID file (stale after a crash). Unix build tags. Sweep tests that open one directory twice without Close. Asked by mapper-6b: a server and an embedded mapper can share a laptop. Lines read at 5988924. Acceptance: a second open of a held directory refuses, a reopen after Close succeeds, seen red first"
+    },
+    {
+      "id": "v1.4-unique-create-property-index",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: CreateNodeWithUniquePropertyForTenant scans every node of the label under gs.mu (membershipNodeIDsByLabelLocked, node_operations.go:163), so N unique creates cost O(N^2). Use the property index when one exists on the key. The index is global per key (index_operations.go:119), so filter by tenant and label. It holds only values of its own type (:26), so keep the scan for other types. Prove the index covers mmap base records after reopen. Wait for the mapper-6b /16 spike numbers before sizing. Lines read at 5988924. Acceptance: a teeth test that removes an index entry makes the check fail, seen red first"
     }
   ],
   "deps": [
@@ -211,6 +253,14 @@
     {
       "from": "v1.4-boundary-lsn-downgrade-guard",
       "to": "v1.4-snapshot-records-wal-boundary"
+    },
+    {
+      "from": "v1.4-rest-upsert-node",
+      "to": "v1.4-storage-upsert-node"
+    },
+    {
+      "from": "v1.4-go-client-upsert-node",
+      "to": "v1.4-rest-upsert-node"
     }
   ]
 }
