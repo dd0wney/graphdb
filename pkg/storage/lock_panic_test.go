@@ -277,3 +277,23 @@ func TestLockPanic_DeleteEdgeBetweenAcrossTenants(t *testing.T) {
 		})
 	}
 }
+
+// cascadeDeleteOutgoingEdge and cascadeDeleteIncomingEdge share
+// detachCascadedEdge. Deleting the source node reaches the outgoing cascade, and
+// deleting the target node reaches the incoming one.
+func TestLockPanic_CascadeDeleteEdge(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		victim func(a, b *Node) uint64
+	}{
+		{"outgoing", func(a, _ *Node) uint64 { return a.ID }},
+		{"incoming", func(_, b *Node) uint64 { return b.ID }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gs, a, b, e := newPanicEdgeStore(t)
+			assertPanicReleasesLock(t, gs, "cascadeDeleteEdge.shard",
+				func() { _ = gs.DeleteNode(tc.victim(a, b)) },
+				updateEdgeAgain(gs, e))
+		})
+	}
+}
