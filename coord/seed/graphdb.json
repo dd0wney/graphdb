@@ -393,6 +393,12 @@
       "track": "v2.0",
       "status": "pending",
       "title": "query (v2.0, breaking): refuse a plain Cypher DELETE of a node that still has relationships, as openCypher does, unless the query says DETACH DELETE. Deprecated in the release after v1.6.0 (user decision 2026-10-08, option C): 1.x keeps removing the relationships and reports query.Notice code plain-delete-detach in ResultSet.Notices and the REST header X-Cypher-Deprecation. For v2.0: check every node to delete before any delete, so a refused query changes nothing; the error names the node and says to use DETACH DELETE; remove the notice and header for this code; update the CHANGELOG Removed entry and docs/STABILITY_POLICY.md deprecation record. Check the deprecation log lines and consumers (syntopica-timer-spec uses DETACH DELETE for nodes) before shipping. Acceptance: plain DELETE of a connected node errors and leaves node and relationships in place, DELETE r, a with all relationships bound still works, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-create-merge-per-row",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: Cypher CREATE and MERGE are not per row and do not reuse bound variables. CreateStep.createNodes (pkg/query/executor_steps.go) creates a node for every node in the pattern, including a variable MATCH already bound, and binds it into every row; createRelationships reads only ctx.results[0] and does not bind the relationship variable. Probed 2026-10-08 at fce5328: MATCH (a:P {name:'x'}) CREATE (a)-[:R]->(b:Q) made a new unlabeled node and used it as a (the matched a was ignored); MATCH (a:P) CREATE (a)-[:R]->(b:Q) over 2 matches made 1 Q and 1 edge plus the stray node. MergeStep is also not per row: if any row matches, rows without a match are dropped and nothing is created for them. Fix: per row, reuse a bound node, create only unbound ones, bind the new relationship variable; MERGE per row. Carries syntopica-timer-spec's trust-cluster query (two relationship MERGEs with bound endpoints, run twice, idempotent): scratchpad syntopica_merge_test.go.keep from the multiple-match-clauses PR. Check consumers' MATCH ... CREATE (a)-[...]->(b) queries before shipping, since their data may already hold stray nodes. Acceptance: each probe gives the openCypher result, seen red first"
     }
   ],
   "deps": [
