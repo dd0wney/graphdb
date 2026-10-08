@@ -109,3 +109,14 @@ func TestLockPanic_PatchNode(t *testing.T) {
 		})
 	}
 }
+
+func TestLockPanic_BatchCommit(t *testing.T) {
+	gs, n := newPanicTestStore(t)
+	assertPanicReleasesLock(t, gs, "Batch.Commit",
+		func() {
+			batch := gs.BeginBatch()
+			batch.UpdateNode(n.ID, map[string]Value{"k": IntValue(3)})
+			_ = batch.Commit()
+		},
+		updateAgain(gs, n))
+}

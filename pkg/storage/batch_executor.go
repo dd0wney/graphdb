@@ -17,33 +17,9 @@ import (
 // HNSW inserts must not run under gs.mu; observers see committed state). The
 // per-op WAL writes stay under the lock, unchanged.
 func (b *Batch) Commit() error {
-	b.graph.mu.Lock()
-
-	b.haveObservers = len(b.graph.observers) > 0
-	b.haveVectorIndex = b.graph.vectorIndex.HasAnyIndex()
-
-	// Execute all operations
-	for _, op := range b.ops {
-		var err error
-		switch op.opType {
-		case opCreateNode:
-			err = b.executeCreateNode(op)
-		case opCreateEdge:
-			err = b.executeCreateEdge(op)
-		case opUpdateNode:
-			err = b.executeUpdateNode(op)
-		case opDeleteNode:
-			err = b.executeDeleteNode(op)
-		case opDeleteEdge:
-			err = b.executeDeleteEdge(op)
-		}
-		if err != nil {
-			b.graph.mu.Unlock()
-			return err
-		}
+	if err := b.executeOps(); err != nil {
+		return err
 	}
-
-	b.graph.mu.Unlock()
 
 	// Off-lock: apply the collected HNSW vector inserts + node-delete vector
 	// removals, then dispatch observer notifications, so auto-embed / event hooks
@@ -69,6 +45,38 @@ func (b *Batch) Commit() error {
 		}
 	}
 
+	return nil
+}
+
+// executeOps runs every queued operation under gs.mu. The deferred unlock
+// matters: the Cypher executor and net/http recover panics, so a panic in an
+// operation that left gs.mu held would hang every later write, Close included.
+func (b *Batch) executeOps() error {
+	b.graph.mu.Lock()
+	defer b.graph.mu.Unlock()
+	panicPoint("Batch.Commit")
+
+	b.haveObservers = len(b.graph.observers) > 0
+	b.haveVectorIndex = b.graph.vectorIndex.HasAnyIndex()
+
+	for _, op := range b.ops {
+		var err error
+		switch op.opType {
+		case opCreateNode:
+			err = b.executeCreateNode(op)
+		case opCreateEdge:
+			err = b.executeCreateEdge(op)
+		case opUpdateNode:
+			err = b.executeUpdateNode(op)
+		case opDeleteNode:
+			err = b.executeDeleteNode(op)
+		case opDeleteEdge:
+			err = b.executeDeleteEdge(op)
+		}
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -170,9 +178,7 @@ func (b *Batch) executeCreateEdge(op batchOp) error {
 
 func (b *Batch) executeUpdateNode(op batchOp) error {
 	// mmap mode: promote a base-resident node into the overlay (CoW) before mutating.
-	b.graph.lockShard(op.nodeID)
-	node, err := b.graph.materializeNodeLocked(op.nodeID)
-	b.graph.unlockShard(op.nodeID)
+	node, err := b.graph.materializeNode(op.nodeID)
 	if err != nil {
 		return fmt.Errorf("node %d not found: %w", op.nodeID, err)
 	}
