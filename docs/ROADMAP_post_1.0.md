@@ -2,9 +2,11 @@
 
 **Status:** proposal / living planning doc. Sketches the minor-version line from the
 v1.0.0 GA to the next major (v2.0.0).
-**Current release:** `v1.5.0` (2026-10-07, GPG-signed). It ships the v1.4 milestone work
-below (GraphQL index paging, SDK parity, the WAL durability arc) and the Ulysses consumer
-contracts. `v1.4.0` (2026-09-08) consolidated the untagged v1.1–v1.3 work and the
+**Current release:** `v1.6.0` (2026-10-08, GPG-signed). It fixes Cypher queries that
+answered success while doing something else, bulk-import data loss, a mmap record-width limit
+that lost long records, and a readiness probe that hid a poisoned WAL. `v1.5.0` (2026-10-07)
+shipped the v1.4 milestone work below (GraphQL index paging, SDK parity, the WAL durability
+arc) and the Ulysses consumer contracts. `v1.4.0` (2026-09-08) consolidated the untagged v1.1–v1.3 work and the
 August–September durability programme; `v1.0.0` (2026-06-23) was the first GA.
 **What ✅ DONE means here:** the milestone's work is merged to `main`. It does **not**
 mean a tag was cut. `v1.1.0`, `v1.2.0` and `v1.3.0` were never tagged individually; their

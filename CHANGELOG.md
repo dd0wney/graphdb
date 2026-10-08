@@ -10,6 +10,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-08
+
+This release fixes Cypher writes and reads that answered success while doing something else, two
+storage defects that lost or resurrected data in bulk import mode, a snapshot format limit that
+lost a record with a very long key or label after the next reopen, and a readiness probe that
+reported ready over a poisoned WAL. A property index no longer
+changes what a Cypher query returns; `DELETE`, `SET` and `REMOVE` act on relationships instead of
+reporting rows affected and changing nothing; and a `BulkImportMode` open refuses a data directory
+whose WAL it cannot replay. Each Cypher change makes a query do what openCypher specifies, and none
+changes the result of a request that already behaved as specified, so the release stays within the
+1.x promise in `docs/STABILITY_POLICY.md`. Queries that relied on a silent no-op now get an error:
+an undefined variable in `DELETE`, `SET` or `REMOVE`, and a variable-length relationship in any of
+them.
+
+### Added
+- **`storage.PropertyIndexType(key)`** reports the value type of the property index on a key and
+  whether one exists (#641).
+- **`GraphStorage.Health()`** returns `ErrStorageClosed` for a closed store and an error wrapping
+  `wal.ErrWALPoisoned` for a poisoned WAL, the two conditions that last until restart (#647).
+
+### Changed
+- **Writes refuse a record the mmap snapshot cannot store.** A property key, label, tenant ID or
+  edge type longer than 65,535 bytes, more than 65,535 properties or labels, or a label or edge
+  type that with its tenant ID exceeds the 65,535-byte membership key, now fails with
+  `ErrRecordTooWide`, in either snapshot mode and on every create and update path. Such a record
+  used to be accepted and then lost (#650).
+- **Cypher `DELETE`, `SET` and `REMOVE` refuse what they cannot write.** A variable the query does
+  not define, a variable-length relationship, or any other value that is not a node or a
+  relationship now fails the query. Each used to be skipped while the query still reported its rows
+  as affected. A `null` from `OPTIONAL MATCH` stays a no-op, as openCypher specifies (#644, #646).
+- **A `BulkImportMode` open refuses a WAL it cannot replay.** Bulk mode opens no WAL, so it cannot
+  replay one. When a WAL file holds entries past the snapshot boundary, the open now fails with
+  `ErrBulkImportUnreplayedWAL`, naming the file and both LSNs; when the WAL is behind the snapshot,
+  it fails with `ErrWALBehindSnapshot`, as a normal open does. Open the directory once without bulk
+  mode and close it, then reopen in bulk mode (#645).
+
+### Fixed
+- **A record too wide for the mmap snapshot is no longer lost.** The snapshot wrote its lengths
+  and counts as `uint16` and wrapped a larger value with no error, so the record did not decode
+  after the next reopen. The snapshot writer now refuses it, keeping the WAL, as well as every
+  write path (#650).
+- **Decoding a damaged value no longer panics.** `Value.AsInt`, `AsFloat`, `AsBool` and
+  `AsTimestamp` indexed past a short `Data` slice and now return an error for any width other
+  than the one their encoder writes; `AsStringArray` no longer sizes an allocation of up to
+  64 GiB from four untrusted bytes (#649).
+- **`/health/ready` reports a closed store or a poisoned WAL.** Its storage check called
+  `GetStatistics` and returned success, so a server whose WAL a failed `fsync` had poisoned kept
+  reporting ready while every write reached memory and not the disk. The check now calls the new
+  `GraphStorage.Health()` and answers 503 for either condition. A single failed append that did not
+  poison the WAL leaves the server ready (#647).
+- **A property index no longer changes Cypher results.** With an index on a property, a `MATCH`
+  with a relationship, a second pattern or an inline property map, filtered by an equality on that
+  property, dropped everything but the first node: `MATCH (a:P)-[:R]->(b:Q) WHERE a.pid = 1`
+  returned `b = null`, including for a node with no such edge. A `WHERE` value of a type other than
+  the index's failed with an error. The index is now used only for a single-node pattern whose value
+  has the index's type (#641).
+- **Cypher `DELETE r` deletes the relationship.** It used to answer `affected=1` and leave the edge
+  in storage. `DELETE r, a` and a `DELETE` of a node bound in several rows no longer fail with
+  "node not found" after the delete has happened (#644).
+- **Cypher `SET` and `REMOVE` write relationship properties.** `SET r.w = 5`, `SET r.w = null` and
+  `REMOVE r.w` used to answer `affected=1` and change nothing (#646).
+- **Patching a node or edge created with nil properties no longer panics.** `PatchNodeForTenant`
+  and `PatchEdgeForTenant` (#646), and the `UpsertEdge` update branch and `Batch.UpdateNode`
+  (#650), wrote into a nil map ("assignment to entry in nil map"). The node and batch paths did so
+  while holding a lock, so a recovered panic left the store hung.
+- **Bulk import mode no longer loses or resurrects data.** A bulk open ignored WAL entries from a
+  session that never closed, handed their node IDs out again, and published a snapshot without
+  them, with no error and a clean `CheckInvariants`. A bulk `Close` also recorded WAL boundary 0,
+  so the next normal open re-applied entries the snapshot already covered, bringing back a node the
+  bulk session had deleted (#645).
+
 ## [1.5.0] - 2026-10-07
 
 This release ships the roadmap's v1.4 milestone work: GraphQL index paging, first-party SDK
@@ -606,7 +677,8 @@ Low backlog from the 2026-06-10 security re-audit (#371), across Waves 1–3.
 - 100x concurrency improvement
 - 650x faster LSM read performance
 
-[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/dd0wney/graphdb/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/dd0wney/graphdb/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/dd0wney/graphdb/compare/v1.0.0...v1.4.0
 [1.0.0]: https://github.com/dd0wney/graphdb/compare/v0.8.0...v1.0.0
