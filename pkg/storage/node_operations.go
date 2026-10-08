@@ -22,13 +22,11 @@ func (gs *GraphStorage) CreateNode(labels []string, properties map[string]Value)
 //
 // Lock discipline (R2.1, S11 spike §7.4): the gs.mu.Lock is released
 // before notifyNodeCreated runs so observer code never executes under
-// any storage lock. Direct unlock + nil-check on err mirrors what
-// `defer gs.mu.Unlock()` would do but lets the notify call land after
-// the lock release.
+// any storage lock. createNodeUnderLock holds gs.mu with a deferred unlock,
+// so the notify call lands after the lock release and a panic still
+// releases it.
 func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, properties map[string]Value) (*Node, error) {
-	gs.mu.Lock()
-	node, walPending, vectorPlans, err := gs.createNodeLocked(tenantID, labels, properties)
-	gs.mu.Unlock()
+	node, walPending, vectorPlans, err := gs.createNodeUnderLock(tenantID, labels, properties)
 	// Run the HNSW insert(s) OUTSIDE gs.mu (Track P item 3 / H2) — the O(log N)
 	// traversal + O(M^2) pruning no longer serialize behind the global write
 	// lock. Ordered before the WAL wait and the observer dispatch so a node's
@@ -48,6 +46,16 @@ func (gs *GraphStorage) CreateNodeWithTenant(tenantID string, labels []string, p
 	return node, err
 }
 
+// createNodeUnderLock is createNodeLocked inside gs.mu. The deferred unlock
+// matters: the Cypher executor and net/http recover panics, so a panic here
+// that left gs.mu held would hang every later write, Close included.
+func (gs *GraphStorage) createNodeUnderLock(tenantID string, labels []string, properties map[string]Value) (*Node, *wal.Pending, []vectorInsertPlan, error) {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	panicPoint("CreateNodeWithTenant")
+	return gs.createNodeLocked(tenantID, labels, properties)
+}
+
 // NodeSpec describes one node for bulk creation.
 type NodeSpec struct {
 	Labels     []string
@@ -65,32 +73,52 @@ type NodeSpec struct {
 // stay durable (their WAL entries were enqueued under the lock), matching the
 // single-create contract where a successful createNodeLocked is not rolled back.
 func (gs *GraphStorage) CreateNodesWithTenant(tenantID string, specs []NodeSpec) ([]uint64, error) {
-	ids := make([]uint64, 0, len(specs))
-	created := make([]*Node, 0, len(specs))
-	var pendings []*wal.Pending
-	var plans []vectorInsertPlan
+	b, err := gs.createNodesUnderLock(tenantID, specs)
+	if err != nil {
+		// The creation error, not a WAL wait error, is this call's result —
+		// mirrors the pre-existing mid-batch contract below.
+		_ = gs.flushNodeBatchEffects(b.plans, b.pendings, b.created)
+		return b.ids, err
+	}
+
+	err = gs.flushNodeBatchEffects(b.plans, b.pendings, b.created)
+	return b.ids, err
+}
+
+// nodeBatch is what the locked half of CreateNodesWithTenant hands to the
+// off-lock half.
+type nodeBatch struct {
+	ids      []uint64
+	created  []*Node
+	pendings []*wal.Pending
+	plans    []vectorInsertPlan
+}
+
+// createNodesUnderLock creates every spec under one hold of gs.mu. On error it
+// returns the nodes created so far alongside the error. The deferred unlock
+// matters: see createNodeUnderLock.
+func (gs *GraphStorage) createNodesUnderLock(tenantID string, specs []NodeSpec) (nodeBatch, error) {
+	b := nodeBatch{
+		ids:     make([]uint64, 0, len(specs)),
+		created: make([]*Node, 0, len(specs)),
+	}
 
 	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	panicPoint("CreateNodesWithTenant")
 	for _, s := range specs {
 		node, wp, vps, err := gs.createNodeLocked(tenantID, s.Labels, s.Properties)
 		if err != nil {
-			gs.mu.Unlock()
-			// The creation error, not a WAL wait error, is this call's result —
-			// mirrors the pre-existing mid-batch contract below.
-			_ = gs.flushNodeBatchEffects(plans, pendings, created)
-			return ids, err
+			return b, err
 		}
-		ids = append(ids, node.ID)
-		created = append(created, node)
+		b.ids = append(b.ids, node.ID)
+		b.created = append(b.created, node)
 		if wp != nil {
-			pendings = append(pendings, wp)
+			b.pendings = append(b.pendings, wp)
 		}
-		plans = append(plans, vps...)
+		b.plans = append(b.plans, vps...)
 	}
-	gs.mu.Unlock()
-
-	err := gs.flushNodeBatchEffects(plans, pendings, created)
-	return ids, err
+	return b, nil
 }
 
 // flushNodeBatchEffects runs the post-lock side effects of a node batch once,
@@ -152,11 +180,38 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 		return nil, fmt.Errorf("property %q is required for uniqueness check", uniquePropertyKey)
 	}
 
+	node, walPending, vectorPlans, err := gs.createNodeUniqueUnderLock(tenantID, labels, properties, uniqueLabel, uniquePropertyKey, newVal)
+	// HNSW insert(s) off-lock (Track P item 3 / H2); see CreateNodeWithTenant.
+	gs.applyNodeVectorInserts(vectorPlans)
+	// Wait for WAL durability after lock release (group commit, Track P item 1).
+	// A wait error wraps ErrWALWriteFailed; see CreateNodeWithTenant.
+	if waitErr := gs.waitWALPending(wal.OpCreateNode, walPending); err == nil {
+		err = waitErr
+	}
+	// R2.1: dispatch after lock release. See CreateNodeWithTenant.
+	if node != nil {
+		gs.notifyNodeCreated(context.Background(), node)
+	}
+	return node, err
+}
+
+// createNodeUniqueUnderLock is the part of CreateNodeWithUniquePropertyForTenant
+// that runs under gs.mu: the closed check, the uniqueness scan and the create.
+// The deferred unlock matters: see createNodeUnderLock.
+func (gs *GraphStorage) createNodeUniqueUnderLock(
+	tenantID string,
+	labels []string,
+	properties map[string]Value,
+	uniqueLabel string,
+	uniquePropertyKey string,
+	newVal Value,
+) (*Node, *wal.Pending, []vectorInsertPlan, error) {
 	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	panicPoint("CreateNodeWithUniquePropertyForTenant")
 
 	if err := gs.checkClosed(); err != nil {
-		gs.mu.Unlock()
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	tid := effectiveTenantID(tenantID)
@@ -173,12 +228,10 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 			// not answer "no conflict" for it. Abort the whole create and
 			// wrap ErrRecordUnreadable so the caller can tell this apart
 			// from both success and a real *UniqueConstraintError.
-			gs.mu.Unlock()
-			return nil, fmt.Errorf("uniqueness scan for %s.%s: node %d: %w", uniqueLabel, uniquePropertyKey, existingID, err)
+			return nil, nil, nil, fmt.Errorf("uniqueness scan for %s.%s: node %d: %w", uniqueLabel, uniquePropertyKey, existingID, err)
 		}
 		if existingVal, has := existing.Properties[uniquePropertyKey]; has && valuesEqual(existingVal, newVal) {
-			gs.mu.Unlock()
-			return nil, &UniqueConstraintError{
+			return nil, nil, nil, &UniqueConstraintError{
 				Label:             uniqueLabel,
 				PropertyKey:       uniquePropertyKey,
 				ConflictingNodeID: existingID,
@@ -187,20 +240,7 @@ func (gs *GraphStorage) CreateNodeWithUniquePropertyForTenant(
 		}
 	}
 
-	node, walPending, vectorPlans, err := gs.createNodeLocked(tenantID, labels, properties)
-	gs.mu.Unlock()
-	// HNSW insert(s) off-lock (Track P item 3 / H2); see CreateNodeWithTenant.
-	gs.applyNodeVectorInserts(vectorPlans)
-	// Wait for WAL durability after lock release (group commit, Track P item 1).
-	// A wait error wraps ErrWALWriteFailed; see CreateNodeWithTenant.
-	if waitErr := gs.waitWALPending(wal.OpCreateNode, walPending); err == nil {
-		err = waitErr
-	}
-	// R2.1: dispatch after lock release. See CreateNodeWithTenant.
-	if node != nil {
-		gs.notifyNodeCreated(context.Background(), node)
-	}
-	return node, err
+	return gs.createNodeLocked(tenantID, labels, properties)
 }
 
 // createNodeLocked is the body of CreateNodeWithTenant minus the lock.
@@ -531,12 +571,9 @@ func (gs *GraphStorage) PatchNodeForTenant(nodeID uint64, set map[string]Value, 
 	// immutable after creation and node IDs don't recycle, so the only race is
 	// "node deleted by another goroutine first", which patchNode reports as
 	// ErrNodeNotFound.
-	gs.rlockShard(nodeID)
-	if _, err := gs.getNodeRefForTenant(nodeID, tenantID); err != nil {
-		gs.runlockShard(nodeID)
+	if err := gs.checkNodeTenant(nodeID, tenantID); err != nil {
 		return err
 	}
-	gs.runlockShard(nodeID)
 	return gs.patchNode(nodeID, set, remove)
 }
 
@@ -550,28 +587,64 @@ func (gs *GraphStorage) PatchNodeForTenant(nodeID uint64, set map[string]Value, 
 // only allocated when observers are registered — observerless callers pay
 // zero clone cost.
 func (gs *GraphStorage) patchNode(nodeID uint64, set map[string]Value, remove []string) error {
+	p, err := gs.applyNodePatch(nodeID, set, remove)
+	if err != nil {
+		return err
+	}
+
+	// HNSW work off-lock (Track P item 3 / H2), before the WAL wait and
+	// observer dispatch so the index matches the node before observers act.
+	// RemoveVectorForTenant is idempotent; its errors are logged fail-soft
+	// (the property is already removed, and the index is rebuilt from the
+	// node set on restart).
+	for _, prop := range p.vectorRemovals {
+		if err := gs.vectorIndex.RemoveVectorForTenant(p.tid, prop, nodeID); err != nil {
+			log.Printf("node_operations: vector index removal failed for prop %q node %d tenant %s: %v", prop, nodeID, p.tid, err)
+		}
+	}
+	gs.applyNodeVectorInserts(p.vectorPlans)
+	// A wait error wraps ErrWALWriteFailed; the update stays applied and
+	// observers are still notified.
+	err = gs.waitWALPending(wal.OpUpdateNode, p.walPending)
+	if p.newNode != nil {
+		gs.notifyNodeUpdated(context.Background(), p.newNode, p.oldNode)
+	}
+	return err
+}
+
+// nodePatch is what the locked half of patchNode hands to the off-lock half.
+type nodePatch struct {
+	tid              tenantid.TenantID
+	vectorPlans      []vectorInsertPlan
+	vectorRemovals   []string
+	walPending       *wal.Pending
+	oldNode, newNode *Node
+}
+
+// applyNodePatch is the part of patchNode that runs under gs.mu. The deferred
+// unlock matters: the Cypher executor and net/http recover panics, so a panic
+// here that left gs.mu held would hang every later write, Close included.
+func (gs *GraphStorage) applyNodePatch(nodeID uint64, set map[string]Value, remove []string) (nodePatch, error) {
 	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	panicPoint("patchNode")
 
 	// mmap mode: promote a base-resident node into the shard overlay (copy-on-write)
 	// before the in-place mutation below. No-op (plain lookup) when mmap is off.
-	gs.lockShard(nodeID)
-	node, err := gs.materializeNodeLocked(nodeID)
-	gs.unlockShard(nodeID)
+	node, err := gs.materializeNode(nodeID)
 	if err != nil {
-		gs.mu.Unlock()
-		return err
+		return nodePatch{}, err
 	}
 
 	// R2.1: snapshot pre-update state for observer dispatch. Only allocate
 	// when observers are registered.
-	var oldNode *Node
+	var p nodePatch
 	if len(gs.observers) > 0 {
-		oldNode = node.Clone()
+		p.oldNode = node.Clone()
 	}
 
 	if err := checkPatchWidths(node.Properties, set, remove); err != nil {
-		gs.mu.Unlock()
-		return err
+		return nodePatch{}, err
 	}
 
 	// Plan vector-index inserts before anything changes, on a preview of the
@@ -582,56 +655,29 @@ func (gs *GraphStorage) patchNode(nodeID uint64, set map[string]Value, remove []
 	// off-lock insert race-free. A pure removal sets nothing, so it re-inserts
 	// nothing, and with no vector index at all there is nothing to plan, so
 	// the hot path skips the preview copy.
-	var vectorPlans []vectorInsertPlan
 	if len(set) > 0 && gs.vectorIndex.HasAnyIndex() {
 		preview := &Node{ID: node.ID, TenantID: node.TenantID, Properties: patchedProperties(node.Properties, set, remove)}
-		vectorPlans, err = gs.planNodeVectorInserts(preview)
+		p.vectorPlans, err = gs.planNodeVectorInserts(preview)
 		if err != nil {
-			gs.mu.Unlock()
-			return err
+			return nodePatch{}, err
 		}
 	}
 
 	// Update property indexes (global structures — under gs.mu.Lock).
 	if err := gs.updatePropertyIndexes(nodeID, node, set); err != nil {
-		gs.mu.Unlock()
-		return err
+		return nodePatch{}, err
 	}
 
-	// Per-shard write lock (A4) excludes shard.RLock readers during the
-	// in-place Node-struct mutation that follows. The removals walk
-	// node.Properties for the index Remove calls before they delete, so
-	// they stay inside the same window.
-	//
-	// A removed vector-indexed property must also leave the HNSW index, or
-	// VectorSearch keeps returning the stale vector. HasIndexForTenant reads
-	// the index map, so the removals are planned here and applied off-lock,
-	// per key, so the node's other vector properties are untouched.
-	tid := effectiveTenantID(node.TenantID)
-	var vectorRemovals []string
-	gs.lockShard(nodeID)
-	// A node created with nil properties has no map to write into.
-	if node.Properties == nil && len(set) > 0 {
-		node.Properties = make(map[string]Value, len(set))
-	}
-	for k, v := range set {
-		node.Properties[k] = v
-	}
-	removed := gs.deleteNodePropertiesLocked(nodeID, node, remove)
-	for _, key := range removed {
-		if gs.vectorIndex.HasIndexForTenant(tid, key) {
-			vectorRemovals = append(vectorRemovals, key)
-		}
-	}
-	node.UpdatedAt = time.Now().Unix()
-	gs.unlockShard(nodeID)
+	p.tid = effectiveTenantID(node.TenantID)
+	var removed []string
+	removed, p.vectorRemovals = gs.writeNodePatchShard(node, set, remove, p.tid)
 
 	// Enqueue to WAL under gs.mu (preserves WAL order); wait on durability
 	// after releasing gs.mu so concurrent writers can fill the batch (group
 	// commit, Track P item 1). The record names the removed keys, not the
 	// keys that remain: replay merges Properties into the snapshot copy, so a
 	// map cannot express a removal.
-	walPending := gs.enqueueWAL(wal.OpUpdateNode, nodeUpdateRecord{
+	p.walPending = gs.enqueueWAL(wal.OpUpdateNode, nodeUpdateRecord{
 		NodeID:     nodeID,
 		Properties: set,
 		Removed:    removed,
@@ -639,30 +685,44 @@ func (gs *GraphStorage) patchNode(nodeID uint64, set map[string]Value, remove []
 
 	// R2.1: snapshot post-update state before releasing the lock so the
 	// observer sees a consistent view.
-	var newNode *Node
-	if oldNode != nil {
-		newNode = node.Clone()
+	if p.oldNode != nil {
+		p.newNode = node.Clone()
 	}
-	gs.mu.Unlock()
+	return p, nil
+}
 
-	// HNSW work off-lock (Track P item 3 / H2), before the WAL wait and
-	// observer dispatch so the index matches the node before observers act.
-	// RemoveVectorForTenant is idempotent; its errors are logged fail-soft
-	// (the property is already removed, and the index is rebuilt from the
-	// node set on restart).
-	for _, prop := range vectorRemovals {
-		if err := gs.vectorIndex.RemoveVectorForTenant(tid, prop, nodeID); err != nil {
-			log.Printf("node_operations: vector index removal failed for prop %q node %d tenant %s: %v", prop, nodeID, tid, err)
+// writeNodePatchShard applies set and remove to node in place, and returns the
+// keys it removed and the removed keys that are vector-indexed. Caller holds
+// gs.mu.
+//
+// Per-shard write lock (A4) excludes shard.RLock readers during the
+// in-place Node-struct mutation. The removals walk node.Properties for the
+// index Remove calls before they delete, so they stay inside the same window.
+//
+// A removed vector-indexed property must also leave the HNSW index, or
+// VectorSearch keeps returning the stale vector. HasIndexForTenant reads
+// the index map, so the removals are planned here and applied off-lock,
+// per key, so the node's other vector properties are untouched.
+func (gs *GraphStorage) writeNodePatchShard(node *Node, set map[string]Value, remove []string, tid tenantid.TenantID) (removed, vectorRemovals []string) {
+	gs.lockShard(node.ID)
+	defer gs.unlockShard(node.ID)
+	panicPoint("patchNode.shard")
+
+	// A node created with nil properties has no map to write into.
+	if node.Properties == nil && len(set) > 0 {
+		node.Properties = make(map[string]Value, len(set))
+	}
+	for k, v := range set {
+		node.Properties[k] = v
+	}
+	removed = gs.deleteNodePropertiesLocked(node.ID, node, remove)
+	for _, key := range removed {
+		if gs.vectorIndex.HasIndexForTenant(tid, key) {
+			vectorRemovals = append(vectorRemovals, key)
 		}
 	}
-	gs.applyNodeVectorInserts(vectorPlans)
-	// A wait error wraps ErrWALWriteFailed; the update stays applied and
-	// observers are still notified.
-	err = gs.waitWALPending(wal.OpUpdateNode, walPending)
-	if newNode != nil {
-		gs.notifyNodeUpdated(context.Background(), newNode, oldNode)
-	}
-	return err
+	node.UpdatedAt = time.Now().Unix()
+	return removed, vectorRemovals
 }
 
 // patchedProperties returns a copy of props with set applied and then remove,
@@ -775,32 +835,63 @@ func (gs *GraphStorage) DeleteNodeForTenant(nodeID uint64, tenantID string) erro
 	// recycled, so the only race is "node deleted by another goroutine
 	// before our delete" — which DeleteNode handles correctly by
 	// returning ErrNodeNotFound.
-	gs.rlockShard(nodeID)
-	if _, err := gs.getNodeRefForTenant(nodeID, tenantID); err != nil {
-		gs.runlockShard(nodeID)
+	if err := gs.checkNodeTenant(nodeID, tenantID); err != nil {
 		return err
 	}
-	gs.runlockShard(nodeID)
 	return gs.DeleteNode(nodeID)
+}
+
+// checkNodeTenant reports ErrNodeNotFound when nodeID is missing or belongs to
+// another tenant. It holds the node's shard read lock for the check only, with
+// a deferred unlock: the Cypher executor and net/http recover panics, so a
+// panic that left the read lock held would block every later write to the
+// shard. PatchNodeForTenant and DeleteNodeForTenant share it.
+func (gs *GraphStorage) checkNodeTenant(nodeID uint64, tenantID string) error {
+	gs.rlockShard(nodeID)
+	defer gs.runlockShard(nodeID)
+	panicPoint("checkNodeTenant")
+	_, err := gs.getNodeRefForTenant(nodeID, tenantID)
+	return err
 }
 
 // DeleteNode deletes a node and all its edges.
 //
 // Tenant-blind. New callers should prefer DeleteNodeForTenant.
 //
-// Lock discipline (R2.1, S11 spike §7.4): defer-unlock was replaced with
-// explicit unlock at every return path so notifyNodeDeleted can dispatch
-// strictly after gs.mu.Lock is released. The deleted node's TenantID is
-// captured under lock (from the lookup at line 514) and passed to the
+// Lock discipline (R2.1, S11 spike §7.4): deleteNodeUnderLock holds gs.mu
+// with a deferred unlock, so notifyNodeDeleted dispatches strictly after
+// gs.mu.Lock is released. The deleted node's TenantID is
+// captured under lock (from the resolveNodeRefLocked lookup) and passed to the
 // notify call after unlock — the node's data is not accessible by then.
 func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
+	walPending, tenantID, err := gs.deleteNodeUnderLock(nodeID)
+	if err != nil {
+		return err
+	}
+
+	// A wait error wraps ErrWALWriteFailed; the delete stays applied and
+	// observers are still notified.
+	err = gs.waitWALPending(wal.OpDeleteNode, walPending)
+	// R2.1: dispatch after lock release. See lock-discipline comment in
+	// pkg/storage/observation.go.
+	gs.notifyNodeDeleted(context.Background(), nodeID, tenantID)
+	return err
+}
+
+// deleteNodeUnderLock is the part of DeleteNode that runs under gs.mu. It
+// returns the WAL handle to wait on and the deleted node's TenantID for the
+// observer dispatch, both used after the unlock. The deferred unlock matters:
+// the Cypher executor and net/http recover panics, so a panic here that left
+// gs.mu held would hang every later write, Close included.
+func (gs *GraphStorage) deleteNodeUnderLock(nodeID uint64) (*wal.Pending, string, error) {
 	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	panicPoint("DeleteNode")
 
 	// resolve overlay → base; the node's fields drive index removal below.
 	node, err := gs.resolveNodeRefLocked(nodeID)
 	if err != nil {
-		gs.mu.Unlock()
-		return err
+		return nil, "", err
 	}
 
 	// Capture for OnNodeDeleted dispatch after unlock. node.TenantID is
@@ -813,13 +904,11 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 		var err error
 		outgoingEdgeIDs, err = gs.edgeStore.GetOutgoingEdges(nodeID)
 		if err != nil {
-			gs.mu.Unlock()
-			return fmt.Errorf("failed to get outgoing edges for node %d: %w", nodeID, err)
+			return nil, "", fmt.Errorf("failed to get outgoing edges for node %d: %w", nodeID, err)
 		}
 		incomingEdgeIDs, err = gs.edgeStore.GetIncomingEdges(nodeID)
 		if err != nil {
-			gs.mu.Unlock()
-			return fmt.Errorf("failed to get incoming edges for node %d: %w", nodeID, err)
+			return nil, "", fmt.Errorf("failed to get incoming edges for node %d: %w", nodeID, err)
 		}
 	} else {
 		// Use getEdgeIDsForNode so that mmap mode picks up CSR-base edges
@@ -832,16 +921,14 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	// Cascade delete all outgoing edges
 	for _, edgeID := range outgoingEdgeIDs {
 		if err := gs.cascadeDeleteOutgoingEdge(edgeID); err != nil {
-			gs.mu.Unlock()
-			return fmt.Errorf("failed to cascade delete outgoing edge %d: %w", edgeID, err)
+			return nil, "", fmt.Errorf("failed to cascade delete outgoing edge %d: %w", edgeID, err)
 		}
 	}
 
 	// Cascade delete all incoming edges
 	for _, edgeID := range incomingEdgeIDs {
 		if err := gs.cascadeDeleteIncomingEdge(edgeID); err != nil {
-			gs.mu.Unlock()
-			return fmt.Errorf("failed to cascade delete incoming edge %d: %w", edgeID, err)
+			return nil, "", fmt.Errorf("failed to cascade delete incoming edge %d: %w", edgeID, err)
 		}
 	}
 
@@ -855,16 +942,14 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 
 	// Remove from property indexes
 	if err := gs.removeNodeFromPropertyIndexes(nodeID, node.Properties); err != nil {
-		gs.mu.Unlock()
-		return err
+		return nil, "", err
 	}
 
 	// Remove from vector indexes (R1.2: routes by node.TenantID; empty
 	// TenantID on legacy tenant-blind nodes falls back to tenantid.Default
 	// inside RemoveNodeFromVectorIndexes).
 	if err := gs.RemoveNodeFromVectorIndexes(nodeID, node.TenantID); err != nil {
-		gs.mu.Unlock()
-		return err
+		return nil, "", err
 	}
 
 	// Delete node — per-shard write lock (A4) excludes shard.RLock
@@ -872,15 +957,11 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 	// (label/property/vector index removal, edge cascades) all touches
 	// global structures under the gs.mu.Lock that's held throughout
 	// this function.
-	gs.lockShard(nodeID)
-	gs.deleteNodeShardEntry(nodeID)
-	gs.markNodeDeletedLocked(nodeID) // mmap mode: mask the base-resident node
-	gs.unlockShard(nodeID)
+	gs.removeNodeFromShard(nodeID)
 
 	// Delete adjacency lists (disk-backed or in-memory)
 	if err := gs.clearNodeAdjacency(nodeID); err != nil {
-		gs.mu.Unlock()
-		return fmt.Errorf("failed to clear adjacency for node %d: %w", nodeID, err)
+		return nil, "", fmt.Errorf("failed to clear adjacency for node %d: %w", nodeID, err)
 	}
 
 	// Atomic decrement with underflow protection
@@ -888,17 +969,18 @@ func (gs *GraphStorage) DeleteNode(nodeID uint64) error {
 
 	// Enqueue to WAL under gs.mu (preserves WAL order); wait on durability after
 	// releasing gs.mu so concurrent writers can fill the batch (Track P item 1).
-	walPending := gs.enqueueWAL(wal.OpDeleteNode, node)
+	return gs.enqueueWAL(wal.OpDeleteNode, node), tenantID, nil
+}
 
-	gs.mu.Unlock()
-
-	// A wait error wraps ErrWALWriteFailed; the delete stays applied and
-	// observers are still notified.
-	err = gs.waitWALPending(wal.OpDeleteNode, walPending)
-	// R2.1: dispatch after lock release. See lock-discipline comment in
-	// pkg/storage/observation.go.
-	gs.notifyNodeDeleted(context.Background(), nodeID, tenantID)
-	return err
+// removeNodeFromShard deletes the node from its shard map and, in mmap mode,
+// masks the base-resident copy. Caller holds gs.mu. The deferred shard unlock
+// keeps a panic from leaving the shard write-locked.
+func (gs *GraphStorage) removeNodeFromShard(nodeID uint64) {
+	gs.lockShard(nodeID)
+	defer gs.unlockShard(nodeID)
+	panicPoint("DeleteNode.shard")
+	gs.deleteNodeShardEntry(nodeID)
+	gs.markNodeDeletedLocked(nodeID) // mmap mode: mask the base-resident node
 }
 
 // GetAllNodeIDs returns all node IDs in the storage.
@@ -958,7 +1040,29 @@ func (gs *GraphStorage) ForEachNode(fn func(*Node) bool) {
 // Intended for full-reload scenarios where the caller will repopulate the graph
 // immediately after.
 func (gs *GraphStorage) DeleteAllNodes() error {
+	if err := gs.clearAllUnderLock(); err != nil {
+		return err
+	}
+
+	// Write an empty snapshot so a process restart doesn't reload from the old
+	// snapshot.json + WAL.  Snapshot() acquires its own read lock so we release
+	// the write lock first.
+	if gs.dataDir != "" {
+		if err := gs.Snapshot(); err != nil {
+			return fmt.Errorf("write empty snapshot after clear: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// clearAllUnderLock is the part of DeleteAllNodes that runs under gs.mu. The
+// deferred unlock matters: the Cypher executor and net/http recover panics, so
+// a panic here that left gs.mu held would hang every later call, Close included.
+func (gs *GraphStorage) clearAllUnderLock() error {
 	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	panicPoint("DeleteAllNodes")
 
 	for i := range gs.nodeShards {
 		gs.nodeShards[i] = make(map[uint64]*Node)
@@ -991,19 +1095,16 @@ func (gs *GraphStorage) DeleteAllNodes() error {
 	// Truncate whichever WAL variant is active so replay doesn't restore deleted data.
 	if gs.wal != nil {
 		if err := gs.wal.Truncate(); err != nil {
-			gs.mu.Unlock()
 			return fmt.Errorf("truncate WAL: %w", err)
 		}
 	}
 	if gs.batchedWAL != nil {
 		if err := gs.batchedWAL.Truncate(); err != nil {
-			gs.mu.Unlock()
 			return fmt.Errorf("truncate batched WAL: %w", err)
 		}
 	}
 	if gs.compressedWAL != nil {
 		if err := gs.compressedWAL.Truncate(); err != nil {
-			gs.mu.Unlock()
 			return fmt.Errorf("truncate compressed WAL: %w", err)
 		}
 	}
@@ -1017,24 +1118,12 @@ func (gs *GraphStorage) DeleteAllNodes() error {
 	// (persistence.go); same copy-on-read safety invariant. (#416)
 	if gs.mmapSnap != nil {
 		if err := gs.mmapSnap.close(); err != nil {
-			gs.mu.Unlock()
 			return fmt.Errorf("unmap snapshot base during clear: %w", err)
 		}
 		gs.mmapSnap = nil
 		for i := range gs.deletedNodes {
 			gs.deletedNodes[i] = make(map[uint64]struct{})
 			gs.deletedEdges[i] = make(map[uint64]struct{})
-		}
-	}
-
-	gs.mu.Unlock()
-
-	// Write an empty snapshot so a process restart doesn't reload from the old
-	// snapshot.json + WAL.  Snapshot() acquires its own read lock so we release
-	// the write lock first.
-	if gs.dataDir != "" {
-		if err := gs.Snapshot(); err != nil {
-			return fmt.Errorf("write empty snapshot after clear: %w", err)
 		}
 	}
 

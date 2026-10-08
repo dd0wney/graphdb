@@ -60,20 +60,68 @@ func (tx *Transaction) Commit() error {
 		return ErrTransactionAlreadyEnded
 	}
 
-	tx.gs.mu.Lock()
-
-	// (1) Validate references before any mutation (all-or-none).
-	if err := tx.validateLocked(); err != nil {
-		tx.gs.mu.Unlock()
+	c, err := tx.applyLocked()
+	if err != nil {
 		return err
 	}
 
-	walEntries := make([]wal.BatchEntry, 0, len(tx.createdNodes)+len(tx.createdEdges)+len(tx.updatedNodes))
-	var vectorPlans []vectorInsertPlan
-	haveObservers := len(tx.gs.observers) > 0
-	var createdForNotify []*Node
-	type updateNotify struct{ oldNode, newNode *Node }
-	var updatesForNotify []updateNotify
+	// (3) Atomic durability — one fsync for the whole batch. Propagate the
+	// error: a commit that did not become durable must fail loudly.
+	if err := tx.appendWALBarriered(c.walEntries); err != nil {
+		return fmt.Errorf("commit: WAL durability: %w", err)
+	}
+
+	// (4) Off-lock: HNSW vector inserts, then observer dispatch.
+	tx.gs.applyNodeVectorInserts(c.vectorPlans)
+	if c.haveObservers {
+		ctx := context.Background()
+		for _, n := range c.createdForNotify {
+			tx.gs.notifyNodeCreated(ctx, n)
+		}
+		for _, u := range c.updatesForNotify {
+			tx.gs.notifyNodeUpdated(ctx, u.newNode, u.oldNode)
+		}
+	}
+
+	return nil
+}
+
+// txCommit is what the locked half of Commit hands to the off-lock half.
+type txCommit struct {
+	walEntries       []wal.BatchEntry
+	vectorPlans      []vectorInsertPlan
+	haveObservers    bool
+	createdForNotify []*Node
+	updatesForNotify []txUpdateNotify
+}
+
+type txUpdateNotify struct{ oldNode, newNode *Node }
+
+// applyLocked is steps 1 and 2 of Commit, under gs.mu. The deferred unlock
+// matters: the Cypher executor and net/http recover panics, so a panic here
+// that left gs.mu held would hang every later write, Close included.
+//
+// On success it returns with txWALBarrier read-held, and the caller must
+// release it through appendWALBarriered. The barrier is taken before gs.mu is
+// released: a CompactWAL boundary captured in between would see this commit's
+// state in the snapshot while its entries are still unappended (LSN >
+// boundary), and the surviving WAL would re-apply them over the snapshot on
+// recovery (M-1). The order cannot be reversed either, because
+// walLSNBarrieredLocked takes the barrier while it holds gs.mu.
+func (tx *Transaction) applyLocked() (txCommit, error) {
+	tx.gs.mu.Lock()
+	defer tx.gs.mu.Unlock()
+	panicPoint("Transaction.Commit")
+
+	// (1) Validate references before any mutation (all-or-none).
+	if err := tx.validateLocked(); err != nil {
+		return txCommit{}, err
+	}
+
+	c := txCommit{
+		walEntries:    make([]wal.BatchEntry, 0, len(tx.createdNodes)+len(tx.createdEdges)+len(tx.updatedNodes)),
+		haveObservers: len(tx.gs.observers) > 0,
+	}
 
 	// (2a) Created nodes — through the shared persist helper (indexes, stats,
 	// vector plan), then a WAL entry. Iterate in creation (ascending-ID) order so
@@ -82,18 +130,16 @@ func (tx *Transaction) Commit() error {
 		node := tx.createdNodes[nodeID]
 		plans, err := tx.gs.persistNodeLocked(node)
 		if err != nil {
-			tx.gs.mu.Unlock()
-			return fmt.Errorf("commit: persist node %d: %w", node.ID, err)
+			return txCommit{}, fmt.Errorf("commit: persist node %d: %w", node.ID, err)
 		}
-		vectorPlans = append(vectorPlans, plans...)
+		c.vectorPlans = append(c.vectorPlans, plans...)
 		data, err := json.Marshal(node)
 		if err != nil {
-			tx.gs.mu.Unlock()
-			return fmt.Errorf("commit: marshal node %d: %w", node.ID, err)
+			return txCommit{}, fmt.Errorf("commit: marshal node %d: %w", node.ID, err)
 		}
-		walEntries = append(walEntries, wal.BatchEntry{OpType: wal.OpCreateNode, Data: data})
-		if haveObservers {
-			createdForNotify = append(createdForNotify, node.Clone())
+		c.walEntries = append(c.walEntries, wal.BatchEntry{OpType: wal.OpCreateNode, Data: data})
+		if c.haveObservers {
+			c.createdForNotify = append(c.createdForNotify, node.Clone())
 		}
 	}
 
@@ -102,15 +148,13 @@ func (tx *Transaction) Commit() error {
 	for _, edgeID := range sortedTxIDs(tx.createdEdges) {
 		edge := tx.createdEdges[edgeID]
 		if err := tx.gs.persistEdgeLocked(edge); err != nil {
-			tx.gs.mu.Unlock()
-			return fmt.Errorf("commit: persist edge %d: %w", edge.ID, err)
+			return txCommit{}, fmt.Errorf("commit: persist edge %d: %w", edge.ID, err)
 		}
 		data, err := json.Marshal(edge)
 		if err != nil {
-			tx.gs.mu.Unlock()
-			return fmt.Errorf("commit: marshal edge %d: %w", edge.ID, err)
+			return txCommit{}, fmt.Errorf("commit: marshal edge %d: %w", edge.ID, err)
 		}
-		walEntries = append(walEntries, wal.BatchEntry{OpType: wal.OpCreateEdge, Data: data})
+		c.walEntries = append(c.walEntries, wal.BatchEntry{OpType: wal.OpCreateEdge, Data: data})
 	}
 
 	// (2c) Property updates to existing nodes. (Updates to nodes created in this
@@ -121,16 +165,13 @@ func (tx *Transaction) Commit() error {
 		props := tx.updatedNodes[nodeID]
 		// mmap mode: promote a base-resident node into the overlay (CoW) before
 		// the property-index update + in-place mutation below.
-		tx.gs.lockShard(nodeID)
-		node, err := tx.gs.materializeNodeLocked(nodeID)
-		tx.gs.unlockShard(nodeID)
+		node, err := tx.gs.materializeNode(nodeID)
 		if err != nil {
 			// validateLocked guaranteed existence + ownership; defensive only.
-			tx.gs.mu.Unlock()
-			return fmt.Errorf("commit: update target %d vanished: %w", nodeID, err)
+			return txCommit{}, fmt.Errorf("commit: update target %d vanished: %w", nodeID, err)
 		}
 		var oldNode *Node
-		if haveObservers {
+		if c.haveObservers {
 			oldNode = node.Clone()
 		}
 		// Maintain property indexes BEFORE mutating node.Properties — the helper
@@ -139,67 +180,60 @@ func (tx *Transaction) Commit() error {
 		// property index stale after a transaction update of an existing node
 		// (the per-tenant-index/#288 class, in the dormant transaction path).
 		if err := tx.gs.updatePropertyIndexes(nodeID, node, props); err != nil {
-			tx.gs.mu.Unlock()
-			return fmt.Errorf("commit: update property indexes for node %d: %w", nodeID, err)
+			return txCommit{}, fmt.Errorf("commit: update property indexes for node %d: %w", nodeID, err)
 		}
-		tx.gs.lockShard(nodeID)
-		for k, v := range props {
-			node.Properties[k] = v
-		}
-		node.UpdatedAt = time.Now().Unix()
-		tx.gs.unlockShard(nodeID)
+		tx.gs.writeTxNodeUpdate(node, props)
 
 		// Re-index vectors for the updated node (parity with the direct
 		// UpdateNode path).
 		plans, err := tx.gs.planNodeVectorInserts(node)
 		if err != nil {
-			tx.gs.mu.Unlock()
-			return fmt.Errorf("commit: plan vectors for updated node %d: %w", nodeID, err)
+			return txCommit{}, fmt.Errorf("commit: plan vectors for updated node %d: %w", nodeID, err)
 		}
-		vectorPlans = append(vectorPlans, plans...)
+		c.vectorPlans = append(c.vectorPlans, plans...)
 
 		data, err := json.Marshal(nodeUpdateRecord{NodeID: nodeID, Properties: props})
 		if err != nil {
-			tx.gs.mu.Unlock()
-			return fmt.Errorf("commit: marshal update %d: %w", nodeID, err)
+			return txCommit{}, fmt.Errorf("commit: marshal update %d: %w", nodeID, err)
 		}
-		walEntries = append(walEntries, wal.BatchEntry{OpType: wal.OpUpdateNode, Data: data})
-		if haveObservers {
-			updatesForNotify = append(updatesForNotify, updateNotify{oldNode: oldNode, newNode: node.Clone()})
+		c.walEntries = append(c.walEntries, wal.BatchEntry{OpType: wal.OpUpdateNode, Data: data})
+		if c.haveObservers {
+			c.updatesForNotify = append(c.updatesForNotify, txUpdateNotify{oldNode: oldNode, newNode: node.Clone()})
 		}
 	}
 
 	tx.committed = true
 	tx.active = false
-	// Hold the commit barrier from before gs.mu is released until the WAL
-	// batch has been appended: a CompactWAL boundary captured in between
-	// would see this commit's state in the snapshot while its entries are
-	// still unappended (LSN > boundary), and the surviving WAL would
-	// re-apply them over the snapshot on recovery (M-1).
 	tx.gs.txWALBarrier.RLock()
-	tx.gs.mu.Unlock()
+	return c, nil
+}
 
-	// (3) Atomic durability — one fsync for the whole batch. Propagate the
-	// error: a commit that did not become durable must fail loudly.
-	walErr := tx.gs.noteWALWriteError(tx.gs.appendWALBatch(walEntries))
-	tx.gs.txWALBarrier.RUnlock()
-	if walErr != nil {
-		return fmt.Errorf("commit: WAL durability: %w", walErr)
+// writeTxNodeUpdate merges props into node in place under the node's shard
+// lock. Caller holds gs.mu.
+func (gs *GraphStorage) writeTxNodeUpdate(node *Node, props map[string]Value) {
+	gs.lockShard(node.ID)
+	defer gs.unlockShard(node.ID)
+	panicPoint("Transaction.Commit.shard")
+
+	// A node created with nil properties has no map to merge into.
+	if node.Properties == nil && len(props) > 0 {
+		node.Properties = make(map[string]Value, len(props))
 	}
-
-	// (4) Off-lock: HNSW vector inserts, then observer dispatch.
-	tx.gs.applyNodeVectorInserts(vectorPlans)
-	if haveObservers {
-		ctx := context.Background()
-		for _, n := range createdForNotify {
-			tx.gs.notifyNodeCreated(ctx, n)
-		}
-		for _, u := range updatesForNotify {
-			tx.gs.notifyNodeUpdated(ctx, u.newNode, u.oldNode)
-		}
+	for k, v := range props {
+		node.Properties[k] = v
 	}
+	node.UpdatedAt = time.Now().Unix()
+}
 
-	return nil
+// appendWALBarriered appends the commit's WAL batch and then releases the
+// txWALBarrier read lock that applyLocked returned with. The release is
+// deferred, so a panic in the WAL or in encryption cannot leave the barrier
+// held: walLSNBarrieredLocked would then block on it while holding gs.mu, and
+// Snapshot and Close would hang.
+func (tx *Transaction) appendWALBarriered(entries []wal.BatchEntry) error {
+	defer tx.gs.txWALBarrier.RUnlock()
+	panicPoint("Transaction.Commit.wal")
+	return tx.gs.noteWALWriteError(tx.gs.appendWALBatch(entries))
 }
 
 // validateLocked checks that every created edge's endpoints and every update
