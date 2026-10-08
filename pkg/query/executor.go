@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"time"
 
@@ -231,6 +232,9 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	// for the rest, which is worse than not offering them at all.
 	query.Next.InitialBindings = projectedBindings
 	result, err := e.ExecuteWithOptions(ctx, query.Next, opts)
+	if result != nil && len(execCtx.notices) > 0 {
+		result.Notices = slices.Concat(execCtx.notices, result.Notices)
+	}
 	return result, errors.Join(execCtx.truncation, err)
 }
 
@@ -443,6 +447,8 @@ func (e *Executor) executeUnion(ctx context.Context, query *Query, opts PathOpti
 	// Remap second segment's rows to first segment's column names
 	combined := &ResultSet{
 		Columns: first.Columns,
+		// Both sides ran; a notice from either is still true of the query.
+		Notices: slices.Concat(first.Notices, second.Notices),
 		Rows:    make([]map[string]any, 0, len(first.Rows)+len(second.Rows)),
 	}
 

@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated
+- **A plain Cypher `DELETE` of a node that still has relationships.** graphdb removes the
+  relationships with the node, where openCypher refuses the delete unless the query says
+  `DETACH DELETE`. The 1.x behaviour stays, as `docs/STABILITY_POLICY.md` requires, and v2.0 will
+  refuse such a delete. A query that relies on it now gets a `query.Notice` with code
+  `plain-delete-detach` in `ResultSet.Notices`, and REST `/query` answers with the response header
+  `X-Cypher-Deprecation: plain-delete-detach` (absent otherwise); the server logs the tenant. Write
+  `DETACH DELETE` to keep the current result in v2.0.
+
+### Added
+- **`query.ResultSet.Notices`** and the REST `/query` header `X-Cypher-Deprecation`, for a query
+  that used a deprecated form and still succeeded.
+
 ## [1.6.0] - 2026-10-08
 
 This release fixes Cypher writes and reads that answered success while doing something else, two

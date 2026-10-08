@@ -340,10 +340,53 @@ func (ds *DeleteStep) Execute(ctx *ExecutionContext) error {
 			return fmt.Errorf("failed to delete edge %d: %w", id, err)
 		}
 	}
+	if !ds.delete.Detach {
+		if err := ds.noteDetachedRelationships(ctx, targets.nodeIDs); err != nil {
+			return err
+		}
+	}
 	for _, id := range targets.nodeIDs {
 		if err := ctx.graph.DeleteNodeForTenant(id, ctx.tenantID); err != nil {
 			return fmt.Errorf("failed to delete node %d: %w", id, err)
 		}
+	}
+	return nil
+}
+
+// noteDetachedRelationships records a deprecation notice when a plain DELETE
+// is about to remove relationships the query did not name. openCypher refuses
+// such a delete unless it says DETACH DELETE; graphdb 1.x removes them, and
+// docs/STABILITY_POLICY.md keeps that until v2.0, which will refuse. It runs
+// after the named relationships are gone, so whatever a node still has is
+// exactly what the node delete will remove with it.
+func (ds *DeleteStep) noteDetachedRelationships(ctx *ExecutionContext, nodeIDs []uint64) error {
+	// One set across all nodes: a relationship between two deleted nodes is
+	// removed once, not once for each end.
+	detached := make(map[uint64]struct{})
+	nodes := 0
+	for _, id := range nodeIDs {
+		out, err := ctx.graph.GetOutgoingEdgesForTenant(id, ctx.tenantID)
+		if err != nil {
+			return fmt.Errorf("DELETE: relationships of node %d: %w", id, err)
+		}
+		in, err := ctx.graph.GetIncomingEdgesForTenant(id, ctx.tenantID)
+		if err != nil {
+			return fmt.Errorf("DELETE: relationships of node %d: %w", id, err)
+		}
+		if len(out)+len(in) > 0 {
+			nodes++
+		}
+		for _, e := range append(out, in...) {
+			detached[e.ID] = struct{}{} // a self-loop is in both lists
+		}
+	}
+	rels := len(detached)
+	if nodes > 0 {
+		ctx.notices = append(ctx.notices, Notice{
+			Code: NoticePlainDeleteDetach,
+			Message: fmt.Sprintf("deprecated: plain DELETE removed %d relationships of %d nodes; use DETACH DELETE. "+
+				"graphdb v2.0 will refuse a plain DELETE of a node that has relationships", rels, nodes),
+		})
 	}
 	return nil
 }

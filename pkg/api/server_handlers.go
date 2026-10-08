@@ -21,6 +21,7 @@ import (
 	"github.com/dd0wney/graphdb/pkg/graphql"
 	"github.com/dd0wney/graphdb/pkg/health"
 	"github.com/dd0wney/graphdb/pkg/query"
+	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +109,15 @@ const (
 // report. The two headers follow CC14's SHAPE — 200, the rows that were
 // found, plus a header — and not its name.
 const TraversalTruncatedHeader = "X-Traversal-Truncated"
+
+// CypherDeprecationHeader is the response header handleQuery sets when the
+// query used a deprecated form that still worked. Its value is the stable
+// Code of each deprecation notice (query.Notice), comma-separated, and it is
+// ABSENT when there is none, like TraversalTruncatedHeader. The first such
+// code is query.NoticePlainDeleteDetach: a plain DELETE that removed a node's
+// relationships, which graphdb v2.0 will refuse (docs/STABILITY_POLICY.md
+// keeps the 1.x behaviour until then).
+const CypherDeprecationHeader = "X-Cypher-Deprecation"
 
 func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -219,6 +229,13 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// complete, so its presence is the whole signal.
 	if truncated {
 		w.Header().Set(TraversalTruncatedHeader, "true")
+	}
+	if codes := deprecationCodes(results.Notices); codes != "" {
+		w.Header().Set(CypherDeprecationHeader, codes)
+		// Operators need to see who still relies on a deprecated form before
+		// the release that refuses it.
+		tenantID, _ := tenant.FromContext(r.Context())
+		log.Printf("query: deprecated Cypher form used (tenant=%q): %s", tenantID, noticeMessages(results.Notices))
 	}
 	s.respondJSON(w, http.StatusOK, response)
 }
@@ -448,4 +465,28 @@ func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 		// can't respondError cleanly. Log for diagnostics.
 		log.Printf("openapi: yaml write failed: %v", err)
 	}
+}
+
+// deprecationCodes returns the distinct notice codes, comma-separated, in the
+// order they first appeared. Every query.Notice today is a deprecation; a
+// notice of another kind must not reach CypherDeprecationHeader.
+func deprecationCodes(notices []query.Notice) string {
+	seen := make(map[string]bool, len(notices))
+	var codes []string
+	for _, n := range notices {
+		if n.Code == "" || seen[n.Code] {
+			continue
+		}
+		seen[n.Code] = true
+		codes = append(codes, n.Code)
+	}
+	return strings.Join(codes, ", ")
+}
+
+func noticeMessages(notices []query.Notice) string {
+	msgs := make([]string, len(notices))
+	for i, n := range notices {
+		msgs[i] = n.Message
+	}
+	return strings.Join(msgs, "; ")
 }
