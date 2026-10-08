@@ -67,40 +67,59 @@ func (o *Optimizer) optimizeMatchWithIndex(match *MatchStep, query *Query) Execu
 		return match
 	}
 
-	// Check if index exists for this property
-	if !o.graph.HasPropertyIndex(indexInfo.propertyKey) {
+	indexType, exists := o.graph.PropertyIndexType(indexInfo.propertyKey)
+	if !exists {
 		return match
 	}
 
-	// Get the variable and labels from the match pattern
-	variable := ""
-	var labels []string
-	if match.match != nil && len(match.match.Patterns) > 0 {
-		pattern := match.match.Patterns[0]
-		if len(pattern.Nodes) > 0 {
-			variable = pattern.Nodes[0].Variable
-			labels = pattern.Nodes[0].Labels
-		}
-	}
-
-	// Verify the property access matches the variable in the match pattern
-	if indexInfo.variable != variable {
-		return match // Property is on a different variable
-	}
-
-	// Convert value to storage.Value
-	storageValue, ok := convertToStorageValueForIndex(indexInfo.value)
+	node, ok := indexReplaceableNode(match.match)
 	if !ok {
 		return match
 	}
 
-	// Return IndexLookupStep instead of MatchStep
+	// Verify the property access matches the variable in the match pattern
+	if indexInfo.variable != node.Variable {
+		return match // Property is on a different variable
+	}
+
+	// The index refuses a value of another type and holds no node whose value
+	// has another type, so such a value must take the scan to get the same rows.
+	storageValue, ok := convertToStorageValueForIndex(indexInfo.value)
+	if !ok || storageValue.Type != indexType {
+		return match
+	}
+
 	return &IndexLookupStep{
 		propertyKey: indexInfo.propertyKey,
 		value:       storageValue,
-		variable:    variable,
-		labels:      labels,
+		variable:    node.Variable,
+		labels:      node.Labels,
 	}
+}
+
+// indexReplaceableNode returns the node pattern that an IndexLookupStep may
+// stand in for, and false when the MATCH needs more than that step can do.
+//
+// IndexLookupStep binds exactly one variable to the nodes the index returns
+// and filters them by label. It does not expand relationships, bind a second
+// node or pattern, or check an inline property map. Replacing a MatchStep that
+// needs any of those changes the query's rows, and the index must never do
+// that: it is an access path, not a semantics change.
+func indexReplaceableNode(match *MatchClause) (*NodePattern, bool) {
+	if match == nil || len(match.Patterns) != 1 {
+		return nil, false
+	}
+	pattern := match.Patterns[0]
+	if len(pattern.Nodes) != 1 || len(pattern.Relationships) != 0 {
+		return nil, false
+	}
+	// An inline map is refused outright rather than checked against WHERE:
+	// the scan is still correct, and a partial check is how this went wrong.
+	node := pattern.Nodes[0]
+	if len(node.Properties) != 0 {
+		return nil, false
+	}
+	return node, true
 }
 
 // indexableCondition holds info about an indexable WHERE condition

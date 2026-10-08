@@ -207,6 +207,21 @@ func (gs *GraphStorage) HasPropertyIndex(key string) bool {
 	return exists
 }
 
+// PropertyIndexType reports the value type of the property index on key, and
+// whether such an index exists. A lookup with a value of any other type fails,
+// and the index holds no node whose value has another type, so a caller that
+// may hold such a value must not route it through the index.
+func (gs *GraphStorage) PropertyIndexType(key string) (ValueType, bool) {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+
+	idx, exists := gs.propertyIndexes[key]
+	if !exists {
+		return 0, false
+	}
+	return idx.indexType, true
+}
+
 // GetIndexStatistics returns statistics for all property indexes
 func (gs *GraphStorage) GetIndexStatistics() map[string]IndexStatistics {
 	gs.mu.RLock()
