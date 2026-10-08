@@ -98,7 +98,10 @@ func (e *Executor) executeWithProfiling(ctx context.Context, plan *ExecutionPlan
 
 	var result *ResultSet
 	if query.Return != nil {
-		result = e.buildResultSet(execCtx, query.Return, query.Limit, query.Skip)
+		var err error
+		if result, err = e.buildResultSet(execCtx, query.Return, query.Limit, query.Skip); err != nil {
+			return nil, err
+		}
 	} else {
 		result = &ResultSet{
 			Columns: []string{"affected"},

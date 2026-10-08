@@ -2,6 +2,9 @@ package query
 
 import (
 	"fmt"
+	"math"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -51,20 +54,48 @@ func buildColumnName(item *ReturnItem) string {
 }
 
 // buildResultSet builds the final result set
-func (e *Executor) buildResultSet(ctx *ExecutionContext, returnClause *ReturnClause, limit, skip int) *ResultSet {
+func (e *Executor) buildResultSet(ctx *ExecutionContext, returnClause *ReturnClause, limit, skip int) (*ResultSet, error) {
+	if err := checkAggregateInputs(ctx, returnClause.Items); err != nil {
+		return nil, err
+	}
+
 	// Group when the query says GROUP BY, or, as openCypher does, when it
 	// aggregates next to a non-aggregate item: that item is a grouping key.
 	if len(returnClause.GroupBy) > 0 || (hasAggregates(returnClause.Items) && len(nonAggregateItems(returnClause.Items)) > 0) {
-		return e.buildGroupedResultSet(ctx, returnClause, limit, skip)
+		return e.buildGroupedResultSet(ctx, returnClause, limit, skip), nil
 	}
 
 	// Aggregates with no key: one row over all bindings.
 	if hasAggregates(returnClause.Items) {
-		return e.buildAggregateResultSet(ctx, returnClause)
+		return e.buildAggregateResultSet(ctx, returnClause), nil
 	}
 
 	// Build regular results
-	return e.buildRegularResultSet(ctx, returnClause, limit, skip)
+	return e.buildRegularResultSet(ctx, returnClause, limit, skip), nil
+}
+
+// checkAggregateInputs refuses sum, avg, min or max of a node or a
+// relationship. They have no numeric value, and the helpers silently gave 0,
+// null or an arbitrary entity; count and collect of an entity are defined.
+func checkAggregateInputs(ctx *ExecutionContext, items []*ReturnItem) error {
+	for _, item := range items {
+		switch item.Aggregate {
+		case "SUM", "AVG", "MIN", "MAX":
+		default:
+			continue
+		}
+		if item.Expression == nil || item.Expression.Property != "" {
+			continue
+		}
+		for _, binding := range ctx.results {
+			switch binding.bindings[item.Expression.Variable].(type) {
+			case *storage.Node, *storage.Edge, []*storage.Edge:
+				return fmt.Errorf("%s(%s): a node or relationship has no value to aggregate; aggregate one of its properties",
+					strings.ToLower(item.Aggregate), item.Expression.Variable)
+			}
+		}
+	}
+	return nil
 }
 
 // buildAggregateResultSet builds results for aggregate queries without GROUP BY
@@ -155,9 +186,32 @@ func (e *Executor) buildGroupedResultSet(ctx *ExecutionContext, returnClause *Re
 	}
 	resultSet.Count = len(resultSet.Rows)
 
+	// ORDER BY n.city after RETURN n.city AS city sorts by the key's column;
+	// copy it under the name the sort looks up, and drop it afterwards.
+	var extraSortCols []string
+	for _, ob := range returnClause.OrderBy {
+		if ob.Expression == nil {
+			continue
+		}
+		name := orderByColKey(ob.Expression)
+		col := groupedOrderColumn(returnClause, ob.Expression)
+		if col == "" || col == name {
+			continue
+		}
+		extraSortCols = append(extraSortCols, name)
+		for _, row := range resultSet.Rows {
+			row[name] = row[col]
+		}
+	}
+
 	// Apply post-processing (ORDER BY, SKIP, LIMIT)
 	e.applyPostProcessing(resultSet, returnClause, limit, skip, false)
 
+	for _, col := range extraSortCols {
+		for _, row := range resultSet.Rows {
+			delete(row, col)
+		}
+	}
 	return resultSet
 }
 
@@ -172,27 +226,85 @@ func nonAggregateItems(items []*ReturnItem) []*ReturnItem {
 	return keys
 }
 
-// groupKey encodes a group's key values so that two values share a group only
-// when they are equal and of the same type: a node or relationship by its ID,
-// null as its own value, anything else by type and value. Each part is length
-// prefixed, so no value can contain a separator.
+// groupKey encodes a group's key values so that two values share a group
+// exactly when openCypher treats them as equivalent: numbers compare as
+// numbers (1 and 1.0, 0 and -0, NaN and NaN), lists and maps element by
+// element, a node or relationship by its ID, and null as its own value. Every
+// part is length-prefixed, so no value can imitate a separator.
 func groupKey(parts []any) string {
 	var b strings.Builder
 	for _, p := range parts {
-		var s string
-		switch v := p.(type) {
-		case nil:
-			s = "null"
-		case *storage.Node:
-			s = fmt.Sprintf("node:%d", v.ID)
-		case *storage.Edge:
-			s = fmt.Sprintf("edge:%d", v.ID)
-		default:
-			s = fmt.Sprintf("%T:%v", v, v)
-		}
-		fmt.Fprintf(&b, "%d:%s|", len(s), s)
+		writeKeyPart(&b, canonicalKey(p))
 	}
 	return b.String()
+}
+
+func writeKeyPart(b *strings.Builder, s string) {
+	fmt.Fprintf(b, "%d:%s|", len(s), s)
+}
+
+func canonicalKey(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return "null"
+	case bool:
+		return fmt.Sprintf("bool:%t", x)
+	case string:
+		return "str:" + x
+	case int:
+		return "num:" + strconv.FormatInt(int64(x), 10)
+	case int64:
+		return "num:" + strconv.FormatInt(x, 10)
+	case int32:
+		return "num:" + strconv.FormatInt(int64(x), 10)
+	case float32:
+		return canonicalFloat(float64(x))
+	case float64:
+		return canonicalFloat(x)
+	case *storage.Node:
+		return fmt.Sprintf("node:%d", x.ID)
+	case *storage.Edge:
+		return fmt.Sprintf("edge:%d", x.ID)
+	case []*storage.Edge:
+		var b strings.Builder
+		for _, e := range x {
+			writeKeyPart(&b, fmt.Sprintf("edge:%d", e.ID))
+		}
+		return "path[" + b.String() + "]"
+	case []any:
+		var b strings.Builder
+		for _, e := range x {
+			writeKeyPart(&b, canonicalKey(e))
+		}
+		return "list[" + b.String() + "]"
+	case map[string]any:
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var b strings.Builder
+		for _, k := range keys {
+			writeKeyPart(&b, k)
+			writeKeyPart(&b, canonicalKey(x[k]))
+		}
+		return "map{" + b.String() + "}"
+	}
+	return fmt.Sprintf("%T:%v", v, v)
+}
+
+// canonicalFloat writes an integral float the way the same integer is
+// written, so 1.0 groups with 1; -0 groups with 0, and every NaN with NaN.
+func canonicalFloat(f float64) string {
+	switch {
+	case math.IsNaN(f):
+		return "num:NaN"
+	case f == 0:
+		return "num:0"
+	case f == math.Trunc(f) && math.Abs(f) < 1<<63:
+		return "num:" + strconv.FormatInt(int64(f), 10)
+	}
+	return "num:" + strconv.FormatFloat(f, 'g', -1, 64)
 }
 
 // buildRegularResultSet builds results for regular (non-aggregate) queries

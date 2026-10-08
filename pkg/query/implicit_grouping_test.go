@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"testing"
 
@@ -185,5 +186,84 @@ func TestGrouping_AggregatesOverRelationshipsAndEntities(t *testing.T) {
 	}
 	if node, ok := qs[0].(*storage.Node); !ok || node.ID != q.ID {
 		t.Errorf("collect(q)[0] = %#v, want the node %d", qs[0], q.ID)
+	}
+}
+
+// ORDER BY may name a grouping key by its expression even when RETURN aliased
+// it; ordering by anything else after aggregation has no defined value per
+// group, so it is refused rather than silently ignored.
+func TestGrouping_OrderByKeyExpressionAndRefusal(t *testing.T) {
+	gs, ex := newGroupingGraph(t)
+	for _, c := range []string{"A", "C", "B", "A"} {
+		person(t, gs, map[string]storage.Value{"city": storage.StringValue(c), "name": storage.StringValue("p" + c)})
+	}
+
+	rows := runRows(t, ex, "MATCH (n:Person) RETURN n.city AS city, count(n) AS c ORDER BY n.city DESC")
+	var order []string
+	for _, r := range rows {
+		order = append(order, fmt.Sprint(r["city"]))
+	}
+	if got := fmt.Sprint(order); got != "[C B A]" {
+		t.Fatalf("order = %s, want [C B A]; rows %v", got, rows)
+	}
+	for _, r := range rows {
+		if _, leaked := r["n.city"]; leaked {
+			t.Fatalf("the sort column leaked into the result: %v", r)
+		}
+	}
+
+	tokens, err := NewLexer("MATCH (n:Person) RETURN n.city AS city, count(n) AS c ORDER BY n.name").Tokenize()
+	if err != nil {
+		t.Fatalf("Tokenize: %v", err)
+	}
+	if _, err := NewParser(tokens).Parse(); err == nil {
+		t.Fatal("ORDER BY a non-key expression after aggregation parsed; want a refusal")
+	}
+}
+
+// Two key values share a group only when openCypher treats them as the same:
+// numbers compare as numbers, lists element by element.
+func TestGrouping_GroupKeyEquivalence(t *testing.T) {
+	same := [][2]any{
+		{int64(0), -0.0},
+		{int64(1), 1.0},
+		{math.NaN(), math.NaN()},
+		{[]any{int64(1), "a"}, []any{1.0, "a"}},
+	}
+	for _, p := range same {
+		if groupKey([]any{p[0]}) != groupKey([]any{p[1]}) {
+			t.Errorf("%#v and %#v must share a group", p[0], p[1])
+		}
+	}
+	different := [][2]any{
+		{int64(1), "1"},
+		{[]any{int64(1)}, []any{"1"}},
+		{[]any{"a b"}, []any{"a", "b"}},
+		{"a", []any{"a"}},
+		{nil, "null"},
+	}
+	for _, p := range different {
+		if groupKey([]any{p[0]}) == groupKey([]any{p[1]}) {
+			t.Errorf("%#v and %#v must not share a group", p[0], p[1])
+		}
+	}
+}
+
+// sum, avg, min and max of a node or relationship have no value; they used to
+// return 0 or an arbitrary entity with no error.
+func TestGrouping_NumericAggregateOfAnEntityRefuses(t *testing.T) {
+	gs, ex := newGroupingGraph(t)
+	person(t, gs, map[string]storage.Value{"city": storage.StringValue("A")})
+
+	for _, q := range []string{
+		"MATCH (n:Person) RETURN sum(n) AS s",
+		"MATCH (n:Person) RETURN n.city AS city, max(n) AS m",
+	} {
+		if _, err := ex.Execute(parseCallInput(t, q)); err == nil {
+			t.Errorf("%s succeeded; want a refusal", q)
+		}
+	}
+	if _, err := ex.Execute(parseCallInput(t, "MATCH (n:Person) RETURN count(n) AS c, collect(n) AS ns")); err != nil {
+		t.Errorf("count and collect of a node must work: %v", err)
 	}
 }
