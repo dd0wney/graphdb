@@ -178,11 +178,10 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		return health.SimpleCheck("api")
 	})
 
-	healthChecker.RegisterReadinessCheck("storage", health.DatabaseCheck(func() error {
-		// Check if storage is accessible
-		_ = graph.GetStatistics()
-		return nil
-	}))
+	// Not ready when the store is closed or its WAL is poisoned: either
+	// lasts until restart, and a ready instance would keep taking writes it
+	// cannot persist.
+	healthChecker.RegisterReadinessCheck("storage", health.DatabaseCheck(graph.Health))
 
 	healthChecker.RegisterCheck("memory", health.MemoryCheck(func() (uint64, uint64) {
 		var m runtime.MemStats
