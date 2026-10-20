@@ -1,12 +1,27 @@
 package wal
 
 import (
+	"fmt"
 	"hash/crc32"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/dd0wney/graphdb/pkg/vfs"
 )
+
+// BatchConfigError refuses a batched-WAL configuration that cannot run.
+// Field uses the StorageConfig field name, because that is what the
+// operator set.
+type BatchConfigError struct {
+	Field  string
+	Value  string
+	Reason string
+}
+
+func (e *BatchConfigError) Error() string {
+	return fmt.Sprintf("wal: batched WAL %s %s, got %s", e.Field, e.Reason, e.Value)
+}
 
 // BatchedWAL wraps WAL with batching capabilities for better write performance
 type BatchedWAL struct {
@@ -43,6 +58,16 @@ func NewBatchedWAL(dataDir string, batchSize int, flushInterval time.Duration) (
 // vfs.Default(). The batching layer holds no file of its own, so this forwards
 // the driver to the WAL underneath it.
 func NewBatchedWALWithFS(dataDir string, batchSize int, flushInterval time.Duration, fs vfs.FileSystem) (*BatchedWAL, error) {
+	// Checked before the WAL file opens: a refusal must leave nothing to
+	// close. A non-positive interval would otherwise panic in the flusher
+	// goroutine, where no caller can recover it.
+	if flushInterval <= 0 {
+		return nil, &BatchConfigError{Field: "FlushInterval", Value: flushInterval.String(), Reason: "must be positive"}
+	}
+	if batchSize < 0 {
+		return nil, &BatchConfigError{Field: "BatchSize", Value: strconv.Itoa(batchSize), Reason: "must not be negative"}
+	}
+
 	wal, err := NewWALWithFS(dataDir, fs)
 	if err != nil {
 		return nil, err
