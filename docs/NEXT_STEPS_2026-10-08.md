@@ -46,11 +46,13 @@ or spec before code; **S** a spike.
 
 ### Track C — Cypher correctness
 
-1. `v1.4-cypher-implicit-grouping` — `RETURN n.city, count(n)` returns one row per node with
-   `count = null`; only the non-Cypher `GROUP BY` groups. Short in-chat design first (keep or
-   deprecate `GROUP BY`; `DISTINCT`; aggregates inside `WITH`, which are not computed).
-2. *(unseeded)* `WITH` binds `nil` for an undefined variable (`pkg/query/executor.go`), so a
-   misspelled name after `WITH` writes or matches nothing with no error.
+1. ~~`v1.4-cypher-implicit-grouping`~~ ✅ **DONE 2026-10-08 (#664)** — non-aggregate `RETURN`
+   items are the grouping keys, null is its own group, and ORDER BY a non-key after aggregation
+   and `sum`/`avg`/`min`/`max` of an entity are refused. Aggregates inside `WITH` remain:
+   `v1.4-cypher-with-aggregates`.
+2. `v1.4-cypher-with-undefined-variable` (seeded in #663) — `WITH` binds `nil` for an undefined
+   variable (`pkg/query/executor.go`), so a misspelled name after `WITH` writes or matches nothing
+   with no error.
 3. `v1.4-query-sanitizer-skip-literals`, `v1.4-traverse-truncation-header-alias` — Ulysses asks.
 4. `v1.4-cypher-merge-update-errors` — `_ =` in `pkg/query/physical_ops_mutate.go`, which only the
    unused `planner.go` reaches. Dead-code hygiene, not a live defect.
@@ -58,9 +60,11 @@ or spec before code; **S** a spike.
 
 ### Track S — storage robustness
 
-1. `v1.4-lock-panic-safety` — a write path that releases a lock without `defer` turns any panic
-   into a hung store (the Cypher executor and net/http recover panics). #646 and #650 removed two
-   panic sources, not the pattern.
+1. ~~`v1.4-lock-panic-safety`~~ ✅ **DONE 2026-10-08 (#665)** — 37 critical sections now unlock
+   by `defer`; also fixed a nil-map panic in `Transaction.Commit` and a held `txWALBarrier` after a
+   panic in the transaction WAL append. One site is left: `snapshotWithBoundary` (item 1a).
+1a. `v1.4-snapshot-rlock-panic-safety` (seeded in #666) — the snapshot read lock is released by
+   hand. Benchmark the RLock hold time before and after.
 2. `v1.4-batched-wal-flush-interval-validation` — `FlushInterval` 0 panics at open. Small; mapper asked.
 3. `v1.4-foreach-node-tenant-and-lock` — tenant-blind, holds `gs.mu.RLock` across the callback;
    `GetEdgesByTypeForTenant` skips a damaged record silently.
@@ -98,12 +102,13 @@ or spec before code; **S** a spike.
 1. `v1.4-encryption-no-plaintext-test` — the acceptance check for the next item.
 2. `v1.4-encrypt-uniqueness-rules-file` — `rules.json` is plaintext in an encrypted store.
 3. `v1.4-encryption-envelope-test-cannot-fail` — searches raw text; values are base64.
-4. *(unseeded)* no way to zero the engine key on Close.
+4. `v1.4-encryption-key-zeroing` (seeded in #663) — no way to zero the engine key on Close.
 
 ### Critical path (proposed)
 
-`implicit-grouping` → `lock-panic-safety` → node-upsert spec → node upsert (three layers) →
-`flush-interval-validation`, `datadir-flock` → Track E → Track W.
+~~`implicit-grouping`~~ (#664) → ~~`lock-panic-safety`~~ (#665) → release v1.8.0 →
+node-upsert spec → node upsert (three layers) → `flush-interval-validation`, `datadir-flock` →
+Track E → Track W.
 
 Parallel-safe at any time: the small Track S items and the Ulysses asks.
 
@@ -111,10 +116,8 @@ Parallel-safe at any time: the small Track S items and the Ulysses asks.
 
 ## Unseeded gaps
 
-- `WITH` binds `nil` for an undefined variable (Track C item 2).
-- A float property index may compare NaN and -0 differently from the scan (raised in the #641
-  review, not checked).
-- No way to zero the encryption key in memory (Track E item 4).
+None. #663 seeded all three that were listed here: `v1.4-cypher-with-undefined-variable`,
+`v1.4-float-index-nan-negative-zero` and `v1.4-encryption-key-zeroing`.
 
 ## Corrections to older claims
 
@@ -122,7 +125,7 @@ Parallel-safe at any time: the small Track S items and the Ulysses asks.
   local/NVMe (~11µs)" reproduces only on tmpfs (`b.TempDir()` is `/tmp`). See
   `v1.4-wal-default-remeasure` and the 2026-10-08 handoff.
 - `docs/CAPABILITIES_2026-05-10.md` lists `query` as mature with no Cypher gaps. Nine silent-result
-  or dropped-clause defects were found on 2026-10-08; all but implicit grouping are fixed (#641,
-  #644, #646, #657, #659).
+  or dropped-clause defects were found on 2026-10-08; all are fixed (#641, #644, #646, #657,
+  #659, and #664 for implicit grouping).
 - `CLAUDE.md` gives the `pkg/storage` suite as ~120-170 s; it ran in 43-44 s throughout 2026-10-08.
 - The branch-claim hook from #583 is not installed in every clone; claim coord tasks by hand.
