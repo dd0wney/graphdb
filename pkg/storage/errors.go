@@ -441,3 +441,25 @@ func IsNotFound(err error) bool {
 func IsClosed(err error) bool {
 	return errors.Is(err, ErrStorageClosed)
 }
+
+// ErrDataDirLocked is the class of DataDirLockedError: another open store, in
+// this process or another, holds the data directory.
+var ErrDataDirLocked = errors.New("data directory is locked by another open store")
+
+// DataDirLockedError is returned by NewGraphStorageWithConfig when another open
+// store holds the lock on the data directory. Two stores on one directory each
+// append to the WAL and each write the snapshot on Close, so the second Close
+// silently discards what the first wrote; refusing the open is the only safe
+// answer. Use errors.Is(err, ErrDataDirLocked) to detect this class.
+type DataDirLockedError struct {
+	Dir string
+}
+
+func (e *DataDirLockedError) Error() string {
+	return fmt.Sprintf("data directory %s is locked by another open store: close the other process, or open a different directory", e.Dir)
+}
+
+// Unwrap allows errors.Is(err, ErrDataDirLocked).
+func (e *DataDirLockedError) Unwrap() error {
+	return ErrDataDirLocked
+}

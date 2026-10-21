@@ -142,7 +142,7 @@ func TestCompactWAL_PurgesDeletedTenantData(t *testing.T) {
 
 			// Crash-sim recovery (no Close): snapshot + truncated WAL must
 			// restore the survivor and must NOT resurrect the victim.
-			gs2, err := NewGraphStorageWithConfig(cfg)
+			gs2, err := reopenAfterSimulatedCrash(cfg)
 			if err != nil {
 				t.Fatalf("crash-recovery reopen: %v", err)
 			}
@@ -211,7 +211,7 @@ func TestCompactWAL_ConcurrentWritesNotLost(t *testing.T) {
 			}
 
 			// Crash-sim (no Close): every acknowledged write must recover.
-			gs2, err := NewGraphStorageWithConfig(cfg)
+			gs2, err := reopenAfterSimulatedCrash(cfg)
 			if err != nil {
 				t.Fatalf("crash-recovery reopen: %v", err)
 			}
@@ -286,7 +286,7 @@ func TestCompactWAL_TransactionCommitsSurviveCompaction(t *testing.T) {
 		return
 	}
 
-	gs2, err := NewGraphStorageWithConfig(cfg)
+	gs2, err := reopenAfterSimulatedCrash(cfg)
 	if err != nil {
 		t.Fatalf("crash-recovery reopen: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestCompressedWALBackend_SingleOpWritesAreDurable(t *testing.T) {
 	}
 
 	// Crash-sim: no Close, no snapshot — recovery must come from the WAL.
-	gs2, err := NewGraphStorageWithConfig(cfg)
+	gs2, err := reopenAfterSimulatedCrash(cfg)
 	if err != nil {
 		t.Fatalf("crash-recovery reopen: %v", err)
 	}

@@ -65,7 +65,7 @@ func TestLabelIndexDurability_CrashRecovery(t *testing.T) {
 
 	// Phase 2: Recover and verify label indexes rebuilt
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -139,7 +139,7 @@ func TestLabelIndexDurability_MultipleLabels(t *testing.T) {
 
 	// Phase 2: Recover and verify multiple labels
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -215,7 +215,7 @@ func TestLabelIndexDurability_DeleteNode(t *testing.T) {
 
 	// Phase 2: Recover and verify deleted node not in label index
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -300,7 +300,7 @@ func TestEdgeTypeIndexDurability_CrashRecovery(t *testing.T) {
 
 	// Phase 2: Recover and verify edge type indexes
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -380,7 +380,7 @@ func TestEdgeTypeIndexDurability_DeleteEdge(t *testing.T) {
 
 	// Phase 2: Recover and verify deleted edge not in type index
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -586,7 +586,7 @@ func TestMixedIndexDurability(t *testing.T) {
 
 	// Phase 2: Recover and verify all indexes
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,

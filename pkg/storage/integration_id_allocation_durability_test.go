@@ -41,7 +41,7 @@ func TestIDAllocation_NodeIDsNeverReused(t *testing.T) {
 
 	// Phase 2: Recover and create more nodes
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -128,7 +128,7 @@ func TestIDAllocation_EdgeIDsNeverReused(t *testing.T) {
 
 	// Phase 2: Recover and create more edges
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -207,7 +207,7 @@ func TestIDAllocation_LargeIDGaps(t *testing.T) {
 
 	// Phase 2: Recover and verify next ID is after highest ID
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -357,7 +357,7 @@ func TestIDAllocation_BatchOperations(t *testing.T) {
 
 	// Phase 2: Recover and create more nodes (non-batch)
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -434,7 +434,7 @@ func TestIDAllocation_DeletedNodesIDsNotReused(t *testing.T) {
 
 	// Phase 2: Recover and create new node
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -479,11 +479,17 @@ func TestIDAllocation_MultipleRecoveries(t *testing.T) {
 
 	// Perform 5 crash/recovery cycles
 	for cycle := 0; cycle < 5; cycle++ {
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		cfg := StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
-		})
+		}
+		// Every cycle after the first follows an abandoned store.
+		open := NewGraphStorageWithConfig
+		if cycle > 0 {
+			open = reopenAfterSimulatedCrash
+		}
+		gs, err := open(cfg)
 		if err != nil {
 			t.Fatalf("Cycle %d: Failed to create GraphStorage: %v", cycle, err)
 		}
@@ -552,7 +558,7 @@ func TestIDAllocation_ConcurrentCreation(t *testing.T) {
 
 	// Phase 2: Recover and verify all IDs are unique
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,

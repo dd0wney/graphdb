@@ -103,6 +103,9 @@ func testCrashableStorage(t *testing.T, dataDir string, config ...StorageConfig)
 	}
 
 	cfg.DataDir = dataDir
+	// A crash test leaves this store open and opens a second on dataDir; a
+	// dead process would have released the directory lock.
+	cfg.skipDataDirLock = true
 
 	gs, err := NewGraphStorageWithConfig(cfg)
 	if err != nil {
@@ -151,4 +154,13 @@ func testCrashRecovery(t *testing.T, dataDir string, config ...StorageConfig) *G
 	})
 
 	return gs
+}
+
+// reopenAfterSimulatedCrash opens cfg.DataDir while a store the test abandoned
+// still holds it. A crashed process's directory lock is released by the
+// kernel; in one process the abandoned store still holds it, so the reopen
+// skips the lock.
+func reopenAfterSimulatedCrash(cfg StorageConfig) (*GraphStorage, error) {
+	cfg.skipDataDirLock = true
+	return NewGraphStorageWithConfig(cfg)
 }

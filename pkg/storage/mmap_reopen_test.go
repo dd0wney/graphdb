@@ -455,12 +455,12 @@ func TestMmapReopen_CrashRecovery(t *testing.T) {
 	crashBuild(DefaultStorageConfig(jsonDir))
 	crashBuild(mmapConfig(mmapDir))
 
-	jr, err := NewGraphStorage(jsonDir)
+	jr, err := reopenAfterSimulatedCrash(DefaultStorageConfig(jsonDir))
 	if err != nil {
 		t.Fatalf("json recovery: %v", err)
 	}
 	defer jr.Close()
-	mr, err := NewGraphStorageWithConfig(mmapConfig(mmapDir))
+	mr, err := reopenAfterSimulatedCrash(mmapConfig(mmapDir))
 	if err != nil {
 		t.Fatalf("mmap recovery: %v", err)
 	}

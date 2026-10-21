@@ -131,7 +131,7 @@ func TestPropertyIndexDurability_NodesBeforeIndex(t *testing.T) {
 
 	// Phase 2: Recover and verify
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -227,7 +227,7 @@ func TestPropertyIndexDurability_UpdateNodes(t *testing.T) {
 
 	// Phase 2: Recover and verify index reflects updates
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -311,7 +311,7 @@ func TestPropertyIndexDurability_DeleteNodes(t *testing.T) {
 
 	// Phase 2: Recover and verify index doesn't have deleted nodes
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -397,7 +397,7 @@ func TestPropertyIndexDurability_DropIndex(t *testing.T) {
 
 	// Phase 2: Recover and verify index stays dropped
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -533,7 +533,7 @@ func TestPropertyIndexDurability_MultipleIndexes(t *testing.T) {
 
 	// Phase 2: Recover and verify all indexes
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,

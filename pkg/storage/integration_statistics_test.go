@@ -366,7 +366,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 
 	// Cycle 2: Recover, add more, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -406,7 +406,7 @@ func TestGraphStorage_StatisticsMultipleRecoveries(t *testing.T) {
 
 	// Cycle 3: Recover, verify final stats
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,

@@ -164,7 +164,7 @@ func TestWALRecoveryAfterCrash(t *testing.T) {
 	// Phase 2: Reopen storage (should replay WAL)
 	t.Log("Phase 2: Reopening storage (WAL replay)...")
 	{
-		gs, err := NewGraphStorage(dataDir)
+		gs, err := reopenAfterSimulatedCrash(DefaultStorageConfig(dataDir))
 		if err != nil {
 			t.Fatalf("Failed to reopen storage: %v", err)
 		}
@@ -545,7 +545,15 @@ func TestRapidRestartRecovery(t *testing.T) {
 	t.Logf("Testing rapid restart recovery (%d cycles)...", cycles)
 
 	for cycle := 0; cycle < cycles; cycle++ {
-		gs, err := NewGraphStorage(dataDir)
+		// An abandoned store keeps its lock for the life of the process, so
+		// every cycle after the first abandoned one must skip the lock.
+		var gs *GraphStorage
+		var err error
+		if len(crashedStorages) > 0 {
+			gs, err = reopenAfterSimulatedCrash(DefaultStorageConfig(dataDir))
+		} else {
+			gs, err = NewGraphStorage(dataDir)
+		}
 		if err != nil {
 			t.Fatalf("Failed to create storage on cycle %d: %v", cycle, err)
 		}
@@ -587,7 +595,7 @@ func TestRapidRestartRecovery(t *testing.T) {
 	// Final verification
 	t.Log("Final verification after rapid restarts...")
 	{
-		gs, err := NewGraphStorage(dataDir)
+		gs, err := reopenAfterSimulatedCrash(DefaultStorageConfig(dataDir))
 		if err != nil {
 			t.Fatalf("Failed to open after rapid restarts: %v", err)
 		}
