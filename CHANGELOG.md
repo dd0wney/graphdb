@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Two stores can no longer open one data directory.** Each appended to the same WAL and wrote
+  the snapshot on Close, so the second Close replaced the first's snapshot and its WAL truncate
+  emptied the log: acknowledged writes were lost with no error. `NewGraphStorageWithConfig` now
+  takes `flock(LOCK_EX|LOCK_NB)` on `<DataDir>/LOCK` and holds it until Close; a second open, from
+  another process or the same one, fails with `*DataDirLockedError` (`errors.Is` `ErrDataDirLocked`)
+  naming the directory. The kernel drops the lock when the holder dies, so a crashed process never
+  leaves the directory locked. An embedder that opened one directory twice now gets this error. The
+  lock is unix-only; the file `LOCK` stays in the data directory and is not part of a backup
+  (#694 design, #695).
+
 ### Changed
 - **The storage `Batch` and `Transaction.Commit` enforce the uniqueness rules** (ADR 0001), the
   last node write paths that did not. An embedded caller used to store a duplicate of a registered
