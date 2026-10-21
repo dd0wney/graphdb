@@ -109,7 +109,7 @@ func TestReplayCreateEdge_PopulatesTenantEdgeIndex(t *testing.T) {
 		}
 	})
 
-	gs2, err := NewGraphStorage(dataDir)
+	gs2, err := reopenAfterSimulatedCrash(DefaultStorageConfig(dataDir))
 	if err != nil {
 		t.Fatalf("reopen after crash: %v", err)
 	}

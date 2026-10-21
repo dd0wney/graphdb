@@ -179,7 +179,7 @@ func TestBatchDurability_MixedOperations(t *testing.T) {
 
 	// Phase 3: Recover and verify
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -279,7 +279,7 @@ func TestBatchDurability_LargeBatch(t *testing.T) {
 
 	// Phase 2: Recover and verify all data
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,

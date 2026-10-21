@@ -91,7 +91,7 @@ func TestWALBackendSwitch_RefusesWhenTheOtherBackendHoldsWrites(t *testing.T) {
 			// No Close: a crash leaves the store exactly here.
 
 			after := backendSwitchConfig(dir, d.toCompression)
-			gs2, err := NewGraphStorageWithConfig(after)
+			gs2, err := reopenAfterSimulatedCrash(after)
 			if err == nil {
 				_ = gs2.Close()
 				t.Fatalf("the open SUCCEEDED after a backend switch; %s still holds %d bytes "+
@@ -174,7 +174,7 @@ func TestWALBackendSwitch_SameBackendIsUnaffected(t *testing.T) {
 			}
 
 			// No Close, so B is in the WAL only.
-			gs2, err := NewGraphStorageWithConfig(cfg)
+			gs2, err := reopenAfterSimulatedCrash(cfg)
 			if err != nil {
 				t.Fatalf("reopen on the same backend must not refuse, got: %v", err)
 			}

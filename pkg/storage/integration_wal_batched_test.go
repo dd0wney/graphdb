@@ -219,7 +219,7 @@ func TestGraphStorage_BatchedWAL_MultipleCycles(t *testing.T) {
 
 	// Cycle 2: Recover, create 2 more nodes, flush, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -249,7 +249,7 @@ func TestGraphStorage_BatchedWAL_MultipleCycles(t *testing.T) {
 
 	// Cycle 3: Recover, create 1 more node, flush, crash
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,
@@ -278,7 +278,7 @@ func TestGraphStorage_BatchedWAL_MultipleCycles(t *testing.T) {
 
 	// Final recovery: Verify all 6 nodes exist
 	{
-		gs, err := NewGraphStorageWithConfig(StorageConfig{
+		gs, err := reopenAfterSimulatedCrash(StorageConfig{
 			DataDir:            dataDir,
 			UseDiskBackedEdges: true,
 			EdgeCacheSize:      100,

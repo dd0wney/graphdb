@@ -281,7 +281,7 @@ func TestUniquenessRules_DurableWriteSurvivesCrash(t *testing.T) {
 	// gs is deliberately abandoned here, not Closed: a real process would be
 	// gone at this point, and Close would run through the crashed driver.
 
-	reopened, err := NewGraphStorageWithConfig(jsonConfig(dir))
+	reopened, err := reopenAfterSimulatedCrash(jsonConfig(dir))
 	if err != nil {
 		t.Fatalf("reopen after crash: %v", err)
 	}

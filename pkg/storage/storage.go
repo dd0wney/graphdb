@@ -134,6 +134,15 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
+	// Lock the directory before anything reads or writes it. A second store
+	// on one directory appends to the same WAL and overwrites the snapshot on
+	// Close, so one of them silently discards the other's writes.
+	if !config.skipDataDirLock {
+		if err := gs.lockDataDir(config.DataDir); err != nil {
+			return nil, err
+		}
+	}
+
 	// Initialize WAL (compressed, batched, or regular) - skip in bulk import mode
 	if !config.BulkImportMode {
 		if config.EnableCompression {
@@ -383,6 +392,11 @@ func (gs *GraphStorage) releaseAfterFailedOpen() {
 	if gs.wal != nil {
 		_ = gs.wal.Close()
 		gs.wal = nil
+	}
+	// Last, after every file handle in the directory is closed.
+	if gs.releaseDataDirLock != nil {
+		_ = gs.releaseDataDirLock()
+		gs.releaseDataDirLock = nil
 	}
 }
 

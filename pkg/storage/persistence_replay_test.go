@@ -52,7 +52,7 @@ func TestReplayCreateNode_PopulatesTenantIndex(t *testing.T) {
 	})
 
 	// Phase 2: reopen — exercises replayCreateNode for every node.
-	gs2, err := NewGraphStorage(dataDir)
+	gs2, err := reopenAfterSimulatedCrash(DefaultStorageConfig(dataDir))
 	if err != nil {
 		t.Fatalf("reopen after crash: %v", err)
 	}

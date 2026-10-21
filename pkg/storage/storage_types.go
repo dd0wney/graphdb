@@ -102,10 +102,13 @@ type GraphStorage struct {
 
 	// fs is the filesystem driver, resolved once at construction from
 	// StorageConfig.FS. Never nil after NewGraphStorageWithConfig returns.
-	fs           vfs.FileSystem
-	mmapSnap     *mmapSnapshot
-	deletedNodes [256]map[uint64]struct{}
-	deletedEdges [256]map[uint64]struct{}
+	fs       vfs.FileSystem
+	mmapSnap *mmapSnapshot
+	// releaseDataDirLock drops the lock on <DataDir>/LOCK. Nil when the driver
+	// has no Locker, on a platform without flock, and for skipDataDirLock.
+	releaseDataDirLock func() error
+	deletedNodes       [256]map[uint64]struct{}
+	deletedEdges       [256]map[uint64]struct{}
 	// walLSNAtOpen is the WAL LSN once construction finished (snapshot loaded,
 	// WAL replayed). A Close whose boundary still equals it logged nothing;
 	// mmapSnapshotCleanLocked uses that as one of its four conditions.
@@ -265,6 +268,14 @@ type StorageConfig struct {
 	// deployment with no uniqueness rules pays nothing for the feature.
 	// See ADR 0001 (docs/adr/0001-uniqueness-rules-registry.md).
 	RequiredUniquenessRules []RequiredUniquenessRule
+
+	// skipDataDirLock opens without the lock on <DataDir>/LOCK. Unexported on
+	// purpose: only this package's crash-simulation tests set it, because they
+	// leave one store open and open a second on its directory in the same
+	// process, where a dead process would have released the lock. No caller
+	// outside the package can turn off the check that stops two stores
+	// discarding each other's writes.
+	skipDataDirLock bool
 }
 
 // Statistics tracks database statistics

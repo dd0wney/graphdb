@@ -105,7 +105,7 @@ func TestWALEncryption_CrashRecoveryRoundTrip(t *testing.T) {
 			node := createH3Node(t, gs)
 
 			// Crash-sim: no Close — recovery must decrypt the WAL.
-			gs2, err := NewGraphStorageWithConfig(cfg)
+			gs2, err := reopenAfterSimulatedCrash(cfg)
 			if err != nil {
 				t.Fatalf("crash-recovery reopen: %v", err)
 			}
@@ -163,7 +163,7 @@ func TestWALEncryption_LegacyPlaintextReplaysAndIsPurged(t *testing.T) {
 	// Crash-sim: leave the plaintext entry in the WAL (no Close).
 
 	encCfg := encryptedStorageConfig(t, dir, false)
-	gs2, err := NewGraphStorageWithConfig(encCfg)
+	gs2, err := reopenAfterSimulatedCrash(encCfg)
 	if err != nil {
 		t.Fatalf("reopen with encryption enabled: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestWALEncryption_CiphertextWithoutEngineFailsLoud(t *testing.T) {
 	createH3Node(t, gs)
 	// Crash-sim, then reopen WITHOUT an engine: replaying ciphertext
 	// silently as garbage would be corruption — must fail loud.
-	_, err = NewGraphStorageWithConfig(DefaultStorageConfig(dir))
+	_, err = reopenAfterSimulatedCrash(DefaultStorageConfig(dir))
 	if err == nil {
 		t.Fatalf("expected reopen without engine to fail on encrypted WAL entries")
 	}

@@ -580,6 +580,15 @@ func (gs *GraphStorage) Close() error {
 		}
 	}
 
+	// Last: another process may open the directory the moment this returns,
+	// so every write above must be finished first.
+	if gs.releaseDataDirLock != nil {
+		if err := gs.releaseDataDirLock(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to release data directory lock: %w", err))
+		}
+		gs.releaseDataDirLock = nil
+	}
+
 	return errors.Join(errs...)
 }
 

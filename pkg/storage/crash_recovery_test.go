@@ -59,7 +59,7 @@ func TestCrashRecovery(t *testing.T) {
 
 	// Phase 2: Reopen database (simulates recovery after crash)
 	{
-		gs, err := NewGraphStorage(dataDir)
+		gs, err := reopenAfterSimulatedCrash(DefaultStorageConfig(dataDir))
 		if err != nil {
 			t.Fatalf("Failed to reopen storage: %v", err)
 		}
@@ -137,7 +137,7 @@ func TestWALReplayOrder(t *testing.T) {
 
 	// Recover
 	{
-		gs, err := NewGraphStorage(dataDir)
+		gs, err := reopenAfterSimulatedCrash(DefaultStorageConfig(dataDir))
 		if err != nil {
 			t.Fatalf("Failed to recover: %v", err)
 		}
@@ -190,7 +190,10 @@ func TestPartialSnapshot(t *testing.T) {
 	})
 
 	{
-		gs, _ := NewGraphStorage(dataDir)
+		gs, err := reopenAfterSimulatedCrash(DefaultStorageConfig(dataDir))
+		if err != nil {
+			t.Fatalf("reopen after the simulated crash: %v", err)
+		}
 		defer func() { _ = gs.Close() }()
 
 		users, _ := gs.FindNodesByLabelAcrossTenants("User")
