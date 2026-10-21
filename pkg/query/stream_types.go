@@ -21,6 +21,14 @@ type ResultStream struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	once   sync.Once
+
+	// sendMu orders Send against the close of ch. Producer and consumer both
+	// call Close, so ch can close while a Send is in flight, and a send on a
+	// closed channel panics in the producer's goroutine, where no caller can
+	// recover it. Send holds the read side; Close takes the write side only
+	// after cancelling ctx, which makes a blocked Send return first.
+	sendMu sync.RWMutex
+	closed bool
 }
 
 // NewResultStream creates a new result stream.
@@ -83,6 +91,17 @@ func (rs *ResultStream) Next() (*storage.Node, error) {
 			return nil, err
 
 		case <-rs.ctx.Done():
+			// Close cancels ctx and closes ch, so both cases can be ready at
+			// once and select picks one at random. A producer that sent and
+			// then closed must not lose its last nodes to that coin, so take
+			// a node that is already buffered before reporting the cancel.
+			select {
+			case node, ok := <-rs.ch:
+				if ok {
+					return node, nil
+				}
+			default:
+			}
 			return nil, rs.ctx.Err()
 		}
 	}
@@ -90,6 +109,11 @@ func (rs *ResultStream) Next() (*storage.Node, error) {
 
 // Send sends a result to the stream
 func (rs *ResultStream) Send(node *storage.Node) bool {
+	rs.sendMu.RLock()
+	defer rs.sendMu.RUnlock()
+	if rs.closed {
+		return false
+	}
 	select {
 	case rs.ch <- node:
 		return true
@@ -110,7 +134,10 @@ func (rs *ResultStream) SendError(err error) {
 // Close closes the result stream
 func (rs *ResultStream) Close() {
 	rs.once.Do(func() {
-		close(rs.ch)
 		rs.cancel()
+		rs.sendMu.Lock()
+		rs.closed = true
+		close(rs.ch)
+		rs.sendMu.Unlock()
 	})
 }
