@@ -330,7 +330,7 @@ func (gs *GraphStorage) forEachNodeUnlocked(fn func(*Node) bool) {
 			// does not make a skip here safe for a caller that WRITES. A
 			// destructive caller must refuse, not report.
 			//
-			// snapshotMmapLocked (mmap_snapshot_persist.go) is such a
+			// captureMmapSnapshot (mmap_snapshot_persist.go) is such a
 			// caller, and for that reason it no longer uses this walk. It
 			// walks the shards and gs.mmapSnap.forEachNodeID inline, and it
 			// returns an error that names the node when a record does not

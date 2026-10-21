@@ -11,11 +11,28 @@ import (
 	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
-// snapshotMmapLocked is the mmap-mode branch of snapshotWithBoundary. Caller holds
-// gs.mu.RLock (taken in snapshotWithBoundary); this collects cloned live state under
-// that lock, releases it (so the file encode doesn't stall writers — matching the
-// JSON path), writes snapshot.mmap atomically, and returns the WAL boundary LSN.
-func (gs *GraphStorage) snapshotMmapLocked(boundary uint64) (uint64, error) {
+// mmapSnapshotCapture is what captureMmapSnapshot hands to writeMmapSnapshot:
+// cloned live state, unsorted, plus the metadata and the WAL boundary it covers.
+type mmapSnapshotCapture struct {
+	nodes    []*Node
+	edges    []*Edge
+	meta     *mmapMetadata
+	boundary uint64
+}
+
+// captureMmapSnapshot is the gs.mu.RLock section of the mmap path of
+// snapshotWithBoundary. It collects cloned live state under the lock and
+// releases the lock before returning (so the file encode doesn't stall
+// writers — matching the JSON path). It is the only function that locks and
+// unlocks gs.mu on this path. The deferred unlock matters: decodeNodeRecordAt
+// can panic on an out-of-range record, the Cypher executor and net/http
+// recover panics, and a read lock left held hangs every later write and Close.
+func (gs *GraphStorage) captureMmapSnapshot() (*mmapSnapshotCapture, error) {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+	panicPoint("captureMmapSnapshot")
+	boundary := gs.walLSNBarrieredLocked()
+
 	// Live nodes: shard overlay + non-shadowed, non-tombstoned base. The shard
 	// nodes are cloned for isolation (the encode runs after RUnlock); a decoded
 	// base record is already a fresh heap object, so it needs no second copy.
@@ -49,8 +66,7 @@ func (gs *GraphStorage) snapshotMmapLocked(boundary uint64) (uint64, error) {
 		})
 	}
 	if damagedNode != 0 {
-		gs.mu.RUnlock()
-		return 0, fmt.Errorf("refusing to write a snapshot: node record %d in the current snapshot is damaged", damagedNode)
+		return nil, fmt.Errorf("refusing to write a snapshot: node record %d in the current snapshot is damaged", damagedNode)
 	}
 
 	// Live edges: shard overlay + non-shadowed, non-tombstoned base.
@@ -78,8 +94,7 @@ func (gs *GraphStorage) snapshotMmapLocked(boundary uint64) (uint64, error) {
 		})
 	}
 	if damagedEdge != 0 {
-		gs.mu.RUnlock()
-		return 0, fmt.Errorf("refusing to write a snapshot: edge record %d in the current snapshot is damaged", damagedEdge)
+		return nil, fmt.Errorf("refusing to write a snapshot: edge record %d in the current snapshot is damaged", damagedEdge)
 	}
 
 	meta := buildMmapMetadata(gs)
@@ -87,8 +102,14 @@ func (gs *GraphStorage) snapshotMmapLocked(boundary uint64) (uint64, error) {
 	// set it explicitly here so the file records the WAL boundary this
 	// snapshot covers, for replay to skip on the next open.
 	meta.WALBoundaryLSN = boundary
-	gs.mu.RUnlock()
 
+	return &mmapSnapshotCapture{nodes: nodes, edges: edges, meta: meta, boundary: boundary}, nil
+}
+
+// writeMmapSnapshot sorts the captured state and writes snapshot.mmap
+// atomically, with no lock held. It returns the WAL boundary LSN.
+func (gs *GraphStorage) writeMmapSnapshot(c *mmapSnapshotCapture) (uint64, error) {
+	nodes, edges, meta, boundary := c.nodes, c.edges, c.meta, c.boundary
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
 	sort.Slice(edges, func(i, j int) bool { return edges[i].ID < edges[j].ID })
 

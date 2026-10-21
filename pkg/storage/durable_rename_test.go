@@ -2,7 +2,7 @@ package storage
 
 // Durability gate for the mmap snapshot publish.
 //
-// snapshotMmapLocked writes snapshot.mmap.tmp, syncs it, and renames it over
+// writeMmapSnapshot writes snapshot.mmap.tmp, syncs it, and renames it over
 // snapshot.mmap. The rename is atomic on POSIX, but the name it creates lives
 // in the parent directory, and that directory is not durable because the file
 // was synced. A power cut between the rename and the directory's next

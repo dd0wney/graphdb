@@ -108,7 +108,7 @@ type mmapMetadata struct {
 	// snapshot written before this field existed, or on a fresh database —
 	// both mean "the boundary is unknown, skip nothing," today's behaviour.
 	// buildMmapMetadata never sets this (it has no access to the boundary);
-	// snapshotMmapLocked sets it explicitly on its own return value before
+	// captureMmapSnapshot sets it explicitly on its own return value before
 	// writing. mmapMetadataEquivalent normalises it away, because the
 	// boundary is already compared directly in mmapSnapshotCleanLocked
 	// (boundary vs gs.walLSNAtOpen) — comparing it again here through a

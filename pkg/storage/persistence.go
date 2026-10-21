@@ -72,7 +72,7 @@ func (gs *GraphStorage) compressEdgeListsForSnapshot() {
 // skipIfClean is Close's option: when the file on disk already holds the
 // live state, return the boundary without writing. Snapshot and CompactWAL
 // pass false — an explicit request to write is honoured, and its damage
-// refusal (snapshotMmapLocked) stays a contract a caller can rely on.
+// refusal (captureMmapSnapshot) stays a contract a caller can rely on.
 func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 	// Decided before anything else runs: on a clean Close the edge
 	// compression below was the whole remaining cost (1.1 s on the
@@ -99,14 +99,87 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 		gs.compressEdgeListsForSnapshot()
 	}
 
-	gs.mu.RLock()
-	boundary := gs.walLSNBarrieredLocked()
-
 	// mmap reopen mode: write snapshot.mmap (merged overlay ∪ base − tombstones)
-	// instead of the JSON snapshot. snapshotMmapLocked releases gs.mu.RLock.
+	// instead of the JSON snapshot. gs.useMmapSnapshot is set once, in the
+	// constructor, so reading it here without gs.mu is safe.
 	if gs.useMmapSnapshot {
-		return gs.snapshotMmapLocked(boundary)
+		capture, err := gs.captureMmapSnapshot()
+		if err != nil {
+			return 0, err
+		}
+		return gs.writeMmapSnapshot(capture)
 	}
+
+	capture := gs.captureJSONSnapshot()
+	snapshot, engine, epoch, boundary := capture.snapshot, capture.engine, capture.epoch, capture.boundary
+
+	data, err := json.Marshal(snapshot)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal snapshot: %w", err)
+	}
+
+	// Encrypt data if encryption is enabled
+	if engine != nil {
+		encrypted, err := engine.Encrypt(data)
+		if err != nil {
+			return 0, fmt.Errorf("failed to encrypt snapshot: %w", err)
+		}
+		data = encrypted
+	}
+
+	// M-14: versioned magic-header envelope; the encrypted flag replaces
+	// the first-byte plaintext-vs-ciphertext heuristic on load.
+	data = encodeSnapshotEnvelope(data, engine != nil)
+
+	if err := gs.publishJSONSnapshot(data, boundary, engine, epoch); err != nil {
+		return 0, err
+	}
+
+	// Update LastSnapshot timestamp (safe to modify after releasing lock)
+	gs.stats.LastSnapshot = time.Now()
+
+	return boundary, nil
+}
+
+// jsonSnapshot is the on-disk shape of snapshot.json. Field names and order
+// are the format: do not change them without a version bump.
+type jsonSnapshot struct {
+	Nodes           map[uint64]*Node
+	Edges           map[uint64]*Edge
+	NodesByLabel    map[string][]uint64
+	EdgesByType     map[string][]uint64
+	OutgoingEdges   map[uint64][]uint64
+	IncomingEdges   map[uint64][]uint64
+	PropertyIndexes map[string]PropertyIndexSnapshot
+	VectorIndexes   []VectorIndexDef
+	NextNodeID      uint64
+	NextEdgeID      uint64
+	Stats           Statistics
+	// WALBoundaryLSN is additive: absent in a snapshot written before this
+	// field existed, which decodes as 0 and means "the boundary is
+	// unknown, skip nothing" — today's behaviour, unchanged for old files.
+	WALBoundaryLSN uint64
+}
+
+// jsonSnapshotCapture is what captureJSONSnapshot hands to the code that runs
+// after the lock is released.
+type jsonSnapshotCapture struct {
+	snapshot jsonSnapshot
+	engine   encryption.EncryptDecrypter
+	epoch    uint64
+	boundary uint64
+}
+
+// captureJSONSnapshot is the gs.mu.RLock section of the JSON path of
+// snapshotWithBoundary. It is the only function that locks and unlocks gs.mu
+// on this path, and the deferred unlock matters: the Cypher executor and
+// net/http recover panics, so a panic here that left the read lock held would
+// hang every later write and Close.
+func (gs *GraphStorage) captureJSONSnapshot() jsonSnapshotCapture {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+	panicPoint("captureJSONSnapshot")
+	boundary := gs.walLSNBarrieredLocked()
 
 	// Capture the engine under the same RLock as the state it encrypts:
 	// SetEncryption writes this field under gs.mu.Lock, and the encrypt
@@ -132,23 +205,7 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 		idx.mu.RUnlock()
 	}
 
-	snapshot := struct {
-		Nodes           map[uint64]*Node
-		Edges           map[uint64]*Edge
-		NodesByLabel    map[string][]uint64
-		EdgesByType     map[string][]uint64
-		OutgoingEdges   map[uint64][]uint64
-		IncomingEdges   map[uint64][]uint64
-		PropertyIndexes map[string]PropertyIndexSnapshot
-		VectorIndexes   []VectorIndexDef
-		NextNodeID      uint64
-		NextEdgeID      uint64
-		Stats           Statistics
-		// WALBoundaryLSN is additive: absent in a snapshot written before this
-		// field existed, which decodes as 0 and means "the boundary is
-		// unknown, skip nothing" — today's behaviour, unchanged for old files.
-		WALBoundaryLSN uint64
-	}{
+	snapshot := jsonSnapshot{
 		// ISOLATION: every field below must be a deep copy, never a
 		// reference to a live structure. json.Marshal runs after
 		// gs.mu.RUnlock (deliberately — writers shouldn't stall for the
@@ -186,34 +243,7 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 		WALBoundaryLSN: boundary,
 	}
 
-	gs.mu.RUnlock()
-
-	data, err := json.Marshal(snapshot)
-	if err != nil {
-		return 0, fmt.Errorf("failed to marshal snapshot: %w", err)
-	}
-
-	// Encrypt data if encryption is enabled
-	if engine != nil {
-		encrypted, err := engine.Encrypt(data)
-		if err != nil {
-			return 0, fmt.Errorf("failed to encrypt snapshot: %w", err)
-		}
-		data = encrypted
-	}
-
-	// M-14: versioned magic-header envelope; the encrypted flag replaces
-	// the first-byte plaintext-vs-ciphertext heuristic on load.
-	data = encodeSnapshotEnvelope(data, engine != nil)
-
-	if err := gs.publishJSONSnapshot(data, boundary, engine, epoch); err != nil {
-		return 0, err
-	}
-
-	// Update LastSnapshot timestamp (safe to modify after releasing lock)
-	gs.stats.LastSnapshot = time.Now()
-
-	return boundary, nil
+	return jsonSnapshotCapture{snapshot: snapshot, engine: engine, epoch: epoch, boundary: boundary}
 }
 
 // walLSNBarrieredLocked captures the WAL boundary for the state visible under
@@ -491,7 +521,7 @@ func (gs *GraphStorage) Close() error {
 	// `closed` is already true above — so an early return leaks both and no
 	// second Close can clean up, because it answers "storage already closed".
 	//
-	// snapshotMmapLocked refuses to write when a base record is damaged (#521),
+	// captureMmapSnapshot refuses to write when a base record is damaged (#521),
 	// which turned this from a full-disk edge case into something ordinary bit
 	// rot reaches.
 	_, snapErr := gs.snapshotWithBoundary(true)
