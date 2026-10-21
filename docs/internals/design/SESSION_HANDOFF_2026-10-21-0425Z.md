@@ -1,6 +1,6 @@
 # Session handoff — 2026-10-21 04:25 UTC
 
-**Date**: 2026-10-21 (single session, 21 PRs merged, v1.8.0 released)
+**Date**: 2026-10-21 (single session, 22 PRs merged, v1.8.0 released)
 **Outgoing model**: Claude Opus 5.5
 **Delegation**:
 - 7 × worker (sonnet), each in its own worktree, each diff read in the main loop before its PR:
@@ -46,6 +46,7 @@ v1.8.0 is released.
 | #686 | chore(coord): seed the Batch and Transaction uniqueness-rules task | |
 | #687 | docs(changelog): record #680, #682, #684 and #685 under Unreleased | |
 | #688 | fix(query): stop ResultStream dropping nodes and panicking on Close | the second "flake": `StreamNodes` 1 of 2; also a send-on-closed-channel panic |
+| #679 | docs(planning): record the upsert, Track U and the 2026-10-21 fixes | adds Track U to the planning doc |
 
 Coord tasks released `done`: `v1.4-batched-wal-flush-interval-validation`, `v1.4-telemetry-stop-waits`,
 `v1.4-snapshot-rlock-panic-safety`, `v1.4-rest-batch-create-uniqueness-rules`,
@@ -55,9 +56,9 @@ Coord tasks released `done`: `v1.4-batched-wal-flush-interval-validation`, `v1.4
 
 ## Current state
 
-- `origin/main` HEAD: `b6bcfe9` (#688). Latest tag `v1.8.0` (`d3d2798`).
-- Open PRs: #679 (planning doc: Track U, upsert, corrections) — its macOS test job is being re-run
-  after a `pkg/query` stream failure that #688 fixed.
+- `origin/main` HEAD: `f469cc6` (#679). Latest tag `v1.8.0` (`d3d2798`).
+- Open PRs: this handoff only. #679 (planning doc: Track U, upsert, corrections) merged after a
+  re-run of the macOS job that the #688 stream defect had failed.
 - `[Unreleased]` in `CHANGELOG.md` covers #670–#687. **#688 has no CHANGELOG entry yet.**
 - Local branches: 9 worktree branches, all merged or closed. Worktrees: `../graphdb-ulysses-contracts`
   (content in #631) and 7 under `.claude/worktrees/agent-*`. The auto-mode classifier refused
@@ -68,7 +69,7 @@ Coord tasks released `done`: `v1.4-batched-wal-flush-interval-validation`, `v1.4
 
 ## What's next
 
-From `docs/NEXT_STEPS_2026-10-08.md` (after #679 merges):
+From `docs/NEXT_STEPS_2026-10-08.md` (updated in #679):
 
 1. **Release v1.9.0** — open question 1. Add the #688 entry first.
 2. `v1.4-tx-batch-uniqueness-rules` (#686) — the storage `Batch` and `Transaction.Commit` skip the
@@ -121,7 +122,7 @@ See `docs/internals/design/NEXT_SESSION_PROMPT.md` (same text).
 
 ## How to use this handoff
 
-1. Read this, then `docs/NEXT_STEPS_2026-10-08.md` (with #679 merged).
+1. Read this, then `docs/NEXT_STEPS_2026-10-08.md`.
 2. For the upsert, read `docs/internals/design/SPEC_node_upsert_2026-10-21.md` §9 first.
 3. Message `mapper-6b` (ListAgents) when it is live: v1.8.0, #670 (its FlushInterval ask), #675
    and the upsert (#677, #683, #684) are all its asks.
