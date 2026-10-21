@@ -117,6 +117,16 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
+	merge, ok := wantsMerge(r)
+	if !ok {
+		s.respondError(w, http.StatusBadRequest, onConflictMessage)
+		return
+	}
+	if merge {
+		s.upsertNode(w, r)
+		return
+	}
+
 	var req NodeRequest
 	decoder := s.NewRequestDecoder(w, r)
 	decoder.DecodeJSON(&req).ValidateNode(&req)
@@ -144,44 +154,7 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	// the registry too.
 	node, err := s.graph.CreateNodeWithUniquenessRulesForTenant(tenantID, req.Labels, props)
 	if err != nil {
-		// R4: a missing required rule is a fixed 503, naming only the
-		// caller's own label — never the rule name, never err.Error() from
-		// storage (which would name the rule), and never the required list.
-		var missing *storage.RequiredRuleMissingError
-		if errors.As(err, &missing) {
-			s.respondJSON(w, http.StatusServiceUnavailable, ErrorResponse{
-				Error: "required uniqueness rule missing",
-				Message: fmt.Sprintf(
-					"a required uniqueness rule for label %q is not registered; contact the administrator",
-					missing.Label,
-				),
-				Code: http.StatusServiceUnavailable,
-			})
-			return
-		}
-		if errors.Is(err, storage.ErrUniqueConstraintViolation) {
-			// The conflicting node is in the caller's own tenant (the scan is
-			// per tenant), so its ID leaks nothing. Tenant and rule name stay
-			// out of the body.
-			var uniqueErr *storage.UniqueConstraintError
-			if errors.As(err, &uniqueErr) {
-				s.respondJSON(w, http.StatusConflict, UniqueConflictResponse{
-					ErrorResponse: ErrorResponse{
-						Error:   http.StatusText(http.StatusConflict),
-						Message: err.Error(),
-						Code:    http.StatusConflict,
-					},
-					ConflictingNodeID: uniqueErr.ConflictingNodeID,
-				})
-				return
-			}
-			s.respondError(w, http.StatusConflict, err.Error())
-			return
-		}
-		if errors.Is(err, storage.ErrUniquenessRulePropertyMissing) {
-			// A caller-supplied request missing a required field is a
-			// client error, not a server error.
-			s.respondError(w, http.StatusBadRequest, err.Error())
+		if s.respondNodeWriteRefusal(w, err) {
 			return
 		}
 		if errors.Is(err, storage.ErrWALWriteFailed) {
@@ -203,12 +176,66 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusCreated, response)
 }
 
+// respondNodeWriteRefusal answers the refusals that POST /nodes and POST
+// /nodes?on_conflict=merge share, and reports whether it did. One function
+// serves both routes so a rule-name leak fixed in one cannot stay open in the
+// other.
+func (s *Server) respondNodeWriteRefusal(w http.ResponseWriter, err error) bool {
+	// R4: a missing required rule is a fixed 503, naming only the
+	// caller's own label — never the rule name, never err.Error() from
+	// storage (which would name the rule), and never the required list.
+	var missing *storage.RequiredRuleMissingError
+	if errors.As(err, &missing) {
+		s.respondJSON(w, http.StatusServiceUnavailable, ErrorResponse{
+			Error: "required uniqueness rule missing",
+			Message: fmt.Sprintf(
+				"a required uniqueness rule for label %q is not registered; contact the administrator",
+				missing.Label,
+			),
+			Code: http.StatusServiceUnavailable,
+		})
+		return true
+	}
+	if errors.Is(err, storage.ErrUniqueConstraintViolation) {
+		// The conflicting node is in the caller's own tenant (the scan is
+		// per tenant), so its ID leaks nothing. Tenant and rule name stay
+		// out of the body.
+		var uniqueErr *storage.UniqueConstraintError
+		if errors.As(err, &uniqueErr) {
+			s.respondJSON(w, http.StatusConflict, UniqueConflictResponse{
+				ErrorResponse: ErrorResponse{
+					Error:   http.StatusText(http.StatusConflict),
+					Message: err.Error(),
+					Code:    http.StatusConflict,
+				},
+				ConflictingNodeID: uniqueErr.ConflictingNodeID,
+			})
+			return true
+		}
+		s.respondError(w, http.StatusConflict, err.Error())
+		return true
+	}
+	if errors.Is(err, storage.ErrUniquenessRulePropertyMissing) {
+		// A caller-supplied request missing a required field is a
+		// client error, not a server error.
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return true
+	}
+	return false
+}
+
 // batchCreateItemError is the text a refused batch item reports. It follows
 // createNode's mapping where storage's own text would name a rule (ADR 0001,
 // R4): a missing required rule names only the caller's label, and a write
-// that matches several rules gets a generic message. Every other error keeps
-// the text the batch has always reported.
+// that matches several rules gets a generic message. The upsert errors
+// (ErrUpsertAmbiguous, ErrUpsertLabelsDiffer, ErrUpsertKeyNotRegistered) carry
+// node IDs, labels and the caller's own key, never a rule, so their text stays.
+// ErrNoUniquenessRule gets the single route's sentence, which says what to do.
+// Every other error keeps the text the batch has always reported.
 func batchCreateItemError(err error) string {
+	if errors.Is(err, storage.ErrNoUniquenessRule) {
+		return noRuleForUpsertMessage
+	}
 	var missing *storage.RequiredRuleMissingError
 	if errors.As(err, &missing) {
 		return fmt.Sprintf(
@@ -379,6 +406,12 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	merge, ok := wantsMerge(r)
+	if !ok {
+		s.respondError(w, http.StatusBadRequest, onConflictMessage)
+		return
+	}
+
 	var req BatchNodeRequest
 	decoder := s.NewRequestDecoder(w, r)
 	decoder.DecodeJSON(&req)
@@ -389,6 +422,11 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 	// Validate batch size
 	if err := validation.ValidateBatchSize(len(req.Nodes)); err != nil {
 		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if merge {
+		s.handleBatchNodeUpsert(w, r, req)
 		return
 	}
 

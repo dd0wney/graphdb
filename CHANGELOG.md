@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`POST /nodes?on_conflict=merge` and `POST /nodes/batch?on_conflict=merge` upsert a node.** The key is the uniqueness rule registered for the labels. The call creates the node (201) or merges the request properties into the node that holds the key (200). The body carries `created`, and the batch response adds `matched`. Concurrent calls for one key make one node. A missing rule is a 400. More than one node holding the key, or a label the stored node lacks, is a 409. Without the parameter, both routes behave as before. Any value other than `error` or `merge` is a 400 (#683, consumer contracts CC27–CC31).
 - **The `409` from `POST /nodes` on a uniqueness conflict carries `conflicting_node_id`**, the ID
   of the node that holds the key, beside the unchanged `error`, `message` and `code`. The Go client
   exposes it as `Error.ConflictingNodeID`. A client no longer parses the message or looks the node
@@ -20,8 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`POST /nodes/batch` enforces the uniqueness rules** (ADR 0001) as `POST /nodes` and GraphQL
   do. It used to store a duplicate for every item that repeated a registered key and count it as
   created; such an item is now a batch item error, and the other items still apply. No item error
-  names a rule (#674). Cypher `CREATE` and `MERGE` and `PUT /nodes/{id}` do not consult the
-  registry yet.
+  names a rule (#674). Cypher `CREATE` and `MERGE` consult it too since #680; `PUT /nodes/{id}`
+  does not yet.
 - **A batched WAL with a `FlushInterval` of zero or less, or a negative `BatchSize`, is refused at
   open** with a `*wal.BatchConfigError` naming the field. The zero interval used to panic in the
   WAL's flusher goroutine and kill the process (#670).

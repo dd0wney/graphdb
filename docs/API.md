@@ -163,11 +163,11 @@ docker run -p 8081:8080 \
 | **Health** | `/health` | GET | Health check (public) |
 | | `/metrics` | GET | System metrics (public) |
 | **Nodes** | `/nodes` | GET | List nodes |
-| | `/nodes` | POST | Create node |
+| | `/nodes` | POST | Create node (`?on_conflict=merge` upserts by the registered uniqueness key) |
 | | `/nodes/{id}` | GET | Get node by ID |
 | | `/nodes/{id}` | PUT | Update node |
 | | `/nodes/{id}` | DELETE | Delete node |
-| | `/nodes/batch` | POST | Batch create nodes |
+| | `/nodes/batch` | POST | Batch create nodes (`?on_conflict=merge` upserts each item) |
 | **Edges** | `/edges` | GET | List edges |
 | | `/edges` | POST | Create edge |
 | | `/edges/{id}` | GET | Get edge by ID |

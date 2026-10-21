@@ -140,6 +140,38 @@ type UniqueConflictResponse struct {
 	ConflictingNodeID uint64 `json:"conflicting_node_id"`
 }
 
+// NodeUpsertResponse is the body of POST /nodes?on_conflict=merge. It is the
+// NodeResponse fields plus "created": true when the call made the node (201),
+// false when it matched an existing node (200).
+type NodeUpsertResponse struct {
+	NodeResponse
+	Created bool `json:"created"`
+}
+
+// NodeUpsertNotDurableResponse is the 202 body of an upsert whose WAL append
+// failed: the NodeNotDurableResponse fields plus "created".
+type NodeUpsertNotDurableResponse struct {
+	NodeNotDurableResponse
+	Created bool `json:"created"`
+}
+
+// UpsertAmbiguousResponse is the 409 body when more than one node holds the
+// upsert key. ConflictingNodeIDs lists every holder, so a client can repair
+// the duplicates.
+type UpsertAmbiguousResponse struct {
+	ErrorResponse
+	ConflictingNodeIDs []uint64 `json:"conflicting_node_ids"`
+}
+
+// UpsertLabelsDifferResponse is the 409 body when the matched node lacks a
+// label of the request. ConflictingNodeID is the matched node, the same field
+// the create's 409 carries (CC26).
+type UpsertLabelsDifferResponse struct {
+	ErrorResponse
+	ConflictingNodeID uint64   `json:"conflicting_node_id"`
+	MissingLabels     []string `json:"missing_labels"`
+}
+
 // notDurableFields are the five status fields shared by every response for
 // a write whose in-memory change applied but whose WAL append failed
 // (storage.ErrWALWriteFailed). Every reader already sees the change, and it
@@ -212,6 +244,18 @@ type BatchNodeResponse struct {
 	Time    string           `json:"time"`
 	Failed  int              `json:"failed"`
 	Errors  []BatchItemError `json:"errors,omitempty"`
+}
+
+// BatchNodeUpsertResponse is the response of POST /nodes/batch?on_conflict=merge.
+// Created counts the items that made a node and Matched counts the items that
+// found one. It is a separate type so the plain batch body gains no key.
+type BatchNodeUpsertResponse struct {
+	Nodes   []*NodeUpsertResponse `json:"nodes"`
+	Created int                   `json:"created"`
+	Matched int                   `json:"matched"`
+	Time    string                `json:"time"`
+	Failed  int                   `json:"failed"`
+	Errors  []BatchItemError      `json:"errors,omitempty"`
 }
 
 // BatchEdgeRequest represents a batch edge creation request
