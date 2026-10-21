@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -123,5 +124,31 @@ func TestA6c_Query_CreateLandsInCallerTenant(t *testing.T) {
 	}
 	if len(defaultNodes) != 0 {
 		t.Errorf("default User count: want 0 (must not leak), got %d — CREATE landed in default tenant", len(defaultNodes))
+	}
+}
+
+// A /query CREATE that a uniqueness rule refuses is a 409, and the body must
+// not carry the rule name (ADR 0001, R4).
+func TestQuery_CreateDuplicateOfRegisteredKeyIs409(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	if err := server.graph.RegisterUniquenessRule(storage.UniquenessRule{
+		Name: "secret_rule_name", Label: "Widget", PropertyKey: "sku",
+	}); err != nil {
+		t.Fatalf("RegisterUniquenessRule: %v", err)
+	}
+	if _, err := server.graph.CreateNodeWithUniquenessRulesForTenant(tenant.DefaultTenantID, []string{"Widget"},
+		map[string]storage.Value{"sku": storage.StringValue("w-1")}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	server.handleQuery(rr, queryReqWithTenant(t, "CREATE (:Widget {sku: 'w-1'})", tenant.DefaultTenantID))
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "secret_rule_name") {
+		t.Errorf("body names the rule: %s", rr.Body.String())
 	}
 }

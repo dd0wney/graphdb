@@ -1,6 +1,7 @@
 package query
 
 import (
+	"errors"
 	"fmt"
 	"log"
 
@@ -300,10 +301,14 @@ func (cs *CreateStep) bindOrCreateNode(ctx *ExecutionContext, np *NodePattern, r
 		props[key] = sv
 	}
 
-	// Audit A6c-query: tenant-scoped node create.
-	node, err := ctx.graph.CreateNodeWithTenant(ctx.tenantID, np.Labels, props)
+	// Audit A6c-query: tenant-scoped node create. ADR 0001: through the
+	// uniqueness-rules registry, so a Cypher write cannot store a duplicate
+	// of a registered key. A refusal stops the query. Cypher writes here are
+	// not transactional, so nodes and edges that earlier rows or earlier
+	// patterns of the same query created stay; nothing undoes them.
+	node, err := ctx.graph.CreateNodeWithUniquenessRulesForTenant(ctx.tenantID, np.Labels, props)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("CREATE: %w", err)
 	}
 	if np.Variable != "" {
 		row.bindings[np.Variable] = node
@@ -543,10 +548,29 @@ func (ms *MergeStep) Execute(ctx *ExecutionContext) error {
 			}
 			if len(rowCtx.results) == 0 {
 				rowCtx.results = []*BindingSet{row}
-				if err := createStep.Execute(rowCtx); err != nil {
+				err := createStep.Execute(rowCtx)
+				if errors.Is(err, storage.ErrUniqueConstraintViolation) {
+					// A concurrent writer created the node between our
+					// match and our create. Match once more, one time only
+					// (no loop): a hit means the node is there, so bind it
+					// and take the ON MATCH path. A miss means the rule
+					// refused for another reason, so return its error.
+					rowCtx.results = []*BindingSet{row}
+					if rerr := matchStep.Execute(rowCtx); rerr != nil {
+						return rerr
+					}
+					if rowCtx.truncation != nil {
+						ctx.noteTruncation(rowCtx.truncation)
+					}
+					if len(rowCtx.results) > 0 {
+						err = nil
+					}
+				} else if err == nil {
+					set = ms.merge.OnCreate
+				}
+				if err != nil {
 					return err
 				}
-				set = ms.merge.OnCreate
 			}
 			if unbound {
 				decided = onlyVariables(rowCtx.results, vars)
