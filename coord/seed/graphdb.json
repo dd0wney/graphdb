@@ -465,6 +465,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: Cypher CREATE (pkg/query/executor_steps.go:304) and the MERGE create path (pkg/query/physical_ops_mutate.go:69, :360) call CreateNodeWithTenant, so a /query write skips the uniqueness-rules registry (ADR 0001) and stores a duplicate of a registered key with no error. ADR 0001 names two enforcement surfaces (GraphQL, REST create) and did not consider Cypher. Route Cypher node creation through CreateNodeWithUniquenessRulesForTenant, and decide how a refusal reaches the caller: an execution error that stops the query, with the rows already written in the same query documented (Cypher writes are not transactional here). MERGE matches first and then creates, so two concurrent MERGEs of one key can both create; the registry closes that race only if the create goes through it. Acceptance: CREATE of a duplicate key fails, concurrent MERGE of one key stores one node, seen red first. Read at d08c106"
+    },
+    {
+      "id": "v1.4-patch-node-uniqueness-rules",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage,api: PatchNodeForTenant and UpdateNodeForTenant (pkg/storage/node_operations.go:544, :568; REST PUT /nodes/{id}) never consult the uniqueness-rules registry (ADR 0001), so an update can set a rule's property to a value another node of that label already holds, and the store then has two holders of one key with no error. Found by the builder check of SPEC_node_upsert_2026-10-21.md (D6), which closes the same gap for the upsert merge only. Under the same gs.mu hold as the patch, check every registered rule whose label is on the node and whose property the patch changes, and refuse with *UniqueConstraintError (REST 409 with conflicting_node_id). Acceptance: a PUT that sets a held key value is refused and leaves the node unchanged, seen red first. Read at d08c106"
     }
   ],
   "deps": [
