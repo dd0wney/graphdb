@@ -66,9 +66,10 @@ func (o *CreateOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 				}
 				props[k] = sv
 			}
-			node, err := ctx.graph.CreateNodeWithTenant(ctx.tenantID, nodePat.Labels, props)
+			// ADR 0001: through the registry. Writes made before a refusal stay.
+			node, err := ctx.graph.CreateNodeWithUniquenessRulesForTenant(ctx.tenantID, nodePat.Labels, props)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("CREATE: %w", err)
 			}
 			createdNodes[nodePat] = node
 			if nodePat.Variable != "" {
@@ -357,9 +358,11 @@ func (o *MergeOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 			}
 			props[k] = sv
 		}
-		newNode, err := ctx.graph.CreateNodeWithTenant(ctx.tenantID, nodePat.Labels, props)
+		// ADR 0001: through the registry. This spike operator does not retry
+		// the match after a concurrent create; it returns the refusal.
+		newNode, err := ctx.graph.CreateNodeWithUniquenessRulesForTenant(ctx.tenantID, nodePat.Labels, props)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("MERGE: %w", err)
 		}
 
 		if row == nil {

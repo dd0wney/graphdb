@@ -21,6 +21,7 @@ import (
 	"github.com/dd0wney/graphdb/pkg/graphql"
 	"github.com/dd0wney/graphdb/pkg/health"
 	"github.com/dd0wney/graphdb/pkg/query"
+	"github.com/dd0wney/graphdb/pkg/storage"
 	"github.com/dd0wney/graphdb/pkg/tenant"
 )
 
@@ -207,6 +208,17 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// (as opposed to noting truncation on results it still built).
 		if errors.Is(err, query.ErrTraversalTruncated) && results != nil {
 			truncated = true
+		} else if errors.Is(err, storage.ErrUniqueConstraintViolation) {
+			// ADR 0001: a Cypher CREATE or MERGE that a uniqueness rule
+			// refused is a conflict, not a server fault. The body is fixed
+			// text: the storage message names the label and property, and
+			// the error text can carry more than the caller should see. The
+			// full error goes to the log. Rule-naming errors
+			// (ErrMultipleUniquenessRules, RequiredRuleMissingError) fall
+			// through to the generic 500 below, which names no rule.
+			log.Printf("ERROR [query execution]: %v", err)
+			s.respondError(w, http.StatusConflict, "query execution refused: a unique constraint is violated")
+			return
 		} else {
 			s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "query execution"))
 			return

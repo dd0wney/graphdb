@@ -1,6 +1,10 @@
 package algorithms
 
-import "github.com/dd0wney/graphdb/pkg/storage"
+import (
+	"fmt"
+
+	"github.com/dd0wney/graphdb/pkg/storage"
+)
 
 // ClusteringCoefficient computes local clustering coefficient for all nodes
 // Measures how close a node's neighbors are to being a complete graph.
@@ -14,7 +18,12 @@ func ClusteringCoefficient(graph *storage.GraphStorage) (map[uint64]float64, err
 
 	for _, nodeID := range nodeIDs {
 		// Get neighbors
-		outEdges, _ := graph.GetOutgoingEdges(nodeID)
+		outEdges, err := graph.GetOutgoingEdges(nodeID)
+		if err != nil {
+			// A failed read is not "no neighbours": a 0 here would be a wrong
+			// coefficient that looks like a real one.
+			return nil, fmt.Errorf("clustering coefficient: outgoing edges of node %d: %w", nodeID, err)
+		}
 		neighbors := make(map[uint64]bool)
 
 		for _, edge := range outEdges {
@@ -40,10 +49,11 @@ func ClusteringCoefficient(graph *storage.GraphStorage) (map[uint64]float64, err
 		for _, neighbor := range neighborsSlice {
 			neighborSet := make(map[uint64]bool)
 			edges, err := graph.GetOutgoingEdges(neighbor)
-			if err == nil {
-				for _, edge := range edges {
-					neighborSet[edge.ToNodeID] = true
-				}
+			if err != nil {
+				return nil, fmt.Errorf("clustering coefficient: outgoing edges of node %d: %w", neighbor, err)
+			}
+			for _, edge := range edges {
+				neighborSet[edge.ToNodeID] = true
 			}
 			neighborSets[neighbor] = neighborSet
 		}
@@ -51,8 +61,11 @@ func ClusteringCoefficient(graph *storage.GraphStorage) (map[uint64]float64, err
 		// Now check pairs using O(1) set lookup
 		for i := 0; i < len(neighborsSlice); i++ {
 			for j := i + 1; j < len(neighborsSlice); j++ {
-				// Check if neighbors[i] connects to neighbors[j]
-				if neighborSets[neighborsSlice[i]][neighborsSlice[j]] {
+				// Either direction connects the pair. Checking only i -> j made
+				// the count depend on the order the neighbour map gave, so the
+				// same graph gave different coefficients from call to call.
+				a, b := neighborsSlice[i], neighborsSlice[j]
+				if neighborSets[a][b] || neighborSets[b][a] {
 					triangles++
 				}
 			}
