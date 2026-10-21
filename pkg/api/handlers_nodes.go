@@ -137,9 +137,11 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	// ADR 0001: every create goes through the one uniqueness-rules lookup
 	// path, so this handler carries no domain vocabulary of its own — a
 	// deployment's REGISTERED rules decide which labels are unique on which
-	// property, not a hardcoded "Claim"/"for_task" pair. REST and GraphQL
-	// (pkg/graphql/mutations_resolvers.go) call the same storage method, so
-	// neither surface can become a way around the other's enforcement.
+	// property, not a hardcoded "Claim"/"for_task" pair. POST /nodes, POST
+	// /nodes/batch and GraphQL (pkg/graphql/mutations_resolvers.go) call the
+	// same storage method, so none of them can become a way around the
+	// others' enforcement. Cypher CREATE and MERGE (pkg/query) do not route
+	// through the registry yet.
 	node, err := s.graph.CreateNodeWithUniquenessRulesForTenant(tenantID, req.Labels, props)
 	if err != nil {
 		// R4: a missing required rule is a fixed 503, naming only the
@@ -184,6 +186,25 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 
 	response := s.nodeToResponse(r.Context(), node)
 	s.respondJSON(w, http.StatusCreated, response)
+}
+
+// batchCreateItemError is the text a refused batch item reports. It follows
+// createNode's mapping where storage's own text would name a rule (ADR 0001,
+// R4): a missing required rule names only the caller's label, and a write
+// that matches several rules gets a generic message. Every other error keeps
+// the text the batch has always reported.
+func batchCreateItemError(err error) string {
+	var missing *storage.RequiredRuleMissingError
+	if errors.As(err, &missing) {
+		return fmt.Sprintf(
+			"a required uniqueness rule for label %q is not registered; contact the administrator",
+			missing.Label,
+		)
+	}
+	if errors.Is(err, storage.ErrMultipleUniquenessRules) {
+		return sanitizeError(err, "create node")
+	}
+	return err.Error()
 }
 
 func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
@@ -369,10 +390,12 @@ func (s *Server) handleBatchNodes(w http.ResponseWriter, r *http.Request) {
 		// Convert and sanitize properties
 		props := converter.ConvertAndSanitize(nodeReq.Properties, s.convertToValue)
 
-		// Audit A6a: scoped create.
-		node, err := s.graph.CreateNodeWithTenant(tenantID, nodeReq.Labels, props)
+		// Audit A6a: scoped create. Through the uniqueness registry, as
+		// createNode does: a batch item is a write like any other, and
+		// CreateNodeWithTenant here stored a duplicate for every repeated key.
+		node, err := s.graph.CreateNodeWithUniquenessRulesForTenant(tenantID, nodeReq.Labels, props)
 		if err != nil {
-			errs = append(errs, BatchItemError{Index: i, Error: err.Error()})
+			errs = append(errs, BatchItemError{Index: i, Error: batchCreateItemError(err)})
 			continue
 		}
 
