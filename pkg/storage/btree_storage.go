@@ -562,6 +562,18 @@ func (gs *BTreeGraphStorage) CreateNodeWithUniquePropertyForTenant(tenantID stri
 	return nil, errBTreeBackendUnsupported
 }
 
+// UpsertNodeForTenant is not implemented in the BTree backend. A typed error
+// keeps a caller from reading a silent (nil, false, nil) as "no node".
+func (gs *BTreeGraphStorage) UpsertNodeForTenant(tenantID string, labels []string, properties map[string]Value, keyLabel, keyProperty string) (*Node, bool, error) {
+	return nil, false, errBTreeBackendUnsupported
+}
+
+// UpsertNodeWithUniquenessRulesForTenant is not implemented in the BTree
+// backend, for the reason UpsertNodeForTenant gives.
+func (gs *BTreeGraphStorage) UpsertNodeWithUniquenessRulesForTenant(tenantID string, labels []string, properties map[string]Value) (*Node, bool, error) {
+	return nil, false, errBTreeBackendUnsupported
+}
+
 func (gs *BTreeGraphStorage) UpdateNodeForTenant(nodeID uint64, properties map[string]Value, tenantID string) error {
 	return errBTreeBackendUnsupported
 }
