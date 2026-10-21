@@ -140,8 +140,8 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	// property, not a hardcoded "Claim"/"for_task" pair. POST /nodes, POST
 	// /nodes/batch and GraphQL (pkg/graphql/mutations_resolvers.go) call the
 	// same storage method, so none of them can become a way around the
-	// others' enforcement. Cypher CREATE and MERGE (pkg/query) do not route
-	// through the registry yet.
+	// others' enforcement. Cypher CREATE and MERGE (pkg/query) route through
+	// the registry too.
 	node, err := s.graph.CreateNodeWithUniquenessRulesForTenant(tenantID, req.Labels, props)
 	if err != nil {
 		// R4: a missing required rule is a fixed 503, naming only the
