@@ -79,6 +79,10 @@ type Error struct {
 	Message string
 	Method  string
 	Path    string
+	// ConflictingNodeID is the ID of the node that holds the key in a
+	// uniqueness 409. It is 0 for any other error, and for a 409 whose body
+	// has no "conflicting_node_id" field.
+	ConflictingNodeID uint64
 }
 
 func (e *Error) Error() string {
@@ -109,6 +113,14 @@ func sentinelFor(status int) error {
 // fromResponse builds an *Error from a non-2xx response body.
 func fromResponse(status int, body []byte, method, path string) error {
 	e := &Error{Status: status, Method: method, Path: path, Message: extractMessage(body)}
+	if status == http.StatusConflict {
+		var b struct {
+			ConflictingNodeID uint64 `json:"conflicting_node_id"`
+		}
+		// A body without the field, or a non-JSON body, leaves the ID 0.
+		_ = json.Unmarshal(body, &b)
+		e.ConflictingNodeID = b.ConflictingNodeID
+	}
 	return e
 }
 
