@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **The storage `Batch` and `Transaction.Commit` enforce the uniqueness rules** (ADR 0001), the
+  last node write paths that did not. An embedded caller used to store a duplicate of a registered
+  key with no error; it now gets the error a direct create or update gives (`*UniqueConstraintError`,
+  `ErrUniquenessRulePropertyMissing`, `*RequiredRuleMissingError`, `ErrMultipleUniquenessRules`).
+  A `Batch` checks each operation in order and keeps the operations before a refusal, as it does
+  for every error. A `Transaction` checks the state the whole commit leaves, so a refused commit
+  applies nothing and a swap of two keys commits (#692).
+
 ## [1.9.0] - 2026-10-21
 
 This release adds a node upsert and closes every REST, GraphQL and Cypher path that skipped the
