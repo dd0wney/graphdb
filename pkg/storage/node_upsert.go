@@ -30,8 +30,9 @@ import (
 //     Storage has no label mutation, so accepting the request would drop the
 //     label without a word. A request whose labels are a subset of the stored
 //     labels is accepted.
-//   - A registered uniqueness rule covers labels and none of the covering
-//     rules has (keyLabel, keyProperty) as its key: *UpsertKeyNotRegisteredError.
+//   - A registered uniqueness rule covers labels with a key other than
+//     (keyLabel, keyProperty): *UpsertKeyNotRegisteredError. Every covering
+//     rule must be the key, because the create branch checks only the key.
 //     Without the refusal, an upsert keyed on Host.hostname could give a
 //     second node an ip value that the Host.ip rule says only one node may hold.
 //   - The merge would give the matched node a value that breaks a registered
@@ -119,20 +120,21 @@ func (gs *GraphStorage) UpsertNodeWithUniquenessRulesForTenant(
 }
 
 // upsertKeyAllowed reports whether (keyLabel, keyProperty) may key an upsert of
-// labels. With no rule covering labels any key is allowed. Otherwise the key
-// must be the key of one of the covering rules.
+// labels. Every rule covering labels must have that key. The create branch
+// checks only the key, so a second covering rule would go unchecked there and
+// a new node could hold a value that rule says only one node may hold. With
+// two distinct covering rules this is never true, the same answer
+// CreateNodeWithUniquenessRulesForTenant gives (ErrMultipleUniquenessRules).
 func upsertKeyAllowed(rules []UniquenessRule, labels []string, keyLabel, keyProperty string) bool {
-	covered := false
 	for _, r := range rules {
 		if !containsString(labels, r.Label) {
 			continue
 		}
-		covered = true
-		if r.Label == keyLabel && r.PropertyKey == keyProperty {
-			return true
+		if r.Label != keyLabel || r.PropertyKey != keyProperty {
+			return false
 		}
 	}
-	return !covered
+	return true
 }
 
 // nodeUpsert is what the lock section of an upsert hands to the off-lock half.

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -293,7 +294,7 @@ func TestUpsertNode_D1_ExplicitKeyMustMatchRegisteredRule(t *testing.T) {
 	if !errors.As(err, &ke) || ke.KeyLabel != "Host" || ke.KeyProperty != "hostname" {
 		t.Errorf("error = %#v, want the caller's own key Host.hostname", ke)
 	}
-	if msg := err.Error(); containsSubstr(msg, "host_ip") || containsSubstr(msg, "ip\"") {
+	if msg := err.Error(); strings.Contains(msg, "host_ip") || strings.Contains(msg, "ip\"") {
 		t.Errorf("error text %q names the rule", msg)
 	}
 	if gs.GetCurrentLSN() != lsn || countNodes(t, gs, upTenant) != 0 {
@@ -307,13 +308,30 @@ func TestUpsertNode_D1_ExplicitKeyMustMatchRegisteredRule(t *testing.T) {
 	}
 }
 
-func containsSubstr(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
+// With two rules covering the labels, an upsert keyed on one of them used to
+// proceed, and its create branch never checked the other rule: a second node
+// could then hold a hostname another node already holds. Every covering rule
+// must be the explicit key, which with two distinct rules is never true, the
+// same answer the create gives (ErrMultipleUniquenessRules).
+func TestUpsertNode_D1_EveryCoveringRuleMustBeTheKey(t *testing.T) {
+	gs := newUpsertStore(t)
+	registerRule(t, gs, "host_ip", "Host", "ip")
+	registerRule(t, gs, "host_name", "Host", "hostname")
+
+	first := map[string]Value{"ip": StringValue("10.0.0.1"), "hostname": StringValue("h1")}
+	if _, err := gs.CreateNodeWithUniquePropertyForTenant(upTenant, []string{"Host"}, first, "Host", "ip"); err != nil {
+		t.Fatalf("seed create: %v", err)
 	}
-	return false
+	lsn := gs.GetCurrentLSN()
+
+	second := map[string]Value{"ip": StringValue("10.0.0.2"), "hostname": StringValue("h1")}
+	_, _, err := gs.UpsertNodeForTenant(upTenant, []string{"Host"}, second, "Host", "ip")
+	if !errors.Is(err, ErrUpsertKeyNotRegistered) {
+		t.Fatalf("err = %v, want ErrUpsertKeyNotRegistered", err)
+	}
+	if gs.GetCurrentLSN() != lsn || countNodes(t, gs, upTenant) != 1 {
+		t.Errorf("the refused upsert wrote something: nodes = %d", countNodes(t, gs, upTenant))
+	}
 }
 
 func TestUpsertNode_D6_MergeMustNotBreakRuleOnStoredLabel(t *testing.T) {
@@ -327,9 +345,13 @@ func TestUpsertNode_D6_MergeMustNotBreakRuleOnStoredLabel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The stored node is a Host and an Asset.
-	stored, _ := mustUpsert(t, gs, upTenant, []string{"Host", "Asset"},
-		map[string]Value{"ip": StringValue("10.0.0.1"), "serial": StringValue("S1")}, "Host", "ip")
+	// The stored node is a Host and an Asset. A plain create, because an upsert
+	// naming both labels is refused: two rules cover them (D1).
+	stored, err := gs.CreateNodeWithTenant(upTenant, []string{"Host", "Asset"},
+		map[string]Value{"ip": StringValue("10.0.0.1"), "serial": StringValue("S1")})
+	if err != nil {
+		t.Fatal(err)
+	}
 	lsn := gs.GetCurrentLSN()
 
 	// The request names Host only, matches by ip, and sets serial to S2.
