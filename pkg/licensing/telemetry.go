@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 )
 
@@ -52,6 +53,8 @@ type TelemetryReporter struct {
 	enabled    bool
 	ctx        context.Context
 	cancel     context.CancelFunc
+	// loops counts running report loops, so Stop can wait for them.
+	loops sync.WaitGroup
 }
 
 // NewTelemetryReporter creates a new telemetry reporter
@@ -76,14 +79,16 @@ func (t *TelemetryReporter) Start(license *License, getMetrics func() (nodeCount
 		return
 	}
 
-	go t.reportLoop(license, getMetrics)
+	t.loops.Go(func() { t.reportLoop(license, getMetrics) })
 }
 
-// Stop halts telemetry reporting
+// Stop halts telemetry reporting and returns once no report is in flight.
+// Cancelling the context aborts a pending request, so the wait is short.
 func (t *TelemetryReporter) Stop() {
 	if t.cancel != nil {
 		t.cancel()
 	}
+	t.loops.Wait()
 }
 
 // reportLoop sends telemetry data at regular intervals

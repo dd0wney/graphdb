@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -106,9 +107,10 @@ func TestTelemetryReporter_Start_Disabled(t *testing.T) {
 
 // TestTelemetryReporter_Start_Success tests successful telemetry reporting
 func TestTelemetryReporter_Start_Success(t *testing.T) {
-	callCount := 0
+	// Atomic: the handler runs on the server's goroutine while the test reads.
+	var callCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		callCount.Add(1)
 
 		// Verify request method
 		if r.Method != "POST" {
@@ -164,8 +166,8 @@ func TestTelemetryReporter_Start_Success(t *testing.T) {
 	// Wait for at least 2 reports (initial + 1 periodic)
 	time.Sleep(250 * time.Millisecond)
 
-	if callCount < 2 {
-		t.Errorf("Expected at least 2 calls, got %d", callCount)
+	if got := callCount.Load(); got < 2 {
+		t.Errorf("Expected at least 2 calls, got %d", got)
 	}
 }
 
@@ -443,9 +445,9 @@ func TestIsRunningInKubernetes(t *testing.T) {
 
 // TestReportOnce tests one-time telemetry reporting
 func TestReportOnce(t *testing.T) {
-	callCount := 0
+	var callCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		callCount.Add(1)
 
 		// Read and verify body
 		body, err := io.ReadAll(r.Body)
@@ -479,8 +481,8 @@ func TestReportOnce(t *testing.T) {
 		t.Fatalf("ReportOnce failed: %v", err)
 	}
 
-	if callCount != 1 {
-		t.Errorf("Expected exactly 1 call, got %d", callCount)
+	if got := callCount.Load(); got != 1 {
+		t.Errorf("Expected exactly 1 call, got %d", got)
 	}
 }
 
@@ -501,9 +503,7 @@ func TestReportOnce_Error(t *testing.T) {
 
 // TestTelemetryReporter_reportLoop_Cancellation tests clean shutdown
 func TestTelemetryReporter_reportLoop_Cancellation(t *testing.T) {
-	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -511,8 +511,14 @@ func TestTelemetryReporter_reportLoop_Cancellation(t *testing.T) {
 	reporter := NewTelemetryReporter(true, 50*time.Millisecond)
 	reporter.endpoint = server.URL
 
+	// Counted in the loop, not in the handler: a request cancelled by Stop
+	// can still reach the handler afterwards, which made this test flaky.
+	var callCount atomic.Int32
 	license := &License{Key: "test-key"}
-	getMetrics := func() (int64, int64) { return 10, 20 }
+	getMetrics := func() (int64, int64) {
+		callCount.Add(1)
+		return 10, 20
+	}
 
 	reporter.Start(license, getMetrics)
 
@@ -523,11 +529,11 @@ func TestTelemetryReporter_reportLoop_Cancellation(t *testing.T) {
 	reporter.Stop()
 
 	// Wait a bit more to ensure it stopped
-	prevCount := callCount
+	prevCount := callCount.Load()
 	time.Sleep(150 * time.Millisecond)
 
 	// Call count should not increase after Stop()
-	if callCount > prevCount {
+	if callCount.Load() > prevCount {
 		t.Error("Reporter should not send after Stop()")
 	}
 }
