@@ -324,3 +324,33 @@ func TestTransaction_HolderInAnotherTenantIsNoConflict(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 }
+
+// Two rule names may cover one (Label, PropertyKey). A transaction update
+// then makes one key claim for each rule, both for the same node, and the
+// node must not conflict with itself. The direct update path accepts the
+// same write, and a real conflict must name the other holder, not the node
+// being written.
+func TestTransaction_TwoRulesOnOneKeyDoNotConflictWithTheSameNode(t *testing.T) {
+	gs, a, b := widgetPairIn(t, txUniqTenant)
+	registerRule(t, gs, "widget_sku_2", "Widget", "sku")
+
+	tx, err := gs.BeginTransactionForTenant(txUniqTenant)
+	if err != nil {
+		t.Fatalf("BeginTransactionForTenant: %v", err)
+	}
+	if err := tx.UpdateNode(a.ID, sku("w-9")); err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit of a free value under two rules on one key: %v", err)
+	}
+
+	tx, err = gs.BeginTransactionForTenant(txUniqTenant)
+	if err != nil {
+		t.Fatalf("BeginTransactionForTenant: %v", err)
+	}
+	if err := tx.UpdateNode(a.ID, sku("w-2")); err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+	wantUniqueConflict(t, tx.Commit(), b.ID)
+}
