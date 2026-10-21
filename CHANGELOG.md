@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`POST /nodes?on_conflict=merge` and `POST /nodes/batch?on_conflict=merge` upsert a node.** The key is the uniqueness rule registered for the labels. The call creates the node (201) or merges the request properties into the node that holds the key (200). The body carries `created`, and the batch response adds `matched`. Concurrent calls for one key make one node. A missing rule is a 400. More than one node holding the key, or a label the stored node lacks, is a 409. Without the parameter, both routes behave as before. Any value other than `error` or `merge` is a 400.
+
 ## [1.8.0] - 2026-10-21
 
 This release fixes two defects a user could hit with no error. Cypher aggregates now group as
