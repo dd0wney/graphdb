@@ -131,6 +131,15 @@ type ErrorResponse struct {
 	Code    int    `json:"code"`
 }
 
+// UniqueConflictResponse is the 409 body of POST /nodes when a uniqueness
+// rule refuses the create. It carries the ErrorResponse fields unchanged and
+// adds the ID of the node that holds the key (CC26), so a client need not
+// parse Message.
+type UniqueConflictResponse struct {
+	ErrorResponse
+	ConflictingNodeID uint64 `json:"conflicting_node_id"`
+}
+
 // notDurableFields are the five status fields shared by every response for
 // a write whose in-memory change applied but whose WAL append failed
 // (storage.ErrWALWriteFailed). Every reader already sees the change, and it

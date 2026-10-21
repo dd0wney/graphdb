@@ -160,6 +160,21 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, storage.ErrUniqueConstraintViolation) {
+			// The conflicting node is in the caller's own tenant (the scan is
+			// per tenant), so its ID leaks nothing. Tenant and rule name stay
+			// out of the body.
+			var uniqueErr *storage.UniqueConstraintError
+			if errors.As(err, &uniqueErr) {
+				s.respondJSON(w, http.StatusConflict, UniqueConflictResponse{
+					ErrorResponse: ErrorResponse{
+						Error:   http.StatusText(http.StatusConflict),
+						Message: err.Error(),
+						Code:    http.StatusConflict,
+					},
+					ConflictingNodeID: uniqueErr.ConflictingNodeID,
+				})
+				return
+			}
 			s.respondError(w, http.StatusConflict, err.Error())
 			return
 		}
