@@ -337,53 +337,6 @@ func (gs *GraphStorage) UniquenessRules() []UniquenessRule {
 	return rules
 }
 
-// planUniquenessEnforcement reads the registry under rulesMu.RLock and
-// returns everything CreateNodeWithUniquenessRulesForTenant needs as plain
-// values, copied out before the lock releases via the deferred RUnlock.
-// The caller never touches rulesMu itself, so no early return added to
-// CreateNodeWithUniquenessRulesForTenant in the future can leak the read
-// lock (fix round 1, review finding).
-//
-// Exactly one of the two return values is meaningful: a non-nil missing
-// means the whole call must be refused before any primitive runs; a nil
-// missing means matched holds every registered rule whose Label is among
-// the write's labels (zero, one, or more).
-//
-// R9 (controller ruling, fix round 1): a required (Name, Label) pair is
-// satisfied only by a REGISTERED rule carrying BOTH the same name AND the
-// same label. A rule registered under the required name but a DIFFERENT
-// label does not satisfy the pair — the pair, not the name alone, is what
-// fail-closed checks against, so a required "claim_for_task"/"Claim" is
-// still missing if "claim_for_task" is registered against "Task".
-func (gs *GraphStorage) planUniquenessEnforcement(labels []string) (missing *RequiredRuleMissingError, matched []UniquenessRule) {
-	gs.rulesMu.RLock()
-	defer gs.rulesMu.RUnlock()
-
-	var missingPairs []RequiredUniquenessRule
-	for _, req := range gs.requiredUniquenessRules {
-		if !containsString(labels, req.Label) {
-			continue
-		}
-		rule, registered := gs.uniquenessRules[req.Name]
-		if registered && rule.Label == req.Label {
-			continue
-		}
-		missingPairs = append(missingPairs, req)
-	}
-	if len(missingPairs) > 0 {
-		sort.Slice(missingPairs, func(i, j int) bool { return missingPairs[i].Name < missingPairs[j].Name })
-		first := missingPairs[0]
-		return &RequiredRuleMissingError{RuleName: first.Name, Label: first.Label}, nil
-	}
-
-	for _, rule := range gs.uniquenessRules {
-		if containsString(labels, rule.Label) {
-			matched = append(matched, rule)
-		}
-	}
-	return nil, matched
-}
-
 // CreateNodeWithUniquenessRulesForTenant is the one lookup path both write
 // surfaces (the GraphQL resolver and the REST handler, wired in stage 2)
 // call for node creation. It replaces the earlier direct calls to
@@ -392,7 +345,8 @@ func (gs *GraphStorage) planUniquenessEnforcement(labels []string) (missing *Req
 // surfaces enforce identically (ADR 0001).
 //
 // Order of checks, matching the ADR's fail-closed-per-deployment design;
-// see planUniquenessEnforcement for the registry lookup itself:
+// uniquenessRegistry.createRule makes them, and every create path (this one,
+// the storage Batch and the Transaction) selects through it:
 //
 //  1. Any StorageConfig.RequiredUniquenessRules pair covering labels and
 //     not satisfied by a matching registered rule (R9: same name AND same
@@ -409,7 +363,7 @@ func (gs *GraphStorage) planUniquenessEnforcement(labels []string) (missing *Req
 //     choice between two rules is the failure class the ADR exists to
 //     avoid (R7).
 //
-// This method never holds rulesMu directly — planUniquenessEnforcement
+// This method never holds rulesMu directly — snapshotUniquenessRegistry
 // does, and releases it before returning — so every branch below is free
 // to call a gs.mu-taking primitive without re-entering gs.mu.
 func (gs *GraphStorage) CreateNodeWithUniquenessRulesForTenant(
@@ -417,20 +371,101 @@ func (gs *GraphStorage) CreateNodeWithUniquenessRulesForTenant(
 	labels []string,
 	properties map[string]Value,
 ) (*Node, error) {
-	missing, matched := gs.planUniquenessEnforcement(labels)
+	rule, err := gs.snapshotUniquenessRegistry().createRule(labels, properties)
+	if err != nil {
+		return nil, err
+	}
+	if rule == nil {
+		return gs.CreateNodeWithTenant(tenantID, labels, properties)
+	}
+	return gs.CreateNodeWithUniquePropertyForTenant(tenantID, labels, properties, rule.Label, rule.PropertyKey)
+}
+
+// uniquenessRegistry is the registry copied out under rulesMu, for a write path
+// that checks it while it holds gs.mu. rulesMu and gs.mu are not ordered
+// anywhere, so the copy is taken before gs.mu and never under it. A rule
+// registered after the copy is not seen, the same window every write path has.
+// The caller never touches rulesMu itself, so no early return added to a write
+// path can leak the read lock (fix round 1, review finding).
+type uniquenessRegistry struct {
+	rules    []UniquenessRule
+	required []RequiredUniquenessRule
+}
+
+func (gs *GraphStorage) snapshotUniquenessRegistry() uniquenessRegistry {
+	gs.rulesMu.RLock()
+	defer gs.rulesMu.RUnlock()
+
+	reg := uniquenessRegistry{
+		rules:    make([]UniquenessRule, 0, len(gs.uniquenessRules)),
+		required: append([]RequiredUniquenessRule(nil), gs.requiredUniquenessRules...),
+	}
+	for _, r := range gs.uniquenessRules {
+		reg.rules = append(reg.rules, r)
+	}
+	return reg
+}
+
+// plan returns what a write of a node with labels must be checked against.
+// Exactly one of the two return values is meaningful: a non-nil missing means
+// the whole call must be refused before any primitive runs; a nil missing
+// means matched holds every registered rule whose Label is among labels (zero,
+// one, or more).
+//
+// R9 (controller ruling, fix round 1): a required (Name, Label) pair is
+// satisfied only by a REGISTERED rule carrying BOTH the same name AND the
+// same label. A rule registered under the required name but a DIFFERENT
+// label does not satisfy the pair — the pair, not the name alone, is what
+// fail-closed checks against, so a required "claim_for_task"/"Claim" is
+// still missing if "claim_for_task" is registered against "Task".
+func (reg uniquenessRegistry) plan(labels []string) (missing *RequiredRuleMissingError, matched []UniquenessRule) {
+	var missingPairs []RequiredUniquenessRule
+	for _, req := range reg.required {
+		if containsString(labels, req.Label) && !reg.registered(req) {
+			missingPairs = append(missingPairs, req)
+		}
+	}
+	if len(missingPairs) > 0 {
+		sort.Slice(missingPairs, func(i, j int) bool { return missingPairs[i].Name < missingPairs[j].Name })
+		first := missingPairs[0]
+		return &RequiredRuleMissingError{RuleName: first.Name, Label: first.Label}, nil
+	}
+
+	for _, r := range reg.rules {
+		if containsString(labels, r.Label) {
+			matched = append(matched, r)
+		}
+	}
+	return nil, matched
+}
+
+// registered reports whether req is satisfied under R9 (see plan).
+func (reg uniquenessRegistry) registered(req RequiredUniquenessRule) bool {
+	for _, r := range reg.rules {
+		if r.Name == req.Name && r.Label == req.Label {
+			return true
+		}
+	}
+	return false
+}
+
+// createRule is the rule selection a node create makes, steps 1 and 2 of
+// CreateNodeWithUniquenessRulesForTenant. It returns the one registered rule
+// the create must be unique under, or nil when no rule covers labels.
+func (reg uniquenessRegistry) createRule(labels []string, properties map[string]Value) (*UniquenessRule, error) {
+	missing, matched := reg.plan(labels)
 	if missing != nil {
 		return nil, missing
 	}
-
 	switch len(matched) {
 	case 0:
-		return gs.CreateNodeWithTenant(tenantID, labels, properties)
+		return nil, nil
 	case 1:
 		rule := matched[0]
 		if _, ok := properties[rule.PropertyKey]; !ok {
 			return nil, fmt.Errorf("%w: label %q requires a %q property", ErrUniquenessRulePropertyMissing, rule.Label, rule.PropertyKey)
 		}
-		return gs.CreateNodeWithUniquePropertyForTenant(tenantID, labels, properties, rule.Label, rule.PropertyKey)
+		return &rule, nil
 	default:
 		sort.Slice(matched, func(i, j int) bool { return matched[i].Name < matched[j].Name })
 		return nil, fmt.Errorf("%w: %q and %q", ErrMultipleUniquenessRules, matched[0].Name, matched[1].Name)

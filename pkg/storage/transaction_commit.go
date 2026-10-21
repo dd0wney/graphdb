@@ -60,7 +60,9 @@ func (tx *Transaction) Commit() error {
 		return ErrTransactionAlreadyEnded
 	}
 
-	c, err := tx.applyLocked()
+	// The registry copy is taken before applyLocked takes gs.mu, never under
+	// it: rulesMu and gs.mu are not ordered (see uniquenessRegistry).
+	c, err := tx.applyLocked(tx.gs.snapshotUniquenessRegistry())
 	if err != nil {
 		return err
 	}
@@ -108,13 +110,13 @@ type txUpdateNotify struct{ oldNode, newNode *Node }
 // boundary), and the surviving WAL would re-apply them over the snapshot on
 // recovery (M-1). The order cannot be reversed either, because
 // walLSNBarrieredLocked takes the barrier while it holds gs.mu.
-func (tx *Transaction) applyLocked() (txCommit, error) {
+func (tx *Transaction) applyLocked(reg uniquenessRegistry) (txCommit, error) {
 	tx.gs.mu.Lock()
 	defer tx.gs.mu.Unlock()
 	panicPoint("Transaction.Commit")
 
 	// (1) Validate references before any mutation (all-or-none).
-	if err := tx.validateLocked(); err != nil {
+	if err := tx.validateLocked(reg); err != nil {
 		return txCommit{}, err
 	}
 
@@ -238,10 +240,11 @@ func (tx *Transaction) appendWALBarriered(entries []wal.BatchEntry) error {
 
 // validateLocked checks that every created edge's endpoints and every update
 // target resolve to this transaction's tenant — either a node created in this
-// same transaction or an existing node owned by the tenant. Caller holds gs.mu.
+// same transaction or an existing node owned by the tenant — then that the
+// state the commit leaves breaks no uniqueness rule in reg. Caller holds gs.mu.
 // Returning an error here aborts the commit before any mutation, giving
-// all-or-none semantics for reference errors.
-func (tx *Transaction) validateLocked() error {
+// all-or-none semantics for reference and uniqueness errors.
+func (tx *Transaction) validateLocked(reg uniquenessRegistry) error {
 	resolvable := func(id uint64) bool {
 		if _, ok := tx.createdNodes[id]; ok {
 			return true
@@ -262,7 +265,10 @@ func (tx *Transaction) validateLocked() error {
 			return fmt.Errorf("commit: update target %d not found in tenant", nodeID)
 		}
 	}
-	return tx.validateWidthsLocked()
+	if err := tx.validateWidthsLocked(); err != nil {
+		return err
+	}
+	return tx.validateUniquenessLocked(reg)
 }
 
 // validateWidthsLocked refuses the commit before any mutation when a record

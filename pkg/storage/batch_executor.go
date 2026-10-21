@@ -17,7 +17,9 @@ import (
 // HNSW inserts must not run under gs.mu; observers see committed state). The
 // per-op WAL writes stay under the lock, unchanged.
 func (b *Batch) Commit() error {
-	if err := b.executeOps(); err != nil {
+	// The registry copy is taken before executeOps takes gs.mu, never under
+	// it: rulesMu and gs.mu are not ordered (see uniquenessRegistry).
+	if err := b.executeOps(b.graph.snapshotUniquenessRegistry()); err != nil {
 		return err
 	}
 
@@ -51,7 +53,13 @@ func (b *Batch) Commit() error {
 // executeOps runs every queued operation under gs.mu. The deferred unlock
 // matters: the Cypher executor and net/http recover panics, so a panic in an
 // operation that left gs.mu held would hang every later write, Close included.
-func (b *Batch) executeOps() error {
+//
+// Each create and update is checked against the uniqueness rules in reg
+// before it changes anything, in operation order, so a key an earlier
+// operation of this batch wrote counts as held. A refusal leaves the earlier
+// operations applied, as every other operation error does
+// (v1.4-storage-batch-atomic-commit).
+func (b *Batch) executeOps(reg uniquenessRegistry) error {
 	b.graph.mu.Lock()
 	defer b.graph.mu.Unlock()
 	panicPoint("Batch.Commit")
@@ -63,11 +71,11 @@ func (b *Batch) executeOps() error {
 		var err error
 		switch op.opType {
 		case opCreateNode:
-			err = b.executeCreateNode(op)
+			err = b.executeCreateNode(op, reg)
 		case opCreateEdge:
 			err = b.executeCreateEdge(op)
 		case opUpdateNode:
-			err = b.executeUpdateNode(op)
+			err = b.executeUpdateNode(op, reg)
 		case opDeleteNode:
 			err = b.executeDeleteNode(op)
 		case opDeleteEdge:
@@ -80,7 +88,11 @@ func (b *Batch) executeOps() error {
 	return nil
 }
 
-func (b *Batch) executeCreateNode(op batchOp) error {
+func (b *Batch) executeCreateNode(op batchOp, reg uniquenessRegistry) error {
+	if err := b.graph.checkCreateAgainstRulesLocked(reg, effectiveTenantID(DefaultTenantID), op.labels, op.properties); err != nil {
+		return err
+	}
+
 	node := &Node{
 		ID:     op.nodeID,
 		Labels: op.labels,
@@ -176,7 +188,11 @@ func (b *Batch) executeCreateEdge(op batchOp) error {
 	return nil
 }
 
-func (b *Batch) executeUpdateNode(op batchOp) error {
+func (b *Batch) executeUpdateNode(op batchOp, reg uniquenessRegistry) error {
+	if err := b.graph.checkPatchAgainstRulesLocked(op.nodeID, op.properties, nil, reg.rules); err != nil {
+		return err
+	}
+
 	// mmap mode: promote a base-resident node into the overlay (CoW) before mutating.
 	node, err := b.graph.materializeNode(op.nodeID)
 	if err != nil {
