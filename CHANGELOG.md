@@ -10,7 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-21
+
+This release adds a node upsert and closes every REST, GraphQL and Cypher path that skipped the
+uniqueness rules (ADR 0001). `POST /nodes?on_conflict=merge`, the Go client `Nodes.Upsert` and the
+storage `UpsertNodeForTenant` create a node or merge into the node that holds its key, and
+concurrent calls for one key make one node. The batch create, Cypher `CREATE`, `MERGE` and `SET`,
+and `PUT /nodes/{id}` used to store a duplicate key without an error; they now refuse it. A client
+that relied on those duplicates gets a `409` or a batch item error instead. A registered rule
+promised that key was unique, so a stored duplicate was a defect, as in v1.8.0's aggregate refusals.
+The storage `Batch` and `Transaction.Commit` still skip the registry
+(`v1.4-tx-batch-uniqueness-rules`). Within the 1.x promise in `docs/STABILITY_POLICY.md`.
+
 ### Added
+- **Storage `UpsertNodeForTenant` and `UpsertNodeWithUniquenessRulesForTenant`** find the node that
+  holds a registered key and merge the given properties into it, or create the node, in one hold of
+  the store lock. A key with no registered rule, more than one holder, or a label the stored node
+  lacks is a typed error. A merge that changes nothing writes nothing (#677).
 - **`POST /nodes?on_conflict=merge` and `POST /nodes/batch?on_conflict=merge` upsert a node.** The key is the uniqueness rule registered for the labels. The call creates the node (201) or merges the request properties into the node that holds the key (200). The body carries `created`, and the batch response adds `matched`. Concurrent calls for one key make one node. A missing rule is a 400. More than one node holding the key, or a label the stored node lacks, is a 409. Without the parameter, both routes behave as before. Any value other than `error` or `merge` is a 400 (#683, consumer contracts CC27–CC31).
 - **The `409` from `POST /nodes` on a uniqueness conflict carries `conflicting_node_id`**, the ID
   of the node that holds the key, beside the unchanged `error`, `message` and `code`. The Go client
@@ -40,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   WAL's flusher goroutine and kill the process (#670).
 
 ### Fixed
+- **A streaming query no longer drops buffered nodes or panics on `Close`.** `ResultStream.Close`
+  cancelled the context and closed the channel together, so `Next` could report the cancel while
+  nodes were still buffered, and a consumer that closed early could make the producer send on a
+  closed channel, a panic no caller could recover (#688).
 - **`ClusteringCoefficient` gives the same answer on every call.** It checked each neighbour pair
   in one direction, in map order, so a directed triangle scored 1.0 or 0 at random. A pair now
   connects in either direction, and an edge-read error is returned instead of read as no
