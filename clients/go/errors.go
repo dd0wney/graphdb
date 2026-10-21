@@ -68,7 +68,7 @@ func notDurableFromResult(res *apiResult) error {
 		ID      uint64 `json:"id"`
 		Message string `json:"message"`
 	}
-	_ = json.Unmarshal(res.data, &body)
+	_ = json.Unmarshal(res.data, &body) //nolint:errcheck // a 202 is not-durable whatever its body says; an unreadable body leaves ID 0 and Message empty, and the caller still gets the NotDurableError
 	return &NotDurableError{ID: body.ID, Message: body.Message}
 }
 
@@ -83,6 +83,12 @@ type Error struct {
 	// uniqueness 409. It is 0 for any other error, and for a 409 whose body
 	// has no "conflicting_node_id" field.
 	ConflictingNodeID uint64
+	// ConflictingNodeIDs lists every node that holds the key in an upsert 409
+	// that found more than one holder. It is nil for any other error.
+	ConflictingNodeIDs []uint64
+	// MissingLabels lists the labels of an upsert request that the matched
+	// node lacks, in an upsert 409. It is nil for any other error.
+	MissingLabels []string
 }
 
 func (e *Error) Error() string {
@@ -115,11 +121,15 @@ func fromResponse(status int, body []byte, method, path string) error {
 	e := &Error{Status: status, Method: method, Path: path, Message: extractMessage(body)}
 	if status == http.StatusConflict {
 		var b struct {
-			ConflictingNodeID uint64 `json:"conflicting_node_id"`
+			ConflictingNodeID  uint64   `json:"conflicting_node_id"`
+			ConflictingNodeIDs []uint64 `json:"conflicting_node_ids"`
+			MissingLabels      []string `json:"missing_labels"`
 		}
-		// A body without the field, or a non-JSON body, leaves the ID 0.
-		_ = json.Unmarshal(body, &b)
+		// A body without the fields, or a non-JSON body, leaves them zero.
+		_ = json.Unmarshal(body, &b) //nolint:errcheck // the 409 is already an *Error with its status; a body without these fields, or not JSON, leaves them zero by design
 		e.ConflictingNodeID = b.ConflictingNodeID
+		e.ConflictingNodeIDs = b.ConflictingNodeIDs
+		e.MissingLabels = b.MissingLabels
 	}
 	return e
 }
