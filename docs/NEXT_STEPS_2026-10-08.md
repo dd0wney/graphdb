@@ -90,10 +90,12 @@ or spec before code; **S** a spike.
 
 ### Track M — consumer primitives (mapper first)
 
-1. node upsert: `v1.4-storage-upsert-node` → `v1.4-rest-upsert-node` →
-   `v1.4-go-client-upsert-node`. Spec `docs/internals/design/SPEC_node_upsert_2026-10-21.md`
-   (#676), approved by the user 2026-10-21 with its eleven recommended calls. Storage layer #677.
-   mapper's team mode waits for it.
+1. ~~node upsert~~ ✅ **DONE 2026-10-21** — spec
+   `docs/internals/design/SPEC_node_upsert_2026-10-21.md` (#676, approved by the user with its
+   eleven recommended calls); storage `UpsertNodeForTenant` (#677), REST
+   `POST /nodes[/batch]?on_conflict=merge` (#683, CC27–CC31), Go client `Nodes.Upsert` /
+   `BatchUpsert` (#684). The builder check and a review of the first build each caught a gap
+   before merge (D6; "every covering rule must be the key").
 2. ~~`v1.4-rest-conflict-node-id`~~ ✅ **DONE 2026-10-21 (#675)** — the 409 carries
    `conflicting_node_id` (CC26); the Go client exposes `Error.ConflictingNodeID`.
 3. `v1.4-unique-create-property-index` — size with a graphdb benchmark, not mapper's numbers
@@ -111,10 +113,14 @@ the ADR's own risk section names. Ranked above Track S items 3+ because each is 
 
 1. ~~`v1.4-rest-batch-create-uniqueness-rules`~~ ✅ **DONE 2026-10-21 (#674)** — each batch item
    goes through `CreateNodeWithUniquenessRulesForTenant`.
-2. `v1.4-patch-node-uniqueness-rules` (seeded in #673) — `PUT /nodes/{id}` / `PatchNodeForTenant`
-   can set a key value another node holds. Found by the upsert spec's builder check (D6).
-3. `v1.4-cypher-create-uniqueness-rules` (seeded in #673) — Cypher `CREATE` and the `MERGE` create
-   path; two concurrent `MERGE`s of one key can both create.
+2. ~~`v1.4-patch-node-uniqueness-rules`~~ ✅ **DONE 2026-10-21 (#685)** — every write through
+   `patchNode` (REST `PUT`, Cypher `SET`, GraphQL update) checks the rules; `PUT` answers 409 with
+   `conflicting_node_id`.
+3. ~~`v1.4-cypher-create-uniqueness-rules`~~ ✅ **DONE 2026-10-21 (#680)** — a refused `CREATE`
+   stops the query; a `MERGE` whose create loses a race matches once more; `/query` answers 409.
+   The concurrent-`MERGE` duplicate reproduced in 3 of 20 runs before the fix.
+4. `v1.4-tx-batch-uniqueness-rules` (seeded in #686) — the storage `Batch` and
+   `Transaction.Commit` skip the registry on create and update; the last write paths that do.
 
 ### Track E — encryption at rest
 
@@ -126,8 +132,8 @@ the ADR's own risk section names. Ranked above Track S items 3+ because each is 
 ### Critical path (proposed)
 
 ~~`implicit-grouping`~~ (#664) → ~~`lock-panic-safety`~~ (#665) → ~~release v1.8.0~~ (2026-10-21)
-→ ~~node-upsert spec~~ (#676) → node upsert (three layers; storage #677) → Track U items 2–3 →
-`datadir-flock` → Track E → Track W.
+→ ~~node-upsert spec~~ (#676) → ~~node upsert~~ (#677, #683, #684) → ~~Track U items 2–3~~
+(#685, #680) → Track U item 4 → `datadir-flock` → Track E → Track W.
 
 Parallel-safe at any time: the small Track S items and the Ulysses asks.
 
@@ -139,6 +145,11 @@ None. #663 seeded all three that were listed here: `v1.4-cypher-with-undefined-v
 `v1.4-float-index-nan-negative-zero` and `v1.4-encryption-key-zeroing`.
 
 ## Corrections to older claims
+
+- `pkg/algorithms/community_test.go` called `TestClusteringCoefficient_Triangle` a "known flake"
+  caused by `sync.Pool` reuse and retried it three times. It was a defect in
+  `ClusteringCoefficient`: each neighbour pair was checked in one direction, in map order, so a
+  directed triangle scored 1.0 or 0 at random (about 16% of first attempts). Fixed in #682.
 
 - `pkg/storage/storage.go` `DefaultStorageConfig` comment: "per-write fsync ... fastest on
   local/NVMe (~11µs)" reproduces only on tmpfs (`b.TempDir()` is `/tmp`). See
