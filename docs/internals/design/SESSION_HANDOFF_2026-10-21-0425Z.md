@@ -57,9 +57,18 @@ Coord tasks released `done`: `v1.4-batched-wal-flush-interval-validation`, `v1.4
 ## Current state
 
 - `origin/main` HEAD: `f469cc6` (#679). Latest tag `v1.8.0` (`d3d2798`).
-- Open PRs: this handoff only. #679 (planning doc: Track U, upsert, corrections) merged after a
-  re-run of the macOS job that the #688 stream defect had failed.
-- `[Unreleased]` in `CHANGELOG.md` covers #670–#687. **#688 has no CHANGELOG entry yet.**
+- Open PRs: this handoff, plus two that are green and wait for the user to merge (the auto-mode
+  classifier refused both merges, "Merge Without Review"):
+  - **#690** `chore(release): v1.9.0 changelog, release pointers and chart appVersion` — 12/12
+    checks green. Moves `[Unreleased]` to `[1.9.0] - 2026-10-21` with a summary, adds the missing
+    #677 and #688 entries, points README and ROADMAP at v1.9.0, chart 0.1.6 / appVersion 1.9.0.
+  - **#691** `chore(coord): seed five gaps found on 2026-10-21` — 10/10 green. The five tasks are
+    already applied to coord (`tasks_created=5`); the PR only records them in the seed file.
+- **v1.9.0 is approved and not tagged.** The classifier refused the tag push ("Create Public
+  Surface"). After #690 merges: `git tag -a v1.9.0 <#690 merge commit> -m v1.9.0`, push the tag,
+  then watch the Release and Docker workflows with `gh run view --json conclusion`.
+- #679 (planning doc: Track U, upsert, corrections) merged after a re-run of the macOS job that
+  the #688 stream defect had failed.
 - Local branches: 9 worktree branches, all merged or closed. Worktrees: `../graphdb-ulysses-contracts`
   (content in #631) and 7 under `.claude/worktrees/agent-*`. The auto-mode classifier refused
   `git worktree remove`; the user removes them.
@@ -71,13 +80,17 @@ Coord tasks released `done`: `v1.4-batched-wal-flush-interval-validation`, `v1.4
 
 From `docs/NEXT_STEPS_2026-10-08.md` (updated in #679):
 
-1. **Release v1.9.0** — open question 1. Add the #688 entry first.
+1. **Tag v1.9.0** once #690 merges (approved; see Current state).
 2. `v1.4-tx-batch-uniqueness-rules` (#686) — the storage `Batch` and `Transaction.Commit` skip the
    registry on create and update; the last node write paths that do.
 3. `v1.4-datadir-flock` — short design first.
 4. Track E (encryption at rest), then Track W (fsync default re-measure).
 
-### New gaps, not yet seeded
+### New gaps, seeded in #691
+
+Coord IDs: `v1.4-stream-nodes-id-gaps`, `v1.4-batch-create-wal-error-text`,
+`v1.4-upsert-wal-failure-202-test`, `v1.4-go-client-ci-lint`, `v1.4-go-client-return-eval-order`
+(code read at `108a6c4`; the eval-order hazard is in `nodes.go:86` and `helpers.go:34`).
 
 - `StreamNodes` (`pkg/query/stream_query.go`) scans IDs `1..NodeCount`, so it misses nodes after a
   delete leaves ID gaps. `ClusteringCoefficient` moved off the same pattern long ago.
@@ -106,10 +119,8 @@ From `docs/NEXT_STEPS_2026-10-08.md` (updated in #679):
 
 ## Open questions for the user
 
-1. Release v1.9.0 now (recommended: the upsert is what mapper's team mode waits for; each
-   behaviour change turns a silent duplicate into a refusal, which `STABILITY_POLICY.md` allows in
-   a minor)?
-2. Seed the five "new gaps" above?
+1. ~~Release v1.9.0?~~ Approved 2026-10-21 ("proceed with recommendations"); #690 open, tag pending.
+2. ~~Seed the five new gaps?~~ Approved; seeded, #691 open.
 3. Carried, no answer recorded: the bare `RETURN n` column name `"n."` quirk, and telling the
    owner of syntopica-timer-spec about the CREATE stray nodes and the `DELETE r` change. Note:
    syntopica-timer-spec sends Cypher; #680 can now give it a 409 where it got a duplicate.
