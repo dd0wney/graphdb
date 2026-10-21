@@ -471,6 +471,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage,api: PatchNodeForTenant and UpdateNodeForTenant (pkg/storage/node_operations.go:544, :568; REST PUT /nodes/{id}) never consult the uniqueness-rules registry (ADR 0001), so an update can set a rule's property to a value another node of that label already holds, and the store then has two holders of one key with no error. Found by the builder check of SPEC_node_upsert_2026-10-21.md (D6), which closes the same gap for the upsert merge only. Under the same gs.mu hold as the patch, check every registered rule whose label is on the node and whose property the patch changes, and refuse with *UniqueConstraintError (REST 409 with conflicting_node_id). Acceptance: a PUT that sets a held key value is refused and leaves the node unchanged, seen red first. Read at d08c106"
+    },
+    {
+      "id": "v1.4-tx-batch-uniqueness-rules",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: the storage Batch (pkg/storage/batch_executor.go, executeOps and executeUpdateNode near :179) and Transaction.Commit (pkg/storage/transaction_commit.go, writeTxNodeUpdate near :223; creates buffered in transaction_ops.go) never consult the uniqueness-rules registry (ADR 0001), on create or on update, so an embedded caller that uses either can store a duplicate of a registered key with no error. Every REST, GraphQL and Cypher write path enforces the registry after #674, #680 and #685; these two embedded-API paths are what is left (found by the #685 worker). Decide the refusal shape: the Batch keeps earlier ops on an error (v1.4-storage-batch-atomic-commit), a Transaction should refuse the whole commit. Acceptance: a Batch or Transaction create or update of a held key value is refused, seen red first. Read at 6b9b7a6"
     }
   ],
   "deps": [
