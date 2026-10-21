@@ -591,12 +591,20 @@ func (gs *GraphStorage) patchNode(nodeID uint64, set map[string]Value, remove []
 	if err != nil {
 		return err
 	}
+	return gs.finishNodePatch(nodeID, p)
+}
 
-	// HNSW work off-lock (Track P item 3 / H2), before the WAL wait and
-	// observer dispatch so the index matches the node before observers act.
-	// RemoveVectorForTenant is idempotent; its errors are logged fail-soft
-	// (the property is already removed, and the index is rebuilt from the
-	// node set on restart).
+// finishNodePatch is the off-lock half of a node property write: the HNSW work,
+// the WAL wait and the observer dispatch. patchNode and the node upsert share
+// it so a patch and an upsert-merge leave the vector index, the WAL and the
+// observers in the same state.
+//
+// HNSW work runs off-lock (Track P item 3 / H2), before the WAL wait and
+// observer dispatch so the index matches the node before observers act.
+// RemoveVectorForTenant is idempotent; its errors are logged fail-soft
+// (the property is already removed, and the index is rebuilt from the
+// node set on restart).
+func (gs *GraphStorage) finishNodePatch(nodeID uint64, p nodePatch) error {
 	for _, prop := range p.vectorRemovals {
 		if err := gs.vectorIndex.RemoveVectorForTenant(p.tid, prop, nodeID); err != nil {
 			log.Printf("node_operations: vector index removal failed for prop %q node %d tenant %s: %v", prop, nodeID, p.tid, err)
@@ -605,7 +613,7 @@ func (gs *GraphStorage) patchNode(nodeID uint64, set map[string]Value, remove []
 	gs.applyNodeVectorInserts(p.vectorPlans)
 	// A wait error wraps ErrWALWriteFailed; the update stays applied and
 	// observers are still notified.
-	err = gs.waitWALPending(wal.OpUpdateNode, p.walPending)
+	err := gs.waitWALPending(wal.OpUpdateNode, p.walPending)
 	if p.newNode != nil {
 		gs.notifyNodeUpdated(context.Background(), p.newNode, p.oldNode)
 	}
@@ -635,6 +643,16 @@ func (gs *GraphStorage) applyNodePatch(nodeID uint64, set map[string]Value, remo
 	if err != nil {
 		return nodePatch{}, err
 	}
+	return gs.applyNodePatchLocked(node, set, remove)
+}
+
+// applyNodePatchLocked is the body of applyNodePatch minus the lock and the
+// node lookup, the same split createNodeLocked has. The node upsert calls it
+// from its own lock section, so a merge and a patch share one write path.
+// Caller holds gs.mu.Lock and passes the shard-resident node (the result of
+// materializeNode), because the mutation is in place.
+func (gs *GraphStorage) applyNodePatchLocked(node *Node, set map[string]Value, remove []string) (nodePatch, error) {
+	nodeID := node.ID
 
 	// R2.1: snapshot pre-update state for observer dispatch. Only allocate
 	// when observers are registered.
@@ -657,6 +675,7 @@ func (gs *GraphStorage) applyNodePatch(nodeID uint64, set map[string]Value, remo
 	// the hot path skips the preview copy.
 	if len(set) > 0 && gs.vectorIndex.HasAnyIndex() {
 		preview := &Node{ID: node.ID, TenantID: node.TenantID, Properties: patchedProperties(node.Properties, set, remove)}
+		var err error
 		p.vectorPlans, err = gs.planNodeVectorInserts(preview)
 		if err != nil {
 			return nodePatch{}, err
