@@ -68,7 +68,7 @@ func notDurableFromResult(res *apiResult) error {
 		ID      uint64 `json:"id"`
 		Message string `json:"message"`
 	}
-	_ = json.Unmarshal(res.data, &body)
+	_ = json.Unmarshal(res.data, &body) //nolint:errcheck // a 202 is not-durable whatever its body says; an unreadable body leaves ID 0 and Message empty, and the caller still gets the NotDurableError
 	return &NotDurableError{ID: body.ID, Message: body.Message}
 }
 
@@ -126,7 +126,7 @@ func fromResponse(status int, body []byte, method, path string) error {
 			MissingLabels      []string `json:"missing_labels"`
 		}
 		// A body without the fields, or a non-JSON body, leaves them zero.
-		_ = json.Unmarshal(body, &b)
+		_ = json.Unmarshal(body, &b) //nolint:errcheck // the 409 is already an *Error with its status; a body without these fields, or not JSON, leaves them zero by design
 		e.ConflictingNodeID = b.ConflictingNodeID
 		e.ConflictingNodeIDs = b.ConflictingNodeIDs
 		e.MissingLabels = b.MissingLabels
