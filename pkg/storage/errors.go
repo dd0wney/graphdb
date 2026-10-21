@@ -212,6 +212,89 @@ func (e *RequiredRuleMissingError) Unwrap() error {
 	return ErrRequiredUniquenessRuleMissing
 }
 
+// Sentinels of the node upsert (UpsertNodeForTenant). Each one has a typed
+// error below that carries the detail a caller needs, so a write surface can
+// map errors.Is to a status code and errors.As to the body.
+var (
+	// ErrUpsertAmbiguous is returned when more than one node of the tenant
+	// holds the upsert's key. Picking one would update a node the caller did
+	// not mean, so the upsert refuses and writes nothing.
+	ErrUpsertAmbiguous = errors.New("more than one node holds the upsert key")
+
+	// ErrUpsertLabelsDiffer is returned when the upsert matches a node whose
+	// labels do not include every label of the request. Storage has no label
+	// mutation, so accepting the request would silently drop a label.
+	ErrUpsertLabelsDiffer = errors.New("upsert labels are not a subset of the matched node's labels")
+
+	// ErrUpsertKeyNotRegistered is returned when a registered uniqueness rule
+	// covers the request's labels and the explicit upsert key is not that
+	// rule's key. Upserting on a key nothing enforces would let the rule's own
+	// key be duplicated.
+	ErrUpsertKeyNotRegistered = errors.New("upsert key is not the registered uniqueness key for these labels")
+
+	// ErrNoUniquenessRule is returned by UpsertNodeWithUniquenessRulesForTenant
+	// when no registered rule covers the labels. An upsert needs a key, so
+	// there is no fallback to a plain create.
+	ErrNoUniquenessRule = errors.New("no uniqueness rule covers these labels")
+)
+
+// UpsertAmbiguousError is the typed form of ErrUpsertAmbiguous. NodeIDs lists
+// every node that holds the key, in label-bucket order, so a caller can repair
+// the duplicates. Two nodes can hold one key when a rule was registered after
+// the duplicates were written, or when a write surface bypassed the registry.
+type UpsertAmbiguousError struct {
+	Label       string
+	PropertyKey string
+	NodeIDs     []uint64
+}
+
+// Error implements the error interface. The text omits the tenant and any
+// rule name, so a write surface can forward it.
+func (e *UpsertAmbiguousError) Error() string {
+	return fmt.Sprintf("upsert is ambiguous: label=%s property=%s is held by %d nodes %v",
+		e.Label, e.PropertyKey, len(e.NodeIDs), e.NodeIDs)
+}
+
+// Unwrap allows errors.Is(err, ErrUpsertAmbiguous).
+func (e *UpsertAmbiguousError) Unwrap() error {
+	return ErrUpsertAmbiguous
+}
+
+// UpsertLabelsDifferError is the typed form of ErrUpsertLabelsDiffer. NodeID is
+// the matched node and Missing lists the request labels it lacks.
+type UpsertLabelsDifferError struct {
+	NodeID  uint64
+	Missing []string
+}
+
+// Error implements the error interface.
+func (e *UpsertLabelsDifferError) Error() string {
+	return fmt.Sprintf("upsert labels differ: node %d lacks labels %v", e.NodeID, e.Missing)
+}
+
+// Unwrap allows errors.Is(err, ErrUpsertLabelsDiffer).
+func (e *UpsertLabelsDifferError) Unwrap() error {
+	return ErrUpsertLabelsDiffer
+}
+
+// UpsertKeyNotRegisteredError is the typed form of ErrUpsertKeyNotRegistered.
+// It names the caller's own key only, never the rule that refused it, so the
+// message cannot leak the registry (ADR 0001, R4).
+type UpsertKeyNotRegisteredError struct {
+	KeyLabel    string
+	KeyProperty string
+}
+
+// Error implements the error interface.
+func (e *UpsertKeyNotRegisteredError) Error() string {
+	return fmt.Sprintf("upsert key %s.%s is not the registered uniqueness key for these labels", e.KeyLabel, e.KeyProperty)
+}
+
+// Unwrap allows errors.Is(err, ErrUpsertKeyNotRegistered).
+func (e *UpsertKeyNotRegisteredError) Unwrap() error {
+	return ErrUpsertKeyNotRegistered
+}
+
 // StorageError provides structured error information for storage operations.
 type StorageError struct {
 	Op      string // Operation that failed (e.g., "CreateNode", "DeleteEdge")

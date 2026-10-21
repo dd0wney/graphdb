@@ -108,6 +108,8 @@ type StorageWriter interface {
 	// Node mutations
 	CreateNodeWithTenant(tenantID string, labels []string, properties map[string]Value) (*Node, error)
 	CreateNodeWithUniquePropertyForTenant(tenantID string, labels []string, properties map[string]Value, uniqueLabel string, uniquePropertyKey string) (*Node, error)
+	UpsertNodeForTenant(tenantID string, labels []string, properties map[string]Value, keyLabel, keyProperty string) (*Node, bool, error)
+	UpsertNodeWithUniquenessRulesForTenant(tenantID string, labels []string, properties map[string]Value) (*Node, bool, error)
 	UpdateNodeForTenant(nodeID uint64, properties map[string]Value, tenantID string) error
 	DeleteNodeForTenant(nodeID uint64, tenantID string) error
 	RemoveNodePropertiesForTenant(nodeID uint64, keys []string, tenantID string) error
