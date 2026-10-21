@@ -2,8 +2,10 @@
 
 **Status:** proposal / living planning doc. Sketches the minor-version line from the
 v1.0.0 GA to the next major (v2.0.0).
-**Current release:** `v1.8.0` (2026-10-21, GPG-signed). It groups Cypher aggregates as openCypher
-does, and a panic under a storage lock no longer hangs the store. `v1.7.0` (2026-10-08) joined Cypher MATCH patterns, kept or
+**Current release:** `v1.9.0` (2026-10-21, GPG-signed). It adds a node upsert on REST, the Go
+client and storage, and every REST, GraphQL and Cypher node write now enforces the uniqueness rules.
+`v1.8.0` (2026-10-21) grouped Cypher aggregates as openCypher does, and a panic under a storage lock
+no longer hangs the store. `v1.7.0` (2026-10-08) joined Cypher MATCH patterns, kept or
 refused repeated clauses, and made CREATE and MERGE act per row with bound-node reuse and
 relationship direction; it deprecated a plain DELETE of an attached node. `v1.6.0` (2026-10-08) fixed Cypher queries that
 answered success while doing something else, bulk-import data loss, a mmap record-width limit
