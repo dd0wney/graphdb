@@ -32,6 +32,7 @@ the same PR as this file.
 | v1.5.0 | 2026-10-07 | GraphQL index paging, SDK parity, WAL durability arc, Cypher value conversion, Ulysses contracts |
 | v1.6.0 | 2026-10-08 | Cypher silent results (index lookup, edge DELETE/SET), bulk-import WAL guard, mmap record-width refusal, decoder checks, readiness probe |
 | v1.7.0 | 2026-10-08 | Cypher MATCH join and repeated clauses, per-row CREATE/MERGE with bound-node reuse and direction, plain-DELETE deprecation |
+| v1.8.0 | 2026-10-21 | Cypher implicit grouping (#664), lock release on a panic in storage (#665) |
 
 A new embedding consumer, `oit-cyber/mapper` (session `mapper-6b`), drove most of the 2026-10-08
 findings. It pins v1.6.0 and moves to v1.7.0 next.
@@ -63,15 +64,18 @@ or spec before code; **S** a spike.
 1. ~~`v1.4-lock-panic-safety`~~ ✅ **DONE 2026-10-08 (#665)** — 37 critical sections now unlock
    by `defer`; also fixed a nil-map panic in `Transaction.Commit` and a held `txWALBarrier` after a
    panic in the transaction WAL append. One site is left: `snapshotWithBoundary` (item 1a).
-1a. `v1.4-snapshot-rlock-panic-safety` (seeded in #666) — the snapshot read lock is released by
-   hand. Benchmark the RLock hold time before and after.
-2. `v1.4-batched-wal-flush-interval-validation` — `FlushInterval` 0 panics at open. Small; mapper asked.
+1a. ~~`v1.4-snapshot-rlock-panic-safety`~~ ✅ **DONE 2026-10-21 (#672)** — `captureJSONSnapshot`
+   and `captureMmapSnapshot` take the read lock with `defer`; an interleaved A/B benchmark showed no
+   change in `Snapshot()` cost (−2.3% JSON, −0.3% mmap).
+2. ~~`v1.4-batched-wal-flush-interval-validation`~~ ✅ **DONE 2026-10-21 (#670)** — a non-positive
+   `FlushInterval` or a negative `BatchSize` is refused at open with `*wal.BatchConfigError`.
 3. `v1.4-foreach-node-tenant-and-lock` — tenant-blind, holds `gs.mu.RLock` across the callback;
    `GetEdgesByTypeForTenant` skips a damaged record silently.
 4. `v1.4-datadir-flock` — no lock between processes on one data directory. Short design (test
    sweep for double opens, Unix only, NFS).
 5. `v1.4-tenant-quota-enforcement` — quotas are stored and never checked.
-6. `v1.4-telemetry-stop-waits` — `TelemetryReporter.Stop` does not wait; flaky under load.
+6. ~~`v1.4-telemetry-stop-waits`~~ ✅ **DONE 2026-10-21 (#671)** — `Stop` waits for the report
+   loop; the tests' handler counters raced on `main` and are atomic now.
 7. `v1.4-vector-index-backfill-on-create`, `v1.4-label-propagation-cache-neighbours` — Ulysses asks.
 8. **D** `v1.4-subsecond-timestamps` — needs a new value type or format version.
 
@@ -86,16 +90,31 @@ or spec before code; **S** a spike.
 
 ### Track M — consumer primitives (mapper first)
 
-1. **D** node upsert: `v1.4-storage-upsert-node` → `v1.4-rest-upsert-node` →
-   `v1.4-go-client-upsert-node`. New public API in three layers; brainstorm and spec first.
+1. node upsert: `v1.4-storage-upsert-node` → `v1.4-rest-upsert-node` →
+   `v1.4-go-client-upsert-node`. Spec `docs/internals/design/SPEC_node_upsert_2026-10-21.md`
+   (#676), approved by the user 2026-10-21 with its eleven recommended calls. Storage layer #677.
    mapper's team mode waits for it.
-2. `v1.4-rest-conflict-node-id` — small; helps team mode before upsert ships.
+2. ~~`v1.4-rest-conflict-node-id`~~ ✅ **DONE 2026-10-21 (#675)** — the 409 carries
+   `conflicting_node_id` (CC26); the Go client exposes `Error.ConflictingNodeID`.
 3. `v1.4-unique-create-property-index` — size with a graphdb benchmark, not mapper's numbers
    (insight on the task).
 4. `v1.4-mapper-consumer-contracts` — pin mapper's six storage behaviours.
 5. `v1.4-rest-edge-upsert`, `v1.4-rest-property-index-routes`, `v1.4-rest-schema-introspection`,
    `v1.4-rest-idempotency-key`, `v1.4-rest-property-encoding-rule`, `v1.4-node-label-mutation`.
 6. **D** `v1.4-optimistic-concurrency` — version field (format bump) plus `If-Match`/412.
+
+### Track U — uniqueness-registry coverage (added 2026-10-21)
+
+ADR 0001 named two enforcement surfaces, GraphQL and the REST single create. Three more write paths
+skipped the registry and stored a duplicate of a registered key with no error — the failure class
+the ADR's own risk section names. Ranked above Track S items 3+ because each is silent wrong data.
+
+1. ~~`v1.4-rest-batch-create-uniqueness-rules`~~ ✅ **DONE 2026-10-21 (#674)** — each batch item
+   goes through `CreateNodeWithUniquenessRulesForTenant`.
+2. `v1.4-patch-node-uniqueness-rules` (seeded in #673) — `PUT /nodes/{id}` / `PatchNodeForTenant`
+   can set a key value another node holds. Found by the upsert spec's builder check (D6).
+3. `v1.4-cypher-create-uniqueness-rules` (seeded in #673) — Cypher `CREATE` and the `MERGE` create
+   path; two concurrent `MERGE`s of one key can both create.
 
 ### Track E — encryption at rest
 
@@ -106,9 +125,9 @@ or spec before code; **S** a spike.
 
 ### Critical path (proposed)
 
-~~`implicit-grouping`~~ (#664) → ~~`lock-panic-safety`~~ (#665) → release v1.8.0 →
-node-upsert spec → node upsert (three layers) → `flush-interval-validation`, `datadir-flock` →
-Track E → Track W.
+~~`implicit-grouping`~~ (#664) → ~~`lock-panic-safety`~~ (#665) → ~~release v1.8.0~~ (2026-10-21)
+→ ~~node-upsert spec~~ (#676) → node upsert (three layers; storage #677) → Track U items 2–3 →
+`datadir-flock` → Track E → Track W.
 
 Parallel-safe at any time: the small Track S items and the Ulysses asks.
 
