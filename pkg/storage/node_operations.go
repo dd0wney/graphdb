@@ -649,15 +649,8 @@ func (gs *GraphStorage) applyNodePatch(nodeID uint64, set map[string]Value, remo
 	defer gs.mu.Unlock()
 	panicPoint("patchNode")
 
-	if len(rules) > 0 {
-		// A read-only lookup: the mmap copy-on-write promotion below must not
-		// happen for a patch that is refused. A lookup error falls through,
-		// so materializeNode reports it as it always has.
-		if existing, err := gs.resolveNodeRefLocked(nodeID); err == nil {
-			if err := gs.checkSetAgainstRulesLocked(effectiveTenantID(existing.TenantID), existing, set, remove, rules); err != nil {
-				return nodePatch{}, err
-			}
-		}
+	if err := gs.checkPatchAgainstRulesLocked(nodeID, set, remove, rules); err != nil {
+		return nodePatch{}, err
 	}
 
 	// mmap mode: promote a base-resident node into the shard overlay (copy-on-write)
@@ -667,6 +660,21 @@ func (gs *GraphStorage) applyNodePatch(nodeID uint64, set map[string]Value, remo
 		return nodePatch{}, err
 	}
 	return gs.applyNodePatchLocked(node, set, remove)
+}
+
+// checkPatchAgainstRulesLocked is the registry check for a write to the stored
+// node nodeID, shared by applyNodePatch and the Batch update. The lookup is
+// read-only: the mmap copy-on-write promotion the caller does next must not
+// happen for a write that is refused. A lookup error passes, so the caller's
+// own lookup reports it as it always has. Caller holds gs.mu.
+func (gs *GraphStorage) checkPatchAgainstRulesLocked(nodeID uint64, set map[string]Value, remove []string, rules []UniquenessRule) error {
+	if len(rules) == 0 || len(set) == 0 {
+		return nil
+	}
+	if existing, err := gs.resolveNodeRefLocked(nodeID); err == nil {
+		return gs.checkSetAgainstRulesLocked(effectiveTenantID(existing.TenantID), existing, set, remove, rules)
+	}
+	return nil
 }
 
 // applyNodePatchLocked is the body of applyNodePatch minus the lock and the

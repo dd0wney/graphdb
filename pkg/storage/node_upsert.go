@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/dd0wney/graphdb/pkg/tenantid"
 	"github.com/dd0wney/graphdb/pkg/wal"
@@ -99,24 +98,14 @@ func (gs *GraphStorage) UpsertNodeWithUniquenessRulesForTenant(
 	labels []string,
 	properties map[string]Value,
 ) (*Node, bool, error) {
-	missing, matched := gs.planUniquenessEnforcement(labels)
-	if missing != nil {
-		return nil, false, missing
+	rule, err := gs.snapshotUniquenessRegistry().createRule(labels, properties)
+	if err != nil {
+		return nil, false, err
 	}
-
-	switch len(matched) {
-	case 0:
+	if rule == nil {
 		return nil, false, ErrNoUniquenessRule
-	case 1:
-		rule := matched[0]
-		if _, ok := properties[rule.PropertyKey]; !ok {
-			return nil, false, fmt.Errorf("%w: label %q requires a %q property", ErrUniquenessRulePropertyMissing, rule.Label, rule.PropertyKey)
-		}
-		return gs.UpsertNodeForTenant(tenantID, labels, properties, rule.Label, rule.PropertyKey)
-	default:
-		sort.Slice(matched, func(i, j int) bool { return matched[i].Name < matched[j].Name })
-		return nil, false, fmt.Errorf("%w: %q and %q", ErrMultipleUniquenessRules, matched[0].Name, matched[1].Name)
 	}
+	return gs.UpsertNodeForTenant(tenantID, labels, properties, rule.Label, rule.PropertyKey)
 }
 
 // upsertKeyAllowed reports whether (keyLabel, keyProperty) may key an upsert of
