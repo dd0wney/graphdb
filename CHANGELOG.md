@@ -10,6 +10,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-21
+
+This release fixes two defects a user could hit with no error. Cypher aggregates now group as
+openCypher specifies, where `RETURN n.city, count(n)` used to answer one row per node with
+`count = null`. And a panic inside a storage critical section no longer leaves its lock held, which
+used to stop every later call that needed the lock, `Close` included, while the server kept
+running. Queries that used to return wrong aggregate rows now return the right rows or an error.
+Within the 1.x promise in `docs/STABILITY_POLICY.md`.
+
+### Changed
+- **Cypher refuses aggregate forms it cannot answer correctly.** An `ORDER BY` expression that is
+  neither a result column nor a grouping key, after aggregation, is a parse error; it used to be
+  ignored. `sum`, `avg`, `min` and `max` of a node or relationship are an error; they used to give
+  0, null or an arbitrary entity. `count` and `collect` of an entity work (#664).
+- **An unaliased aggregate written in lower case gets an upper-case column name.** `count(n.age)`
+  answers in the column `COUNT(n.age)`. The column used to be `count(n.age)`, and its value was
+  always null, because only upper-case aggregate names were recognised (#664).
+
+### Fixed
+- **Cypher aggregates group implicitly.** Every non-aggregate `RETURN` item is a grouping key, as
+  in openCypher; only the graphdb `GROUP BY` keyword used to group, and it still works. Aggregate
+  names are case-insensitive. Grouping keys follow openCypher equivalence: numbers compare as
+  numbers, lists and maps element by element, entities by ID, and null is one group. Keys keep
+  their type (they used to come back as strings, so `1` and `"1"` were one group) and groups keep
+  first-seen order. `count`, `sum` and `collect` over relationships work, where they used to give
+  0, and `collect(n)` collects the entity, not the number 1 (#664). Aggregates inside `WITH` are
+  not yet computed.
+- **A panic under a storage lock no longer hangs the store.** The Cypher executor and `net/http`
+  recover panics, so a panic in a critical section that unlocked by hand left the lock held and
+  the process running. 37 critical sections in `pkg/storage` now release their lock with `defer`.
+  The snapshot read lock in `snapshotWithBoundary` still releases by hand (#665).
+- **A transaction update of a node created with nil properties no longer panics.**
+  `Transaction.Commit` wrote into a nil property map while holding `gs.mu` and the shard lock
+  (#665).
+- **A panic in the transaction WAL append no longer hangs `Close`.** It left `txWALBarrier` held,
+  so the next snapshot waited on the barrier while holding `gs.mu` (#665).
+
 ## [1.7.0] - 2026-10-08
 
 This release finishes the Cypher correctness work v1.6.0 started: patterns in a `MATCH` now join,

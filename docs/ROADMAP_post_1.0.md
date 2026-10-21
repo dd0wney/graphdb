@@ -2,9 +2,10 @@
 
 **Status:** proposal / living planning doc. Sketches the minor-version line from the
 v1.0.0 GA to the next major (v2.0.0).
-**Current release:** `v1.7.0` (2026-10-08, GPG-signed). It joins Cypher MATCH patterns, keeps or
-refuses repeated clauses, and makes CREATE and MERGE act per row with bound-node reuse and
-relationship direction; it deprecates a plain DELETE of an attached node. `v1.6.0` (2026-10-08) fixed Cypher queries that
+**Current release:** `v1.8.0` (2026-10-21, GPG-signed). It groups Cypher aggregates as openCypher
+does, and a panic under a storage lock no longer hangs the store. `v1.7.0` (2026-10-08) joined Cypher MATCH patterns, kept or
+refused repeated clauses, and made CREATE and MERGE act per row with bound-node reuse and
+relationship direction; it deprecated a plain DELETE of an attached node. `v1.6.0` (2026-10-08) fixed Cypher queries that
 answered success while doing something else, bulk-import data loss, a mmap record-width limit
 that lost long records, and a readiness probe that hid a poisoned WAL. `v1.5.0` (2026-10-07)
 shipped the v1.4 milestone work below (GraphQL index paging, SDK parity, the WAL durability
