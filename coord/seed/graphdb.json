@@ -453,6 +453,18 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: snapshotWithBoundary takes gs.mu.RLock (pkg/storage/persistence.go) and releases it by hand, once on the JSON path and on three paths inside snapshotMmapLocked (mmap_snapshot_persist.go), so the lock is owned by two functions. A panic while it is held, for example decodeNodeRecordAt on an out-of-range mmap record (mmap is the default), leaves the read lock held: every later write and Close then waits forever. #665 made the other 37 sites panic-safe and left this one out. Proposed: one captureSnapshotState method takes the RLock with defer, calls panicPoint, reads the boundary and collects the mmap or JSON state; snapshotMmapLocked stops touching the lock; encode, rename and dir sync stay off-lock. Benchmark the RLock hold time before and after. Acceptance: a TestLockPanic_ case for the capture site, seen red first. Read at 2834586"
+    },
+    {
+      "id": "v1.4-rest-batch-create-uniqueness-rules",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: POST /nodes/batch called CreateNodeWithTenant (pkg/api/handlers_nodes.go:373), so it skipped the uniqueness-rules registry (ADR 0001) that POST /nodes and GraphQL enforce, and stored a duplicate for every item that repeated a registered key, with created counting it as a success. graphdb-coord's claim_for_task rule is one such key. Route each item through CreateNodeWithUniquenessRulesForTenant and report a refusal as a batch item error, keeping the partial-success shape (CC7, CC20) and the R4 rule that no response names a rule. Acceptance: a batch with a duplicate of a stored key, a duplicate inside the batch and an item missing the rule property stores one node per key, seen red first. Read at d08c106"
+    },
+    {
+      "id": "v1.4-cypher-create-uniqueness-rules",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: Cypher CREATE (pkg/query/executor_steps.go:304) and the MERGE create path (pkg/query/physical_ops_mutate.go:69, :360) call CreateNodeWithTenant, so a /query write skips the uniqueness-rules registry (ADR 0001) and stores a duplicate of a registered key with no error. ADR 0001 names two enforcement surfaces (GraphQL, REST create) and did not consider Cypher. Route Cypher node creation through CreateNodeWithUniquenessRulesForTenant, and decide how a refusal reaches the caller: an execution error that stops the query, with the rows already written in the same query documented (Cypher writes are not transactional here). MERGE matches first and then creates, so two concurrent MERGEs of one key can both create; the registry closes that race only if the create goes through it. Acceptance: CREATE of a duplicate key fails, concurrent MERGE of one key stores one node, seen red first. Read at d08c106"
     }
   ],
   "deps": [
