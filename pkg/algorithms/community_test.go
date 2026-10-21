@@ -354,43 +354,23 @@ func TestClusteringCoefficient_Triangle(t *testing.T) {
 	_, _ = gs.CreateEdge(nodeA.ID, nodeC.ID, "LINKS", nil, 1.0)
 	_, _ = gs.CreateEdge(nodeB.ID, nodeC.ID, "LINKS", nil, 1.0)
 
-	// Known issue: this test has a ~5% flake rate when invoked repeatedly
-	// (`go test -count=10 -run TestClusteringCoefficient_Triangle`). Race
-	// detector finds nothing; instrumenting the algorithm with t.Logf
-	// makes the flake disappear (heisenbug). The state of gs.outgoingEdges
-	// is correct *before* and *after* ClusteringCoefficient when the test
-	// fails, yet the algorithm internally returns an empty edge list for
-	// nodeA on those iterations. Suspected root cause: a timing-sensitive
-	// interaction between sync.Pool reuse (pkg/storage/pools.go) and
-	// edge-list reads, but unconfirmed at the time of writing.
-	//
-	// Pragmatic fix until root cause is found: retry up to 3 times. The
-	// flake is rare enough that this gives effective 0% CI failure rate
-	// without lying about the contract — the algorithm IS supposed to
-	// return 1.0 for a complete triangle, and we still assert that.
-	//
-	// See: pkg/algorithms/community_clustering.go (algorithm refactored to
-	// use GetAllNodeIDs in the same commit as a defensive cleanup).
-	const maxAttempts = 3
-	var coefA float64
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	// This test used to retry three times as a "known flake". The cause was
+	// in the algorithm: it checked each neighbour pair in one direction only,
+	// in the order a map gave them, so the triangle counted only when B came
+	// before C. Many calls make a wrong order near certain, so no retry.
+	for call := 0; call < 200; call++ {
 		result, err := ClusteringCoefficient(gs)
 		if err != nil {
-			t.Fatalf("ClusteringCoefficient failed (attempt %d): %v", attempt, err)
+			t.Fatalf("ClusteringCoefficient failed (call %d): %v", call, err)
 		}
-		var exists bool
-		coefA, exists = result[nodeA.ID]
+		coefA, exists := result[nodeA.ID]
 		if !exists {
 			t.Fatalf("Node A (ID=%d) not found in result map", nodeA.ID)
 		}
-		if math.Abs(coefA-1.0) <= 0.001 {
-			return // success
-		}
-		if attempt < maxAttempts-1 {
-			t.Logf("retry %d: got %f (known flake; see comment in test)", attempt, coefA)
+		if math.Abs(coefA-1.0) > 0.001 {
+			t.Fatalf("call %d: coefficient for a complete triangle = %f, want 1.0", call, coefA)
 		}
 	}
-	t.Errorf("Expected coefficient ~1.0 for complete triangle, got %f after %d attempts", coefA, maxAttempts)
 }
 
 // TestClusteringCoefficient_Star tests star topology
