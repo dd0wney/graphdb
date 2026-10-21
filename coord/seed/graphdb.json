@@ -477,6 +477,36 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: the storage Batch (pkg/storage/batch_executor.go, executeOps and executeUpdateNode near :179) and Transaction.Commit (pkg/storage/transaction_commit.go, writeTxNodeUpdate near :223; creates buffered in transaction_ops.go) never consult the uniqueness-rules registry (ADR 0001), on create or on update, so an embedded caller that uses either can store a duplicate of a registered key with no error. Every REST, GraphQL and Cypher write path enforces the registry after #674, #680 and #685; these two embedded-API paths are what is left (found by the #685 worker). Decide the refusal shape: the Batch keeps earlier ops on an error (v1.4-storage-batch-atomic-commit), a Transaction should refuse the whole commit. Acceptance: a Batch or Transaction create or update of a held key value is refused, seen red first. Read at 6b9b7a6"
+    },
+    {
+      "id": "v1.4-stream-nodes-id-gaps",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: StreamingQuery.StreamNodes (pkg/query/stream_query.go, near :29) scans node IDs 1..GetStatistics().NodeCount and calls GetNode on each, so after a delete leaves an ID gap it skips the nodes whose IDs exceed the live count, and a store whose IDs do not start at 1 streams too few with no error. Enumerate the live nodes instead (the way ClusteringCoefficient does). Acceptance: create 3 nodes, delete the first, and StreamNodes returns the other 2, seen red first. Read at 108a6c4"
+    },
+    {
+      "id": "v1.4-batch-create-wal-error-text",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: the plain POST /nodes/batch reports a WAL append failure as the raw storage error text, because batchCreateItemError (pkg/api/handlers_nodes.go, near :249) falls through to err.Error() for ErrWALWriteFailed, so the wrapped disk error leaves the server. The merge batch (batchUpsertItemError, handlers_nodes_upsert.go near :172) already maps it to walWriteFailedMessage and logs it. Map it the same way in batchCreateItemError. Acceptance: a batch create item whose WAL append fails reports walWriteFailedMessage and no disk path, seen red first. Read at 108a6c4"
+    },
+    {
+      "id": "v1.4-upsert-wal-failure-202-test",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: the single upsert's WAL-failure path (respondUpsertWALWriteFailed, pkg/api/handlers_nodes_upsert.go near :110, answering 202 with the NodeNotDurableResponse fields plus created) has no test, and handlers_wal_write_error_test.go covers no upsert or batch route. Add a test with a failing WAL for POST /nodes?on_conflict=merge on the create and the merge branch, asserting 202, created, and the node. Acceptance: the test fails if the handler answers 500 or drops created (prove it by a revert). Read at 108a6c4"
+    },
+    {
+      "id": "v1.4-go-client-ci-lint",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "ci: the go-client workflow (.github/workflows/go-client.yml) runs gofmt, vet, build and test but no golangci-lint, and the root lint.yml does not reach the clients/go module, so lint findings in the client never fail CI (two errcheck findings found by hand in #684). Add a golangci-lint v2.13.2 step with working-directory clients/go, and gofmt -s in place of gofmt -l. Acceptance: a deliberate unchecked error in clients/go fails the new step on a test branch. Read at 108a6c4"
+    },
+    {
+      "id": "v1.4-go-client-return-eval-order",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "go-client: Nodes.BatchCreate (clients/go/nodes.go:86) and the traverse helper (clients/go/helpers.go:34) end with `return out.Nodes, json.Unmarshal(res.data, &out)`. The Go spec does not fix the order of the out.Nodes read against the Unmarshal call, so a compiler may return the empty slice; gc happens to return the decoded one. Decode first, then return. Acceptance: no return in clients/go reads a variable that a call in the same return statement writes (grep check), and both methods keep their tests green. Read at 108a6c4"
     }
   ],
   "deps": [
