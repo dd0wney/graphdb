@@ -339,7 +339,28 @@ paths:
       tags:
         - Nodes
       summary: Create a new node
-      description: Create a single node with labels and properties
+      description: >-
+        Create a single node with labels and properties. With
+        `on_conflict=merge` the call is an upsert keyed by the uniqueness
+        rule registered for the labels: it creates the node (201,
+        `created: true`) or merges the properties into the node that holds
+        the key (200, `created: false`). A request property overrides the
+        stored one, and a stored property the request omits stays. A merge
+        cannot remove a property or add a label. Concurrent calls for one key
+        make one node.
+      parameters:
+        - name: on_conflict
+          in: query
+          required: false
+          description: >-
+            What to do when a uniqueness rule finds a node that holds the
+            key. `error` (the default) answers 409. `merge` upserts and needs
+            a registered rule for the labels (400 without one). Any other
+            value is a 400.
+          schema:
+            type: string
+            enum: [error, merge]
+            default: error
       requestBody:
         required: true
         content:
@@ -365,11 +386,35 @@ paths:
                     email: alice@example.com
       responses:
         '201':
-          description: Node created successfully
+          description: >-
+            Node created successfully. With `on_conflict=merge` the body also
+            carries `created: true`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Node'
+        '200':
+          description: >-
+            Only with `on_conflict=merge`: a node already held the key and
+            the properties were merged into it. The body is the node plus
+            `created: false`.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Node'
+                  - type: object
+                    properties:
+                      created:
+                        type: boolean
+                        example: false
+        '409':
+          description: >-
+            A uniqueness rule refused the create (body carries
+            `conflicting_node_id`). With `on_conflict=merge`: more than one
+            node holds the key (`conflicting_node_ids`), or the matched node
+            lacks a label of the request (`conflicting_node_id` and
+            `missing_labels`). No body names a rule.
         '202':
           description: >-
             Accepted - the node applied in memory but its WAL append
@@ -516,7 +561,23 @@ paths:
       tags:
         - Nodes
       summary: Create nodes in batch
-      description: Create multiple nodes in a single operation (max 1000)
+      description: >-
+        Create multiple nodes in a single operation (max 1000). With
+        `on_conflict=merge` each item is an upsert (see POST /nodes), in
+        request order. The batch is not atomic and the status stays 201. Each
+        element of `nodes` carries `created`, `created` counts the items that
+        made a node, and `matched` counts the items that found one.
+      parameters:
+        - name: on_conflict
+          in: query
+          required: false
+          description: >-
+            `error` (the default) creates each item. `merge` upserts each
+            item. Any other value is a 400.
+          schema:
+            type: string
+            enum: [error, merge]
+            default: error
       requestBody:
         required: true
         content:
@@ -561,6 +622,10 @@ paths:
                   created:
                     type: integer
                     example: 2
+                  matched:
+                    type: integer
+                    description: Only with `on_conflict=merge`.
+                    example: 0
                   nodes:
                     type: array
                     items:
