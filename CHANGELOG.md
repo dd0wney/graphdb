@@ -10,6 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The `409` from `POST /nodes` on a uniqueness conflict carries `conflicting_node_id`**, the ID
+  of the node that holds the key, beside the unchanged `error`, `message` and `code`. The Go client
+  exposes it as `Error.ConflictingNodeID`. A client no longer parses the message or looks the node
+  up (#675, consumer contract CC26).
+
+### Changed
+- **`POST /nodes/batch` enforces the uniqueness rules** (ADR 0001) as `POST /nodes` and GraphQL
+  do. It used to store a duplicate for every item that repeated a registered key and count it as
+  created; such an item is now a batch item error, and the other items still apply. No item error
+  names a rule (#674). Cypher `CREATE` and `MERGE` and `PUT /nodes/{id}` do not consult the
+  registry yet.
+- **A batched WAL with a `FlushInterval` of zero or less, or a negative `BatchSize`, is refused at
+  open** with a `*wal.BatchConfigError` naming the field. The zero interval used to panic in the
+  WAL's flusher goroutine and kill the process (#670).
+
+### Fixed
+- **`TelemetryReporter.Stop` waits for its report loop**, so no report reaches the server after
+  `Stop` returns (#671).
+- **A panic while a snapshot holds the store's read lock releases the lock.** It used to leave the
+  lock held, so every later write and `Close` waited forever; the mmap path could reach this
+  through a damaged record (#672).
+
 ## [1.8.0] - 2026-10-21
 
 This release fixes two defects a user could hit with no error. Cypher aggregates now group as
