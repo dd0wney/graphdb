@@ -154,13 +154,17 @@ create wrapper does:
 - No registered rule covers the request's labels: the explicit key is used. The caller gets G1
   against other upserts of that key, but **not** against plain creates of it; the doc comment says
   so.
-- A registered rule covers the labels and its `(Label, PropertyKey)` is the explicit key: the
-  explicit key is used, and AG3 holds.
-- A registered rule covers the labels with a different key: refused with
+- Every registered rule that covers the labels has the explicit key as its `(Label, PropertyKey)`:
+  the explicit key is used, and AG3 holds.
+- Any registered rule covers the labels with a different key: refused with
   `*UpsertKeyNotRegisteredError{KeyLabel, KeyProperty}`, unwrapping to `ErrUpsertKeyNotRegistered`,
   and nothing is written. Without this, mapper upserting `Host.hostname` while a rule enforces
   `Host.ip` could create a second node holding an `ip` value another node already holds (AG3).
   The error names the caller's own key only, never the rule (AG4).
+  "Every", not "one of": the create branch checks only the key, so a second covering rule
+  would go unchecked there. With two distinct covering rules the upsert is therefore always
+  refused, the same answer the create gives (`ErrMultipleUniquenessRules`). (A first build
+  accepted a key that matched any one covering rule; a red test caught it.)
 
 REST uses the registry only.
 
