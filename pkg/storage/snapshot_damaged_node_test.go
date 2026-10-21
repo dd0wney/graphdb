@@ -10,7 +10,7 @@ import (
 
 // A snapshot write must refuse a damaged node record instead of dropping it.
 //
-// snapshotMmapLocked collects the live node set and writes snapshot.mmap.
+// captureMmapSnapshot collects the live node set and writeMmapSnapshot writes snapshot.mmap.
 // Close() calls Snapshot(). So the first clean shutdown after a record goes
 // bad writes a new snapshot, and a dropped record is not in it. The directory
 // entry goes with it, and every diagnostic PR #512 added for that record goes

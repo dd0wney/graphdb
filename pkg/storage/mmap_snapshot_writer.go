@@ -199,7 +199,7 @@ func writeMmapSnapshotDataWithFS(fs vfs.FileSystem, path string, nodes []*Node, 
 	// reserved header at offset 0, then one Sync covers both.
 	//
 	// THIS FUNCTION DOES NOT MAKE THAT SAFE, AND IT CANNOT. The safety comes
-	// from the caller: snapshotMmapLocked passes a .tmp path and renames only
+	// from the caller: writeMmapSnapshot passes a .tmp path and renames only
 	// after this returns. A power cut anywhere in the window above leaves a
 	// torn temporary file that nothing ever publishes. Hand this function a
 	// FINAL path and the protection is gone whole — writeMmapSnapshot below
