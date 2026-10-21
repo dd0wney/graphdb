@@ -316,6 +316,21 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request, nodeID uint6
 			s.respondError(w, http.StatusNotFound, "Node not found")
 			return
 		}
+		var uniqueErr *storage.UniqueConstraintError
+		if errors.As(err, &uniqueErr) {
+			// Same body as the 409 of POST /nodes: the holder is in the
+			// caller's own tenant, so its ID leaks nothing. Tenant and rule
+			// name stay out of the body.
+			s.respondJSON(w, http.StatusConflict, UniqueConflictResponse{
+				ErrorResponse: ErrorResponse{
+					Error:   http.StatusText(http.StatusConflict),
+					Message: err.Error(),
+					Code:    http.StatusConflict,
+				},
+				ConflictingNodeID: uniqueErr.ConflictingNodeID,
+			})
+			return
+		}
 		if errors.Is(err, storage.ErrWALWriteFailed) {
 			// The caller already holds nodeID; the update applied in
 			// memory even though the WAL append did not.

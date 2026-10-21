@@ -587,7 +587,15 @@ func (gs *GraphStorage) PatchNodeForTenant(nodeID uint64, set map[string]Value, 
 // only allocated when observers are registered — observerless callers pay
 // zero clone cost.
 func (gs *GraphStorage) patchNode(nodeID uint64, set map[string]Value, remove []string) error {
-	p, err := gs.applyNodePatch(nodeID, set, remove)
+	// The registry is read here, before gs.mu is taken, and never while gs.mu
+	// is held: rulesMu and gs.mu are not ordered anywhere else, so nesting
+	// them would invite a deadlock. A rule registered after this read is not
+	// seen, the same window the create and the upsert have.
+	var rules []UniquenessRule
+	if len(set) > 0 {
+		rules = gs.UniquenessRules()
+	}
+	p, err := gs.applyNodePatch(nodeID, set, remove, rules)
 	if err != nil {
 		return err
 	}
@@ -632,10 +640,25 @@ type nodePatch struct {
 // applyNodePatch is the part of patchNode that runs under gs.mu. The deferred
 // unlock matters: the Cypher executor and net/http recover panics, so a panic
 // here that left gs.mu held would hang every later write, Close included.
-func (gs *GraphStorage) applyNodePatch(nodeID uint64, set map[string]Value, remove []string) (nodePatch, error) {
+//
+// rules is the registry snapshot patchNode took before the lock. A set value
+// that another node holds under one of them refuses the whole patch with
+// *UniqueConstraintError, before anything is written.
+func (gs *GraphStorage) applyNodePatch(nodeID uint64, set map[string]Value, remove []string, rules []UniquenessRule) (nodePatch, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 	panicPoint("patchNode")
+
+	if len(rules) > 0 {
+		// A read-only lookup: the mmap copy-on-write promotion below must not
+		// happen for a patch that is refused. A lookup error falls through,
+		// so materializeNode reports it as it always has.
+		if existing, err := gs.resolveNodeRefLocked(nodeID); err == nil {
+			if err := gs.checkSetAgainstRulesLocked(effectiveTenantID(existing.TenantID), existing, set, remove, rules); err != nil {
+				return nodePatch{}, err
+			}
+		}
+	}
 
 	// mmap mode: promote a base-resident node into the shard overlay (copy-on-write)
 	// before the in-place mutation below. No-op (plain lookup) when mmap is off.

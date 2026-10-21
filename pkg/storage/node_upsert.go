@@ -231,7 +231,7 @@ func (gs *GraphStorage) mergeUpsertLocked(
 		return nodeUpsert{}, &UpsertLabelsDifferError{NodeID: existing.ID, Missing: missing}
 	}
 
-	if err := gs.checkMergeAgainstRulesLocked(tid, existing, properties, rules); err != nil {
+	if err := gs.checkSetAgainstRulesLocked(tid, existing, properties, nil, rules); err != nil {
 		return nodeUpsert{}, err
 	}
 
@@ -253,24 +253,28 @@ func (gs *GraphStorage) mergeUpsertLocked(
 	return nodeUpsert{node: node.Clone(), patch: &p}, nil
 }
 
-// checkMergeAgainstRulesLocked refuses a merge that would give the matched
-// node a value another node already holds under a registered rule (D6). The
-// rules checked are those whose Label is on the stored node and whose
-// PropertyKey the request sets to a value different from the stored one. The
-// scan is the unique create's, except that the matched node is not a holder of
-// its own value. Caller holds gs.mu.
-func (gs *GraphStorage) checkMergeAgainstRulesLocked(
+// checkSetAgainstRulesLocked refuses a write that would give the stored node a
+// value another node already holds under a registered rule (D6). Two callers
+// share it: the upsert merge and applyNodePatch, so every node property write
+// that goes through patchNode gets the same answer. The rules checked are
+// those whose Label is on the stored node and whose PropertyKey set gives a
+// value different from the stored one. A key that remove also names is skipped,
+// because the write ends with that key removed and a removal cannot make a
+// duplicate. The scan is the unique create's, except that the node itself is
+// not a holder of its own value. Caller holds gs.mu.
+func (gs *GraphStorage) checkSetAgainstRulesLocked(
 	tid tenantid.TenantID,
 	existing *Node,
-	properties map[string]Value,
+	set map[string]Value,
+	remove []string,
 	rules []UniquenessRule,
 ) error {
 	for _, r := range rules {
 		if !containsString(existing.Labels, r.Label) {
 			continue
 		}
-		newVal, set := properties[r.PropertyKey]
-		if !set {
+		newVal, isSet := set[r.PropertyKey]
+		if !isSet || containsString(remove, r.PropertyKey) {
 			continue
 		}
 		if old, has := existing.Properties[r.PropertyKey]; has && valuesEqual(old, newVal) {
