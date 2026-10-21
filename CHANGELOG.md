@@ -16,18 +16,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of the node that holds the key, beside the unchanged `error`, `message` and `code`. The Go client
   exposes it as `Error.ConflictingNodeID`. A client no longer parses the message or looks the node
   up (#675, consumer contract CC26).
+- **Go client `Nodes.Upsert` and `Nodes.BatchUpsert`** over the REST upsert, returning the node and
+  a `created` flag; a `409` `*Error` also carries `ConflictingNodeIDs` and `MissingLabels` (#684).
 
 ### Changed
 - **`POST /nodes/batch` enforces the uniqueness rules** (ADR 0001) as `POST /nodes` and GraphQL
   do. It used to store a duplicate for every item that repeated a registered key and count it as
   created; such an item is now a batch item error, and the other items still apply. No item error
-  names a rule (#674). Cypher `CREATE` and `MERGE` consult it too since #680; `PUT /nodes/{id}`
-  does not yet.
+  names a rule (#674).
+- **Cypher `CREATE` and `MERGE` enforce the uniqueness rules.** A `/query` write of a registered
+  key that another node holds used to succeed (200) and store a duplicate; it now stops the query
+  with a `409` whose fixed text names no rule. Writes the same query made before the refusal stay,
+  because Cypher writes are not transactional. A `MERGE` whose create loses a race to a concurrent
+  `MERGE` matches once more and binds the winner, so two concurrent `MERGE`s of one key make one
+  node (#680).
+- **A node property update enforces the uniqueness rules.** `PUT /nodes/{id}`, Cypher `SET` and the
+  GraphQL update could set a key value another node holds; such an update is now refused and
+  writes nothing, and `PUT` answers `409` with `conflicting_node_id` where it used to answer `500`
+  (#685). The storage `Batch` and `Transaction.Commit` still skip the registry
+  (`v1.4-tx-batch-uniqueness-rules`).
 - **A batched WAL with a `FlushInterval` of zero or less, or a negative `BatchSize`, is refused at
   open** with a `*wal.BatchConfigError` naming the field. The zero interval used to panic in the
   WAL's flusher goroutine and kill the process (#670).
 
 ### Fixed
+- **`ClusteringCoefficient` gives the same answer on every call.** It checked each neighbour pair
+  in one direction, in map order, so a directed triangle scored 1.0 or 0 at random. A pair now
+  connects in either direction, and an edge-read error is returned instead of read as no
+  neighbours (#682).
 - **`TelemetryReporter.Stop` waits for its report loop**, so no report reaches the server after
   `Stop` returns (#671).
 - **A panic while a snapshot holds the store's read lock releases the lock.** It used to leave the
