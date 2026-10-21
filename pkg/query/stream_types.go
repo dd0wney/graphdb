@@ -16,9 +16,11 @@ const (
 
 // ResultStream provides streaming query results
 type ResultStream struct {
-	ch     chan *storage.Node
-	errCh  chan error
-	ctx    context.Context
+	ch    chan *storage.Node
+	errCh chan error
+	ctx   context.Context
+	// cancel is called only by Close, which closes ch straight after; Next
+	// depends on that to end on the channel alone.
 	cancel context.CancelFunc
 	once   sync.Once
 
@@ -53,57 +55,23 @@ func NewResultStream(bufferSize int) *ResultStream {
 	}
 }
 
-// Next returns the next result or error
+// Next returns the next result. At the end of the stream it returns (nil, nil),
+// or (nil, err) when the producer ended it with SendError.
+//
+// It waits on the channel alone. The context is cancelled only by Close, and
+// Close closes the channel straight after, so the channel always ends. Waiting
+// on the context as well let a consumer wake on Close's cancel before the
+// channel closed and report context.Canceled for a stream that ended normally,
+// so a caller could not tell a clean end from a failure.
 func (rs *ResultStream) Next() (*storage.Node, error) {
-	// First, try to read from channel without blocking
-	// This prioritizes draining buffered data before checking context cancellation
-	select {
-	case node, ok := <-rs.ch:
-		if !ok {
-			// Check for error
-			select {
-			case err := <-rs.errCh:
-				return nil, err
-			default:
-				return nil, nil // End of stream
-			}
-		}
+	if node, ok := <-rs.ch; ok {
 		return node, nil
-
+	}
+	select {
 	case err := <-rs.errCh:
 		return nil, err
-
 	default:
-		// Nothing immediately available, now block on all cases including context
-		select {
-		case node, ok := <-rs.ch:
-			if !ok {
-				select {
-				case err := <-rs.errCh:
-					return nil, err
-				default:
-					return nil, nil
-				}
-			}
-			return node, nil
-
-		case err := <-rs.errCh:
-			return nil, err
-
-		case <-rs.ctx.Done():
-			// Close cancels ctx and closes ch, so both cases can be ready at
-			// once and select picks one at random. A producer that sent and
-			// then closed must not lose its last nodes to that coin, so take
-			// a node that is already buffered before reporting the cancel.
-			select {
-			case node, ok := <-rs.ch:
-				if ok {
-					return node, nil
-				}
-			default:
-			}
-			return nil, rs.ctx.Err()
-		}
+		return nil, nil
 	}
 }
 
