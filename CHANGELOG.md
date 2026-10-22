@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`RegisterUniquenessRule` refuses a second rule on a key another rule already covers**, with
+  `ErrUniquenessRuleKeyTaken`; `POST /admin/uniqueness-rules` answers 409. The second rule
+  protected nothing and made every create on the label fail with `ErrMultipleUniquenessRules`.
+  Re-registering the same rule is still an upsert, and a `rules.json` that already holds such a
+  pair still loads, so a store never fails to open over it. ADR 0001 records the amendment (#703).
+
 ## [1.10.0] - 2026-10-22
 
 This release locks a data directory against a second open, closes the last node write paths that
