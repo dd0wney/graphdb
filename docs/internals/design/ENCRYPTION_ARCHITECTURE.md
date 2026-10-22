@@ -330,6 +330,30 @@ encryption:
 - **Side-channel attacks**: Timing attacks (use constant-time ops)
 - **Compromised host**: Attacker with root access can extract keys from memory
 
+**What stays plaintext on disk (measured 2026-10-22):**
+
+`TestEncryptedStore_WritesNoPlaintext` (`pkg/storage/encryption_no_plaintext_test.go`)
+writes a random marker as a label, property key, property value, edge type, edge
+property key, edge property value and uniqueness-rule name, then searches every
+file in the data directory for each marker, raw and base64. It covers the default
+config (mmap falls back to JSON under encryption), JSON, JSON with batching and
+compression, and JSON with disk-backed edges, each after `Close` and after a
+simulated crash. The same writes on an unencrypted store are its positive control.
+No marker appears anywhere except:
+
+- `rules.json` — the uniqueness-rule registry (ADR 0001) holds the rule name, label
+  and property key in plaintext. Owned by coord `v1.4-encrypt-uniqueness-rules-file`,
+  which removes the test's exception for this file.
+
+The test searches for names and values, not structure. These hold structure in
+plaintext by design:
+
+- The WAL frame: only the entry payload is sealed (`sealWALPayload`); the LSN, op
+  type, checksum and timestamp of each entry are not.
+- The disk-backed edge store (`UseDiskBackedEdges`) stores node and edge IDs with
+  no encryption, so it reveals the graph's shape.
+- File names and sizes, and the empty `LOCK` file.
+
 **Mitigation Strategies:**
 - Use secure memory allocation (mlock, secure erasure)
 - Minimize key lifetime in memory
