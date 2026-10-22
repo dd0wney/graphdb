@@ -470,3 +470,13 @@ func (e *DataDirLockedError) Unwrap() error {
 // create on that label fail with ErrMultipleUniquenessRules, so the operator
 // learns of the mistake at registration rather than on the first write.
 var ErrUniquenessRuleKeyTaken = errors.New("another uniqueness rule already covers this label and property")
+
+// ErrInvalidUniquenessRule is returned by RegisterUniquenessRule when a field
+// of the rule fails validation. The REST handler answers 400 only for this and
+// the other sentinels here; any unwrapped error is a 500.
+var ErrInvalidUniquenessRule = errors.New("invalid uniqueness rule")
+
+// ErrUniquenessRuleLimit is returned by RegisterUniquenessRule when a new
+// rule name would take the registry past its cap. An upsert of a registered
+// name is never refused by the cap.
+var ErrUniquenessRuleLimit = errors.New("uniqueness rule limit reached")

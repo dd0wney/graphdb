@@ -3,12 +3,15 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
+	"github.com/dd0wney/graphdb/pkg/vfs/vfstest"
 )
 
 // uniquenessRuleReq issues a request at /admin/uniqueness-rules(/{name})
@@ -233,5 +236,72 @@ func TestAdminUniquenessRules_SecondNameOnAHeldKeyIs409(t *testing.T) {
 	}
 	if got := len(server.graph.UniquenessRules()); got != 1 {
 		t.Errorf("registry holds %d rules after a refused register, want 1", got)
+	}
+}
+
+// A registry that cannot reach the disk is the server's failure, not the
+// caller's: 500, a body that names no file, and no rule left behind. Until
+// this test the handler answered 400 with the storage error verbatim, which
+// told an admin their request was malformed and printed the data-directory
+// path of rules.json.new.
+func TestAdminUniquenessRules_PersistFailureIs500(t *testing.T) {
+	server, faults, cleanup := setupTestServerWithFaultFS(t)
+	defer cleanup()
+	token := mintTestToken(t, server, "admin", "uniq-admin-persist-fail", "")
+
+	faults.FailOpen(vfstest.Always)
+	rule := storage.UniquenessRule{Name: "claim_for_task", Label: "Claim", PropertyKey: "for_task"}
+	rr := uniquenessRuleReq(t, server, http.MethodPost, "/admin/uniqueness-rules", token, rule)
+	// Read Fired before Clear: Clear resets it.
+	fired := faults.Fired()
+	faults.Clear()
+
+	if !fired {
+		t.Fatalf("the open fault never fired, so this test exercised no disk failure")
+	}
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("register with the disk failing: status = %d, want 500, body=%s", rr.Code, rr.Body.String())
+	}
+	for _, leak := range []string{"rules.json", vfstest.ErrInjected.Error()} {
+		if strings.Contains(rr.Body.String(), leak) {
+			t.Errorf("response body leaks %q: %s", leak, rr.Body.String())
+		}
+	}
+	if got := len(server.graph.UniquenessRules()); got != 0 {
+		t.Errorf("registry holds %d rules after a failed persist, want 0", got)
+	}
+}
+
+// The rule cap is a limit the caller ran into, so it stays a 4xx. It needs
+// its own test because the handler now answers 500 for any error it cannot
+// name as the caller's fault.
+func TestAdminUniquenessRules_RuleCapIs400(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+	token := mintTestToken(t, server, "admin", "uniq-admin-cap", "")
+
+	// Fill the registry through storage until it refuses, so the test does
+	// not copy the cap's value from an unexported constant.
+	filled := false
+	for i := 0; i < 10000; i++ {
+		err := server.graph.RegisterUniquenessRule(storage.UniquenessRule{
+			Name: fmt.Sprintf("rule_%05d", i), Label: "L", PropertyKey: fmt.Sprintf("k%05d", i),
+		})
+		if errors.Is(err, storage.ErrUniquenessRuleLimit) {
+			filled = true
+			break
+		}
+		if err != nil {
+			t.Fatalf("fill rule %d: %v", i, err)
+		}
+	}
+	if !filled {
+		t.Fatalf("registry never reached its cap")
+	}
+
+	rule := storage.UniquenessRule{Name: "one_too_many", Label: "L", PropertyKey: "one_too_many"}
+	rr := uniquenessRuleReq(t, server, http.MethodPost, "/admin/uniqueness-rules", token, rule)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("register past the cap: status = %d, want 400, body=%s", rr.Code, rr.Body.String())
 	}
 }

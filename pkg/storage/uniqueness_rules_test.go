@@ -205,8 +205,8 @@ func TestUniquenessRules_CountCap(t *testing.T) {
 	err := gs.RegisterUniquenessRule(UniquenessRule{Name: "rule_256", Label: "L", PropertyKey: "k256"})
 	if err == nil {
 		t.Errorf("a 257th distinct rule name should have been refused")
-	} else if errors.Is(err, ErrUniquenessRuleKeyTaken) {
-		t.Errorf("the 257th rule was refused as a key clash, not by the cap: %v", err)
+	} else if !errors.Is(err, ErrUniquenessRuleLimit) {
+		t.Errorf("the 257th rule was refused, but not as ErrUniquenessRuleLimit: %v", err)
 	}
 
 	// An upsert of an EXISTING name at the cap must still succeed.
@@ -238,8 +238,14 @@ func TestUniquenessRules_RegisterValidatesFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := gs.RegisterUniquenessRule(tt.rule); err == nil {
-				t.Errorf("RegisterUniquenessRule(%+v) = nil, want an error", tt.rule)
+			err := gs.RegisterUniquenessRule(tt.rule)
+			if err == nil {
+				t.Fatalf("RegisterUniquenessRule(%+v) = nil, want an error", tt.rule)
+			}
+			// The REST handler answers 400 only for errors it can name as
+			// the caller's fault, so the sentinel is the contract.
+			if !errors.Is(err, ErrInvalidUniquenessRule) {
+				t.Errorf("RegisterUniquenessRule(%+v) = %v, want ErrInvalidUniquenessRule", tt.rule, err)
 			}
 		})
 	}
