@@ -290,6 +290,7 @@ func hexCharToByte(c byte) byte {
 
 func main() {
 	port := flag.Int("port", 0, "HTTP server port (default 8080, or set PORT)")
+	host := flag.String("host", "", "address to bind, for example 127.0.0.1 (default every interface, or set GRAPHDB_HOST)")
 	dataDir := flag.String("data", "./data/server", "Data directory")
 	flag.Parse()
 
@@ -304,6 +305,12 @@ func main() {
 		} else {
 			*port = 8080
 		}
+	}
+
+	// GRAPHDB_HOST, not HOST: zsh sets HOST to the machine name and some
+	// environments export it, which would silently narrow the bind.
+	if *host == "" {
+		*host = os.Getenv("GRAPHDB_HOST")
 	}
 
 	// Initialize edition detection
@@ -590,6 +597,7 @@ func main() {
 		logger.Error("Failed to create API server", "error", err)
 		os.Exit(1)
 	}
+	server.SetHost(*host)
 	// Wire the build version into the backup manifest so archives are
 	// self-describing. Set once at startup — before any request can land.
 	api.BuildVersion = Version
@@ -626,7 +634,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	logger.Info("server starting", "port", *port)
+	logger.Info("server starting", "host", *host, "port", *port)
 	if err := server.Start(); err != nil && err != http.ErrServerClosed {
 		logger.Error("server error", "error", err)
 		os.Exit(1)

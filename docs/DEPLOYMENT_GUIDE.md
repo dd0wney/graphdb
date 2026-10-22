@@ -273,6 +273,7 @@ See [.env.example](./.env.example) for complete documentation.
 | `SMTP_PASSWORD` | Email authentication |
 | `STRIPE_SECRET_KEY` | Stripe payment integration |
 | `GRAPHDB_ENABLE_TELEMETRY` | Usage analytics (opt-in) |
+| `GRAPHDB_HOST` | Address `graphdb-server` binds (same as `--host`). Unset binds every interface, which a container needs; set `127.0.0.1` for a server only local processes may reach |
 
 ### Storage mode (mmap default)
 

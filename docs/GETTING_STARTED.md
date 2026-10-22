@@ -38,8 +38,9 @@ export ADMIN_PASSWORD="choose-a-strong-password"
 ./graphdb-server --port 8080 --data ./data/server
 ```
 
-Defaults: port **8080** (`--port` / `PORT`), data dir **`./data/server`**
-(`--data` / `DATA_DIR`). If you omit `ADMIN_PASSWORD` in a dev run, a random one
+Defaults: port **8080** (`--port` / `PORT`), every interface (`--host` /
+`GRAPHDB_HOST`; `--host 127.0.0.1` keeps the server off the network), data dir
+**`./data/server`** (`--data` / `DATA_DIR`). If you omit `ADMIN_PASSWORD` in a dev run, a random one
 is generated and written to `<data-dir>/.graphdb_admin_password` (mode 0600).
 
 ### Confirm it's up

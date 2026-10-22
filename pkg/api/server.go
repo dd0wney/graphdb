@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -164,7 +166,8 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	s.registerRoutes(mux)
 
-	addr := fmt.Sprintf(":%d", s.port)
+	// An empty host gives ":<port>", every interface, as before SetHost existed.
+	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
 
 	// Check if TLS is enabled
 	protocol := "http"
