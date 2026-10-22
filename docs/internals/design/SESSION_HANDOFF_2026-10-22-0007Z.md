@@ -37,7 +37,12 @@ data directory is now locked against a second open (`flock` on `<DataDir>/LOCK`,
 - Open PRs: **#699** `docs(changelog): record #697 and #698 under Unreleased` — a background watcher
   merges it only when all checks are `SUCCESS` and the state is `CLEAN`. If it is still open,
   check `gh pr view 699 --json state,statusCheckRollup` before acting.
-- Open branches: local `main`, `docs/changelog-697-698` (#699). **Stale from 2026-10-21**: seven
+- **#701** `feat(server): bind one address with -host / GRAPHDB_HOST` — asked by `ulysses-69`
+  (macOS shares a port between a wildcard bind and a `127.0.0.1` listener; LAN exposure). Default
+  `""` unchanged. Red first on Linux, binary smoke-tested with `ss`; the macOS behaviour itself was
+  not measured here. No coord task. **When a release carries it, send the tag to `ulysses-69`**
+  (or the current Ulysses session): Ulysses will vendor it and pass `-host 127.0.0.1`.
+- Open branches: local `main`, `docs/changelog-697-698` (#699), `feat/server-host-flag` (#701). **Stale from 2026-10-21**: seven
   `.claude/worktrees/agent-*` worktrees (branches `feat/rest-upsert-node-main`,
   `feat/go-client-upsert-node`, `fix/patch-node-uniqueness-rules`, `feat/storage-upsert-node`,
   `fix/cypher-create-uniqueness-rules`, `fix/snapshot-rlock-panic-safety`,
@@ -62,7 +67,8 @@ From `docs/NEXT_STEPS_2026-10-08.md`, critical path after this session:
 2. Track W: `v1.4-wal-default-remeasure` (needs real disk, not tmpfs — see memory
    `go-bench-tempdir-is-tmpfs`), then `v1.4-bulk-create-group-commit` with
    `v1.4-storage-batch-atomic-commit`.
-3. Parallel-safe: the four remaining gaps from #691 (`v1.4-batch-create-wal-error-text`,
+3. **Release v1.10.0** once #701 merges, and tell Ulysses the tag (see Current state).
+4. Parallel-safe: the four remaining gaps from #691 (`v1.4-batch-create-wal-error-text`,
    `v1.4-upsert-wal-failure-202-test`, `v1.4-go-client-ci-lint`,
    `v1.4-go-client-return-eval-order`), Track S items 3, 5, 7.
 
@@ -112,7 +118,8 @@ From `docs/NEXT_STEPS_2026-10-08.md`, critical path after this session:
 ```
 Read docs/internals/design/SESSION_HANDOFF_2026-10-22-0007Z.md first, then docs/NEXT_STEPS_2026-10-08.md.
 
-1. If #699 is open, check its checks with gh pr view --json statusCheckRollup and ask the user to merge.
+1. If #699 or #701 is open, check its checks with gh pr view --json statusCheckRollup and ask the user to
+   merge. #701 (-host) was asked for by Ulysses: when a release carries it, send the tag to the Ulysses session.
 2. Run ListAgents. If a graphdb-coord session is live, send it the two unseeded gaps in the handoff's
    "New gaps" section (with their file:line) and ask it to seed them. Ask the user question 1
    (duplicate rule keys) before touching RegisterUniquenessRule.
