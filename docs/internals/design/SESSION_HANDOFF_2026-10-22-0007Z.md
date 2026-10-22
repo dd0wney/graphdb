@@ -1,6 +1,6 @@
 # Session handoff — 2026-10-22 00:07 UTC
 
-**Date**: 2026-10-22 (single session, 12 PRs merged #689–#699 and #701, plus the `v1.9.0` tag; release PR #702 open)
+**Date**: 2026-10-22 (single session, 13 PRs merged #689–#699, #701, #702, plus the `v1.9.0` and `v1.10.0` tags)
 **Outgoing model**: Claude Opus 5.5
 **Delegation**:
 - `Explore`, sonnet — mapped every data-directory open path, `Close`, the crash helpers and the build targets for the flock design. Used after the main loop re-read the three load-bearing facts; one claim was wrong (it merged `testCrashableStorage`, 56 call sites, with `testCrashRecovery`, which has **0** callers) and was corrected before the design PR.
@@ -32,18 +32,24 @@ data directory is now locked against a second open (`flock` on `<DataDir>/LOCK`,
 | #698 | fix(storage): a transaction update does not conflict with its own node | opus review finding 1 on #692: two rule names on one `(Label, PropertyKey)` made a node conflict with itself in `Transaction.Commit` |
 | #699 | docs(changelog): record #697 and #698 under Unreleased | |
 | #701 | feat(server): bind one address with -host / GRAPHDB_HOST | asked by `ulysses-69` (macOS port sharing with a wildcard bind; LAN exposure). `GRAPHDB_HOST`, not `HOST` (zsh). Default unchanged. Red first: the server answered on the LAN address; binary smoke-tested with `ss` |
+| #702 | chore(release): v1.10.0 changelog, release pointers and chart appVersion | merged after the user tagged `v1.10.0` on `1cdae6c`; also restored the CHANGELOG compare links, which stopped at v1.7.0 |
 
 ## Current state
 
-- `origin/main` HEAD: `1cdae6c` (#701). #699 and #701 were merged on the user's "merge in order"
+- `origin/main` HEAD: `e623069` (#702). #699 and #701 were merged on the user's "merge in order"
   while their two benchmark jobs were still running; every other check was `SUCCESS`.
-- Open PRs: **#702** `chore(release): v1.10.0 changelog, release pointers and chart appVersion`
-  — CHANGELOG `[1.10.0]` (also restores the compare links, which stopped at v1.7.0), README,
-  roadmap, Helm 0.1.7 / appVersion 1.10.0. After it merges: the user tags `v1.10.0` (annotated,
-  as v1.9.0) and pushes; watch Release + Docker with `gh run view --json conclusion`; then **send
-  the tag to the Ulysses session** — it asked for `-host` (#701) and will vendor the release and
-  pass `-host 127.0.0.1`. The macOS port-sharing fix was not measured here; ask Ulysses to confirm.
-- Open branches: local `main`, `chore/release-v1.10.0` (#702). **Stale from 2026-10-21**: seven
+- **v1.10.0 is tagged on `1cdae6c`, the commit BEFORE the release PR #702** (`e623069`, merged
+  after the tag). The binaries, the Docker image and the GitHub release notes (goreleaser uses the
+  commit log) are complete: #702 changed only documents. In the tagged tree the CHANGELOG still
+  lists these entries under `[Unreleased]`, README and the roadmap say v1.9.0, and the chart says
+  `appVersion "1.9.0"`; `main` is correct. The tag was kept rather than moved, because moving it
+  would delete a published release and overwrite the `1.10.0` Docker image. For the next release,
+  merge the release PR before tagging. #702 was merged with 8 checks still running (none failed).
+- Release + Docker for `v1.10.0` were running at handoff; confirm with
+  `gh run list --branch v1.10.0 --json workflowName,conclusion`. When both are `success`, **send the
+  tag to the Ulysses session** — it asked for `-host` (#701), will vendor the release and pass
+  `-host 127.0.0.1`. The macOS port-sharing fix was not measured here; ask Ulysses to confirm.
+- Open branches: local `main` only (plus the stale 2026-10-21 worktrees below). **Stale from 2026-10-21**: seven
   `.claude/worktrees/agent-*` worktrees (branches `feat/rest-upsert-node-main`,
   `feat/go-client-upsert-node`, `fix/patch-node-uniqueness-rules`, `feat/storage-upsert-node`,
   `fix/cypher-create-uniqueness-rules`, `fix/snapshot-rlock-panic-safety`,
@@ -68,7 +74,7 @@ From `docs/NEXT_STEPS_2026-10-08.md`, critical path after this session:
 2. Track W: `v1.4-wal-default-remeasure` (needs real disk, not tmpfs — see memory
    `go-bench-tempdir-is-tmpfs`), then `v1.4-bulk-create-group-commit` with
    `v1.4-storage-batch-atomic-commit`.
-3. **Finish the v1.10.0 release** (#702, then the tag), and tell Ulysses the tag (see Current state).
+3. **Confirm the v1.10.0 Release + Docker runs**, then tell Ulysses the tag (see Current state).
 4. Parallel-safe: the four remaining gaps from #691 (`v1.4-batch-create-wal-error-text`,
    `v1.4-upsert-wal-failure-202-test`, `v1.4-go-client-ci-lint`,
    `v1.4-go-client-return-eval-order`), Track S items 3, 5, 7.
@@ -119,9 +125,9 @@ From `docs/NEXT_STEPS_2026-10-08.md`, critical path after this session:
 ```
 Read docs/internals/design/SESSION_HANDOFF_2026-10-22-0007Z.md first, then docs/NEXT_STEPS_2026-10-08.md.
 
-1. If #702 (v1.10.0 release) is open, check its checks with gh pr view --json statusCheckRollup and ask the
-   user to merge it and push the annotated tag v1.10.0. Watch Release + Docker, then send the tag to the
-   Ulysses session (it asked for -host, #701) and ask it to confirm the macOS bind.
+1. Confirm the v1.10.0 Release and Docker runs: gh run list --branch v1.10.0 --json workflowName,conclusion.
+   If both are success, send the tag v1.10.0 to the Ulysses session (it asked for -host, #701) and ask it to
+   confirm the macOS bind. The tag sits on 1cdae6c, before the release-docs PR #702; see the handoff.
 2. Run ListAgents. If a graphdb-coord session is live, send it the two unseeded gaps in the handoff's
    "New gaps" section (with their file:line) and ask it to seed them. Ask the user question 1
    (duplicate rule keys) before touching RegisterUniquenessRule.
