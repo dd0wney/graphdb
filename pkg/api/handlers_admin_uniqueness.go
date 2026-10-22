@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -65,7 +66,11 @@ func (s *Server) registerUniquenessRule(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := s.graph.RegisterUniquenessRule(req); err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		status := http.StatusBadRequest
+		if errors.Is(err, storage.ErrUniquenessRuleKeyTaken) {
+			status = http.StatusConflict
+		}
+		s.respondError(w, status, err.Error())
 		return
 	}
 

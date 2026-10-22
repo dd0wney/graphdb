@@ -237,6 +237,24 @@ them.
   deployment variable syntax, and graphdb-coord's `coord-bootstrap.sh` all
   use this spelling.
 
+## Amendment (2026-10-22): one rule per key
+
+`RegisterUniquenessRule` refuses a rule whose `(Label, PropertyKey)` another
+name already covers, with `ErrUniquenessRuleKeyTaken`; `POST
+/admin/uniqueness-rules` answers 409. Before, the registry accepted the pair.
+The second rule protected nothing, and it made every create on the label fail
+with `ErrMultipleUniquenessRules` (the R7 limitation above), so the operator
+learned of the mistake on the first write instead of at registration. A
+`Transaction` update under such a pair also refused a valid write (#698).
+
+The loader does **not** refuse the pair. A `rules.json` written before this
+amendment may hold one, and refusing it at open would lock the operator out of
+the store over a registry mistake that `RemoveUniquenessRule` fixes. This is the
+one case where the loader admits what `RegisterUniquenessRule` refuses.
+
+Two rules on one **label** with different keys are unchanged: still accepted at
+registration, still `ErrMultipleUniquenessRules` on a create (R7).
+
 ## References
 
 - `pkg/graphql/mutations_resolvers.go:20` — the TODO this ADR closes

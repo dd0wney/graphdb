@@ -111,7 +111,11 @@ func uniquenessRulesPath(dataDir string) string {
 // bounds and patterns ADR 0001's implementation notes specify. Called from
 // both RegisterUniquenessRule and loadUniquenessRules, so the registry is
 // safe from every caller — the file loader cannot admit a rule a live
-// Register call would have refused.
+// Register call would have refused. One exception, on purpose: the loader
+// keeps two names on one (Label, PropertyKey), which Register refuses
+// (ErrUniquenessRuleKeyTaken). A rules.json written before that refusal
+// may hold such a pair, and refusing it at open would lock the operator out
+// of the store over a registry mistake that RemoveUniquenessRule can fix.
 func validateUniquenessRule(r UniquenessRule) error {
 	if err := validateUniquenessNameOrKey("name", r.Name); err != nil {
 		return err
@@ -267,7 +271,10 @@ func (gs *GraphStorage) persistUniquenessRulesLocked() error {
 // registry. Idempotent: registering the same name twice upserts rather than
 // erroring. Refuses a NEW name once the registry already holds
 // maxUniquenessRules entries; an upsert of an existing name is never
-// refused on that ground (R6).
+// refused on that ground (R6). Refuses, with ErrUniquenessRuleKeyTaken, a
+// rule whose (Label, PropertyKey) another name already covers: the second
+// rule protects nothing and makes every create on the label fail with
+// ErrMultipleUniquenessRules.
 //
 // Registry writes are exempt from the required-rule check. This method
 // never calls CreateNodeWithUniquenessRulesForTenant and never reads
@@ -281,6 +288,12 @@ func (gs *GraphStorage) RegisterUniquenessRule(r UniquenessRule) error {
 
 	gs.rulesMu.Lock()
 	defer gs.rulesMu.Unlock()
+
+	for name, other := range gs.uniquenessRules {
+		if name != r.Name && other.Label == r.Label && other.PropertyKey == r.PropertyKey {
+			return fmt.Errorf("%w: rule %q already covers %s.%s", ErrUniquenessRuleKeyTaken, name, r.Label, r.PropertyKey)
+		}
+	}
 
 	previous, hadPrevious := gs.uniquenessRules[r.Name]
 	if !hadPrevious && len(gs.uniquenessRules) >= maxUniquenessRules {

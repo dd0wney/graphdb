@@ -213,3 +213,25 @@ func TestAdminUniquenessRules_DeleteIsAlways200(t *testing.T) {
 		t.Errorf("status = %d, want 200, body=%s", rr.Code, rr.Body.String())
 	}
 }
+
+// A second rule name on a key another rule covers is a conflict with the
+// registry's state, not a malformed request: 409, and the registry keeps one
+// rule.
+func TestAdminUniquenessRules_SecondNameOnAHeldKeyIs409(t *testing.T) {
+	server, cleanup := setupTestServer(t)
+	defer cleanup()
+	token := mintTestToken(t, server, "admin", "uniq-admin-key-taken", "")
+
+	first := storage.UniquenessRule{Name: "claim_for_task", Label: "Claim", PropertyKey: "for_task"}
+	if rr := uniquenessRuleReq(t, server, http.MethodPost, "/admin/uniqueness-rules", token, first); rr.Code != http.StatusOK {
+		t.Fatalf("first register: status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	second := storage.UniquenessRule{Name: "claim_for_task_2", Label: "Claim", PropertyKey: "for_task"}
+	rr := uniquenessRuleReq(t, server, http.MethodPost, "/admin/uniqueness-rules", token, second)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("second name on Claim.for_task: status = %d, want 409, body=%s", rr.Code, rr.Body.String())
+	}
+	if got := len(server.graph.UniquenessRules()); got != 1 {
+		t.Errorf("registry holds %d rules after a refused register, want 1", got)
+	}
+}

@@ -463,3 +463,10 @@ func (e *DataDirLockedError) Error() string {
 func (e *DataDirLockedError) Unwrap() error {
 	return ErrDataDirLocked
 }
+
+// ErrUniquenessRuleKeyTaken is returned by RegisterUniquenessRule when another
+// registered rule, under a different name, already covers the same label and
+// property. A second rule on a key adds no protection, and it makes every
+// create on that label fail with ErrMultipleUniquenessRules, so the operator
+// learns of the mistake at registration rather than on the first write.
+var ErrUniquenessRuleKeyTaken = errors.New("another uniqueness rule already covers this label and property")
