@@ -14,6 +14,15 @@ func (s *Server) SetTLSConfig(cfg *tlspkg.Config) {
 	s.tlsConfig = cfg
 }
 
+// SetHost sets the address Start binds. "" (the default) binds every
+// interface, as the server always has. "127.0.0.1" keeps the server off the
+// network, and on macOS it also makes a second program already listening on
+// that loopback port fail the bind, where a wildcard bind would share the
+// port with it and a loopback client could reach the other program.
+func (s *Server) SetHost(host string) {
+	s.host = host
+}
+
 // SetCORSConfig sets the CORS configuration for the server
 func (s *Server) SetCORSConfig(cfg *CORSConfig) {
 	s.corsConfig = cfg
