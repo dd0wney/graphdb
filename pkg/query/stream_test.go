@@ -486,27 +486,21 @@ func TestResultStream_ConcurrentSend(t *testing.T) {
 func TestResultStream_ContextCancellation(t *testing.T) {
 	stream := NewResultStream(10)
 
-	// Cancel the context
-	stream.cancel()
+	// The consumer closes the stream. Close is the only thing that cancels
+	// the stream's context, and Next ends the stream rather than reporting
+	// the cancel as an error (see Next).
+	stream.Close()
 
-	// Next should return context error (eventually, after any buffered items)
-	_, err := stream.Next()
-	if err == nil {
-		t.Error("Expected context error")
+	node, err := stream.Next()
+	if node != nil || err != nil {
+		t.Errorf("Next after Close = (%v, %v), want (nil, nil)", node, err)
 	}
 
-	// After context is cancelled, send will eventually fail
-	// (may succeed a few times due to buffering and select race)
-	node := &storage.Node{ID: 1}
-	failedCount := 0
+	// Every Send after Close must fail: the channel is closed.
 	for i := 0; i < 100; i++ {
-		if !stream.Send(node) {
-			failedCount++
+		if stream.Send(&storage.Node{ID: 1}) {
+			t.Fatalf("Send %d after Close succeeded", i)
 		}
-	}
-	// Should have at least some failures since context is cancelled
-	if failedCount == 0 {
-		t.Error("Expected Send to fail after context cancellation")
 	}
 }
 

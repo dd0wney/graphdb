@@ -1,6 +1,10 @@
 package query
 
 import (
+	"errors"
+	"fmt"
+	"slices"
+
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
@@ -14,7 +18,15 @@ func NewStreamingQuery(graph *storage.GraphStorage) *StreamingQuery {
 	return &StreamingQuery{graph: graph}
 }
 
-// StreamNodes streams all nodes matching a filter
+// StreamNodes streams all nodes matching a filter, in ascending ID order.
+//
+// It enumerates the live IDs rather than scanning 1..NodeCount: IDs are never
+// reused, so after a delete the highest ID exceeds the live count and a scan
+// stops short. The IDs are taken once, under the store's read lock, and each
+// node is then read on its own, so a slow consumer never holds that lock. A
+// node deleted after the IDs were taken is skipped; any other read error ends
+// the stream with that error, because a skipped record makes a short result
+// look complete.
 func (sq *StreamingQuery) StreamNodes(
 	filter func(*storage.Node) bool,
 ) *ResultStream {
@@ -23,10 +35,10 @@ func (sq *StreamingQuery) StreamNodes(
 	go func() {
 		defer stream.Close()
 
-		stats := sq.graph.GetStatistics()
-		nodeCount := int(stats.NodeCount)
+		nodeIDs := sq.graph.GetAllNodeIDs()
+		slices.Sort(nodeIDs)
 
-		for nodeID := uint64(1); nodeID <= uint64(nodeCount); nodeID++ {
+		for _, nodeID := range nodeIDs {
 			// Respect context cancellation
 			select {
 			case <-stream.ctx.Done():
@@ -35,8 +47,12 @@ func (sq *StreamingQuery) StreamNodes(
 			}
 
 			node, err := sq.graph.GetNode(nodeID)
-			if err != nil {
+			if errors.Is(err, storage.ErrNodeNotFound) {
 				continue
+			}
+			if err != nil {
+				stream.SendError(fmt.Errorf("stream nodes: node %d: %w", nodeID, err))
+				return
 			}
 
 			if filter == nil || filter(node) {
