@@ -7,6 +7,7 @@ package storage
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -190,7 +191,10 @@ func TestUniquenessRules_CountCap(t *testing.T) {
 
 	for i := 0; i < maxUniquenessRules; i++ {
 		name := fmt.Sprintf("rule_%03d", i)
-		if err := gs.RegisterUniquenessRule(UniquenessRule{Name: name, Label: "L", PropertyKey: "k"}); err != nil {
+		// A distinct key per rule: two names on one key are refused on their
+		// own ground (ErrUniquenessRuleKeyTaken), and this test is about the cap.
+		key := fmt.Sprintf("k%03d", i)
+		if err := gs.RegisterUniquenessRule(UniquenessRule{Name: name, Label: "L", PropertyKey: key}); err != nil {
 			t.Fatalf("register %s: %v", name, err)
 		}
 	}
@@ -198,8 +202,11 @@ func TestUniquenessRules_CountCap(t *testing.T) {
 		t.Fatalf("registered rule count = %d, want %d", got, maxUniquenessRules)
 	}
 
-	if err := gs.RegisterUniquenessRule(UniquenessRule{Name: "rule_256", Label: "L", PropertyKey: "k"}); err == nil {
+	err := gs.RegisterUniquenessRule(UniquenessRule{Name: "rule_256", Label: "L", PropertyKey: "k256"})
+	if err == nil {
 		t.Errorf("a 257th distinct rule name should have been refused")
+	} else if errors.Is(err, ErrUniquenessRuleKeyTaken) {
+		t.Errorf("the 257th rule was refused as a key clash, not by the cap: %v", err)
 	}
 
 	// An upsert of an EXISTING name at the cap must still succeed.

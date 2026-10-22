@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -325,14 +326,38 @@ func TestTransaction_HolderInAnotherTenantIsNoConflict(t *testing.T) {
 	}
 }
 
-// Two rule names may cover one (Label, PropertyKey). A transaction update
-// then makes one key claim for each rule, both for the same node, and the
-// node must not conflict with itself. The direct update path accepts the
-// same write, and a real conflict must name the other holder, not the node
-// being written.
+// Two rule names may cover one (Label, PropertyKey) when a rules.json written
+// before RegisterUniquenessRule refused that pair is loaded (the loader keeps
+// it). A transaction update then makes one key claim for each rule, both for
+// the same node, and the node must not conflict with itself. The direct
+// update path accepts the same write, and a real conflict must name the other
+// holder, not the node being written.
 func TestTransaction_TwoRulesOnOneKeyDoNotConflictWithTheSameNode(t *testing.T) {
-	gs, a, b := widgetPairIn(t, txUniqTenant)
-	registerRule(t, gs, "widget_sku_2", "Widget", "sku")
+	dir := t.TempDir()
+	body := `{"version":1,"rules":[` +
+		`{"name":"widget_sku","label":"Widget","propertyKey":"sku"},` +
+		`{"name":"widget_sku_2","label":"Widget","propertyKey":"sku"}]}`
+	if err := os.WriteFile(uniquenessRulesPath(dir), []byte(body), 0o600); err != nil {
+		t.Fatalf("seed rules.json: %v", err)
+	}
+	cfg := DefaultStorageConfig(dir)
+	cfg.UseMmapSnapshot = false
+	gs, err := NewGraphStorageWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = gs.Close() })
+	if got := len(gs.UniquenessRules()); got != 2 {
+		t.Fatalf("loaded %d rules, want the duplicate pair", got)
+	}
+	a, err := gs.CreateNodeWithTenant(txUniqTenant, []string{"Widget"}, sku("w-1"))
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	b, err := gs.CreateNodeWithTenant(txUniqTenant, []string{"Widget"}, sku("w-2"))
+	if err != nil {
+		t.Fatalf("create B: %v", err)
+	}
 
 	tx, err := gs.BeginTransactionForTenant(txUniqTenant)
 	if err != nil {
