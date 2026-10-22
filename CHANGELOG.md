@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-22
+
+This release locks a data directory against a second open, closes the last node write paths that
+skipped the uniqueness rules (the storage `Batch` and `Transaction`), and adds `-host` to
+`graphdb-server`. Three changes refuse what used to pass silently: a second open of a held
+directory (two stores on one directory lost acknowledged writes), a `Batch` or `Transaction` write
+of a key another node holds, and a `StreamNodes` read of a damaged record. Each replaced a silent
+wrong result, as in v1.8.0 and v1.9.0. Within the 1.x promise in `docs/STABILITY_POLICY.md`.
+
+### Added
+- **`graphdb-server -host` binds one address** (`GRAPHDB_HOST` when the flag is unset;
+  `Server.SetHost` in `pkg/api`). The default stays every interface. `-host 127.0.0.1` keeps the
+  server off the network; on macOS it also stops a wildcard bind sharing a port with a program
+  already listening on `127.0.0.1`, so a loopback client cannot reach the other program. Not `HOST`:
+  zsh sets that to the machine name (#701, asked by Ulysses).
+- **`vfs.Locker`**, an optional filesystem capability beside `vfs.Mapper`, and `vfs.LockFile`
+  (#695).
+
 ### Fixed
 - **`StreamingQuery.StreamNodes` streams every live node, and stops on a damaged record.** It
   scanned IDs `1..NodeCount`, so after a delete the nodes above the live count were missing; it
@@ -854,7 +872,10 @@ Low backlog from the 2026-06-10 security re-audit (#371), across Waves 1–3.
 - 100x concurrency improvement
 - 650x faster LSM read performance
 
-[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/dd0wney/graphdb/compare/v1.9.0...v1.10.0
+[1.9.0]: https://github.com/dd0wney/graphdb/compare/v1.8.0...v1.9.0
+[1.8.0]: https://github.com/dd0wney/graphdb/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/dd0wney/graphdb/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/dd0wney/graphdb/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/dd0wney/graphdb/compare/v1.4.0...v1.5.0

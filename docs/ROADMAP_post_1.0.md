@@ -2,8 +2,10 @@
 
 **Status:** proposal / living planning doc. Sketches the minor-version line from the
 v1.0.0 GA to the next major (v2.0.0).
-**Current release:** `v1.9.0` (2026-10-21, GPG-signed). It adds a node upsert on REST, the Go
-client and storage, and every REST, GraphQL and Cypher node write now enforces the uniqueness rules.
+**Current release:** `v1.10.0` (2026-10-22, GPG-signed). It locks a data directory against a second
+open, enforces the uniqueness rules in the storage `Batch` and `Transaction`, and adds
+`graphdb-server -host`. `v1.9.0` (2026-10-21) added a node upsert on REST, the Go client and
+storage, and every REST, GraphQL and Cypher node write enforced the uniqueness rules.
 `v1.8.0` (2026-10-21) grouped Cypher aggregates as openCypher does, and a panic under a storage lock
 no longer hangs the store. `v1.7.0` (2026-10-08) joined Cypher MATCH patterns, kept or
 refused repeated clauses, and made CREATE and MERGE act per row with bound-node reuse and
