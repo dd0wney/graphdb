@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`StreamingQuery.StreamNodes` streams every live node, and stops on a damaged record.** It
+  scanned IDs `1..NodeCount`, so after a delete the nodes above the live count were missing; it
+  now enumerates the live IDs, in ascending order. It also skipped every read error, so a record
+  that did not decode gave a short result with no error; the stream now ends with that error
+  (`ErrRecordUnreadable`). `ResultStream.Next` reports a normal end as `(nil, nil)`; it could
+  return `context.Canceled` instead, so a caller could not tell an end from a failure (#697).
+- **A `Transaction` update no longer conflicts with its own node** when two uniqueness rules cover
+  the same label and property. The commit was refused although `PatchNode` accepted the same
+  write, and a real conflict named the node being written instead of the other holder (#698).
 - **Two stores can no longer open one data directory.** Each appended to the same WAL and wrote
   the snapshot on Close, so the second Close replaced the first's snapshot and its WAL truncate
   emptied the log: acknowledged writes were lost with no error. `NewGraphStorageWithConfig` now
