@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Re-registering the same rule is still an upsert, and a `rules.json` that already holds such a
   pair still loads, so a store never fails to open over it. ADR 0001 records the amendment (#703).
 
+### Fixed
+- **`POST /admin/uniqueness-rules` answers 500, not 400, when the registry cannot write
+  `rules.json`**, and the body no longer carries the storage error, which named the data
+  directory. Only the caller's faults stay 4xx: a malformed rule and the rule cap (400, now
+  `ErrInvalidUniquenessRule` and `ErrUniquenessRuleLimit`) and a held key (409). Any other error
+  is logged and answered with a generic 500 (#706).
+
 ## [1.10.0] - 2026-10-22
 
 This release locks a data directory against a second open, closes the last node write paths that
