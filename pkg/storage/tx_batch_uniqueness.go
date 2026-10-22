@@ -57,9 +57,12 @@ func (tx *Transaction) validateUniquenessLocked(reg uniquenessRegistry) error {
 		return err
 	}
 	tid := effectiveTenantID(tx.tenantID)
-	for i, c := range claims {
-		for j, o := range claims {
-			if i != j && sameRuleKey(o.rule, c.rule) && valuesEqual(o.val, c.val) {
+	for _, c := range claims {
+		for _, o := range claims {
+			// Two rule names can cover one (Label, PropertyKey), and then one
+			// write makes a claim under each. A node never conflicts with
+			// itself, so only claims for different nodes are compared.
+			if o.nodeID != c.nodeID && sameRuleKey(o.rule, c.rule) && valuesEqual(o.val, c.val) {
 				return fmt.Errorf("commit: node %d: %w", c.nodeID, uniqueConflict(c, o.nodeID, tid))
 			}
 		}
