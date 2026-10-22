@@ -283,7 +283,7 @@ func (gs *GraphStorage) persistUniquenessRulesLocked() error {
 // design had).
 func (gs *GraphStorage) RegisterUniquenessRule(r UniquenessRule) error {
 	if err := validateUniquenessRule(r); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrInvalidUniquenessRule, err)
 	}
 
 	gs.rulesMu.Lock()
@@ -297,7 +297,7 @@ func (gs *GraphStorage) RegisterUniquenessRule(r UniquenessRule) error {
 
 	previous, hadPrevious := gs.uniquenessRules[r.Name]
 	if !hadPrevious && len(gs.uniquenessRules) >= maxUniquenessRules {
-		return fmt.Errorf("uniqueness rules: registering %q would exceed the %d-rule limit", r.Name, maxUniquenessRules)
+		return fmt.Errorf("%w: registering %q would exceed the %d-rule limit", ErrUniquenessRuleLimit, r.Name, maxUniquenessRules)
 	}
 
 	gs.uniquenessRules[r.Name] = r

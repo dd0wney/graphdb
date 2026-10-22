@@ -66,11 +66,8 @@ func (s *Server) registerUniquenessRule(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := s.graph.RegisterUniquenessRule(req); err != nil {
-		status := http.StatusBadRequest
-		if errors.Is(err, storage.ErrUniquenessRuleKeyTaken) {
-			status = http.StatusConflict
-		}
-		s.respondError(w, status, err.Error())
+		status, message := registerRuleErrorResponse(err)
+		s.respondError(w, status, message)
 		return
 	}
 
@@ -141,6 +138,25 @@ func (s *Server) removeUniquenessRule(w http.ResponseWriter, r *http.Request) {
 	})
 
 	s.respondJSON(w, http.StatusOK, map[string]string{"status": "removed", "name": name})
+}
+
+// registerRuleErrorResponse maps a RegisterUniquenessRule error to the
+// status and message the client receives.
+//
+// Storage marks the caller's faults with sentinels: ErrUniquenessRuleKeyTaken,
+// ErrInvalidUniquenessRule and ErrUniquenessRuleLimit. Any other error (a
+// failed write of rules.json, for one) is the server's, and its text carries
+// the data-directory path, so it must not reach the client verbatim;
+// sanitizeError logs it and returns a generic message.
+func registerRuleErrorResponse(err error) (int, string) {
+	switch {
+	case errors.Is(err, storage.ErrUniquenessRuleKeyTaken):
+		return http.StatusConflict, err.Error()
+	case errors.Is(err, storage.ErrInvalidUniquenessRule), errors.Is(err, storage.ErrUniquenessRuleLimit):
+		return http.StatusBadRequest, err.Error()
+	default:
+		return http.StatusInternalServerError, sanitizeError(err, "register uniqueness rule")
+	}
 }
 
 // validateUniquenessRuleBody validates a POST /admin/uniqueness-rules body
