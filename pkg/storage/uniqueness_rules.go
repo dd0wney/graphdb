@@ -39,6 +39,11 @@ const (
 	// the registry's shape never bumps the snapshot version, and vice versa.
 	uniquenessRulesFileVersion = 1
 
+	// uniquenessRulesSealedFileVersion is the encrypted form of rules.json:
+	// {"version":2,"sealed":"<base64>"}, where sealed is the store's engine
+	// applied to the version 1 document. An unencrypted store never writes it.
+	uniquenessRulesSealedFileVersion = 2
+
 	// maxUniquenessRules caps how many rules a registry may hold, checked
 	// both at load and on RegisterUniquenessRule (R6).
 	maxUniquenessRules = 256
@@ -100,6 +105,14 @@ type RequiredUniquenessRule struct {
 type uniquenessRulesDocument struct {
 	Version int              `json:"version"`
 	Rules   []UniquenessRule `json:"rules"`
+}
+
+// uniquenessRulesSealedDocument is the version 2 on-disk shape. Only the
+// version is readable without the key, so the rule names, labels and
+// property keys do not appear on disk in an encrypted store.
+type uniquenessRulesSealedDocument struct {
+	Version int    `json:"version"`
+	Sealed  []byte `json:"sealed"`
 }
 
 // uniquenessRulesPath returns the rules.json path for a data directory.
@@ -194,13 +207,9 @@ func (gs *GraphStorage) loadUniquenessRules() error {
 		return fmt.Errorf("uniqueness rules: read %s: %w", path, err)
 	}
 
-	var doc uniquenessRulesDocument
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return fmt.Errorf("uniqueness rules: %s does not parse as JSON: %w", path, err)
-	}
-	if doc.Version != uniquenessRulesFileVersion {
-		return fmt.Errorf("uniqueness rules: %s has version %d, this build supports version %d",
-			path, doc.Version, uniquenessRulesFileVersion)
+	doc, wasPlaintext, err := gs.openUniquenessRulesFile(path, data)
+	if err != nil {
+		return err
 	}
 	if len(doc.Rules) > maxUniquenessRules {
 		return fmt.Errorf("uniqueness rules: %s holds %d rules, which exceeds the %d-rule limit",
@@ -217,8 +226,74 @@ func (gs *GraphStorage) loadUniquenessRules() error {
 
 	gs.rulesMu.Lock()
 	gs.uniquenessRules = rules
+	gs.rulesFileWasPlaintext = wasPlaintext
 	gs.rulesMu.Unlock()
 	return nil
+}
+
+// sealPlaintextRulesAfterOpen rewrites a version 1 rules.json sealed, when an
+// engine is configured and the registry is not empty. A version 1 file under
+// an engine would keep the rule names in plaintext until the next
+// registration, which may never come.
+//
+// The constructor calls this last, after the snapshot and the WAL decrypted
+// with the configured engine. Sealing at load time, before that proof, let an
+// open with the wrong key seal the registry under that key and then fail on
+// the snapshot, so the next open with the right key could not read rules.json.
+// A failure here fails the open: a store that cannot protect its registry
+// must not run as if it did.
+func (gs *GraphStorage) sealPlaintextRulesAfterOpen() error {
+	gs.rulesMu.Lock()
+	defer gs.rulesMu.Unlock()
+	if !gs.rulesFileWasPlaintext || gs.encryptionEngine == nil || len(gs.uniquenessRules) == 0 {
+		return nil
+	}
+	if err := gs.persistUniquenessRulesLocked(); err != nil {
+		return fmt.Errorf("uniqueness rules: seal %s on open: %w", uniquenessRulesPath(gs.dataDir), err)
+	}
+	gs.rulesFileWasPlaintext = false
+	return nil
+}
+
+// openUniquenessRulesFile parses the bytes of rules.json into the version 1
+// document, unsealing a version 2 file first. wasPlaintext reports a version
+// 1 file, which the caller upgrades when an engine is configured.
+func (gs *GraphStorage) openUniquenessRulesFile(path string, data []byte) (doc uniquenessRulesDocument, wasPlaintext bool, err error) {
+	// Both versions parse into the version 1 shape; a version 2 file leaves
+	// Rules empty, and only its version is read from this pass.
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return doc, false, fmt.Errorf("uniqueness rules: %s does not parse as JSON: %w", path, err)
+	}
+
+	switch version := doc.Version; version {
+	case uniquenessRulesFileVersion:
+		return doc, true, nil
+	case uniquenessRulesSealedFileVersion:
+		if gs.encryptionEngine == nil {
+			return doc, false, fmt.Errorf("uniqueness rules: %s is encrypted (version %d) but no encryption engine is configured",
+				path, version)
+		}
+		var sealed uniquenessRulesSealedDocument
+		if err := json.Unmarshal(data, &sealed); err != nil {
+			return doc, false, fmt.Errorf("uniqueness rules: %s does not parse as JSON: %w", path, err)
+		}
+		plain, err := gs.encryptionEngine.Decrypt(sealed.Sealed)
+		if err != nil {
+			return doc, false, fmt.Errorf("uniqueness rules: decrypt %s: %w", path, err)
+		}
+		doc = uniquenessRulesDocument{}
+		if err := json.Unmarshal(plain, &doc); err != nil {
+			return doc, false, fmt.Errorf("uniqueness rules: %s holds a sealed document that does not parse as JSON: %w", path, err)
+		}
+		if doc.Version != uniquenessRulesFileVersion {
+			return doc, false, fmt.Errorf("uniqueness rules: %s holds a sealed document of version %d, want %d",
+				path, doc.Version, uniquenessRulesFileVersion)
+		}
+		return doc, false, nil
+	default:
+		return doc, false, fmt.Errorf("uniqueness rules: %s has version %d, this build supports versions %d and %d",
+			path, version, uniquenessRulesFileVersion, uniquenessRulesSealedFileVersion)
+	}
 }
 
 // persistUniquenessRulesLocked writes the registry to rules.json.
@@ -238,6 +313,11 @@ func (gs *GraphStorage) persistUniquenessRulesLocked() error {
 	data, err := json.Marshal(uniquenessRulesDocument{Version: uniquenessRulesFileVersion, Rules: rules})
 	if err != nil {
 		return fmt.Errorf("uniqueness rules: marshal: %w", err)
+	}
+	if gs.encryptionEngine != nil {
+		if data, err = gs.sealUniquenessRules(data); err != nil {
+			return err
+		}
 	}
 
 	path := uniquenessRulesPath(gs.dataDir)
@@ -265,6 +345,21 @@ func (gs *GraphStorage) persistUniquenessRulesLocked() error {
 		return fmt.Errorf("uniqueness rules: sync data directory after publishing %s: %w", path, err)
 	}
 	return nil
+}
+
+// sealUniquenessRules wraps the version 1 document in the version 2 envelope.
+// The version stays outside the seal so the loader can pick a path without
+// the key.
+func (gs *GraphStorage) sealUniquenessRules(plain []byte) ([]byte, error) {
+	sealed, err := gs.encryptionEngine.Encrypt(plain)
+	if err != nil {
+		return nil, fmt.Errorf("uniqueness rules: encrypt: %w", err)
+	}
+	data, err := json.Marshal(uniquenessRulesSealedDocument{Version: uniquenessRulesSealedFileVersion, Sealed: sealed})
+	if err != nil {
+		return nil, fmt.Errorf("uniqueness rules: marshal sealed document: %w", err)
+	}
+	return data, nil
 }
 
 // RegisterUniquenessRule adds or updates a rule by name and persists the

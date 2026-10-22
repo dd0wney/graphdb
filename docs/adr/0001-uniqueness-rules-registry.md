@@ -255,6 +255,26 @@ one case where the loader admits what `RegisterUniquenessRule` refuses.
 Two rules on one **label** with different keys are unchanged: still accepted at
 registration, still `ErrMultipleUniquenessRules` on a create (R7).
 
+## Amendment (2026-10-22): sealed file for an encrypted store
+
+An encrypted store used to write `rules.json` in plaintext, which exposed rule
+names, labels and property keys. An encrypted store now writes version 2:
+`{"version":2,"sealed":"<base64>"}`, where `sealed` is the store's encryption
+engine applied to the version 1 document. An unencrypted store still writes
+version 1, byte for byte as before.
+
+A version 1 file is upgraded at open: when an engine is configured and the
+registry is not empty, the constructor rewrites the file sealed, and the open
+fails if that rewrite fails. A store with no new registration therefore keeps
+no plaintext on disk. The rewrite is the constructor's last step, after the
+snapshot and the WAL decrypted with the configured engine: an open with the
+wrong key fails before it, and leaves the version 1 file as it was, so the next
+open with the right key still reads it.
+
+A version 2 file opened with no engine refuses the open, and a wrong key
+refuses it too. A binary older than this change reads only version 1, so it
+refuses to open an encrypted store whose `rules.json` is version 2.
+
 ## References
 
 - `pkg/graphql/mutations_resolvers.go:20` — the TODO this ADR closes

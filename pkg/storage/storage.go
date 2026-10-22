@@ -351,6 +351,9 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 			return nil, fmt.Errorf("failed to purge plaintext WAL entries after enabling encryption: %w", err)
 		}
 	}
+	if err := gs.sealPlaintextRulesAfterOpen(); err != nil {
+		return nil, err
+	}
 
 	// Everything that construction can log is logged now (replay, the
 	// plaintext purge above). A Close whose boundary still equals this LSN

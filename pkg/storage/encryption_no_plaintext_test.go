@@ -105,16 +105,10 @@ func findNoPlaintextMarkers(t *testing.T, dir string, m noPlaintextMarkers) []ma
 
 // plaintextByDesign names the files an encrypted store may leave in
 // plaintext, and which markers each may hold. Every entry is a decision,
-// not a convenience: it names the task or document that owns it.
-var plaintextByDesign = map[string]map[string]string{
-	// The registry is plaintext until v1.4-encrypt-uniqueness-rules-file,
-	// which removes this entry and must see this test go red without it.
-	uniquenessRulesFileName: {
-		"ruleName":    "v1.4-encrypt-uniqueness-rules-file",
-		"label":       "v1.4-encrypt-uniqueness-rules-file",
-		"propertyKey": "v1.4-encrypt-uniqueness-rules-file",
-	},
-}
+// not a convenience: it names the task or document that owns it. No file is
+// plaintext by design now: rules.json is sealed (version 2) since
+// v1.4-encrypt-uniqueness-rules-file.
+var plaintextByDesign = map[string]map[string]string{}
 
 // assertMarkerNodeRecovers reopens the directory the search just read and
 // finds the marker node. Without it, a store that wrote nothing would pass

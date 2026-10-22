@@ -229,6 +229,11 @@ type GraphStorage struct {
 	// or CreateNodeWithTenant), so sharing gs.mu would make that call
 	// re-entrant.
 	rulesMu sync.RWMutex
+
+	// rulesFileWasPlaintext records that loadUniquenessRules read a version 1
+	// rules.json. The constructor seals it under an engine only once the rest
+	// of the open has proved the engine's key (sealPlaintextRulesAfterOpen).
+	rulesFileWasPlaintext bool
 }
 
 // StorageConfig holds configuration for GraphStorage
