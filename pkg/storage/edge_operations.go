@@ -134,7 +134,9 @@ func (gs *GraphStorage) createEdgesUnderLock(tenantID string, specs []EdgeSpec) 
 		if err := gs.verifyNodeExistsForTenant(s.ToID, "target", tenantID); err != nil {
 			return b, err
 		}
-		edge, p, err := gs.createEdgeWithTenantNoVerify(tenantID, s.FromID, s.ToID, s.Type, s.Properties, s.Weight)
+		// createEdgeLocked, not createEdgeWithTenantNoVerify: the batch
+		// returns only IDs and edges have no observers, so a clone is garbage.
+		edge, p, err := gs.createEdgeLocked(tenantID, s.FromID, s.ToID, s.Type, s.Properties, s.Weight)
 		if err != nil {
 			return b, err
 		}
