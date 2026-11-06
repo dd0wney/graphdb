@@ -144,8 +144,8 @@ func TestEphemeral_DeleteAllNodesWritesNoSnapshot(t *testing.T) {
 	if err := gs.DeleteAllNodes(); err != nil {
 		t.Fatalf("DeleteAllNodes: %v", err)
 	}
-	// Not GetStatistics().NodeCount: clearAllUnderLock does not reset the
-	// stats counters, a defect older than Ephemeral and outside this test.
+	// The counters after a clear are TestDeleteAllNodes_ResetsDerivedState's
+	// subject; this test asks only that the node is gone and nothing persisted.
 	if _, err := gs.GetNode(n.ID); !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("GetNode after DeleteAllNodes = %v, want ErrNodeNotFound", err)
 	}
