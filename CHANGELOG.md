@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`StorageConfig.Ephemeral`, for a scratch store that nothing reopens.** It opens no WAL,
+  `Close` writes no snapshot but still releases every resource, and `Snapshot` refuses with
+  `ErrEphemeralStore`. A consumer measured the snapshot inside `Close` raising RSS from 827 MiB
+  to 1707 MiB after its work had finished, and the default per-write fsync costing about 18
+  minutes for one 80k-node load on an ext4 SSD. The open refuses unless the data directory is
+  absent or empty apart from `LOCK`, so the flag cannot be pointed at a durable store. Default
+  false: existing configs are unchanged.
+
 ### Changed
 - **`RegisterUniquenessRule` refuses a second rule on a key another rule already covers**, with
   `ErrUniquenessRuleKeyTaken`; `POST /admin/uniqueness-rules` answers 409. The second rule
