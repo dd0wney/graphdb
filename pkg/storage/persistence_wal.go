@@ -7,9 +7,24 @@ import (
 	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
+// walSinkConfigured reports whether a write would reach any WAL. It mirrors
+// the dispatch in writeToWALWithError and enqueueWAL exactly, so the two write
+// paths can return before the encode: with no sink the encoded record is
+// garbage, 0.66 GB of it on an 882k-node bulk create (snare ask 4). The one
+// encode failure a WAL payload can cause, a non-finite edge weight, is refused
+// ahead of the WAL by validateEdgeWeight, so skipping the encode hides nothing.
+func (gs *GraphStorage) walSinkConfigured() bool {
+	return (gs.useBatching && gs.batchedWAL != nil) ||
+		(gs.useCompression && gs.compressedWAL != nil) ||
+		gs.wal != nil
+}
+
 // writeToWALWithError writes an operation to the WAL and returns any error
 // Use this for operations that require durability guarantees
 func (gs *GraphStorage) writeToWALWithError(operation wal.OpType, data any) error {
+	if !gs.walSinkConfigured() {
+		return nil // in-memory only mode
+	}
 	encoded, err := json.Marshal(data)
 	if err != nil {
 		return gs.noteWALWriteError(fmt.Errorf("failed to marshal WAL data: %w", err))
@@ -35,7 +50,6 @@ func (gs *GraphStorage) writeToWALWithError(operation wal.OpType, data any) erro
 			return gs.noteWALWriteError(fmt.Errorf("failed to append to WAL: %w", err))
 		}
 	}
-	// No WAL configured - this is valid for in-memory only mode
 	return nil
 }
 
@@ -59,6 +73,9 @@ func (gs *GraphStorage) writeToWALWithError(operation wal.OpType, data any) erro
 // stays applied: this is the fail-loud-but-keep-going contract described on
 // ErrWALWriteFailed, not a rollback.
 func (gs *GraphStorage) enqueueWAL(operation wal.OpType, data any) *wal.Pending {
+	if !gs.walSinkConfigured() {
+		return nil // in-memory only mode: nothing to wait for
+	}
 	encoded, err := json.Marshal(data)
 	if err != nil {
 		return wal.FailedPending(gs.noteWALWriteError(fmt.Errorf("failed to marshal WAL data: %w", err)))
@@ -81,7 +98,6 @@ func (gs *GraphStorage) enqueueWAL(operation wal.OpType, data any) *wal.Pending 
 			return wal.FailedPending(gs.noteWALWriteError(fmt.Errorf("failed to append to WAL: %w", err)))
 		}
 	}
-	// No WAL configured - valid for in-memory only mode.
 	return nil
 }
 
