@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-11-06
+
+This release adds `StorageConfig.Ephemeral`, for a scratch store that nothing reopens: no WAL,
+no snapshot at `Close`, and an open that refuses any directory that is not empty. It also stops
+the uniqueness-rule registry from accepting a second rule on a key another rule covers, and makes
+`POST /admin/uniqueness-rules` answer 500, not 400, when the registry cannot write. The second
+rule used to be accepted and then made every later create on its label fail, so the refusal moves
+the error to the call that caused it. Within the 1.x promise in `docs/STABILITY_POLICY.md`.
+
 ### Added
 - **`StorageConfig.Ephemeral`, for a scratch store that nothing reopens.** It opens no WAL,
   `Close` writes no snapshot but still releases every resource, and `Snapshot` refuses with
@@ -17,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to 1707 MiB after its work had finished, and the default per-write fsync costing about 18
   minutes for one 80k-node load on an ext4 SSD. The open refuses unless the data directory is
   absent or empty apart from `LOCK`, so the flag cannot be pointed at a durable store. Default
-  false: existing configs are unchanged.
+  false: existing configs are unchanged (#712).
 
 ### Changed
 - **`RegisterUniquenessRule` refuses a second rule on a key another rule already covers**, with
@@ -895,7 +904,8 @@ Low backlog from the 2026-06-10 security re-audit (#371), across Waves 1–3.
 - 100x concurrency improvement
 - 650x faster LSM read performance
 
-[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/dd0wney/graphdb/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/dd0wney/graphdb/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/dd0wney/graphdb/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/dd0wney/graphdb/compare/v1.7.0...v1.8.0
