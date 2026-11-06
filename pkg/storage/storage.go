@@ -88,6 +88,7 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		// copied once and never mutated after construction.
 		uniquenessRules:         make(map[string]UniquenessRule),
 		requiredUniquenessRules: config.RequiredUniquenessRules,
+		ephemeral:               config.Ephemeral,
 	}
 
 	// Initialize shard locks for fine-grained concurrency
@@ -143,8 +144,17 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 		}
 	}
 
-	// Initialize WAL (compressed, batched, or regular) - skip in bulk import mode
-	if !config.BulkImportMode {
+	// Under the lock, so no other store can write into the directory between
+	// this check and the first write below.
+	if config.Ephemeral {
+		if err := gs.guardEphemeralDirEmpty(); err != nil {
+			return nil, err
+		}
+	}
+
+	// Initialize WAL (compressed, batched, or regular) - skip in bulk import
+	// mode and for an Ephemeral store, neither of which replays one.
+	if !config.BulkImportMode && !config.Ephemeral {
 		if config.EnableCompression {
 			compressedWAL, err := wal.NewCompressedWALWithFS(filepath.Join(config.DataDir, "wal"), gs.fs)
 			if err != nil {

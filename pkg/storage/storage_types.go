@@ -99,6 +99,9 @@ type GraphStorage struct {
 	// lockShard). All nil/empty when mmap mode is off, so the JSON path is
 	// unchanged. See mmap_snapshot_loader.go.
 	useMmapSnapshot bool // write snapshot.mmap (set from mmapEligible at construction)
+	// ephemeral is StorageConfig.Ephemeral, copied once at construction and
+	// never mutated after, so it is read without a lock.
+	ephemeral bool
 
 	// fs is the filesystem driver, resolved once at construction from
 	// StorageConfig.FS. Never nil after NewGraphStorageWithConfig returns.
@@ -239,6 +242,30 @@ type StorageConfig struct {
 	UseDiskBackedEdges    bool // Enable disk-backed adjacency lists (Milestone 2)
 	EdgeCacheSize         int  // LRU cache size for hot edge lists (default: 10000)
 	BulkImportMode        bool // Disable WAL and use fast path for bulk loading
+
+	// Ephemeral marks a store whose data the caller discards after Close: a
+	// per-scan store in a temp directory that nothing reopens. It opens no WAL
+	// (as BulkImportMode does), Close writes no snapshot, and Snapshot returns
+	// ErrEphemeralStore. Close still releases every resource.
+	//
+	// Use it for a scratch store that nothing reopens. The default config
+	// fsyncs each write: a consumer measured about 137µs per fsync on an ext4
+	// SSD, which put one 80k-node load at about 18 minutes.
+	//
+	// Close writes no snapshot because on a large graph that snapshot was the
+	// biggest allocation of the store's life: a consumer measured RSS rising
+	// from 827 MiB to 1707 MiB inside Close, after its work had finished.
+	//
+	// The open refuses unless DataDir is absent or empty (a LOCK file is
+	// permitted), so the flag cannot be pointed at a durable store whose data
+	// it would then never write back. EnableBatching and EnableCompression
+	// only select a WAL backend, so an Ephemeral store ignores them.
+	//
+	// Two writers still put files in DataDir during the session, and the
+	// caller deletes them with the directory: RegisterUniquenessRule writes
+	// rules.json, and UseDiskBackedEdges writes the edge store. Neither is a
+	// copy of the graph that a reopen could use.
+	Ephemeral bool
 
 	// UseMmapSnapshot opts into the mmap-backed lazy-reopen path (graphdb ask
 	// #1, Stage 1): the snapshot is written/read as snapshot.mmap and

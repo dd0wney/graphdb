@@ -1097,7 +1097,9 @@ func (gs *GraphStorage) DeleteAllNodes() error {
 	// Write an empty snapshot so a process restart doesn't reload from the old
 	// snapshot.json + WAL.  Snapshot() acquires its own read lock so we release
 	// the write lock first.
-	if gs.dataDir != "" {
+	// An Ephemeral store persists nothing, so there is no old snapshot to
+	// supersede, and its Snapshot would refuse.
+	if gs.dataDir != "" && !gs.ephemeral {
 		if err := gs.Snapshot(); err != nil {
 			return fmt.Errorf("write empty snapshot after clear: %w", err)
 		}

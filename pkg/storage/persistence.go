@@ -74,6 +74,13 @@ func (gs *GraphStorage) compressEdgeListsForSnapshot() {
 // pass false — an explicit request to write is honoured, and its damage
 // refusal (captureMmapSnapshot) stays a contract a caller can rely on.
 func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
+	// Here rather than in Snapshot, so every caller that persists is refused,
+	// CompactWAL and any later one included. Close does not reach this: it
+	// skips the snapshot for an Ephemeral store, which is not an error there.
+	if gs.ephemeral {
+		return 0, fmt.Errorf("%w: an Ephemeral store writes no snapshot", ErrEphemeralStore)
+	}
+
 	// Decided before anything else runs: on a clean Close the edge
 	// compression below was the whole remaining cost (1.1 s on the
 	// 2.0M-node ICIJ store) for a file that was not going to be written.
@@ -524,7 +531,14 @@ func (gs *GraphStorage) Close() error {
 	// captureMmapSnapshot refuses to write when a base record is damaged (#521),
 	// which turned this from a full-disk edge case into something ordinary bit
 	// rot reaches.
-	_, snapErr := gs.snapshotWithBoundary(true)
+	//
+	// An Ephemeral store skips the snapshot: its caller discards the
+	// directory, and on a large graph the snapshot was the biggest allocation
+	// of the store's life. It still releases everything below.
+	var snapErr error
+	if !gs.ephemeral {
+		_, snapErr = gs.snapshotWithBoundary(true)
+	}
 	var errs []error
 	if snapErr != nil {
 		errs = append(errs, snapErr)

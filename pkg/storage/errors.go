@@ -114,6 +114,17 @@ var (
 	// returned error wraps this sentinel and names the WAL file and both LSNs.
 	ErrBulkImportUnreplayedWAL = errors.New("bulk import mode cannot open a directory whose WAL holds writes past the snapshot")
 
+	// ErrEphemeralStore is returned when a StorageConfig.Ephemeral store is
+	// asked to persist, and when an Ephemeral open finds a data directory that
+	// is not empty.
+	//
+	// Snapshot refuses rather than writing because Close writes nothing after
+	// it: a snapshot taken mid-session would sit on disk older than the store,
+	// and a later ordinary open would load that stale state with no error.
+	//
+	// errors.Is(err, ErrEphemeralStore) detects either refusal.
+	ErrEphemeralStore = errors.New("ephemeral store refused the operation")
+
 	// ErrWALBackendSwitched is returned by NewGraphStorageWithConfig when the
 	// WAL backend this open selected is not the one that last wrote to the
 	// data directory, and the other backend's WAL file still holds bytes.
