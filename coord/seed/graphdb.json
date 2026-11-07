@@ -525,6 +525,18 @@
       "track": "v1.4",
       "status": "pending",
       "title": "storage: clearAllUnderLock (pkg/storage/node_operations.go) does not touch gs.edgeStore, so with UseDiskBackedEdges the LSM edge store may keep every edge after DeleteAllNodes. Untested: write a probe first. If edges survive, clear the edge store under the same lock. Acceptance: with UseDiskBackedEdges, GetEdge and the adjacency lookups find no pre-clear edge after DeleteAllNodes, and the probe is seen red first if the defect is real. Read at 53c5cc1"
+    },
+    {
+      "id": "v1.4-encryption-key-check-artefact",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: an encrypted store that holds no ciphertext cannot prove a key at open. With a version 1 rules.json, no snapshot and no WAL, an open with a wrong key succeeds (a missing snapshot is a fresh database, pkg/storage/storage.go near :231), its Close writes snapshot.json under that key (snapshotWithBoundary, persistence.go near :561), and the next open with the right key fails with failed to decrypt snapshot: authentication failed. Design a key-check artefact (for example a small sealed file written at the first encrypted open and checked before any write). Acceptance: TestProbe_WrongKeyOpenThenCloseLocksOutRightKey (#721) loses its t.Skip and passes, and a format version is recorded. Read at 7a17414"
+    },
+    {
+      "id": "v1.4-encryption-no-plaintext-test-flake",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "test: TestEncryptedStore_WritesNoPlaintext/json-batching-compression/crash (pkg/storage/encryption_no_plaintext_test.go, #709) fails in about 2.5 percent of runs, 5 of 200 on main at 1ddd131. Each failure is the plaintext control at :213: the edgePropertyKey or edgePropertyValue marker is not on disk at the crash point, so the test cannot prove its search works. Find why the batched compressed WAL sometimes has no edge record at the crash point, then make the control deterministic. Acceptance: 1000 runs with -count=1000 pass, and the control can still fail when the marker is absent. Read at 1ddd131"
     }
   ],
   "deps": [
