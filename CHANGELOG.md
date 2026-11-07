@@ -10,6 +10,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-11-07
+
+A patch release. `DeleteAllNodes` now leaves a store that is the same as an empty one: it used to
+keep the node and edge counts, the per-tenant ID sets and every vector, so `GetStatistics`
+reported the deleted graph and `VectorSearch` returned the IDs of deleted nodes. Two write-path
+changes cut memory on a large bulk create into a store with no WAL: a consumer measured peak RSS
+on one 882k-node, 889k-edge batch fall from 2,534 MB to 1,631 MB. No API changes; within the 1.x
+promise in `docs/STABILITY_POLICY.md`.
+
+### Fixed
+- **`DeleteAllNodes` resets the counters, the tenant ID sets and the vector index.** After a
+  clear, `GetStatistics` reported the deleted graph's counts, a repopulate added to them, and
+  `VectorSearch` returned deleted node IDs. Each vector index keeps its definition and loses its
+  vectors, so a reload finds its indexes still there and searchable; the definition also
+  survives a restart. Property index definitions are still dropped, as before (#714).
+
+### Changed
+- **A store with no WAL sink no longer encodes a WAL record.** `writeToWALWithError` and
+  `enqueueWAL` marshalled and sealed every record, then dropped it. On an `Ephemeral` store that
+  was 0.66 GB of garbage on one 882k-node bulk create. The only payload `json.Marshal` refuses is
+  a non-finite edge weight, which `validateEdgeWeight` already refuses ahead of the WAL, so no
+  error is hidden (#715).
+- **`CreateNodesWithTenant` and `CreateEdgesWithTenant` clone an entity only when an observer
+  needs it.** The bulk creates return IDs, but cloned every entity, and the node batch held the
+  clones until its notify loop: 0.56 GB on the same batch. Nodes are now cloned under the lock
+  only when an observer is registered, and edges, which have no observers, are not cloned. An
+  observer registered between a batch's unlock and its notify loop no longer receives that
+  batch; observers are registered at startup (#716).
+
 ## [1.11.0] - 2026-11-06
 
 This release adds `StorageConfig.Ephemeral`, for a scratch store that nothing reopens: no WAL,
@@ -904,7 +933,8 @@ Low backlog from the 2026-06-10 security re-audit (#371), across Waves 1–3.
 - 100x concurrency improvement
 - 650x faster LSM read performance
 
-[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.11.1...HEAD
+[1.11.1]: https://github.com/dd0wney/graphdb/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/dd0wney/graphdb/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/dd0wney/graphdb/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/dd0wney/graphdb/compare/v1.8.0...v1.9.0
