@@ -33,6 +33,8 @@ the same PR as this file.
 | v1.6.0 | 2026-10-08 | Cypher silent results (index lookup, edge DELETE/SET), bulk-import WAL guard, mmap record-width refusal, decoder checks, readiness probe |
 | v1.7.0 | 2026-10-08 | Cypher MATCH join and repeated clauses, per-row CREATE/MERGE with bound-node reuse and direction, plain-DELETE deprecation |
 | v1.8.0 | 2026-10-21 | Cypher implicit grouping (#664), lock release on a panic in storage (#665) |
+| v1.9.0 | 2026-10-21 | Node upsert (storage, REST, Go client), uniqueness rules on every REST, Cypher and update write path (Track U items 1–3), stream and telemetry fixes |
+| v1.10.0 | 2026-10-22 | Data-directory lock (#695), uniqueness rules in `Batch`/`Transaction` (#692, #698), `StreamNodes` ID gaps (#697), `-host` bind (#701) |
 
 A new embedding consumer, `oit-cyber/mapper` (session `mapper-6b`), drove most of the 2026-10-08
 findings. It pins v1.6.0 and moves to v1.7.0 next.
@@ -71,8 +73,9 @@ or spec before code; **S** a spike.
    `FlushInterval` or a negative `BatchSize` is refused at open with `*wal.BatchConfigError`.
 3. `v1.4-foreach-node-tenant-and-lock` — tenant-blind, holds `gs.mu.RLock` across the callback;
    `GetEdgesByTypeForTenant` skips a damaged record silently.
-4. `v1.4-datadir-flock` — no lock between processes on one data directory. Short design (test
-   sweep for double opens, Unix only, NFS).
+4. ~~`v1.4-datadir-flock`~~ ✅ **DONE 2026-10-22 (#694 design, #695)** — the constructor takes
+   `flock` on `<DataDir>/LOCK`; a second open fails with `ErrDataDirLocked`, and the kernel
+   releases the lock on a crash. Two follow-ups are unseeded (see "Unseeded gaps").
 5. `v1.4-tenant-quota-enforcement` — quotas are stored and never checked.
 6. ~~`v1.4-telemetry-stop-waits`~~ ✅ **DONE 2026-10-21 (#671)** — `Stop` waits for the report
    loop; the tests' handler counters raced on `main` and are atomic now.
@@ -119,8 +122,13 @@ the ADR's own risk section names. Ranked above Track S items 3+ because each is 
 3. ~~`v1.4-cypher-create-uniqueness-rules`~~ ✅ **DONE 2026-10-21 (#680)** — a refused `CREATE`
    stops the query; a `MERGE` whose create loses a race matches once more; `/query` answers 409.
    The concurrent-`MERGE` duplicate reproduced in 3 of 20 runs before the fix.
-4. `v1.4-tx-batch-uniqueness-rules` (seeded in #686) — the storage `Batch` and
-   `Transaction.Commit` skip the registry on create and update; the last write paths that do.
+4. ~~`v1.4-tx-batch-uniqueness-rules`~~ ✅ **DONE 2026-10-22 (#692, #698)** — the storage `Batch`
+   and `Transaction.Commit` check the registry on create and update; a transaction update does not
+   conflict with its own node (#698).
+5. ✅ **DONE 2026-10-22 (#703, #706)** — not tracked as coord tasks. `RegisterUniquenessRule`
+   refuses a second rule on a held key (409, ADR 0001 amendment, the user's call on the 00:07
+   handoff's open question); `POST /admin/uniqueness-rules` answers 500, not 400, when `rules.json`
+   cannot be written, and no longer sends the data-directory path to the client.
 
 ### Track E — encryption at rest
 
@@ -133,7 +141,8 @@ the ADR's own risk section names. Ranked above Track S items 3+ because each is 
 
 ~~`implicit-grouping`~~ (#664) → ~~`lock-panic-safety`~~ (#665) → ~~release v1.8.0~~ (2026-10-21)
 → ~~node-upsert spec~~ (#676) → ~~node upsert~~ (#677, #683, #684) → ~~Track U items 2–3~~
-(#685, #680) → Track U item 4 → `datadir-flock` → Track E → Track W.
+(#685, #680) → ~~Track U item 4~~ (#692) → ~~`datadir-flock`~~ (#695) → ~~release v1.10.0~~
+(2026-10-22) → **Track E** → Track W.
 
 Parallel-safe at any time: the small Track S items and the Ulysses asks.
 
@@ -141,8 +150,17 @@ Parallel-safe at any time: the small Track S items and the Ulysses asks.
 
 ## Unseeded gaps
 
-None. #663 seeded all three that were listed here: `v1.4-cypher-with-undefined-variable`,
-`v1.4-float-index-nan-negative-zero` and `v1.4-encryption-key-zeroing`.
+#663 seeded the three that were listed here before (`v1.4-cypher-with-undefined-variable`,
+`v1.4-float-index-nan-negative-zero`, `v1.4-encryption-key-zeroing`), and #691 seeded five more
+(`v1.4-stream-nodes-id-gaps`, closed by #697, and four API and Go-client items).
+
+Two found on 2026-10-22 are not seeded, because no coord session was live. File:line is in
+`docs/internals/design/SESSION_HANDOFF_2026-10-22-0007Z.md`, "New gaps":
+
+- `Snapshot()` and `CompactWAL()` do not refuse after `Close`, and `Close` does not take
+  `compactMu`, so a handler that outlives shutdown can write `snapshot.*` after the directory lock
+  is released (#695 now promises one writer per directory).
+- `graphdb-admin backup restore --into` takes no directory lock.
 
 ## Corrections to older claims
 
