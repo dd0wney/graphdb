@@ -124,7 +124,7 @@ func TestUniquenessRules_OversizedFileRefusesOpen(t *testing.T) {
 func TestUniquenessRules_UnknownVersionRefusesOpen(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "rules.json")
-	doc := `{"version":2,"rules":[]}`
+	doc := `{"version":3,"rules":[]}`
 	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
 		t.Fatalf("seed rules.json: %v", err)
 	}

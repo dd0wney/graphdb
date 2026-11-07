@@ -348,6 +348,7 @@ func (gs *GraphStorage) loadFromDisk() error {
 		if gs.encryptionEngine != nil {
 			if decrypted, derr := gs.encryptionEngine.Decrypt(data); derr == nil {
 				data = decrypted
+				gs.encryptionKeyProven = true
 			}
 			// derr != nil → not our ciphertext → genuine legacy plaintext; keep data.
 		}
@@ -361,6 +362,7 @@ func (gs *GraphStorage) loadFromDisk() error {
 			return fmt.Errorf("failed to decrypt snapshot: %w", err)
 		}
 		data = decrypted
+		gs.encryptionKeyProven = true
 	}
 
 	var snapshot struct {
@@ -507,11 +509,30 @@ func (gs *GraphStorage) loadFromDisk() error {
 
 // SetEncryption sets the encryption engine and key manager for the storage.
 // Uses typed interfaces for compile-time safety.
-func (gs *GraphStorage) SetEncryption(engine encryption.EncryptDecrypter, keyManager encryption.KeyProvider) {
+//
+// It writes rules.json again in the same call, sealed under the new engine, or
+// as version 1 when engine is nil, so the registry never stays under the old
+// key. The write comes first: when it fails, SetEncryption returns the error
+// and changes nothing, so the engine, rules.json and memory stay consistent.
+// The snapshot is not written here. The next snapshot or Close writes it under
+// the new engine (json_snapshot_clean.go).
+//
+// Lock order is rulesMu, then gs.mu, as in every rules.json write.
+func (gs *GraphStorage) SetEncryption(engine encryption.EncryptDecrypter, keyManager encryption.KeyProvider) error {
+	gs.rulesMu.Lock()
+	defer gs.rulesMu.Unlock()
+	if err := gs.rewriteUniquenessRulesForEngine(engine); err != nil {
+		return fmt.Errorf("set encryption: %w", err)
+	}
+
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 	gs.encryptionEngine = engine
 	gs.keyManager = keyManager
+	// The caller supplied this key for the snapshot the next Close writes, so
+	// rules.json and the snapshot now agree on it.
+	gs.encryptionKeyProven = engine != nil
+	return nil
 }
 
 // Close performs cleanup

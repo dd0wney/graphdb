@@ -182,7 +182,7 @@ If you add a third partitioned structure, mirror this exactly. Don't re-invent.
 
 ### Snapshot format stability
 
-`rules.json` (ADR 0001, the uniqueness-rules registry, `pkg/storage/uniqueness_rules.go`) is a **third** on-disk artefact in the same data directory, with its own `version` field (1) independent of both snapshot formats below — changing the registry's shape never bumps a snapshot version, and vice versa.
+`rules.json` (ADR 0001, the uniqueness-rules registry, `pkg/storage/uniqueness_rules.go`) is a **third** on-disk artefact in the same data directory, with its own `version` field (1; an encrypted store writes version 2, sealed with the store's engine) independent of both snapshot formats below — changing the registry's shape never bumps a snapshot version, and vice versa.
 
 There are **two** on-disk snapshot formats:
 

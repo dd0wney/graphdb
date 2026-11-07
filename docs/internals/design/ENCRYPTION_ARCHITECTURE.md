@@ -339,11 +339,10 @@ file in the data directory for each marker, raw and base64. It covers the defaul
 config (mmap falls back to JSON under encryption), JSON, JSON with batching and
 compression, and JSON with disk-backed edges, each after `Close` and after a
 simulated crash. The same writes on an unencrypted store are its positive control.
-No marker appears anywhere except:
-
-- `rules.json` — the uniqueness-rule registry (ADR 0001) holds the rule name, label
-  and property key in plaintext. Owned by coord `v1.4-encrypt-uniqueness-rules-file`,
-  which removes the test's exception for this file.
+No marker appears anywhere, and the test holds no exception. `rules.json` (the
+uniqueness-rule registry, ADR 0001) is sealed since coord
+`v1.4-encrypt-uniqueness-rules-file`: an encrypted store writes version 2, and a
+version 1 file is sealed at open. The test's `plaintextByDesign` map is empty.
 
 The test searches for names and values, not structure. These hold structure in
 plaintext by design:
