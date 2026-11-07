@@ -98,21 +98,30 @@ type nodeBatch struct {
 // returns the nodes created so far alongside the error. The deferred unlock
 // matters: see createNodeUnderLock.
 func (gs *GraphStorage) createNodesUnderLock(tenantID string, specs []NodeSpec) (nodeBatch, error) {
-	b := nodeBatch{
-		ids:     make([]uint64, 0, len(specs)),
-		created: make([]*Node, 0, len(specs)),
-	}
+	b := nodeBatch{ids: make([]uint64, 0, len(specs))}
 
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 	panicPoint("CreateNodesWithTenant")
+	// The batch returns only IDs, so a clone is owed only to an observer. Read
+	// under gs.mu, which AddObserver also takes, so the answer holds for the
+	// whole batch. An observer registered after the unlock misses this batch;
+	// observers are registered at startup (see AddObserver).
+	notify := len(gs.observers) > 0
+	if notify {
+		b.created = make([]*Node, 0, len(specs))
+	}
 	for _, s := range specs {
-		node, wp, vps, err := gs.createNodeLocked(tenantID, s.Labels, s.Properties)
+		node, wp, vps, err := gs.createLiveNodeLocked(tenantID, s.Labels, s.Properties)
 		if err != nil {
 			return b, err
 		}
 		b.ids = append(b.ids, node.ID)
-		b.created = append(b.created, node)
+		if notify {
+			// Cloned here, under the lock: after the unlock a concurrent
+			// update could change the live node during the copy.
+			b.created = append(b.created, node.Clone())
+		}
 		if wp != nil {
 			b.pendings = append(b.pendings, wp)
 		}
@@ -254,6 +263,18 @@ func (gs *GraphStorage) createNodeUniqueUnderLock(
 // handle is nil and the write is already durable on return. The handle is nil
 // on any error path.
 func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, properties map[string]Value) (*Node, *wal.Pending, []vectorInsertPlan, error) {
+	node, walPending, vectorPlans, err := gs.createLiveNodeLocked(tenantID, labels, properties)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return node.Clone(), walPending, vectorPlans, nil
+}
+
+// createLiveNodeLocked is createNodeLocked without the clone: it returns the
+// live shard pointer, which the caller may read only while it holds gs.mu. A
+// bulk create that returns only IDs uses it so it clones a node only for an
+// observer.
+func (gs *GraphStorage) createLiveNodeLocked(tenantID string, labels []string, properties map[string]Value) (*Node, *wal.Pending, []vectorInsertPlan, error) {
 	start := time.Now()
 
 	// Check if storage is closed
@@ -299,7 +320,7 @@ func (gs *GraphStorage) createNodeLocked(tenantID string, labels []string, prope
 	walPending := gs.enqueueWAL(wal.OpCreateNode, node)
 
 	gs.recordOperation("create_node", "success", start)
-	return node.Clone(), walPending, vectorPlans, nil
+	return node, walPending, vectorPlans, nil
 }
 
 // persistNodeLocked publishes a fully-built node (ID, TenantID, Labels,
