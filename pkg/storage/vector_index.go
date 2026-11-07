@@ -90,6 +90,35 @@ func (vi *VectorIndex) CreateIndexForTenant(
 	return nil
 }
 
+// clearAll removes every vector but keeps every index definition, for
+// DeleteAllNodes. That call exists for a full reload, so a caller that
+// repopulates must find its vector indexes still there and searchable.
+//
+// It mutates in place under vi.mu rather than letting the caller swap
+// gs.vectorIndex for a new value: VectorSearch and its tenant variant read
+// gs.vectorIndex without gs.mu, so a pointer swap under gs.mu would race with
+// them. The replacement map is built in full before it is installed, so a
+// failed rebuild leaves the old index whole rather than half emptied.
+func (vi *VectorIndex) clearAll() error {
+	vi.mu.Lock()
+	defer vi.mu.Unlock()
+
+	rebuilt := make(map[tenantid.TenantID]map[string]*vector.HNSWIndex, len(vi.indexes))
+	for tid, inner := range vi.indexes {
+		fresh := make(map[string]*vector.HNSWIndex, len(inner))
+		for prop, idx := range inner {
+			empty, err := vector.NewHNSWIndex(idx.Dimensions(), idx.M(), idx.EfConstruction(), idx.Metric())
+			if err != nil {
+				return fmt.Errorf("rebuild vector index (tenant %q, prop %q): %w", tid, prop, err)
+			}
+			fresh[prop] = empty
+		}
+		rebuilt[tid] = fresh
+	}
+	vi.indexes = rebuilt
+	return nil
+}
+
 // AddVector adds a vector to the default-tenant index. Equivalent to
 // AddVectorForTenant(tenantid.Default, ...).
 func (vi *VectorIndex) AddVector(propertyName string, nodeID uint64, vec []float32) error {

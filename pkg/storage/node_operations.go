@@ -1130,6 +1130,15 @@ func (gs *GraphStorage) clearAllUnderLock() error {
 	gs.tenantNodesByLabel = make(map[tenantid.TenantID]labelIndex)
 	gs.tenantEdgesByType = make(map[tenantid.TenantID]labelIndex)
 	gs.tenantStats = make(map[tenantid.TenantID]*TenantStats)
+	gs.tenantNodeIDs = make(map[tenantid.TenantID]map[uint64]struct{})
+	gs.tenantEdgeIDs = make(map[tenantid.TenantID]map[uint64]struct{})
+	// Atomic stores, not assignment: the counters are read and bumped with
+	// atomics by paths that do not take gs.mu (GetStatistics among them).
+	atomic.StoreUint64(&gs.stats.NodeCount, 0)
+	atomic.StoreUint64(&gs.stats.EdgeCount, 0)
+	if err := gs.vectorIndex.clearAll(); err != nil {
+		return fmt.Errorf("clear vector index: %w", err)
+	}
 	if gs.useEdgeCompression {
 		gs.compressedOutgoing = make(map[uint64]*CompressedEdgeList)
 		gs.compressedIncoming = make(map[uint64]*CompressedEdgeList)
