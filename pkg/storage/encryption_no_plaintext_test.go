@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/dd0wney/graphdb/pkg/wal"
 )
 
 // An encrypted store must write none of the caller's names or values to
@@ -87,12 +89,13 @@ func findNoPlaintextMarkers(t *testing.T, dir string, m noPlaintextMarkers) []ma
 		if err != nil {
 			return err
 		}
-		for kind, marker := range m {
-			forms := map[string]string{"raw": marker, "base64": base64.StdEncoding.EncodeToString([]byte(marker))}
-			for form, needle := range forms {
-				if bytes.Contains(data, []byte(needle)) {
-					hits = append(hits, markerHit{file: rel, kind: kind, form: form})
-				}
+		hits = append(hits, markersIn(data, rel, "", m)...)
+		// snappy can split a marker across a back-reference, so a compressed
+		// WAL is also searched after decompression. See
+		// TestFindNoPlaintextMarkers_SeesThroughWALCompression.
+		if d.Name() == "wal_compressed.log" {
+			for _, rec := range decompressedWALRecords(t, filepath.Dir(path)) {
+				hits = append(hits, markersIn(rec, rel, "decompressed ", m)...)
 			}
 		}
 		return nil
@@ -101,6 +104,42 @@ func findNoPlaintextMarkers(t *testing.T, dir string, m noPlaintextMarkers) []ma
 		t.Fatalf("walk %s: %v", dir, err)
 	}
 	return hits
+}
+
+// markersIn reports each marker found in data, raw or base64.
+func markersIn(data []byte, file, formPrefix string, m noPlaintextMarkers) []markerHit {
+	var hits []markerHit
+	for kind, marker := range m {
+		forms := map[string]string{"raw": marker, "base64": base64.StdEncoding.EncodeToString([]byte(marker))}
+		for form, needle := range forms {
+			if bytes.Contains(data, []byte(needle)) {
+				hits = append(hits, markerHit{file: file, kind: kind, form: formPrefix + form})
+			}
+		}
+	}
+	return hits
+}
+
+// decompressedWALRecords returns the payload of every record in the
+// compressed WAL in walDir. Opening the WAL writes nothing to the file. A
+// record that does not decode fails the test: a search that skipped it would
+// report a store as clean without having read it.
+func decompressedWALRecords(t *testing.T, walDir string) [][]byte {
+	t.Helper()
+	cw, err := wal.NewCompressedWAL(walDir)
+	if err != nil {
+		t.Fatalf("open compressed WAL %s for the search: %v", walDir, err)
+	}
+	defer func() { _ = cw.Close() }()
+	entries, err := cw.ReadAll()
+	if err != nil {
+		t.Fatalf("decode compressed WAL %s for the search: %v", walDir, err)
+	}
+	recs := make([][]byte, 0, len(entries))
+	for _, e := range entries {
+		recs = append(recs, e.Data)
+	}
+	return recs
 }
 
 // plaintextByDesign names the files an encrypted store may leave in
