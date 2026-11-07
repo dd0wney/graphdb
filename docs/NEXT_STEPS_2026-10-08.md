@@ -37,6 +37,7 @@ the same PR as this file.
 | v1.10.0 | 2026-10-22 | Data-directory lock (#695), uniqueness rules in `Batch`/`Transaction` (#692, #698), `StreamNodes` ID gaps (#697), `-host` bind (#701) |
 | v1.11.0 | 2026-11-06 | `StorageConfig.Ephemeral` (#712), one uniqueness rule per key (#703), 500 on a registry write failure (#706) |
 | v1.11.1 | 2026-11-07 | `DeleteAllNodes` resets counts, tenant ID sets and vectors (#714); no WAL encode without a sink (#715); no bulk-create clone without an observer (#716) |
+| v1.12.0 | 2026-11-07 | Encrypted stores seal `rules.json`, and `Storage.SetEncryption` returns `error` (#721); `lsm` `GetStats` lock-order deadlock (#726) |
 
 A new embedding consumer, `oit-cyber/mapper` (session `mapper-6b`), drove most of the 2026-10-08
 findings. It pins v1.6.0 and moves to v1.7.0 next.
@@ -92,6 +93,10 @@ or spec before code; **S** a spike.
    - `v1.4-clear-property-index-definitions` — the clear keeps vector definitions but drops
      property ones; pick one rule.
    - `v1.4-clear-disk-backed-edges` — the clear never touches `gs.edgeStore`; probe first.
+10. ✅ **DONE 2026-11-07 (#726)** — not a coord task. `lsm.LSMStorage.GetStats` took `stats.mu`
+   then `mu`, while `flush` and `compact` take them in the opposite order, so a `GetStats` during a
+   flush could deadlock. Found while labelling the snare lock rule's findings (see "Static analysis
+   with snare" below); snare's lock-order rule now reports it before #726 and nothing after.
 
 ### Track W — WAL throughput and memory
 
@@ -149,24 +154,51 @@ the ADR's own risk section names. Ranked above Track S items 3+ because each is 
 
 1. ~~`v1.4-encryption-no-plaintext-test`~~ ✅ **DONE 2026-11-07 (#709)** — the acceptance check
    for the next item.
-2. `v1.4-encrypt-uniqueness-rules-file` — `rules.json` is plaintext in an encrypted store. **In
-   draft #721**: a review found three defects (a wrong key can seal the file when no snapshot or
-   WAL proves the key; `SetEncryption` leaves the file under the old key; a race on
-   `gs.encryptionEngine`). The user's calls (2026-11-07): with no proof of the key, keep version 1
-   and seal on the next open that proves it; `SetEncryption` rewrites `rules.json` under the new
-   engine.
+2. ~~`v1.4-encrypt-uniqueness-rules-file`~~ ✅ **DONE 2026-11-07 (#721, released in v1.12.0)** —
+   an encrypted store writes `rules.json` version 2, sealed with its engine. A version 1 file is
+   sealed only by an open that proves the key, and `SetEncryption` rewrites the file under the new
+   engine and now returns `error` (user-approved signature change; Go packages are outside the
+   stability policy).
 3. `v1.4-encryption-envelope-test-cannot-fail` — searches raw text; values are base64.
 4. `v1.4-encryption-key-zeroing` (seeded in #663) — no way to zero the engine key on Close.
+5. **D** `v1.4-encryption-key-check-artefact` (seeded in #723) — an encrypted store that holds no
+   ciphertext cannot prove a key at open: with a version 1 `rules.json`, no snapshot and no WAL, a
+   wrong key opens and its `Close` writes the snapshot under that key, locking out the right key.
+   `TestProbe_WrongKeyOpenThenCloseLocksOutRightKey` (#721) shows it and is skipped. Needs a design
+   (for example a sealed key-check file) and a format version. Next on the critical path.
+6. ~~`v1.4-encryption-no-plaintext-test-flake`~~ ✅ **DONE 2026-11-07 (#732)** — snappy in the
+   compressed WAL split a marker across a back-reference in about 3% of runs, so the raw search
+   missed data that was on disk. The search now also reads the decompressed records, which also
+   closes the same blind spot in the leak check.
 
 ### Critical path (proposed)
 
 ~~`implicit-grouping`~~ (#664) → ~~`lock-panic-safety`~~ (#665) → ~~release v1.8.0~~ (2026-10-21)
 → ~~node-upsert spec~~ (#676) → ~~node upsert~~ (#677, #683, #684) → ~~Track U items 2–3~~
 (#685, #680) → ~~Track U item 4~~ (#692) → ~~`datadir-flock`~~ (#695) → ~~release v1.10.0~~
-(2026-10-22) → ~~release v1.11.0~~ (2026-11-06) → ~~release v1.11.1~~ (2026-11-07) → **Track E**
-(#721) → Track W.
+(2026-10-22) → ~~release v1.11.0~~ (2026-11-06) → ~~release v1.11.1~~ (2026-11-07) → ~~Track E
+item 2~~ (#721) → ~~release v1.12.0~~ (2026-11-07) → **Track E item 5** (key-check design) → Track W.
 
 Parallel-safe at any time: the small Track S items and the Ulysses asks.
+
+### Static analysis with snare (added 2026-11-07)
+
+graphdb carries its own rules for the snare static analyser in `rules/snare/` (`make snare`,
+`make snare-selftest`; not a CI gate). The rules encode defect classes graphdb has already fixed,
+and the labelled corpus in `rules/snare/testdata/` comes from graphdb's fix history, so its
+labels are independent of the rule authors. Rules and engine fixes come from the snare session;
+graphdb commits a rule only after reading its measurement.
+
+- `go/lock-call-without-defer.star` (#725) — a call between `Lock` and an explicit `Unlock`. A
+  regression gate, not a defect finder: 0 of its findings on main are real. On the corpus, line
+  exact, with snare `0895313`: TP 19 / FP 29 / FN 22.
+- `go/lock-order-inversion.star` (#731) — two mutexes taken in both orders. Corpus TP 2 / FP 0 /
+  FN 0; it reports the #726 deadlock before the fix and nothing after.
+- Corpus (#727): 115 fixtures in three sets; the third (`graphdb-error-text-in-response`) has no
+  rule yet, because a taint rule cannot see the `errors.Is` guard of the #706 fix (snare needs
+  barrier guards).
+- Follow-ups: a CI job once snare publishes a release binary; label rule 3's findings once it
+  exists.
 
 ---
 
