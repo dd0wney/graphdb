@@ -2,6 +2,7 @@
 // Source: pkg/storage/persistence.go at b6fb6a4^, lines 48-207, function GraphStorage.snapshotWithBoundary.
 // Label: vulnerable.
 // Reason: The annotated line takes the lock through a mutex Lock call, then the section calls a function and releases the lock with an explicit unlock, so a panic in the call leaves the lock held.
+// Two sections are annotated: #665 fixed the gs.mu.Lock section, and #672 (d08c106) later fixed the gs.mu.RLock section.
 // Copied from graphdb (MIT licence, see LICENSE at the repository root).
 package fixture
 
@@ -50,6 +51,7 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 		gs.mu.Unlock()
 	}
 
+	// ruleid: graphdb-lock-call-without-defer
 	gs.mu.RLock()
 	boundary := gs.walLSNBarrieredLocked()
 
