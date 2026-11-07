@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **An encrypted store seals `rules.json`.** The uniqueness-rule registry was written in plaintext,
+  so rule names, labels and property keys were readable on disk and in a backup. An encrypted
+  store now writes version 2, `{"version":2,"sealed":"<base64>"}`, the version 1 document sealed
+  under the store's engine; an unencrypted store still writes version 1 byte for byte. A version 1
+  file is sealed only by an open that proves the key by decrypting a snapshot, a WAL entry or a
+  version 2 file, so a wrong key cannot seal it. A binary that includes ADR 0001 but not this
+  change refuses version 2 rather than opening with no rules (#721).
+
+### Changed
+- **`Storage.SetEncryption` returns `error`.** It now rewrites `rules.json` under the new engine
+  (version 1 for a nil engine) before it swaps the engine, and returns the write error with nothing
+  changed. Library code that implements `Storage` must add the return value; a caller that ignores
+  it still compiles. Go packages are outside `docs/STABILITY_POLICY.md` (#721).
+
 ## [1.11.1] - 2026-11-07
 
 A patch release. `DeleteAllNodes` now leaves a store that is the same as an empty one: it used to
