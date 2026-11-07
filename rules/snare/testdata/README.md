@@ -31,8 +31,8 @@ Each basename is unique across the corpus, because snare keys a finding by `<lan
 ### Set 1: `graphdb-lock-call-without-defer` (a rule exists)
 
 - Vulnerable: 30 functions from `b6fb6a4^` that PR #665 (commit `b6fb6a4`) changed from an explicit
-  unlock after a call to a deferred unlock. There are 39 annotations, one for each changed lock
-  section. The annotation is above the line that takes the lock.
+  unlock after a call to a deferred unlock. There are 40 annotations: one for each lock section that PR #665
+  changed, plus the `gs.mu.RLock` section of `snapshotWithBoundary`, which PR #672 fixed later. The annotation is above the line that takes the lock.
   - 20 functions use a mutex directly (`mu.Lock`, `mu.RLock` or `txWALBarrier.RLock`). This is the
     count of the snare author.
   - 10 more functions take a shard lock through the wrappers `lockShard` or `rlockShard`.
