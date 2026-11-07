@@ -56,6 +56,10 @@ func (gs *GraphStorage) replayEntry(entry *wal.Entry) error {
 	if !sealed && gs.encryptionEngine != nil {
 		gs.walReplaySawPlaintext = true
 	}
+	if sealed {
+		// openWALPayload returns sealed only after a successful decrypt.
+		gs.encryptionKeyProven = true
+	}
 	entry.Data = payload
 
 	switch entry.OpType {

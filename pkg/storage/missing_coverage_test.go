@@ -368,7 +368,9 @@ func TestSetEncryption(t *testing.T) {
 	mockKeyManager := &mockKeyProvider{}
 
 	// Set encryption
-	gs.SetEncryption(mockEngine, mockKeyManager)
+	if err := gs.SetEncryption(mockEngine, mockKeyManager); err != nil {
+		t.Fatalf("SetEncryption: %v", err)
+	}
 
 	// Verify it doesn't panic (actual encryption tested elsewhere)
 	t.Log("✓ SetEncryption test passed")

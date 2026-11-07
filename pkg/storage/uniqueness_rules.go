@@ -19,13 +19,17 @@ package storage
 // comment explains why both syncs are needed).
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 
+	"github.com/dd0wney/graphdb/pkg/encryption"
 	"github.com/dd0wney/graphdb/pkg/vfs"
 )
 
@@ -227,31 +231,81 @@ func (gs *GraphStorage) loadUniquenessRules() error {
 	gs.rulesMu.Lock()
 	gs.uniquenessRules = rules
 	gs.rulesFileWasPlaintext = wasPlaintext
+	gs.rulesFileExisted = true
 	gs.rulesMu.Unlock()
+	// A version 2 file decrypted with the configured engine, so the key is
+	// proven. Constructor-only write, before the store is shared.
+	if !wasPlaintext {
+		gs.encryptionKeyProven = true
+	}
 	return nil
 }
 
 // sealPlaintextRulesAfterOpen rewrites a version 1 rules.json sealed, when an
-// engine is configured and the registry is not empty. A version 1 file under
-// an engine would keep the rule names in plaintext until the next
-// registration, which may never come.
+// engine is configured, the registry is not empty and the open proved the
+// engine's key. A version 1 file under an engine would keep the rule names in
+// plaintext until the next registration, which may never come.
 //
 // The constructor calls this last, after the snapshot and the WAL decrypted
-// with the configured engine. Sealing at load time, before that proof, let an
-// open with the wrong key seal the registry under that key and then fail on
-// the snapshot, so the next open with the right key could not read rules.json.
-// A failure here fails the open: a store that cannot protect its registry
+// with the configured engine. Sealing before that proof let an open with the
+// wrong key seal the registry under that key and then fail on the snapshot,
+// so the next open with the right key could not read rules.json.
+//
+// When no artefact proved the key (no snapshot, no WAL entry, and a version 1
+// registry that nothing sealed), the file stays version 1 and a warning names
+// the reason. The next open that proves the key seals it.
+//
+// A failure to write fails the open: a store that cannot protect its registry
 // must not run as if it did.
 func (gs *GraphStorage) sealPlaintextRulesAfterOpen() error {
 	gs.rulesMu.Lock()
 	defer gs.rulesMu.Unlock()
-	if !gs.rulesFileWasPlaintext || gs.encryptionEngine == nil || len(gs.uniquenessRules) == 0 {
+	engine, proven := gs.rulesSealState()
+	if !gs.rulesFileWasPlaintext || engine == nil || len(gs.uniquenessRules) == 0 {
 		return nil
 	}
-	if err := gs.persistUniquenessRulesLocked(); err != nil {
+	if !proven {
+		log.Printf("WARNING: uniqueness rules: %s stays version 1 (plaintext): no snapshot or WAL entry decrypted with the configured key, so nothing proves the key. A later open that decrypts the snapshot seals it.",
+			uniquenessRulesPath(gs.dataDir))
+		return nil
+	}
+	if err := gs.writeUniquenessRulesLocked(engine); err != nil {
 		return fmt.Errorf("uniqueness rules: seal %s on open: %w", uniquenessRulesPath(gs.dataDir), err)
 	}
 	gs.rulesFileWasPlaintext = false
+	return nil
+}
+
+// rulesSealState reads the engine and the key-proven flag together, under
+// gs.mu.RLock, because SetEncryption writes both under gs.mu. The caller may
+// hold rulesMu: the lock order is rulesMu, then gs.mu, and no path takes
+// rulesMu while it holds gs.mu (see uniquenessRegistry). The engine returned
+// is nil when no engine is set.
+func (gs *GraphStorage) rulesSealState() (engine encryption.EncryptDecrypter, proven bool) {
+	gs.mu.RLock()
+	defer gs.mu.RUnlock()
+	return gs.encryptionEngine, gs.encryptionKeyProven
+}
+
+// rewriteUniquenessRulesForEngine writes rules.json again under engine, sealed,
+// or as version 1 when engine is nil. SetEncryption calls it before it swaps
+// the engine, so a failed write leaves the store unchanged. A store with no
+// rules and no rules.json writes nothing: there is no file to re-key.
+// Caller holds rulesMu.
+func (gs *GraphStorage) rewriteUniquenessRulesForEngine(engine encryption.EncryptDecrypter) error {
+	path := uniquenessRulesPath(gs.dataDir)
+	if len(gs.uniquenessRules) == 0 {
+		if _, err := gs.fs.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return fmt.Errorf("uniqueness rules: stat %s: %w", path, err)
+		}
+	}
+	if err := gs.writeUniquenessRulesLocked(engine); err != nil {
+		return err
+	}
+	gs.rulesFileWasPlaintext = engine == nil
 	return nil
 }
 
@@ -275,6 +329,10 @@ func (gs *GraphStorage) openUniquenessRulesFile(path string, data []byte) (doc u
 		}
 		var sealed uniquenessRulesSealedDocument
 		if err := json.Unmarshal(data, &sealed); err != nil {
+			var b64 base64.CorruptInputError
+			if errors.As(err, &b64) {
+				return doc, false, fmt.Errorf("uniqueness rules: %s has a sealed field that is not valid base64: %w", path, err)
+			}
 			return doc, false, fmt.Errorf("uniqueness rules: %s does not parse as JSON: %w", path, err)
 		}
 		plain, err := gs.encryptionEngine.Decrypt(sealed.Sealed)
@@ -304,6 +362,19 @@ func (gs *GraphStorage) openUniquenessRulesFile(path string, data []byte) (doc u
 // rulesMu for the duration, so two concurrent Register/Remove calls cannot
 // interleave writes to the same file.
 func (gs *GraphStorage) persistUniquenessRulesLocked() error {
+	engine, proven := gs.rulesSealState()
+	if engine != nil && !proven {
+		// Version 1 until an artefact proves the key: sealing now could lock
+		// out the right key (see sealPlaintextRulesAfterOpen).
+		engine = nil
+	}
+	return gs.writeUniquenessRulesLocked(engine)
+}
+
+// writeUniquenessRulesLocked writes the registry sealed with engine, or as
+// version 1 when engine is nil. The engine is a parameter and is never read
+// from gs here, so one write uses one value. Caller holds rulesMu.
+func (gs *GraphStorage) writeUniquenessRulesLocked(engine encryption.EncryptDecrypter) error {
 	rules := make([]UniquenessRule, 0, len(gs.uniquenessRules))
 	for _, r := range gs.uniquenessRules {
 		rules = append(rules, r)
@@ -314,8 +385,8 @@ func (gs *GraphStorage) persistUniquenessRulesLocked() error {
 	if err != nil {
 		return fmt.Errorf("uniqueness rules: marshal: %w", err)
 	}
-	if gs.encryptionEngine != nil {
-		if data, err = gs.sealUniquenessRules(data); err != nil {
+	if engine != nil {
+		if data, err = sealUniquenessRules(engine, data); err != nil {
 			return err
 		}
 	}
@@ -350,8 +421,8 @@ func (gs *GraphStorage) persistUniquenessRulesLocked() error {
 // sealUniquenessRules wraps the version 1 document in the version 2 envelope.
 // The version stays outside the seal so the loader can pick a path without
 // the key.
-func (gs *GraphStorage) sealUniquenessRules(plain []byte) ([]byte, error) {
-	sealed, err := gs.encryptionEngine.Encrypt(plain)
+func sealUniquenessRules(engine encryption.EncryptDecrypter, plain []byte) ([]byte, error) {
+	sealed, err := engine.Encrypt(plain)
 	if err != nil {
 		return nil, fmt.Errorf("uniqueness rules: encrypt: %w", err)
 	}

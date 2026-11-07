@@ -146,7 +146,11 @@ func TestUniquenessRules_SealedFileWithWrongKeyRefusesOpen(t *testing.T) {
 	}
 }
 
-func TestUniquenessRules_Version1UpgradedAtOpenWithEngine(t *testing.T) {
+// A version 1 file beside a plaintext snapshot is not sealed by the first open
+// with an engine: the plaintext snapshot does not prove the key. That open's
+// Close writes an encrypted snapshot, and the next open, which decrypts it,
+// seals the file.
+func TestUniquenessRules_Version1UpgradedOnTheOpenThatProvesTheKey(t *testing.T) {
 	dir := t.TempDir()
 	registerAndClose(t, jsonConfig(dir), sealedTestRule)
 	if v := rulesFileKeys(t, readRulesFile(t, dir))["version"]; string(v) != "1" {
@@ -158,10 +162,21 @@ func TestUniquenessRules_Version1UpgradedAtOpenWithEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open with engine: %v", err)
 	}
+	if v := rulesFileKeys(t, readRulesFile(t, dir))["version"]; string(v) != "1" {
+		t.Errorf("version after an open that proved no key = %s, want 1", v)
+	}
+	if err := gs.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	gs, err = NewGraphStorageWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("second open: %v", err)
+	}
 	// Read before any registration: the upgrade must not wait for a write.
 	data := readRulesFile(t, dir)
 	if v := rulesFileKeys(t, data)["version"]; string(v) != "2" {
-		t.Errorf("version after open = %s, want 2: %s", v, data)
+		t.Errorf("version after the open that decrypted the snapshot = %s, want 2: %s", v, data)
 	}
 	if bytes.Contains(data, []byte(sealedTestRule.Name)) {
 		t.Errorf("plaintext rule name still on disk after open: %s", data)

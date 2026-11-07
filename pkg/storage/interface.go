@@ -147,7 +147,7 @@ type Storage interface {
 	// Global/Admin operations
 	GetAllLabels() []string
 	GetAllNodesAcrossTenants() []*Node
-	SetEncryption(engine encryption.EncryptDecrypter, keyManager encryption.KeyProvider)
+	SetEncryption(engine encryption.EncryptDecrypter, keyManager encryption.KeyProvider) error
 	Snapshot() error
 
 	// Observer registration (S11 / R2.1). AddObserver is typically called

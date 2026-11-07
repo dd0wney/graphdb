@@ -686,7 +686,8 @@ func (gs *BTreeGraphStorage) AddObserver(obs NodeObserver) {}
 // SetEncryption is a no-op: at-rest encryption for the BTree backend is
 // out of scope for C2 (the in-memory backend's encryption integration is
 // the canonical path).
-func (gs *BTreeGraphStorage) SetEncryption(engine encryption.EncryptDecrypter, keyManager encryption.KeyProvider) {
+func (gs *BTreeGraphStorage) SetEncryption(engine encryption.EncryptDecrypter, keyManager encryption.KeyProvider) error {
+	return nil
 }
 
 // Snapshot persists ID counters and flushes the underlying B+Tree.

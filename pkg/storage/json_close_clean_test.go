@@ -274,7 +274,9 @@ func TestJSONClose_SetEncryptionRewritesSnapshot(t *testing.T) {
 
 	gs := openJSON(t, cfg)
 	engine := testEncryptionEngine(t)
-	gs.SetEncryption(engine, &mockKeyProvider{})
+	if err := gs.SetEncryption(engine, &mockKeyProvider{}); err != nil {
+		t.Fatalf("SetEncryption: %v", err)
+	}
 	if err := gs.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}

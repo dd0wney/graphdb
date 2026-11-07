@@ -351,6 +351,11 @@ func NewGraphStorageWithConfig(config StorageConfig) (*GraphStorage, error) {
 			return nil, fmt.Errorf("failed to purge plaintext WAL entries after enabling encryption: %w", err)
 		}
 	}
+	// A store with no snapshot, no WAL entry and no rules.json holds nothing
+	// that a key could contradict, so the configured key defines it.
+	if gs.encryptionEngine != nil && !gs.rulesFileExisted && gs.walReplayedEntries == 0 && os.IsNotExist(loadErr) {
+		gs.encryptionKeyProven = true
+	}
 	if err := gs.sealPlaintextRulesAfterOpen(); err != nil {
 		return nil, err
 	}

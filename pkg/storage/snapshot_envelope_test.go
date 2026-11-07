@@ -34,7 +34,9 @@ func writeSnapshotToDir(t *testing.T, dir string, engine *encryption.Engine) []b
 		t.Fatalf("NewGraphStorage: %v", err)
 	}
 	if engine != nil {
-		gs.SetEncryption(engine, &mockKeyProvider{})
+		if err := gs.SetEncryption(engine, &mockKeyProvider{}); err != nil {
+			t.Fatalf("SetEncryption: %v", err)
+		}
 	}
 	if _, err := gs.CreateNode([]string{"EnvelopeMarker"}, map[string]Value{
 		"name": StringValue("envelope-roundtrip"),

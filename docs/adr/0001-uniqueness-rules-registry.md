@@ -263,17 +263,37 @@ names, labels and property keys. An encrypted store now writes version 2:
 engine applied to the version 1 document. An unencrypted store still writes
 version 1, byte for byte as before.
 
-A version 1 file is upgraded at open: when an engine is configured and the
-registry is not empty, the constructor rewrites the file sealed, and the open
-fails if that rewrite fails. A store with no new registration therefore keeps
-no plaintext on disk. The rewrite is the constructor's last step, after the
-snapshot and the WAL decrypted with the configured engine: an open with the
-wrong key fails before it, and leaves the version 1 file as it was, so the next
-open with the right key still reads it.
+A version 1 file is upgraded at open only when the open has proved the key.
+The constructor rewrites the file sealed, as its last step, when an engine is
+configured, the registry is not empty, and the configured engine decrypted real
+ciphertext of this store: the snapshot, a WAL entry, or a version 2
+`rules.json`. If the rewrite fails, the open fails.
+
+When nothing proved the key (for example a version 1 file with no snapshot and
+no WAL entry, or a plaintext snapshot), the file stays version 1 and the open
+logs a warning that names the reason. The next open that proves the key seals
+it. Every other write of `rules.json` follows the same rule: it writes version 2
+only when the key is proven, and version 1 otherwise. A fresh directory with no
+snapshot, no WAL entry and no `rules.json` has nothing to contradict, so its
+configured key counts as proven.
+
+A wrong-key open can still succeed when nothing is sealed and nothing proves
+the key. Such an open fails before the rewrite only when the snapshot, a WAL
+entry or a version 2 `rules.json` is present to reject the key. When it
+succeeds, it does not seal the file, so a later open with the right key still
+reads the version 1 file. That later open can still fail if the wrong-key open
+closed cleanly, because its `Close` writes a snapshot under the wrong key. That
+sequence exists without the sealed file and this amendment does not fix it.
+
+`SetEncryption` writes `rules.json` again in the same call: sealed under the
+new engine, or as version 1 when the engine is nil. It returns the error when
+that write fails, and it changes nothing in that case.
 
 A version 2 file opened with no engine refuses the open, and a wrong key
-refuses it too. A binary older than this change reads only version 1, so it
-refuses to open an encrypted store whose `rules.json` is version 2.
+refuses it too. A binary that includes ADR 0001 reads only version 1, so it
+refuses to open an encrypted store whose `rules.json` is version 2. A binary
+from before ADR 0001 has no registry code and does not read `rules.json` at
+all, so it does not refuse: it opens the store with no rules.
 
 ## References
 
