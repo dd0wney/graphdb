@@ -2,6 +2,7 @@
 // Source: pkg/lsm/lsm.go at b9bc9d2, lines 226-252, function LSMStorage.GetStats.
 // Label: safe.
 // Reason: A human labelled the finding on this function as not a hazard (RULE-FALSE-POSITIVE): the matched call is lsm.mu.RLock of a second mutex.
+// It is safe for graphdb-lock-call-without-defer, but it is a true case of graphdb-lock-order-inversion: with lockmain_LSMStorage_compact.go in this directory it forms the stats.mu/mu cycle that #726 fixed.
 // Copied from graphdb (MIT licence, see LICENSE at the repository root).
 package fixture
 
@@ -9,6 +10,7 @@ package fixture
 func (lsm *LSMStorage) GetStats() LSMStatsSnapshot {
 	// Get mutex-protected stats
 	lsm.stats.mu.Lock()
+	// ruleid: graphdb-lock-order-inversion
 	lsm.mu.RLock()
 	memTableSize := lsm.memTable.Size()
 	ssTableCount := lsm.countSSTables()
