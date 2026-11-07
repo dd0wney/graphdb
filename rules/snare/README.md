@@ -32,5 +32,21 @@ The two misses (`CreateNodesWithTenant`, `CreateEdgesWithTenant`) call inside a 
 between `Lock` and `Unlock`. The rule sees only a call that is a statement in the same block as
 the `Lock`; a call in a nested block or inside a larger expression is a known limit.
 
-The 20 functions flagged on main are not yet labelled real or intentional. Nine are in
-`pkg/vfs/vfstest`.
+#### Labels on main (`b9bc9d2`, 21 findings in 20 functions, 2026-11-07)
+
+Each finding was labelled by reading the call and its callee. **None is a real hazard**, so on
+main the rule is a regression gate, not a defect finder:
+
+| Label | Findings | Notes |
+|---|---|---|
+| Safe | 10 | The call cannot panic in practice: an atomic add, a field assignment, a map read, a `close` behind `sync.Once`, or a constructor before the store is shared. |
+| Test support, safe | 9 | `pkg/vfs/vfstest`, which only `_test.go` files import. |
+| Rule false positive | 2 | `lsm.go:229` counts `lsm.mu.RLock` of a second mutex as the call; `lsm_workers.go:56` pairs a `Lock` with an `Unlock` from a later section. |
+
+Three `VectorIndex` findings (`AddVectorForTenant`, `SearchForTenant`, `RemoveVectorForTenant`)
+release the read lock before the slow HNSW call on purpose. A `defer` there would hold the lock
+across the search.
+
+Rule defects reported to snare: a `Lock`/`Unlock` call counts as the call; the `...` gaps let a
+`Lock` pair with an `Unlock` from a later section; the reported line is the start of the block,
+not the `Lock`.
