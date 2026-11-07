@@ -2,7 +2,9 @@
 
 **Status:** proposal / living planning doc. Sketches the minor-version line from the
 v1.0.0 GA to the next major (v2.0.0).
-**Current release:** `v1.11.1` (2026-11-07, GPG-signed), a patch: `DeleteAllNodes` now resets
+**Current release:** `v1.12.0` (2026-11-07, GPG-signed). An encrypted store seals `rules.json`,
+`Storage.SetEncryption` returns `error`, and a lock-order deadlock in `lsm` `GetStats` is fixed.
+`v1.11.1` (2026-11-07) was a patch: `DeleteAllNodes` now resets
 the counts, the tenant ID sets and the vectors, and a large bulk create into a store with no WAL
 uses about a third less memory. `v1.11.0` (2026-11-06) added `StorageConfig.Ephemeral` for a
 scratch store that writes no WAL and no snapshot, and made the uniqueness-rule registry refuse a second
