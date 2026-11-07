@@ -27,11 +27,16 @@ with `_test.go` files removed, compared by function name:
 
 | Revision | Functions flagged | Of the 20 functions #665 fixed |
 |---|---|---|
-| `b6fb6a4^` (before #665) | 37 | 18 flagged |
-| `b9bc9d2` (main) | 20 | 0 flagged |
+| `b6fb6a4^` (before #665) | 35 | 17 flagged |
+| `b9bc9d2` (main) | 19 | 0 flagged |
 
-The two misses (`CreateNodesWithTenant`, `CreateEdgesWithTenant`) call inside a `for` loop
-between `Lock` and `Unlock`. The rule sees only a call that is a statement in the same block as
+These numbers are for the current rule, which does not count a `Lock`, `Unlock`, `RLock` or
+`RUnlock` as the call. The first version counted them, and it flagged 37 and 20 functions and 18
+of the 20. One of those 18, `Transaction.Commit`, matched only because an `Unlock` counted as
+the call: its real calls are inside `if` and `for` blocks.
+
+The three misses (`CreateNodesWithTenant`, `CreateEdgesWithTenant`, `Transaction.Commit`) all
+call inside a nested block between `Lock` and `Unlock`. The rule sees only a call that is a statement in the same block as
 the `Lock`; a call in a nested block or inside a larger expression is a known limit.
 
 #### Labels on main (`b9bc9d2`, 21 findings in 20 functions, 2026-11-07)
@@ -45,10 +50,13 @@ main the rule is a regression gate, not a defect finder:
 | Test support, safe | 9 | `pkg/vfs/vfstest`, which only `_test.go` files import. |
 | Rule false positive | 2 | `lsm.go:229` counts `lsm.mu.RLock` of a second mutex as the call; `lsm_workers.go:56` pairs a `Lock` with an `Unlock` from a later section. |
 
+The current rule no longer reports the two false positives, so it flags 19 findings on main, and
+none of them is a real hazard.
+
 Three `VectorIndex` findings (`AddVectorForTenant`, `SearchForTenant`, `RemoveVectorForTenant`)
 release the read lock before the slow HNSW call on purpose. A `defer` there would hold the lock
 across the search.
 
-Rule defects reported to snare: a `Lock`/`Unlock` call counts as the call; the `...` gaps let a
-`Lock` pair with an `Unlock` from a later section; the reported line is the start of the block,
-not the `Lock`.
+Rule defects reported to snare: a `Lock`/`Unlock` call counted as the call (fixed here); the
+`...` gaps let a `Lock` pair with an `Unlock` from a later section; the reported line is the
+start of the block, not the `Lock`; a call in a nested block is not seen.

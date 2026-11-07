@@ -21,8 +21,14 @@ NOT_CALLS = [
     "float32", "float64",
 ]
 
+# A Lock or Unlock of any mutex is the section's edge, not a call inside it.
+# Matching them paired one mutex's Lock with a second mutex's RLock as the call.
+LOCK_METHODS = ["Lock", "Unlock", "RLock", "RUnlock"]
+
 def is_call(b):
     f = b["F"].text
+    if f.split(".")[-1] in LOCK_METHODS:
+        return False
     return f not in NOT_CALLS and not f.startswith("[]") and not f.startswith("map[")
 
 RULES = [
