@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-11-07
+
+A minor release. An encrypted store now seals the uniqueness-rule registry (`rules.json`), which
+was the last plaintext file in its data directory, and `Storage.SetEncryption` returns `error` so
+that a failed rewrite of that file reaches the caller. It also fixes a lock-order deadlock in
+`lsm.LSMStorage.GetStats`. No REST, GraphQL, CLI or snapshot-format change; `rules.json` gains a
+version 2 that only an encrypted store writes. Within the 1.x promise in
+`docs/STABILITY_POLICY.md`, which does not cover the Go packages.
+
 ### Security
 - **An encrypted store seals `rules.json`.** The uniqueness-rule registry was written in plaintext,
   so rule names, labels and property keys were readable on disk and in a backup. An encrypted
@@ -956,7 +965,8 @@ Low backlog from the 2026-06-10 security re-audit (#371), across Waves 1–3.
 - 100x concurrency improvement
 - 650x faster LSM read performance
 
-[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.11.1...HEAD
+[Unreleased]: https://github.com/dd0wney/graphdb/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/dd0wney/graphdb/compare/v1.11.1...v1.12.0
 [1.11.1]: https://github.com/dd0wney/graphdb/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/dd0wney/graphdb/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/dd0wney/graphdb/compare/v1.9.0...v1.10.0
