@@ -537,6 +537,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "test: TestEncryptedStore_WritesNoPlaintext/json-batching-compression/crash (pkg/storage/encryption_no_plaintext_test.go, #709) fails in about 2.5 percent of runs, 5 of 200 on main at 1ddd131. Each failure is the plaintext control at :213: the edgePropertyKey or edgePropertyValue marker is not on disk at the crash point, so the test cannot prove its search works. Find why the batched compressed WAL sometimes has no edge record at the crash point, then make the control deterministic. Acceptance: 1000 runs with -count=1000 pass, and the control can still fail when the marker is absent. Read at 1ddd131"
+    },
+    {
+      "id": "v1.4-set-encryption-live-store",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: GraphStorage.SetEncryption is unsafe on a store that holds data. (1) WAL entries after the call are sealed under the new key (sealWALPayload uses the engine at write time) while earlier ones stay under the old key, so a crash before the next snapshot leaves a WAL that neither key replays. (2) The snapshot stays under the old key until the next snapshot or Close. (3) No mmap code reads encryptionEngine, so on an mmap store (the default) SetEncryption then Close writes a plaintext snapshot.mmap and the next open with the key refuses the directory. Only tests call it. Design needed: hold writers out across a snapshot rewrite, a WAL boundary, rules.json, keycheck.json and the engine swap, and refuse or convert an mmap store; or refuse SetEncryption on a store that holds data. Acceptance: a crash test after SetEncryption to an unrelated key reopens with that key, seen red first. Found by the builder check of SPEC_encryption_key_check_2026-11-07.md. Read at 0ff4483"
     }
   ],
   "deps": [
