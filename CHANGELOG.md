@@ -16,8 +16,10 @@ A patch release. `DeleteAllNodes` now leaves a store that is the same as an empt
 keep the node and edge counts, the per-tenant ID sets and every vector, so `GetStatistics`
 reported the deleted graph and `VectorSearch` returned the IDs of deleted nodes. Two write-path
 changes cut memory on a large bulk create into a store with no WAL: a consumer measured peak RSS
-on one 882k-node, 889k-edge batch fall from 2,534 MB to 1,631 MB. No API changes; within the 1.x
-promise in `docs/STABILITY_POLICY.md`.
+on one 882k-node, 889k-edge batch fall from 2,569 MB on v1.11.0 to 1,713 MB on this tag (-33%,
+one run each; two runs of the base differed by 35 MB). On a corpus of small files peak RSS did
+not move beyond noise; only the GC cycle count fell. No API changes; within the 1.x promise in
+`docs/STABILITY_POLICY.md`.
 
 ### Fixed
 - **`DeleteAllNodes` resets the counters, the tenant ID sets and the vector index.** After a
