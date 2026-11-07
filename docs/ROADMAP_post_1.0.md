@@ -2,8 +2,10 @@
 
 **Status:** proposal / living planning doc. Sketches the minor-version line from the
 v1.0.0 GA to the next major (v2.0.0).
-**Current release:** `v1.11.0` (2026-11-06, GPG-signed). It adds `StorageConfig.Ephemeral` for a
-scratch store that writes no WAL and no snapshot, and the uniqueness-rule registry refuses a second
+**Current release:** `v1.11.1` (2026-11-07, GPG-signed), a patch: `DeleteAllNodes` now resets
+the counts, the tenant ID sets and the vectors, and a large bulk create into a store with no WAL
+uses about a third less memory. `v1.11.0` (2026-11-06) added `StorageConfig.Ephemeral` for a
+scratch store that writes no WAL and no snapshot, and made the uniqueness-rule registry refuse a second
 rule on a held key. `v1.10.0` (2026-10-22) locked a data directory against a second
 open, enforced the uniqueness rules in the storage `Batch` and `Transaction`, and added
 `graphdb-server -host`. `v1.9.0` (2026-10-21) added a node upsert on REST, the Go client and
