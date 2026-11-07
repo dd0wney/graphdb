@@ -1,7 +1,7 @@
 // Snare benchmark fixture, set 1, rule graphdb-lock-call-without-defer.
 // Source: pkg/storage/persistence.go at b6fb6a4, lines 65-217, function GraphStorage.snapshotWithBoundary.
-// Label: safe.
-// Reason: The function after PR #665. The lock section moved into a helper with a deferred unlock, or the explicit unlock is gone.
+// Label: vulnerable.
+// Reason: The function at b6fb6a4, after PR #665 and before PR #672. The gs.mu.RLock section calls functions and releases the lock with an explicit RUnlock. PR #672 (commit d08c106) moved that section into captureJSONSnapshot with a deferred RUnlock. The gs.mu.Lock section is not annotated because PR #665 already fixed it.
 // Copied from graphdb (MIT licence, see LICENSE at the repository root).
 package fixture
 
@@ -42,6 +42,7 @@ func (gs *GraphStorage) snapshotWithBoundary(skipIfClean bool) (uint64, error) {
 		gs.compressEdgeListsForSnapshot()
 	}
 
+	// ruleid: graphdb-lock-call-without-defer
 	gs.mu.RLock()
 	boundary := gs.walLSNBarrieredLocked()
 

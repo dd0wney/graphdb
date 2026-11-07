@@ -1,0 +1,23 @@
+# Labels of the 21 graphdb-lock-call-without-defer findings on graphdb main b9bc9d2.
+# lock_line	function	label	reason
+pkg/lsm/lsm.go:53	LSMStorage.Put	SAFE	BlockCache.Delete takes its own mutex with defer; map delete and list.Remove on its own element
+pkg/lsm/lsm.go:229	LSMStorage.GetStats	RULE-FALSE-POSITIVE	the matched call is lsm.mu.RLock of a second mutex
+pkg/lsm/lsm_workers.go:56	LSMStorage.flush	RULE-FALSE-POSITIVE	the Lock at :56 is paired with the Unlock at :116 across the Unlock at :66
+pkg/lsm/lsm_workers.go:82	LSMStorage.flush(error branch)	SAFE	MergeOlder handles nil and writes only to a map NewMemTable made
+pkg/lsm/lsm_workers.go:164	LSMStorage.compact	SAFE	the call is an atomic Add; index operations are guarded
+pkg/parallel/worker_pool.go:92	WorkerPool.Close	SAFE	close behind sync.Once on a channel the constructor makes
+pkg/query/stream_types.go:106	ResultStream.Close	SAFE	close behind sync.Once on a channel the constructor makes
+pkg/storage/persistence.go:315	GraphStorage.publishJSONSnapshot	SAFE	callee compares one uint64 and assigns one struct
+pkg/storage/storage.go:366	NewGraphStorageWithConfig	SAFE	constructor; gs is not shared yet
+pkg/storage/vector_index.go:139	VectorIndex.AddVectorForTenant	SAFE	lookupIndexLocked only reads maps; unlock is early on purpose
+pkg/storage/vector_index.go:173	VectorIndex.SearchForTenant	SAFE	same as AddVectorForTenant
+pkg/storage/vector_index.go:200	VectorIndex.RemoveVectorForTenant	SAFE	same as AddVectorForTenant
+pkg/vfs/vfstest/faults.go:183	FaultFS.Open	TEST-SUPPORT(SAFE)	record sets a bool field
+pkg/vfs/vfstest/faults.go:202	FaultFS.ReadDir	TEST-SUPPORT(SAFE)	same
+pkg/vfs/vfstest/faults.go:218	faultFile.Write	TEST-SUPPORT(SAFE)	counter, countOp and a switch
+pkg/vfs/vfstest/faults.go:230	faultFile.Sync	TEST-SUPPORT(SAFE)	same
+pkg/vfs/vfstest/faults.go:241	faultFile.Close	TEST-SUPPORT(SAFE)	same
+pkg/vfs/vfstest/role.go:154	RoleFS.FailNthOpForRole	TEST-SUPPORT(SAFE)	resetLocked assigns fields and makes maps
+pkg/vfs/vfstest/role.go:166	RoleFS.FailAtKey	TEST-SUPPORT(SAFE)	same
+pkg/vfs/vfstest/role.go:224	RoleFS.FailAllForRole	TEST-SUPPORT(SAFE)	same
+pkg/vfs/vfstest/role.go:241	RoleFS.FailAllOpForRole	TEST-SUPPORT(SAFE)	same

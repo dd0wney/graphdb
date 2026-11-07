@@ -19,6 +19,8 @@ Each basename is unique across the corpus, because snare keys a finding by `<lan
 |---|---|---|
 | `lock665_` | `vulnerable/` | A function from `b6fb6a4^`, before PR #665. |
 | `lock665fixed_` | `safe/` | The same function at `b6fb6a4`, after PR #665. |
+| `lock672_` | `vulnerable/` | `snapshotWithBoundary` at `b6fb6a4`. Its `gs.mu.RLock` section is the hazard that PR #672 (`d08c106`) fixed. |
+| `lock672fixed_` | `safe/` | `snapshotWithBoundary`, `captureJSONSnapshot` and `captureMmapSnapshot` at `d08c106`. |
 | `lock665helper_` | `safe/` | A helper that PR #665 added to hold the lock with a deferred unlock. |
 | `lockmain_` | `safe/` | A function from `b9bc9d2` that a human labelled as not a hazard. |
 | `lockorder_` and `lockorderfixed_` | `vulnerable/` and `safe/` | Set 2. |
@@ -35,11 +37,12 @@ Each basename is unique across the corpus, because snare keys a finding by `<lan
     count of the snare author.
   - 10 more functions take a shard lock through the wrappers `lockShard` or `rlockShard`.
     PR #665 fixed these too. The rule cannot see a wrapper call, so these are known misses.
-- Safe, fixed code: the same 30 functions at `b6fb6a4`. 29 helpers that PR #665 added are also safe
+- Vulnerable, PR #672: `lock672_GraphStorage_snapshotWithBoundary.go` has one annotation, on the `gs.mu.RLock` line. The `gs.mu.Lock` section is not annotated because PR #665 already fixed it. `snapshotWithBoundary` is also in the PR #665 pair. Both pairs stay.
+- Safe, fixed code: 29 of the same functions at `b6fb6a4`. `snapshotWithBoundary` has no `lock665fixed_` file, because that version still has the PR #672 hazard. 29 helpers that PR #665 added are also safe
   fixtures. They are the code that now holds each lock with `defer`.
 - Safe, hard negatives: 20 functions from `b9bc9d2` with 21 findings that a human labelled. None is a
   real hazard. `LSMStorage.flush` carries two labelled findings (`lsm_workers.go:56` and `:82`),
-  so it is one fixture. The label file is not part of this repository.
+  so it is one fixture. The labels are in `labels-main-b9bc9d2.tsv` in this directory.
 
 ### Set 2: `graphdb-lock-order-inversion` (no rule yet)
 
@@ -68,7 +71,7 @@ The labels come from the git history, not from snare output.
 - Set 1 vulnerable: `git diff b6fb6a4^ b6fb6a4 -- pkg/` plus a Go AST scan that lists each function
   whose count of explicit unlock statements falls, then a read of each function. The annotation goes
   on the lock line of each section that the commit changed, whatever line snare reports.
-- Set 1 hard negatives: each finding on `b9bc9d2` was labelled by reading the call and its callee.
+- Set 1 hard negatives (labels in `labels-main-b9bc9d2.tsv`): each finding on `b9bc9d2` was labelled by reading the call and its callee.
 - Sets 2 and 3: the defect and the fix commit are named in the commit history.
 
 Snare reports a finding at the first line of the matched block. For a function that is the `func`
