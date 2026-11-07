@@ -14,7 +14,9 @@ or did not finish. `_test.go` files are left out; test-support packages such as
 
 ## Rules
 
-### `lock-call-without-defer.star` — `graphdb-lock-call-without-defer`
+Rules are under `go/`, the `<rules>/<language>/` layout that `snare bench` expects.
+
+### `go/lock-call-without-defer.star` — `graphdb-lock-call-without-defer`
 
 A mutex section that calls a function between `Lock` and an explicit `Unlock`. A panic in the
 call leaves the lock held; the Cypher executor and `net/http` recover panics, so every later

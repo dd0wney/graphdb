@@ -10,7 +10,7 @@ set -euo pipefail
 
 SNARE="${SNARE:-snare}"
 target="${1:-pkg}"
-rules="${SNARE_RULES:-rules/snare}"
+rules="${SNARE_RULES:-rules/snare/go}"
 
 if ! command -v "$SNARE" >/dev/null 2>&1; then
   echo "snare-scan: snare binary not found (set SNARE=/path/to/snare); the scan did not run" >&2
