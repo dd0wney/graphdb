@@ -3,6 +3,7 @@
 
 .PHONY: help test test-verbose test-short test-race test-cover coverage-gate test-cover-html \
         contract-guard contract-guard-update contract-guard-selftest \
+        snare snare-selftest \
         lint-local lint-local-selftest \
         mutation mutation-selftest \
         dccc dccc-selftest \
@@ -189,6 +190,14 @@ contract-guard-update:
 ## contract-guard-selftest: Prove the contract guard can fail
 contract-guard-selftest:
 	@bash scripts/contract-guard-selftest.sh
+
+## snare: Run graphdb's snare rules (rules/snare/) over pkg/; not a CI gate yet (SNARE=/path/to/snare)
+snare:
+	@bash scripts/snare-scan.sh pkg
+
+## snare-selftest: Prove the snare scan can report a finding and a scan that did not run
+snare-selftest:
+	@bash scripts/snare-scan-selftest.sh
 
 ## consumer-drive-selftest: Prove a SKIP fails consumer-drive.sh under CI
 consumer-drive-selftest:
