@@ -35,6 +35,8 @@ the same PR as this file.
 | v1.8.0 | 2026-10-21 | Cypher implicit grouping (#664), lock release on a panic in storage (#665) |
 | v1.9.0 | 2026-10-21 | Node upsert (storage, REST, Go client), uniqueness rules on every REST, Cypher and update write path (Track U items 1–3), stream and telemetry fixes |
 | v1.10.0 | 2026-10-22 | Data-directory lock (#695), uniqueness rules in `Batch`/`Transaction` (#692, #698), `StreamNodes` ID gaps (#697), `-host` bind (#701) |
+| v1.11.0 | 2026-11-06 | `StorageConfig.Ephemeral` (#712), one uniqueness rule per key (#703), 500 on a registry write failure (#706) |
+| v1.11.1 | 2026-11-07 | `DeleteAllNodes` resets counts, tenant ID sets and vectors (#714); no WAL encode without a sink (#715); no bulk-create clone without an observer (#716) |
 
 A new embedding consumer, `oit-cyber/mapper` (session `mapper-6b`), drove most of the 2026-10-08
 findings. It pins v1.6.0 and moves to v1.7.0 next.
@@ -81,6 +83,15 @@ or spec before code; **S** a spike.
    loop; the tests' handler counters raced on `main` and are atomic now.
 7. `v1.4-vector-index-backfill-on-create`, `v1.4-label-propagation-cache-neighbours` — Ulysses asks.
 8. **D** `v1.4-subsecond-timestamps` — needs a new value type or format version.
+9. ✅ **DONE 2026-11-07 (#714)** — not a coord task. `DeleteAllNodes` left `stats`, the tenant ID
+   sets and every HNSW index behind, so `GetStatistics` reported the deleted graph and
+   `VectorSearch` returned deleted IDs. Vector index definitions now survive a clear. Three
+   follow-ups seeded in #717:
+   - `v1.4-clear-vector-insert-window` — a vector insert after the unlock can land in the emptied
+     index for a deleted node (silent wrong result; needs an epoch check or a lock change).
+   - `v1.4-clear-property-index-definitions` — the clear keeps vector definitions but drops
+     property ones; pick one rule.
+   - `v1.4-clear-disk-backed-edges` — the clear never touches `gs.edgeStore`; probe first.
 
 ### Track W — WAL throughput and memory
 
@@ -90,6 +101,10 @@ or spec before code; **S** a spike.
 2. `v1.4-bulk-create-group-commit` with `v1.4-storage-batch-atomic-commit` — one WAL group per bulk
    call; `Batch.Commit` keeps partial work on error.
 3. **D** `v1.4-mmap-close-memory` — Close builds the snapshot in memory, about 0.75 KB per record.
+4. ✅ **DONE 2026-11-07 (#715, #716)** — snare asks 4 and 5, not coord tasks. A store with no WAL
+   sink no longer encodes WAL records, and the bulk creates clone an entity only for an observer.
+   Snare measured one 882k-node batch on the v1.11.1 tag: peak RSS 2,569 MB to 1,713 MB (-33%,
+   one run each, 35 MB between two base runs).
 
 ### Track M — consumer primitives (mapper first)
 
@@ -132,8 +147,14 @@ the ADR's own risk section names. Ranked above Track S items 3+ because each is 
 
 ### Track E — encryption at rest
 
-1. `v1.4-encryption-no-plaintext-test` — the acceptance check for the next item.
-2. `v1.4-encrypt-uniqueness-rules-file` — `rules.json` is plaintext in an encrypted store.
+1. ~~`v1.4-encryption-no-plaintext-test`~~ ✅ **DONE 2026-11-07 (#709)** — the acceptance check
+   for the next item.
+2. `v1.4-encrypt-uniqueness-rules-file` — `rules.json` is plaintext in an encrypted store. **In
+   draft #721**: a review found three defects (a wrong key can seal the file when no snapshot or
+   WAL proves the key; `SetEncryption` leaves the file under the old key; a race on
+   `gs.encryptionEngine`). The user's calls (2026-11-07): with no proof of the key, keep version 1
+   and seal on the next open that proves it; `SetEncryption` rewrites `rules.json` under the new
+   engine.
 3. `v1.4-encryption-envelope-test-cannot-fail` — searches raw text; values are base64.
 4. `v1.4-encryption-key-zeroing` (seeded in #663) — no way to zero the engine key on Close.
 
@@ -142,7 +163,8 @@ the ADR's own risk section names. Ranked above Track S items 3+ because each is 
 ~~`implicit-grouping`~~ (#664) → ~~`lock-panic-safety`~~ (#665) → ~~release v1.8.0~~ (2026-10-21)
 → ~~node-upsert spec~~ (#676) → ~~node upsert~~ (#677, #683, #684) → ~~Track U items 2–3~~
 (#685, #680) → ~~Track U item 4~~ (#692) → ~~`datadir-flock`~~ (#695) → ~~release v1.10.0~~
-(2026-10-22) → **Track E** → Track W.
+(2026-10-22) → ~~release v1.11.0~~ (2026-11-06) → ~~release v1.11.1~~ (2026-11-07) → **Track E**
+(#721) → Track W.
 
 Parallel-safe at any time: the small Track S items and the Ulysses asks.
 
