@@ -25,7 +25,7 @@ out=$(mktemp)
 trap 'rm -f "$out"' EXIT
 
 set +e
-"$SNARE" scan "$target" --config "$rules" --format json --no-cache >"$out"
+"$SNARE" scan "$target" --config "$rules" --exclude '*_test.go' --format json --no-cache >"$out"
 rc=$?
 set -e
 # snare exits 0 when clean, 1 on findings, 2 on a usage or runtime error.
@@ -34,12 +34,12 @@ if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
   exit 2
 fi
 
-# _test.go files are left out: a lock a test holds through a panic fails that
-# test, so the hazard the rules describe does not reach a running server.
-# Test-support packages that are not _test.go files (pkg/vfs/vfstest) stay in.
+# --exclude (snare 0895313 or later) leaves _test.go files out: a lock a test
+# holds through a panic fails that test, so the hazard the rules describe does
+# not reach a running server. Test-support packages that are not _test.go files
+# (pkg/vfs/vfstest) stay in. An older snare rejects the flag and exits 2.
 if ! findings=$(jq -r --arg dir "$target" '
     (. // [])
-    | map(select(.Source.File | endswith("_test.go") | not))
     | .[]
     | "\($dir)/\(.Source.File):\(.Source.StartLine): \(.RuleID): \(.Message)"' "$out"); then
   echo "snare-scan: cannot parse the snare output; the scan did not finish" >&2

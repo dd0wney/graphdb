@@ -5,7 +5,7 @@ encode defect classes graphdb has already shipped and fixed, so each rule has a 
 control: the commit before its fix. They live in this repo, not in snare's rule packs, because
 they depend on graphdb's history.
 
-Run them with `SNARE=/path/to/snare make snare`. `make snare-selftest` proves the scan can
+Run them with `SNARE=/path/to/snare make snare`. The rules need snare `0895313` or later: `snare.lockorder` and `--exclude` arrived there, and an older binary exits 2. `make snare-selftest` proves the scan can
 report a finding, a clean tree, and a scan that did not run. Neither target is a CI gate yet.
 
 `scripts/snare-scan.sh` exits 0 with no finding, 1 with findings, and 2 when the scan did not run
