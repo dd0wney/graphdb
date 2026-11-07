@@ -1,6 +1,6 @@
 # SPEC: an encryption key check for the data directory
 
-**Date**: 2026-11-07 · **Status**: draft for the user's approval (revised after a builder check) · **Coord task**:
+**Date**: 2026-11-07 · **Status**: approved by the user on 2026-11-07 (after a builder check) · **Coord task**:
 `graphdb:v1.4-encryption-key-check-artefact` · **Track**: E (encryption at rest), item 5 in
 `docs/NEXT_STEPS_2026-10-08.md`. Code facts below were read at `0ff4483`; re-read before acting.
 
@@ -217,7 +217,12 @@ fact. It shrinks to nothing as stores are opened once by a binary with this chan
 **Recommendation: A.** B cannot be built on the engine interface, C couples two concerns and
 costs every open, and D moves the burden to every caller without removing the risk.
 
-## 9. Decisions for the user
+## 9. Decisions (the user's, 2026-11-07)
+
+All three were decided as recommended below: `SetEncryption` on a store that holds data is a
+separate coord task, `graphdb:v1.4-set-encryption-live-store`; the file is `keycheck.json`; the
+change ships in v1.13.0.
+
 
 1. **`SetEncryption` on a store that holds data (§3.3).** Recommended: **out of scope**, as a new
    coord task, because its fix is a separate design (writers held out across a snapshot rewrite
