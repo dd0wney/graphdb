@@ -507,6 +507,24 @@
       "track": "v1.4",
       "status": "pending",
       "title": "go-client: Nodes.BatchCreate (clients/go/nodes.go:86) and the traverse helper (clients/go/helpers.go:34) end with `return out.Nodes, json.Unmarshal(res.data, &out)`. The Go spec does not fix the order of the out.Nodes read against the Unmarshal call, so a compiler may return the empty slice; gc happens to return the decoded one. Decode first, then return. Acceptance: no return in clients/go reads a variable that a call in the same return statement writes (grep check), and both methods keep their tests green. Read at 108a6c4"
+    },
+    {
+      "id": "v1.4-clear-vector-insert-window",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: CreateNodeWithTenant plans a vector insert under gs.mu and runs it after the unlock (applyNodeVectorInserts, pkg/storage/vector_operations.go near :381). A DeleteAllNodes in that window empties the HNSW index (VectorIndex.clearAll, #714), then the late insert puts the deleted node's vector into the new index, so VectorSearch can return an ID that does not exist. Batch, transaction commit and node upsert share the window. Needs an epoch check or a lock change. Acceptance: a concurrent create-and-clear test leaves CheckInvariants clean, seen red first. Read at 53c5cc1 plus #714"
+    },
+    {
+      "id": "v1.4-clear-property-index-definitions",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: DeleteAllNodes drops every property index definition (gs.propertyIndexes = make, clearAllUnderLock in pkg/storage/node_operations.go) but since #714 keeps vector index definitions, so a reload finds its vector indexes and silently loses its property indexes. Decide one rule for both, then make the clear keep each property index and empty its buckets, or drop both. Acceptance: after DeleteAllNodes and a repopulate, a property-index lookup behaves per the chosen rule, seen red first. Read at 53c5cc1 plus #714"
+    },
+    {
+      "id": "v1.4-clear-disk-backed-edges",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: clearAllUnderLock (pkg/storage/node_operations.go) does not touch gs.edgeStore, so with UseDiskBackedEdges the LSM edge store may keep every edge after DeleteAllNodes. Untested: write a probe first. If edges survive, clear the edge store under the same lock. Acceptance: with UseDiskBackedEdges, GetEdge and the adjacency lookups find no pre-clear edge after DeleteAllNodes, and the probe is seen red first if the defect is real. Read at 53c5cc1"
     }
   ],
   "deps": [
