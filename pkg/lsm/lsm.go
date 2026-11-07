@@ -225,17 +225,18 @@ func (lsm *LSMStorage) Sync() error {
 
 // GetStats returns current statistics as a snapshot
 func (lsm *LSMStorage) GetStats() LSMStatsSnapshot {
-	// Get mutex-protected stats
-	lsm.stats.mu.Lock()
+	// lsm.mu before lsm.stats.mu, the order flush and compact use. The reverse
+	// order deadlocks against a concurrent flush.
 	lsm.mu.RLock()
+	lsm.stats.mu.Lock()
 	memTableSize := lsm.memTable.Size()
 	ssTableCount := lsm.countSSTables()
 	level0Count := 0
 	if len(lsm.levels) > 0 {
 		level0Count = len(lsm.levels[0])
 	}
-	lsm.mu.RUnlock()
 	lsm.stats.mu.Unlock()
+	lsm.mu.RUnlock()
 
 	// Return snapshot with atomic loads for high-frequency counters
 	return LSMStatsSnapshot{
