@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changed. Library code that implements `Storage` must add the return value; a caller that ignores
   it still compiles. Go packages are outside `docs/STABILITY_POLICY.md` (#721).
 
+### Fixed
+- **`lsm.LSMStorage.GetStats` no longer deadlocks against a flush.** It took `lsm.stats.mu` and
+  then `lsm.mu`, while `flush` and `compact` take them in the opposite order, so a `GetStats`
+  that ran during a flush could block both for ever. Only callers of the public `GetStats` (and
+  `PrintStats`) could reach it; the server does not call it (#726).
+
 ## [1.11.1] - 2026-11-07
 
 A patch release. `DeleteAllNodes` now leaves a store that is the same as an empty one: it used to
