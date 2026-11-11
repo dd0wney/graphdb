@@ -35,12 +35,17 @@ type Procedure func(ctx context.Context, graph storage.Storage, tenantID string,
 // name. Last-writer-wins on collisions; not concurrent-safe by design
 // (registration is init-time, not runtime).
 var procedureRegistry = map[string]Procedure{
-	"algo.shortestPath":   shortestPathProcedure,
-	"algo.kHop":           kHopProcedure,
-	"algo.nodeSimilarity": nodeSimilarityProcedure,
-	"algo.linkPrediction": linkPredictionProcedure,
-	"algo.pageRank":       pageRankProcedure,
-	"algo.eMeans":         eMeansProcedure,
+	"algo.shortestPath":          shortestPathProcedure,
+	"algo.kHop":                  kHopProcedure,
+	"algo.nodeSimilarity":        nodeSimilarityProcedure,
+	"algo.linkPrediction":        linkPredictionProcedure,
+	"algo.pageRank":              pageRankProcedure,
+	"algo.eMeans":                eMeansProcedure,
+	"algo.detectCycles":          detectCyclesProcedure,
+	"algo.scc":                   sccProcedure,
+	"algo.labelPropagation":      labelPropagationProcedure,
+	"algo.connectedComponents":   connectedComponentsProcedure,
+	"algo.betweennessCentrality": betweennessCentralityProcedure,
 }
 
 // RegisterProcedure adds a procedure to the registry. Exported so external
@@ -333,6 +338,120 @@ func eMeansProcedure(ctx context.Context, graph storage.Storage, tenantID string
 		"objective":       res.Objective,
 		"splits":          res.Splits,
 	}}, nil
+}
+
+// detectCyclesProcedure exposes algorithms.DetectCyclesForTenant as the
+// CALL algo.detectCycles() YIELD cycles, count procedure.
+func detectCyclesProcedure(_ context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+	if len(args) > 0 {
+		return nil, fmt.Errorf("algo.detectCycles takes 0 arguments; got %d", len(args))
+	}
+	cycles, err := algorithms.DetectCyclesForTenant(graph, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("algo.detectCycles: %w", err)
+	}
+	raw := make([][]uint64, len(cycles))
+	for i, c := range cycles {
+		raw[i] = []uint64(c)
+	}
+	return []map[string]any{{
+		"cycles": raw,
+		"count":  len(raw),
+	}}, nil
+}
+
+// sccProcedure exposes algorithms.StronglyConnectedComponentsForTenant as the
+// CALL algo.scc() YIELD communities, nodeCommunity, singletonCount procedure.
+func sccProcedure(ctx context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+	if len(args) > 0 {
+		return nil, fmt.Errorf("algo.scc takes 0 arguments; got %d", len(args))
+	}
+	res, err := algorithms.StronglyConnectedComponentsForTenant(ctx, graph, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("algo.scc: %w", err)
+	}
+	commMaps := make([]map[string]any, 0, len(res.Communities))
+	for _, c := range res.Communities {
+		commMaps = append(commMaps, map[string]any{
+			"id":    c.ID,
+			"nodes": c.Nodes,
+			"size":  c.Size,
+		})
+	}
+	return []map[string]any{{
+		"communities":    commMaps,
+		"nodeCommunity":  res.NodeCommunity,
+		"singletonCount": res.SingletonCount,
+	}}, nil
+}
+
+// labelPropagationProcedure exposes algorithms.LabelPropagationForTenant as the
+// CALL algo.labelPropagation([maxIterations]) YIELD communities, nodeCommunity procedure.
+func labelPropagationProcedure(ctx context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+	if len(args) > 1 {
+		return nil, fmt.Errorf("algo.labelPropagation takes at most 1 argument (maxIterations); got %d", len(args))
+	}
+	maxIter := 10
+	if len(args) == 1 && args[0] != nil {
+		m, ok := coerceToInt(args[0])
+		if !ok || m < 1 {
+			return nil, fmt.Errorf("algo.labelPropagation: maxIterations must be a positive integer; got %v (%T)", args[0], args[0])
+		}
+		maxIter = m
+	}
+	res, err := algorithms.LabelPropagationForTenant(ctx, graph, tenantID, maxIter)
+	if err != nil {
+		return nil, fmt.Errorf("algo.labelPropagation: %w", err)
+	}
+	commMaps := make([]map[string]any, 0, len(res.Communities))
+	for _, c := range res.Communities {
+		commMaps = append(commMaps, map[string]any{
+			"id":    c.ID,
+			"nodes": c.Nodes,
+			"size":  c.Size,
+		})
+	}
+	return []map[string]any{{
+		"communities":   commMaps,
+		"nodeCommunity": res.NodeCommunity,
+	}}, nil
+}
+
+// connectedComponentsProcedure exposes algorithms.ConnectedComponentsForTenant as the
+// CALL algo.connectedComponents() YIELD communities, nodeCommunity procedure.
+func connectedComponentsProcedure(ctx context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+	if len(args) > 0 {
+		return nil, fmt.Errorf("algo.connectedComponents takes 0 arguments; got %d", len(args))
+	}
+	res, err := algorithms.ConnectedComponentsForTenant(ctx, graph, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("algo.connectedComponents: %w", err)
+	}
+	commMaps := make([]map[string]any, 0, len(res.Communities))
+	for _, c := range res.Communities {
+		commMaps = append(commMaps, map[string]any{
+			"id":    c.ID,
+			"nodes": c.Nodes,
+			"size":  c.Size,
+		})
+	}
+	return []map[string]any{{
+		"communities":   commMaps,
+		"nodeCommunity": res.NodeCommunity,
+	}}, nil
+}
+
+// betweennessCentralityProcedure exposes algorithms.BetweennessCentralityForTenant as the
+// CALL algo.betweennessCentrality() YIELD scores procedure.
+func betweennessCentralityProcedure(ctx context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+	if len(args) > 0 {
+		return nil, fmt.Errorf("algo.betweennessCentrality takes 0 arguments; got %d", len(args))
+	}
+	scores, err := algorithms.BetweennessCentralityForTenant(ctx, graph, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("algo.betweennessCentrality: %w", err)
+	}
+	return []map[string]any{{"scores": scores}}, nil
 }
 
 // coerceToUint64 accepts the numeric types Cypher's parser can produce for
