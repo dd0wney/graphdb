@@ -508,3 +508,46 @@ func TestCoerceToUint64(t *testing.T) {
 		})
 	}
 }
+
+func TestEMeansProcedure_HappyPathAndRegistry(t *testing.T) {
+	if _, ok := procedureRegistry["algo.eMeans"]; !ok {
+		t.Fatal("algo.eMeans not in procedureRegistry")
+	}
+
+	gs, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("storage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	const tenantID = "tenant-A"
+	vecs := [][]float32{
+		{1, 0, 0},
+		{0.98, 0.05, 0},
+		{0, 1, 0},
+		{0.05, 0.98, 0},
+	}
+	for _, v := range vecs {
+		if _, err := gs.CreateNodeWithTenant(tenantID, []string{"Concept"}, map[string]storage.Value{
+			"embedding": storage.VectorValue(v),
+		}); err != nil {
+			t.Fatalf("create node: %v", err)
+		}
+	}
+
+	rows, err := eMeansProcedure(context.Background(), gs, tenantID, []any{2, "embedding", 3.0, true, "Concept"})
+	if err != nil {
+		t.Fatalf("eMeansProcedure: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	clusters, ok := rows[0]["clusters"].([]map[string]any)
+	if !ok || len(clusters) != 2 {
+		t.Fatalf("expected 2 clusters, got %v (%T)", rows[0]["clusters"], rows[0]["clusters"])
+	}
+	medoids, ok := rows[0]["medoids"].(map[int]uint64)
+	if !ok || len(medoids) != 2 {
+		t.Fatalf("expected 2 medoids, got %v", rows[0]["medoids"])
+	}
+}
