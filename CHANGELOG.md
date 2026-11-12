@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **A query that names a variable no clause defines is now an error, where it gave null.**
+  `MATCH (p:Person) RETURN q.name` returned a column of nulls, `MATCH (p) SET q.x = 1` wrote
+  nothing, and `CALL algo.labelPropagation(nosuch)` ran with its default values. The executor now
+  reads the parsed query before any step runs and refuses with `undefined variable: q (in RETURN)`.
+  The check covers the whole `WITH` chain and both sides of a `UNION`, so an earlier segment that
+  writes does not run. The refusal does not depend on the data: a `MATCH` that finds no rows is
+  refused too. After a `WITH`, only the names it binds are in scope. A `CALL` with no `YIELD`
+  disables the check for the names after it, because its columns are known only when it runs.
 - **A comparison with no order is null, and `NOT`, `AND` and `OR` follow three-valued logic.** An
   ordering comparison (`>`, `<`, `>=`, `<=`) with a null, or between types with no common order, is
   now null and `WHERE` removes the row; before, `>=` and `<=` passed it. `NOT`, `AND` and `OR`

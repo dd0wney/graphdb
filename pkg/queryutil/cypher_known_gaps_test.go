@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -224,17 +223,6 @@ func TestCypherKnownGaps(t *testing.T) {
 				}
 				if !reflect.DeepEqual(r.rs.Columns, []string{"age"}) {
 					t.Errorf("columns = %q, want [\"age\"]", r.rs.Columns)
-				}
-			}},
-		{"v1.4-cypher-return-undefined-variable",
-			`MATCH (p:Person) RETURN q.name LIMIT 1`,
-			func(t gapReporter, r gapResult) {
-				if r.err == nil {
-					t.Errorf("want error naming q, got none (rows=%v)", rowsOf(r))
-					return
-				}
-				if !regexp.MustCompile(`\bq\b`).MatchString(r.err.Error()) {
-					t.Errorf("error %q does not name variable q", r.err)
 				}
 			}},
 		{"v1.4-cypher-unknown-function-null",
