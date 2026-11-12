@@ -38,7 +38,7 @@ func (ac *AggregationComputer) avg(values []any) any {
 	// them too (a list, a string) shrank the average.
 	numeric := 0
 	for _, v := range values {
-		if isNumericValue(v) {
+		if isSummed(v) {
 			numeric++
 		}
 	}
@@ -55,6 +55,18 @@ func (ac *AggregationComputer) avg(values []any) any {
 		return s / count
 	default:
 		return nil
+	}
+}
+
+// isSummed reports the kinds that avg counted before isNumericValue grew to
+// every Go number kind. It stays narrow so that avg does not change in this
+// task. (sum also adds a plain int, which avg does not count: a separate defect.)
+func isSummed(v any) bool {
+	switch v.(type) {
+	case int64, float64:
+		return true
+	default:
+		return false
 	}
 }
 

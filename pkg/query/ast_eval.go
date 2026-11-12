@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 
@@ -17,18 +18,14 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 	rightVal := extractValue(right, context)
 
 	switch op {
-	case "=":
-		return valuesEqual(leftVal, rightVal), nil
-	case "!=":
-		return !valuesEqual(leftVal, rightVal), nil
-	case ">":
-		return compareValues(leftVal, rightVal) > 0, nil
-	case "<":
-		return compareValues(leftVal, rightVal) < 0, nil
-	case ">=":
-		return compareValues(leftVal, rightVal) >= 0, nil
-	case "<=":
-		return compareValues(leftVal, rightVal) <= 0, nil
+	case "=", "!=":
+		// An operand that is an unknown comparison makes the result unknown,
+		// which WHERE drops. equalityTri holds that rule.
+		return equalityTri(op, left, right, context) == triTrue, nil
+	case ">", "<", ">=", "<=":
+		// No order (null, mixed types) is unknown, and unknown in WHERE
+		// removes the row. It is not an error.
+		return orderingTri(op, leftVal, rightVal) == triTrue, nil
 	case "IS NULL":
 		return leftVal == nil, nil
 	case "IS NOT NULL":
@@ -150,7 +147,8 @@ func extractValue(expr Expression, context map[string]any) any {
 		}
 		return result
 	case *BinaryExpression:
-		result, err := e.Eval(context)
+		// EvalValue, not Eval: an unknown comparison is null here.
+		result, err := e.EvalValue(context)
 		if err != nil {
 			return nil
 		}
@@ -177,13 +175,14 @@ func extractValue(expr Expression, context map[string]any) any {
 // is false because the dynamic types differ. That silently broke `WHERE id(n) = $p`,
 // since id() returns int64 while JSON-decoded query parameters arrive as float64
 // (encoding/json unmarshals every JSON number into float64). The ordering
-// operators (>, <, ...) already coerced numerics via compareValues; equality did
-// not. For numeric operands we route through compareValues (which handles the
-// int64/float64 mix); all other operands keep the previous strict `==` behavior,
+// operators (>, <, ...) already coerced numerics; equality did
+// not. For numeric operands we route through compareOrdered (which handles every
+// Go number kind); all other operands keep the previous strict `==` behavior,
 // including nil == nil and string/bool comparison.
 func valuesEqual(left, right any) bool {
 	if isNumericValue(left) && isNumericValue(right) {
-		return compareValues(left, right) == 0
+		cmp, ok := compareOrdered(left, right)
+		return ok && cmp == 0
 	}
 	if isCollection(left) || isCollection(right) {
 		return collectionsEqual(left, right)
@@ -214,87 +213,167 @@ func collectionsEqual(left, right any) bool {
 	return errL == nil && errR == nil && bytes.Equal(l, r)
 }
 
-// isNumericValue reports whether v is one of the numeric kinds compareValues can
-// coerce across (int64/float64). Plain int is intentionally excluded: compareValues
-// only coerces int against int, not int against float64, so treating int as
-// numeric here would let compareValues fall through to its "default: equal" branch
-// and report a false match. int operands therefore keep strict `==` semantics.
+// isNumericValue reports whether v is a Go integer or float kind, the same set
+// compareOrdered orders. valuesEqual relies on it: if it named a kind that
+// compareOrdered cannot order, two such values would never be equal.
 func isNumericValue(v any) bool {
-	switch v.(type) {
-	case int64, float64:
-		return true
+	_, ok := asNumber(v)
+	return ok
+}
+
+// numberKind says how a number is held for comparison.
+type numberKind int
+
+const (
+	numInt     numberKind = iota // fits in int64, held exactly
+	numBigUint                   // a uint64 above math.MaxInt64, held exactly
+	numFloat
+)
+
+// number is a Go numeric value reduced to one of three exact forms, so that
+// two integers never pass through float64.
+type number struct {
+	kind numberKind
+	i    int64
+	u    uint64
+	f    float64
+}
+
+// asNumber reduces any Go integer or float kind to a number. A type switch is
+// used because the set is closed and reflection costs an allocation per call.
+func asNumber(v any) (number, bool) {
+	switch n := v.(type) {
+	case int:
+		return number{kind: numInt, i: int64(n)}, true
+	case int8:
+		return number{kind: numInt, i: int64(n)}, true
+	case int16:
+		return number{kind: numInt, i: int64(n)}, true
+	case int32:
+		return number{kind: numInt, i: int64(n)}, true
+	case int64:
+		return number{kind: numInt, i: n}, true
+	case uint:
+		return fromUint64(uint64(n)), true
+	case uint8:
+		return number{kind: numInt, i: int64(n)}, true
+	case uint16:
+		return number{kind: numInt, i: int64(n)}, true
+	case uint32:
+		return number{kind: numInt, i: int64(n)}, true
+	case uint64:
+		return fromUint64(n), true
+	case float32:
+		return number{kind: numFloat, f: float64(n)}, true
+	case float64:
+		return number{kind: numFloat, f: n}, true
 	default:
-		return false
+		return number{}, false
 	}
 }
 
-// Compare values (simplified)
-func compareValues(left, right any) int {
-	// Handle int64
-	lInt, lIsInt := left.(int64)
-	rInt, rIsInt := right.(int64)
-	if lIsInt && rIsInt {
-		if lInt < rInt {
-			return -1
-		} else if lInt > rInt {
-			return 1
-		}
-		return 0
+func fromUint64(u uint64) number {
+	if u <= math.MaxInt64 {
+		return number{kind: numInt, i: int64(u)}
 	}
+	return number{kind: numBigUint, u: u}
+}
 
-	// Handle float64
-	lFloat, lIsFloat := left.(float64)
-	rFloat, rIsFloat := right.(float64)
-	if lIsFloat && rIsFloat {
-		if lFloat < rFloat {
-			return -1
-		} else if lFloat > rFloat {
-			return 1
-		}
-		return 0
+// asFloat converts for a comparison where the other side is a float. Beyond
+// 2^53 an integer loses precision here, which is the cost of comparing it with
+// a float at all.
+func (n number) asFloat() float64 {
+	switch n.kind {
+	case numInt:
+		return float64(n.i)
+	case numBigUint:
+		return float64(n.u)
+	default:
+		return n.f
 	}
+}
 
-	// Handle mixed int/float (int on left, float on right)
-	if lIsInt && rIsFloat {
-		lFloat = float64(lInt)
-		if lFloat < rFloat {
-			return -1
-		} else if lFloat > rFloat {
-			return 1
-		}
-		return 0
+func cmpOrdered[T int64 | uint64 | float64 | string](a, b T) int {
+	if a < b {
+		return -1
 	}
-
-	// Handle mixed int/float (float on left, int on right)
-	if lIsFloat && rIsInt {
-		rFloat = float64(rInt)
-		if lFloat < rFloat {
-			return -1
-		} else if lFloat > rFloat {
-			return 1
-		}
-		return 0
+	if a > b {
+		return 1
 	}
-
-	// Handle int (for backwards compatibility)
-	if lIntPlain, ok := left.(int); ok {
-		if rIntPlain, ok := right.(int); ok {
-			return lIntPlain - rIntPlain
-		}
-	}
-
-	// Handle string
-	lStr, lIsStr := left.(string)
-	rStr, rIsStr := right.(string)
-	if lIsStr && rIsStr {
-		if lStr < rStr {
-			return -1
-		} else if lStr > rStr {
-			return 1
-		}
-		return 0
-	}
-
-	// Default: equal
 	return 0
+}
+
+// compareNumbers orders two numbers. Two integers compare exactly. A uint64
+// above math.MaxInt64 is greater than every int64 and compares with another
+// such value as a uint64, so no integer pair goes through float64. If either
+// side is a float, both go through float64, and NaN has no order.
+func compareNumbers(l, r number) (int, bool) {
+	if l.kind == numFloat || r.kind == numFloat {
+		lf, rf := l.asFloat(), r.asFloat()
+		if math.IsNaN(lf) || math.IsNaN(rf) {
+			return 0, false
+		}
+		return cmpOrdered(lf, rf), true
+	}
+	switch {
+	case l.kind == numInt && r.kind == numInt:
+		return cmpOrdered(l.i, r.i), true
+	case l.kind == numBigUint && r.kind == numBigUint:
+		return cmpOrdered(l.u, r.u), true
+	case l.kind == numBigUint:
+		return 1, true
+	default:
+		return -1, true
+	}
+}
+
+// compareOrdered reports the order of two values and whether they have one.
+// Numbers order with numbers, strings with strings, and false before true.
+// Every other pair has no order: null on either side, a string against a
+// number, a boolean against a number, a list, a map, a node, an edge, and NaN.
+// openCypher gives null for such a comparison, so a caller that filters must
+// treat ok == false as "no match".
+func compareOrdered(left, right any) (cmp int, ok bool) {
+	if ln, isNum := asNumber(left); isNum {
+		rn, rIsNum := asNumber(right)
+		if !rIsNum {
+			return 0, false
+		}
+		return compareNumbers(ln, rn)
+	}
+	switch l := left.(type) {
+	case string:
+		r, isStr := right.(string)
+		if !isStr {
+			return 0, false
+		}
+		return cmpOrdered(l, r), true
+	case bool:
+		r, isBool := right.(bool)
+		if !isBool {
+			return 0, false
+		}
+		switch {
+		case l == r:
+			return 0, true
+		case !l:
+			return -1, true
+		default:
+			return 1, true
+		}
+	default:
+		return 0, false
+	}
+}
+
+// compareValues returns an ordering for every pair, so that a sort and
+// MIN/MAX have something to work with. A result of 0 can mean "equal" or "no
+// order between these two values". For that reason only a sort and MIN/MAX may
+// call it. A filter must call compareOrdered, or an unordered pair passes.
+func compareValues(left, right any) int {
+	cmp, ok := compareOrdered(left, right)
+	if !ok {
+		return 0
+	}
+	return cmp
 }

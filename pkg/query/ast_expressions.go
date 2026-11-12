@@ -20,22 +20,10 @@ type BinaryExpression struct {
 
 func (be *BinaryExpression) Eval(context map[string]any) (bool, error) {
 	switch be.Operator {
-	case "AND":
-		left, err := be.Left.Eval(context)
-		if err != nil || !left {
-			return false, err
-		}
-		return be.Right.Eval(context)
-
-	case "OR":
-		left, err := be.Left.Eval(context)
-		if err != nil {
-			return false, err
-		}
-		if left {
-			return true, nil
-		}
-		return be.Right.Eval(context)
+	case "AND", "OR":
+		// Unknown removes the row, as false does.
+		result, err := evalTri(be, context)
+		return result == triTrue, err
 
 	case "=", ">", "<", ">=", "<=", "!=", "IS NULL", "IS NOT NULL", "IN",
 		"STARTS WITH", "ENDS WITH", "CONTAINS":
@@ -47,7 +35,17 @@ func (be *BinaryExpression) Eval(context map[string]any) (bool, error) {
 	}
 }
 
+// EvalValue gives null where the result is unknown: AND, OR and an ordering
+// comparison, and = and != over such an operand. Every other operator is
+// two-valued.
 func (be *BinaryExpression) EvalValue(context map[string]any) (any, error) {
+	if be.Operator == "AND" || be.Operator == "OR" || be.Operator == "=" || be.Operator == "!=" || isOrderingOp(be.Operator) {
+		result, err := evalTri(be, context)
+		if err != nil {
+			return nil, err
+		}
+		return result.value(), nil
+	}
 	return be.Eval(context)
 }
 
@@ -177,7 +175,7 @@ func (ce *CaseExpression) EvalValue(context map[string]any) (any, error) {
 		operandVal := extractValue(ce.Operand, context)
 		for _, wc := range ce.WhenClauses {
 			condVal := extractValue(wc.Condition, context)
-			if compareValues(operandVal, condVal) == 0 && operandVal != nil {
+			if valuesEqual(operandVal, condVal) && operandVal != nil {
 				return extractValue(wc.Result, context), nil
 			}
 		}

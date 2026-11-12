@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **A comparison with no order is null, and `NOT`, `AND` and `OR` follow three-valued logic.** An
+  ordering comparison (`>`, `<`, `>=`, `<=`) with a null, or between types with no common order, is
+  now null and `WHERE` removes the row; before, `>=` and `<=` passed it. `NOT`, `AND` and `OR`
+  follow the Kleene rules over such a comparison, and `NOT` of a null value is null, so
+  `WHERE NOT n.flag` no longer returns a node that has no `flag` property. Use
+  `n.flag IS NULL OR NOT n.flag` for the old result. `WHERE n.b AND n.c` and `WHERE n.b OR n.c` over
+  boolean properties now work; before, a bare property in `AND` or `OR` was an error and dropped every row.
+- **`RETURN` of an unordered comparison gives null, where it gave false.** `SET n.x = <comparison>`
+  removes the property `x` when the comparison is null, as `SET n.x = null` does; before, it stored
+  `true` or `false`.
+
+### Fixed
+- **Booleans order, and every Go number kind compares by value.** `false` sorts before `true`, and
+  `=`, `!=`, `IN`, `ORDER BY`, `MIN` and `MAX` compare `int`, `int64`, the other integer kinds and
+  floats by value; before, a Go `int` never differed from an `int64` and a string compared equal to
+  a number in `CASE`.
+
 ## [1.12.0] - 2026-11-07
 
 A minor release. An encrypted store now seals the uniqueness-rule registry (`rules.json`), which

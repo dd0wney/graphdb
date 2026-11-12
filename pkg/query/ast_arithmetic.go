@@ -151,13 +151,9 @@ type UnaryExpression struct {
 func (ue *UnaryExpression) Eval(context map[string]any) (bool, error) {
 	switch ue.Operator {
 	case "NOT":
-		result, err := ue.Operand.Eval(context)
-		if err != nil {
-			// If operand can't eval as bool, extract value and coerce
-			val := extractValue(ue.Operand, context)
-			return !coerceToBool(val), nil
-		}
-		return !result, nil
+		// Unknown removes the row, as false does.
+		result, err := evalTri(ue, context)
+		return result == triTrue, err
 	case "-":
 		val, err := ue.EvalValue(context)
 		if err != nil {
@@ -172,12 +168,11 @@ func (ue *UnaryExpression) Eval(context map[string]any) (bool, error) {
 func (ue *UnaryExpression) EvalValue(context map[string]any) (any, error) {
 	switch ue.Operator {
 	case "NOT":
-		result, err := ue.Operand.Eval(context)
+		result, err := evalTri(ue, context)
 		if err != nil {
-			val := extractValue(ue.Operand, context)
-			return !coerceToBool(val), nil
+			return nil, err
 		}
-		return !result, nil
+		return result.value(), nil
 	case "-":
 		val := extractValue(ue.Operand, context)
 		if val == nil {
