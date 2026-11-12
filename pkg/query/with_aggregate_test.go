@@ -236,9 +236,9 @@ func TestWithAggregate_SumOfNodeIsRefused(t *testing.T) {
 	}
 }
 
-// The parser leaves Expression nil for an aggregate over an arithmetic
-// argument. The RETURN path then counts rows and collects nothing, which is a
-// wrong answer; WITH refuses.
+// The parser leaves Expression nil for an aggregate whose argument is not a
+// property or a variable, for example a literal. The RETURN path then counts
+// rows and collects nothing, which is a wrong answer; WITH refuses.
 func TestWithAggregate_NonPropertyArgumentIsRefused(t *testing.T) {
 	ex := newWithAggGraph(t)
 
@@ -257,5 +257,95 @@ func TestWithAggregate_NoAggregateKeepsRowPerBinding(t *testing.T) {
 
 	if len(rows) != 6 {
 		t.Fatalf("rows = %d, want 6 (no grouping without an aggregate)", len(rows))
+	}
+}
+
+// A key with no alias and no bare variable has no name to bind under, so the
+// grouping cannot see it. WITH must refuse it, whatever the data.
+func TestWithAggregate_UnnamedKeyIsRefused(t *testing.T) {
+	ex := newWithAggGraph(t)
+	for _, key := range []string{"p.age + 1", "p.age"} {
+		for _, label := range []string{"Person", "NoSuchLabel"} {
+			t.Run(key+"/"+label, func(t *testing.T) {
+				_, err := ex.Execute(parseCallInput(t,
+					fmt.Sprintf("MATCH (p:%s) WITH %s, count(p) AS c RETURN c AS c", label, key)))
+
+				if err == nil {
+					t.Fatal("want an error for an unnamed key, got none")
+				}
+				if msg := err.Error(); !strings.Contains(msg, "WITH") || !strings.Contains(msg, "AS <name>") {
+					t.Errorf("error %q should name WITH and tell the caller to add AS <name>", msg)
+				}
+			})
+		}
+	}
+}
+
+// Every WITH of the chain is checked before the first segment writes.
+func TestWithAggregate_ChainRefusedBeforeAnyWrite(t *testing.T) {
+	ex := newWithAggGraph(t)
+
+	_, err := ex.Execute(parseCallInput(t,
+		"CREATE (x:Tmp {v: 1}) WITH x MATCH (p:Person) WITH count(1) AS c RETURN c AS c"))
+
+	if err == nil {
+		t.Fatal("want a refusal for the second WITH, got none")
+	}
+	rows := runRows(t, ex, "MATCH (x:Tmp) RETURN count(x) AS n")
+	if len(rows) != 1 || countOf(rows[0]["n"]) != 0 {
+		t.Fatalf("Tmp nodes = %v, want 0: the first segment wrote before the refusal", rows)
+	}
+}
+
+func TestWithAggregate_CountSkipsNullFromOptionalMatch(t *testing.T) {
+	ex := newWithAggGraph(t)
+
+	rows := runRows(t, ex,
+		"MATCH (p:Person) OPTIONAL MATCH (p)-[:KNOWS]->(f) WITH p, count(f) AS c RETURN p.id AS id, c AS c")
+
+	got := map[int64]int64{}
+	for _, row := range rows {
+		got[countOf(row["id"])] = countOf(row["c"])
+	}
+	want := map[int64]int64{0: 2, 1: 1, 2: 1, 3: 0, 4: 0, 5: 0}
+	if fmt.Sprint(got) != fmt.Sprint(want) || len(rows) != 6 {
+		t.Fatalf("id->count = %v (%d rows), want %v", got, len(rows), want)
+	}
+}
+
+func TestWithAggregate_TwoAggregatingWithsInSequence(t *testing.T) {
+	ex := newWithAggGraph(t)
+
+	rows := runRows(t, ex,
+		"MATCH (p:Person)-[:KNOWS]->(f) WITH p, count(f) AS c WITH c, count(p) AS n RETURN c AS c, n AS n")
+
+	got := map[int64]int64{}
+	for _, row := range rows {
+		got[countOf(row["c"])] = countOf(row["n"])
+	}
+	want := map[int64]int64{2: 1, 1: 2}
+	if fmt.Sprint(got) != fmt.Sprint(want) || len(rows) != 2 {
+		t.Fatalf("c->n = %v (%d rows), want %v", got, len(rows), want)
+	}
+}
+
+// Over zero rows each aggregate gives what RETURN gives: sum 0, min, max and
+// avg null, collect an empty list.
+func TestWithAggregate_NoRowsEachAggregateAgreesWithReturn(t *testing.T) {
+	ex := newWithAggGraph(t)
+	for _, agg := range []string{"count", "sum", "min", "max", "avg", "collect"} {
+		t.Run(agg, func(t *testing.T) {
+			viaWith := runRows(t, ex, fmt.Sprintf(
+				"MATCH (p:NoSuchLabel) WITH %s(p.id) AS v RETURN v AS v", agg))
+			viaReturn := runRows(t, ex, fmt.Sprintf(
+				"MATCH (p:NoSuchLabel) RETURN %s(p.id) AS v", agg))
+
+			if len(viaReturn) != 1 {
+				t.Fatalf("oracle gave %v, want one row: the oracle is broken", viaReturn)
+			}
+			if a, b := fmt.Sprint(rowStrings(viaWith)), fmt.Sprint(rowStrings(viaReturn)); a != b {
+				t.Errorf("WITH rows = %s, RETURN rows = %s", a, b)
+			}
+		})
 	}
 }

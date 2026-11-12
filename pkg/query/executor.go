@@ -167,7 +167,7 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	}
 
 	// Refused before any step runs, so the refusal does not depend on the data.
-	if err := checkWithAggregates(query.With.Items); err != nil {
+	if err := checkWithChain(query); err != nil {
 		return nil, err
 	}
 

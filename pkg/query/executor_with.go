@@ -9,8 +9,16 @@ import (
 // computed. It looks at the query text only, so the verdict is the same for
 // zero rows as for a million.
 func checkWithAggregates(items []*ReturnItem) error {
+	aggregating := hasAggregates(items)
 	for _, item := range items {
 		if item.Aggregate == "" {
+			// A key is bound under its alias, or under its variable when it is
+			// a bare variable. Anything else has no name, so every row would
+			// get a nil key and fall into one group.
+			bare := item.Expression != nil && item.Expression.Property == ""
+			if aggregating && item.Alias == "" && !bare {
+				return fmt.Errorf("WITH: a grouping key that is not a variable needs a name; add AS <name>")
+			}
 			continue
 		}
 		// An aggregate has no name of its own to bind, and WITH is the only
@@ -23,6 +31,18 @@ func checkWithAggregates(items []*ReturnItem) error {
 		// collects nothing, which is a wrong answer, so WITH refuses.
 		if item.Expression == nil {
 			return fmt.Errorf("WITH: %s(...) AS %s: the argument must be a variable or a property", withAggName(item), item.Alias)
+		}
+	}
+	return nil
+}
+
+// checkWithChain checks the WITH of this segment and of each later segment.
+// A later segment runs only after this one has run, and this one may have
+// written, so a refusal found later would leave those writes behind.
+func checkWithChain(query *Query) error {
+	for q := query; q != nil && q.With != nil; q = q.Next {
+		if err := checkWithAggregates(q.With.Items); err != nil {
+			return err
 		}
 	}
 	return nil
