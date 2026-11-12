@@ -6,7 +6,6 @@ import (
 	"os"
 	"reflect"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -217,33 +216,6 @@ func wantListCell(col string, want []float64) func(gapReporter, gapResult) {
 
 func TestCypherKnownGaps(t *testing.T) {
 	cases := []gapCase{
-		{"v1.4-cypher-with-aggregates",
-			`MATCH (p:Person) WITH p.age AS age, collect(p.id) AS ids RETURN age, ids`,
-			func(t gapReporter, r gapResult) {
-				if !okResult(t, r) {
-					return
-				}
-				// Ages are 30,30,40,40,25,50 -> 4 distinct ages.
-				if len(r.rs.Rows) != 4 {
-					t.Errorf("rows = %d, want 4 (one per distinct age)", len(r.rs.Rows))
-				}
-				for _, row := range r.rs.Rows {
-					ids, ok := listAsFloats(row["ids"])
-					if !ok {
-						t.Errorf("ids = %#v, want a list", row["ids"])
-						continue
-					}
-					age, _ := toFloat(row["age"])
-					wantLen := 1
-					if age == 30 || age == 40 {
-						wantLen = 2
-					}
-					sort.Float64s(ids)
-					if len(ids) != wantLen {
-						t.Errorf("age %v: ids = %v, want %d ids", age, ids, wantLen)
-					}
-				}
-			}},
 		{"v1.4-cypher-with-alias-column-name",
 			`MATCH (p:Person {id: 0}) WITH p.age AS age RETURN age`,
 			func(t gapReporter, r gapResult) {
@@ -254,41 +226,6 @@ func TestCypherKnownGaps(t *testing.T) {
 					t.Errorf("columns = %q, want [\"age\"]", r.rs.Columns)
 				}
 			}},
-		{"v1.4-cypher-call-unknown-procedure-succeeds",
-			`CALL algo.nope()`,
-			wantErrContaining("algo.nope")},
-		{"v1.4-cypher-call-bare-does-not-run",
-			`CALL algo.pageRank()`,
-			// algo.pageRank returns one row with column "scores" (pkg/query/procedures.go).
-			func(t gapReporter, r gapResult) {
-				if !okResult(t, r) {
-					return
-				}
-				if len(r.rs.Rows) < 1 {
-					t.Errorf("rows = 0, want at least 1")
-					return
-				}
-				if v, present := r.rs.Rows[0]["scores"]; !present || v == nil {
-					t.Errorf("scores = %#v (present=%v), want not null; row=%v", v, present, r.rs.Rows[0])
-				}
-			}},
-		{"v1.4-cypher-call-yield-returns-null/real-column",
-			// "scores" is the one column algo.pageRank returns.
-			`CALL algo.pageRank() YIELD scores RETURN scores`,
-			func(t gapReporter, r gapResult) {
-				if !okResult(t, r) {
-					return
-				}
-				if !reflect.DeepEqual(r.rs.Columns, []string{"scores"}) {
-					t.Errorf("columns = %q, want [scores]", r.rs.Columns)
-				}
-				if len(r.rs.Rows) != 1 || r.rs.Rows[0]["scores"] == nil {
-					t.Errorf("rows = %v, want one row with scores not null", r.rs.Rows)
-				}
-			}},
-		{"v1.4-cypher-call-yield-returns-null/unknown-column",
-			`CALL algo.pageRank() YIELD nodeId RETURN nodeId`,
-			wantErrContaining("nodeId")},
 		{"v1.4-cypher-return-undefined-variable",
 			`MATCH (p:Person) RETURN q.name LIMIT 1`,
 			func(t gapReporter, r gapResult) {

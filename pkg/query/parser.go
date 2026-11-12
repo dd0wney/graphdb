@@ -41,6 +41,9 @@ func (p *Parser) Parse() (*Query, error) {
 
 		switch token.Type {
 		case TokenOptional:
+			if query.Call != nil {
+				return nil, matchAfterCallError("OPTIONAL MATCH", token.Line)
+			}
 			p.advance() // consume OPTIONAL
 			if p.peek().Type != TokenMatch {
 				return nil, fmt.Errorf("expected MATCH after OPTIONAL at line %d", token.Line)
@@ -66,6 +69,9 @@ func (p *Parser) Parse() (*Query, error) {
 			if w := writeClauseSeen(query); w != "" {
 				return nil, fmt.Errorf("MATCH after %s is not supported at line %d: graphdb runs every MATCH before any write; put the MATCH first or split the query with WITH", w, token.Line)
 			}
+			if query.Call != nil {
+				return nil, matchAfterCallError("MATCH", token.Line)
+			}
 			if len(query.OptionalMatches) > 0 {
 				return nil, fmt.Errorf("MATCH after OPTIONAL MATCH is not supported at line %d: graphdb runs every MATCH before OPTIONAL MATCH; put the MATCH first or split the query with WITH", token.Line)
 			}
@@ -84,6 +90,11 @@ func (p *Parser) Parse() (*Query, error) {
 		case TokenCall:
 			if query.Call != nil {
 				return nil, repeatedClauseError("CALL", token.Line)
+			}
+			// The plan runs CALL before every write and UNWIND, so a CALL
+			// written after one would silently run before it.
+			if w := clauseBeforeCall(query); w != "" {
+				return nil, fmt.Errorf("CALL after %s is not supported at line %d: graphdb runs CALL before %s; put the CALL before %s or split the query with WITH", w, token.Line, w, w)
 			}
 			callClause, err := p.parseCall()
 			if err != nil {
@@ -303,6 +314,23 @@ func writeClauseSeen(q *Query) string {
 		return "DELETE"
 	}
 	return ""
+}
+
+// clauseBeforeCall names a clause the plan runs after CALL that the query
+// already has, or returns "".
+func clauseBeforeCall(q *Query) string {
+	if w := writeClauseSeen(q); w != "" {
+		return w
+	}
+	if q.Unwind != nil {
+		return "UNWIND"
+	}
+	return ""
+}
+
+// matchAfterCallError refuses a MATCH the plan would run before the CALL.
+func matchAfterCallError(clause string, line int) error {
+	return fmt.Errorf("%s after CALL is not supported at line %d: graphdb runs every MATCH before CALL; put the MATCH before CALL or split the query with WITH", clause, line)
 }
 
 // repeatedClauseError refuses a second clause of a kind the query can hold

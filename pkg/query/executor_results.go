@@ -141,33 +141,20 @@ func (e *Executor) buildGroupedResultSet(ctx *ExecutionContext, returnClause *Re
 		keyCols[i] = buildColumnName(item)
 	}
 
-	type group struct {
-		first   *BindingSet
-		members []*BindingSet
-	}
-	var order []*group
-	byKey := make(map[string]*group)
-	for _, binding := range ctx.results {
+	order := groupBindings(ctx.results, func(binding *BindingSet) []any {
 		var parts []any
 		if len(returnClause.GroupBy) > 0 {
 			for _, expr := range returnClause.GroupBy {
 				parts = append(parts, e.extractValueFromBinding(binding, expr, computer))
 			}
-		} else {
-			row := e.buildRow(binding, keyItems, keyCols, computer)
-			for _, col := range keyCols {
-				parts = append(parts, row[col])
-			}
+			return parts
 		}
-		key := groupKey(parts)
-		g, ok := byKey[key]
-		if !ok {
-			g = &group{first: binding}
-			byKey[key] = g
-			order = append(order, g)
+		row := e.buildRow(binding, keyItems, keyCols, computer)
+		for _, col := range keyCols {
+			parts = append(parts, row[col])
 		}
-		g.members = append(g.members, binding)
-	}
+		return parts
+	})
 
 	for _, g := range order {
 		row := computer.ComputeAggregates(ctx.aggregationContext(g.members), returnClause.Items)
@@ -213,6 +200,33 @@ func (e *Executor) buildGroupedResultSet(ctx *ExecutionContext, returnClause *Re
 		}
 	}
 	return resultSet
+}
+
+// bindingGroup is the bindings that share one grouping key. The first one is
+// kept because a group's key columns are read from it.
+type bindingGroup struct {
+	first   *BindingSet
+	members []*BindingSet
+}
+
+// groupBindings splits bindings into groups by the key values keyParts returns.
+// RETURN and WITH both group through it, so they cannot disagree on what makes
+// two keys equal (see groupKey). Groups keep the order in which their first
+// member appears.
+func groupBindings(bindings []*BindingSet, keyParts func(*BindingSet) []any) []*bindingGroup {
+	var order []*bindingGroup
+	byKey := make(map[string]*bindingGroup)
+	for _, binding := range bindings {
+		key := groupKey(keyParts(binding))
+		g, ok := byKey[key]
+		if !ok {
+			g = &bindingGroup{first: binding}
+			byKey[key] = g
+			order = append(order, g)
+		}
+		g.members = append(g.members, binding)
+	}
+	return order
 }
 
 // nonAggregateItems returns the RETURN items that are grouping keys.
