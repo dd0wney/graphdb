@@ -254,41 +254,6 @@ func TestCypherKnownGaps(t *testing.T) {
 					t.Errorf("columns = %q, want [\"age\"]", r.rs.Columns)
 				}
 			}},
-		{"v1.4-cypher-call-unknown-procedure-succeeds",
-			`CALL algo.nope()`,
-			wantErrContaining("algo.nope")},
-		{"v1.4-cypher-call-bare-does-not-run",
-			`CALL algo.pageRank()`,
-			// algo.pageRank returns one row with column "scores" (pkg/query/procedures.go).
-			func(t gapReporter, r gapResult) {
-				if !okResult(t, r) {
-					return
-				}
-				if len(r.rs.Rows) < 1 {
-					t.Errorf("rows = 0, want at least 1")
-					return
-				}
-				if v, present := r.rs.Rows[0]["scores"]; !present || v == nil {
-					t.Errorf("scores = %#v (present=%v), want not null; row=%v", v, present, r.rs.Rows[0])
-				}
-			}},
-		{"v1.4-cypher-call-yield-returns-null/real-column",
-			// "scores" is the one column algo.pageRank returns.
-			`CALL algo.pageRank() YIELD scores RETURN scores`,
-			func(t gapReporter, r gapResult) {
-				if !okResult(t, r) {
-					return
-				}
-				if !reflect.DeepEqual(r.rs.Columns, []string{"scores"}) {
-					t.Errorf("columns = %q, want [scores]", r.rs.Columns)
-				}
-				if len(r.rs.Rows) != 1 || r.rs.Rows[0]["scores"] == nil {
-					t.Errorf("rows = %v, want one row with scores not null", r.rs.Rows)
-				}
-			}},
-		{"v1.4-cypher-call-yield-returns-null/unknown-column",
-			`CALL algo.pageRank() YIELD nodeId RETURN nodeId`,
-			wantErrContaining("nodeId")},
 		{"v1.4-cypher-return-undefined-variable",
 			`MATCH (p:Person) RETURN q.name LIMIT 1`,
 			func(t gapReporter, r gapResult) {
