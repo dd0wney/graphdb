@@ -508,3 +508,99 @@ func TestCoerceToUint64(t *testing.T) {
 		})
 	}
 }
+
+func TestEMeansProcedure_HappyPathAndRegistry(t *testing.T) {
+	if _, ok := procedureRegistry["algo.eMeans"]; !ok {
+		t.Fatal("algo.eMeans not in procedureRegistry")
+	}
+
+	gs, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("storage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	const tenantID = "tenant-A"
+	vecs := [][]float32{
+		{1, 0, 0},
+		{0.98, 0.05, 0},
+		{0, 1, 0},
+		{0.05, 0.98, 0},
+	}
+	for _, v := range vecs {
+		if _, err := gs.CreateNodeWithTenant(tenantID, []string{"Concept"}, map[string]storage.Value{
+			"embedding": storage.VectorValue(v),
+		}); err != nil {
+			t.Fatalf("create node: %v", err)
+		}
+	}
+
+	rows, err := eMeansProcedure(context.Background(), gs, tenantID, []any{2, "embedding", 3.0, true, "Concept"})
+	if err != nil {
+		t.Fatalf("eMeansProcedure: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	clusters, ok := rows[0]["clusters"].([]map[string]any)
+	if !ok || len(clusters) != 2 {
+		t.Fatalf("expected 2 clusters, got %v (%T)", rows[0]["clusters"], rows[0]["clusters"])
+	}
+	medoids, ok := rows[0]["medoids"].(map[int]uint64)
+	if !ok || len(medoids) != 2 {
+		t.Fatalf("expected 2 medoids, got %v", rows[0]["medoids"])
+	}
+}
+
+func TestGraphTopologyProcedures_HappyPathAndRegistry(t *testing.T) {
+	gs, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("storage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+	ctx := context.Background()
+
+	n1, _ := gs.CreateNodeWithTenant("tenant-a", []string{"Skill"}, nil)
+	n2, _ := gs.CreateNodeWithTenant("tenant-a", []string{"Skill"}, nil)
+	n3, _ := gs.CreateNodeWithTenant("tenant-a", []string{"Skill"}, nil)
+	_, _ = gs.CreateEdgeWithTenant("tenant-a", n1.ID, n2.ID, "DEPENDS_ON", nil, 1.0)
+	_, _ = gs.CreateEdgeWithTenant("tenant-a", n2.ID, n3.ID, "DEPENDS_ON", nil, 1.0)
+	_, _ = gs.CreateEdgeWithTenant("tenant-a", n3.ID, n1.ID, "DEPENDS_ON", nil, 1.0)
+
+	for _, name := range []string{
+		"algo.detectCycles",
+		"algo.scc",
+		"algo.labelPropagation",
+		"algo.connectedComponents",
+		"algo.betweennessCentrality",
+	} {
+		if _, ok := procedureRegistry[name]; !ok {
+			t.Fatalf("expected %s to be registered in procedureRegistry", name)
+		}
+	}
+
+	cyclesRows, err := detectCyclesProcedure(ctx, gs, "tenant-a", nil)
+	if err != nil || len(cyclesRows) != 1 || cyclesRows[0]["count"].(int) < 1 {
+		t.Fatalf("detectCyclesProcedure failed: rows=%v err=%v", cyclesRows, err)
+	}
+
+	sccRows, err := sccProcedure(ctx, gs, "tenant-a", nil)
+	if err != nil || len(sccRows) != 1 || sccRows[0]["singletonCount"].(int) != 0 {
+		t.Fatalf("sccProcedure failed: rows=%v err=%v", sccRows, err)
+	}
+
+	lpRows, err := labelPropagationProcedure(ctx, gs, "tenant-a", []any{5})
+	if err != nil || len(lpRows) != 1 {
+		t.Fatalf("labelPropagationProcedure failed: rows=%v err=%v", lpRows, err)
+	}
+
+	ccRows, err := connectedComponentsProcedure(ctx, gs, "tenant-a", nil)
+	if err != nil || len(ccRows) != 1 || len(ccRows[0]["communities"].([]map[string]any)) != 1 {
+		t.Fatalf("connectedComponentsProcedure failed: rows=%v err=%v", ccRows, err)
+	}
+
+	bcRows, err := betweennessCentralityProcedure(ctx, gs, "tenant-a", nil)
+	if err != nil || len(bcRows) != 1 || len(bcRows[0]["scores"].(map[uint64]float64)) != 3 {
+		t.Fatalf("betweennessCentralityProcedure failed: rows=%v err=%v", bcRows, err)
+	}
+}

@@ -118,14 +118,14 @@ func brandesCentrality(ctx context.Context, view graphView) (nodeBetweenness map
 
 // BetweennessCentrality computes betweenness centrality for all nodes
 // (tenant-blind). Measures how often a node appears on shortest paths.
-func BetweennessCentrality(graph *storage.GraphStorage) (map[uint64]float64, error) {
+func BetweennessCentrality(graph storage.Storage) (map[uint64]float64, error) {
 	return betweennessCentralityView(context.Background(), newTenantBlindView(graph))
 }
 
 // BetweennessCentralityForTenant restricts computation to the
 // caller's tenant subgraph. Audit A6c-algorithms. ctx cancels the
 // O(V·E) computation when the request deadline fires (H-6).
-func BetweennessCentralityForTenant(ctx context.Context, graph *storage.GraphStorage, tenantID string) (map[uint64]float64, error) {
+func BetweennessCentralityForTenant(ctx context.Context, graph storage.Storage, tenantID string) (map[uint64]float64, error) {
 	return betweennessCentralityView(ctx, newTenantScopedView(graph, tenantID))
 }
 
