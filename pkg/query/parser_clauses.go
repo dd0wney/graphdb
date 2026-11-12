@@ -78,7 +78,7 @@ func (p *Parser) parseReturn() (*ReturnClause, error) {
 	if p.peek().Type == TokenGroup {
 		p.advance() // consume GROUP
 		if p.peek().Type != TokenOrderBy {
-			return nil, fmt.Errorf("expected BY after GROUP")
+			return nil, syntaxErrorAt(p.peek(), "expected BY after GROUP")
 		}
 		p.advance() // consume BY
 
@@ -103,7 +103,7 @@ func (p *Parser) parseReturn() (*ReturnClause, error) {
 	if p.peek().Type == TokenOrder {
 		p.advance() // consume ORDER
 		if p.peek().Type != TokenOrderBy {
-			return nil, fmt.Errorf("expected BY after ORDER")
+			return nil, syntaxErrorAt(p.peek(), "expected BY after ORDER")
 		}
 		p.advance() // consume BY
 
@@ -423,7 +423,7 @@ func (p *Parser) parseFunctionCall(name string) (Expression, error) {
 	}
 
 	if _, err := p.expect(TokenRightParen); err != nil {
-		return nil, fmt.Errorf("expected ) after function arguments")
+		return nil, syntaxErrorAt(p.peek(), "expected ) after function arguments")
 	}
 
 	return &FunctionCallExpression{
@@ -504,7 +504,7 @@ func (p *Parser) parseMerge() (*MergeClause, error) {
 			merge.OnMatch = setClause
 
 		default:
-			return nil, fmt.Errorf("expected CREATE or MATCH after ON, got %s", next.Type)
+			return nil, syntaxErrorAt(next, "expected CREATE or MATCH after ON, got %s", describeToken(next))
 		}
 	}
 
@@ -517,22 +517,23 @@ func (p *Parser) parseUnwind() (*UnwindClause, error) {
 		return nil, err
 	}
 
+	exprStart := p.peek()
 	expr, err := p.parsePrimaryExpression()
 	if err != nil {
 		return nil, err
 	}
 	propExpr, ok := expr.(*PropertyExpression)
 	if !ok {
-		return nil, fmt.Errorf("UNWIND expression must be a property reference")
+		return nil, syntaxErrorAt(exprStart, "UNWIND expression must be a property reference")
 	}
 
 	if _, err := p.expect(TokenAs); err != nil {
-		return nil, fmt.Errorf("expected AS after UNWIND expression")
+		return nil, syntaxErrorAt(p.peek(), "expected AS after UNWIND expression")
 	}
 
 	aliasToken, err := p.expect(TokenIdentifier)
 	if err != nil {
-		return nil, fmt.Errorf("expected alias after UNWIND ... AS")
+		return nil, syntaxErrorAt(p.peek(), "expected alias after UNWIND ... AS")
 	}
 
 	return &UnwindClause{

@@ -96,7 +96,7 @@ func (p *Parser) parseComparisonExpression() (Expression, error) {
 		if p.peek().Type == TokenNot {
 			p.advance() // consume NOT
 			if p.peek().Type != TokenNull {
-				return nil, fmt.Errorf("expected NULL after IS NOT")
+				return nil, syntaxErrorAt(p.peek(), "expected NULL after IS NOT")
 			}
 			p.advance() // consume NULL
 			return &BinaryExpression{
@@ -106,7 +106,7 @@ func (p *Parser) parseComparisonExpression() (Expression, error) {
 			}, nil
 		}
 		if p.peek().Type != TokenNull {
-			return nil, fmt.Errorf("expected NULL after IS")
+			return nil, syntaxErrorAt(p.peek(), "expected NULL after IS")
 		}
 		p.advance() // consume NULL
 		return &BinaryExpression{
@@ -147,7 +147,7 @@ func (p *Parser) parseComparisonExpression() (Expression, error) {
 	case TokenStarts:
 		p.advance() // consume STARTS
 		if _, err := p.expect(TokenWith); err != nil {
-			return nil, fmt.Errorf("expected WITH after STARTS")
+			return nil, syntaxErrorAt(p.peek(), "expected WITH after STARTS")
 		}
 		right, err := p.parseAddSubExpression()
 		if err != nil {
@@ -161,7 +161,7 @@ func (p *Parser) parseComparisonExpression() (Expression, error) {
 	case TokenEnds:
 		p.advance() // consume ENDS
 		if _, err := p.expect(TokenWith); err != nil {
-			return nil, fmt.Errorf("expected WITH after ENDS")
+			return nil, syntaxErrorAt(p.peek(), "expected WITH after ENDS")
 		}
 		right, err := p.parseAddSubExpression()
 		if err != nil {
@@ -346,7 +346,7 @@ func (p *Parser) parsePrimaryExpression() (Expression, error) {
 		return p.parseListLiteral()
 
 	default:
-		return nil, fmt.Errorf("unexpected token in expression: %s", token.Type)
+		return nil, syntaxErrorAt(token, "unexpected token in expression: %s", describeToken(token))
 	}
 }
 
@@ -373,7 +373,7 @@ func (p *Parser) parseCaseExpression() (Expression, error) {
 			return nil, err
 		}
 		if _, err := p.expect(TokenThen); err != nil {
-			return nil, fmt.Errorf("expected THEN after WHEN condition")
+			return nil, syntaxErrorAt(p.peek(), "expected THEN after WHEN condition")
 		}
 		result, err := p.parseExpression()
 		if err != nil {
@@ -386,7 +386,7 @@ func (p *Parser) parseCaseExpression() (Expression, error) {
 	}
 
 	if len(caseExpr.WhenClauses) == 0 {
-		return nil, fmt.Errorf("CASE requires at least one WHEN clause")
+		return nil, syntaxErrorAt(p.peek(), "CASE requires at least one WHEN clause")
 	}
 
 	// Optional ELSE
@@ -400,7 +400,7 @@ func (p *Parser) parseCaseExpression() (Expression, error) {
 	}
 
 	if _, err := p.expect(TokenEnd); err != nil {
-		return nil, fmt.Errorf("expected END to close CASE expression")
+		return nil, syntaxErrorAt(p.peek(), "expected END to close CASE expression")
 	}
 
 	return caseExpr, nil
@@ -434,7 +434,7 @@ func (p *Parser) parseListLiteral() (Expression, error) {
 	}
 
 	if _, err := p.expect(TokenRightBracket); err != nil {
-		return nil, fmt.Errorf("expected ] to close list literal")
+		return nil, syntaxErrorAt(p.peek(), "expected ] to close list literal")
 	}
 
 	return &LiteralExpression{Value: items}, nil

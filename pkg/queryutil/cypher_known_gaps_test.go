@@ -304,23 +304,6 @@ func TestCypherKnownGaps(t *testing.T) {
 		{"v1.4-cypher-subqueries-and-comprehension/list-comprehension",
 			`RETURN [x IN range(1,5) WHERE x % 2 = 1 | x*x] AS odds`,
 			wantListCell("odds", []float64{1, 9, 25})},
-		{"v1.4-query-parser-error-position",
-			// A genuine syntax error. `MATCH (p:Person RETURN p` already gives a
-			// message without Token(n), so it cannot show this gap.
-			`MATCH (p:Person) RETURN p.age > > 1`,
-			func(t gapReporter, r gapResult) {
-				if r.err == nil {
-					t.Errorf("want a syntax error, got none")
-					return
-				}
-				msg := r.err.Error()
-				if regexp.MustCompile(`Token\(\d+\)`).MatchString(msg) {
-					t.Errorf("error text exposes a raw token number: %q", msg)
-				}
-				if !regexp.MustCompile(`(?i)(col(umn)?\s*:?\s*\d+|:\d+)`).MatchString(msg) {
-					t.Errorf("error text has no column number: %q", msg)
-				}
-			}},
 	}
 
 	run := os.Getenv(knownGapsEnv) == "1"
