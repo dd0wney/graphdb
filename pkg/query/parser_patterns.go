@@ -1,7 +1,6 @@
 package query
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -41,7 +40,7 @@ func (p *Parser) parsePattern() (*Pattern, error) {
 // parseNode parses a node pattern: (variable:Label {prop: value})
 func (p *Parser) parseNode() (*NodePattern, error) {
 	if p.peek().Type != TokenLeftParen {
-		return nil, fmt.Errorf("expected '(', got %s", p.peek().Type)
+		return nil, syntaxErrorAt(p.peek(), "expected '(', got %s", describeToken(p.peek()))
 	}
 	p.advance() // consume (
 
@@ -78,7 +77,7 @@ func (p *Parser) parseNode() (*NodePattern, error) {
 	}
 
 	if p.peek().Type != TokenRightParen {
-		return nil, fmt.Errorf("expected ')', got %s at line %d", p.peek().Type, p.peek().Line)
+		return nil, syntaxErrorAt(p.peek(), "expected ')', got %s", describeToken(p.peek()))
 	}
 	p.advance() // consume )
 
@@ -95,7 +94,8 @@ func (p *Parser) parseRelationship(fromNode *NodePattern) (*RelationshipPattern,
 	}
 
 	// Determine initial direction from leading token
-	leadingToken := p.peek().Type
+	leadingTok := p.peek()
+	leadingToken := leadingTok.Type
 	hasDetails := false
 
 	switch leadingToken {
@@ -112,7 +112,7 @@ func (p *Parser) parseRelationship(fromNode *NodePattern) (*RelationshipPattern,
 		p.advance()
 		rel.Direction = DirectionBoth // May be updated after details
 	default:
-		return nil, nil, fmt.Errorf("expected relationship pattern, got %v", leadingToken)
+		return nil, nil, syntaxErrorAt(leadingTok, "expected relationship pattern, got %s", describeToken(leadingTok))
 	}
 
 	// Parse relationship details

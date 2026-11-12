@@ -160,7 +160,7 @@ func (l *Lexer) nextToken() (Token, error) {
 		return l.readIdentifier()
 	}
 
-	return Token{}, fmt.Errorf("unexpected character '%c' at line %d, column %d", ch, l.line, l.column)
+	return Token{}, &SyntaxError{Message: fmt.Sprintf("unexpected character '%c'", ch), Token: string(ch), Line: l.line, Column: l.column}
 }
 
 // readIdentifier reads an identifier or keyword
@@ -217,6 +217,9 @@ func (l *Lexer) readNumber() (Token, error) {
 func (l *Lexer) readString() (Token, error) {
 	start := l.pos
 	startCol := l.column
+	// An unterminated string is reported where it opens, because the end of
+	// the input is a poor place to look for a missing quote.
+	startLine := l.line
 	quote := l.advance()
 
 	value := ""
@@ -224,7 +227,7 @@ func (l *Lexer) readString() (Token, error) {
 		if l.peek() == '\\' {
 			l.advance()
 			if l.pos >= len(l.input) {
-				return Token{}, fmt.Errorf("unterminated string at line %d", l.line)
+				return Token{}, &SyntaxError{Message: "unterminated string", Token: l.input[start : start+1], Line: startLine, Column: startCol}
 			}
 			// Handle escape sequences
 			switch l.peek() {
@@ -248,7 +251,7 @@ func (l *Lexer) readString() (Token, error) {
 	}
 
 	if l.pos >= len(l.input) {
-		return Token{}, fmt.Errorf("unterminated string at line %d", l.line)
+		return Token{}, &SyntaxError{Message: "unterminated string", Token: l.input[start : start+1], Line: startLine, Column: startCol}
 	}
 
 	l.advance() // Closing quote
@@ -312,7 +315,7 @@ func (l *Lexer) readParameter() (Token, error) {
 	l.advance() // consume '$'
 
 	if l.pos >= len(l.input) || (!unicode.IsLetter(rune(l.input[l.pos])) && l.input[l.pos] != '_') {
-		return Token{}, fmt.Errorf("expected parameter name after '$' at line %d, column %d", l.line, startCol)
+		return Token{}, &SyntaxError{Message: "expected parameter name after '$'", Token: "$", Line: l.line, Column: startCol}
 	}
 
 	nameStart := l.pos

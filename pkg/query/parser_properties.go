@@ -1,7 +1,6 @@
 package query
 
 import (
-	"fmt"
 	"strconv"
 )
 
@@ -59,7 +58,7 @@ func (p *Parser) parseValue() (any, error) {
 		if val, err := strconv.ParseFloat(token.Value, 64); err == nil {
 			return val, nil
 		}
-		return nil, fmt.Errorf("invalid number: %s", token.Value)
+		return nil, syntaxErrorAt(token, "invalid number: %s", token.Value)
 	case TokenTrue:
 		p.advance()
 		return true, nil
@@ -73,6 +72,6 @@ func (p *Parser) parseValue() (any, error) {
 		tok := p.advance()
 		return &ParameterRef{Name: tok.Value}, nil
 	default:
-		return nil, fmt.Errorf("expected value, got %s", token.Type)
+		return nil, syntaxErrorAt(token, "expected value, got %s", describeToken(token))
 	}
 }

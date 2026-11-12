@@ -1,7 +1,5 @@
 package query
 
-import "fmt"
-
 // Token represents a lexical token
 type Token struct {
 	Type   TokenType
@@ -148,75 +146,4 @@ var keywords = map[string]TokenType{
 	"CONTAINS": TokenContains,
 	"CALL":     TokenCall,
 	"YIELD":    TokenYield,
-}
-
-func (t TokenType) String() string {
-	switch t {
-	case TokenEOF:
-		return "EOF"
-	case TokenError:
-		return "ERROR"
-	case TokenMatch:
-		return "MATCH"
-	case TokenWhere:
-		return "WHERE"
-	case TokenReturn:
-		return "RETURN"
-	case TokenCreate:
-		return "CREATE"
-	case TokenDelete:
-		return "DELETE"
-	case TokenExplain:
-		return "EXPLAIN"
-	case TokenProfile:
-		return "PROFILE"
-	case TokenUnwind:
-		return "UNWIND"
-	case TokenMerge:
-		return "MERGE"
-	case TokenOn:
-		return "ON"
-	case TokenOptional:
-		return "OPTIONAL"
-	case TokenCase:
-		return "CASE"
-	case TokenWhen:
-		return "WHEN"
-	case TokenThen:
-		return "THEN"
-	case TokenElse:
-		return "ELSE"
-	case TokenEnd:
-		return "END"
-	case TokenUnion:
-		return "UNION"
-	case TokenAll:
-		return "ALL"
-	case TokenIs:
-		return "IS"
-	case TokenIn:
-		return "IN"
-	case TokenRemove:
-		return "REMOVE"
-	case TokenOrder:
-		return "ORDER"
-	case TokenOrderBy:
-		return "BY"
-	case TokenStarts:
-		return "STARTS"
-	case TokenEnds:
-		return "ENDS"
-	case TokenContains:
-		return "CONTAINS"
-	case TokenParameter:
-		return "PARAMETER"
-	case TokenIdentifier:
-		return "IDENTIFIER"
-	case TokenString:
-		return "STRING"
-	case TokenNumber:
-		return "NUMBER"
-	default:
-		return fmt.Sprintf("Token(%d)", t)
-	}
 }

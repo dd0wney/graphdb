@@ -1,7 +1,6 @@
 package query
 
 import (
-	"fmt"
 	"strconv"
 )
 
@@ -42,11 +41,11 @@ func (p *Parser) Parse() (*Query, error) {
 		switch token.Type {
 		case TokenOptional:
 			if query.Call != nil {
-				return nil, matchAfterCallError("OPTIONAL MATCH", token.Line)
+				return nil, matchAfterCallError("OPTIONAL MATCH", token)
 			}
 			p.advance() // consume OPTIONAL
 			if p.peek().Type != TokenMatch {
-				return nil, fmt.Errorf("expected MATCH after OPTIONAL at line %d", token.Line)
+				return nil, syntaxErrorAt(p.peek(), "expected MATCH after OPTIONAL")
 			}
 			matchClause, err := p.parseMatch()
 			if err != nil {
@@ -67,13 +66,13 @@ func (p *Parser) Parse() (*Query, error) {
 			// The plan runs every MATCH before any write, so a MATCH written
 			// after one would silently run before it.
 			if w := writeClauseSeen(query); w != "" {
-				return nil, fmt.Errorf("MATCH after %s is not supported at line %d: graphdb runs every MATCH before any write; put the MATCH first or split the query with WITH", w, token.Line)
+				return nil, syntaxErrorAt(token, "MATCH after %s is not supported: graphdb runs every MATCH before any write; put the MATCH first or split the query with WITH", w)
 			}
 			if query.Call != nil {
-				return nil, matchAfterCallError("MATCH", token.Line)
+				return nil, matchAfterCallError("MATCH", token)
 			}
 			if len(query.OptionalMatches) > 0 {
-				return nil, fmt.Errorf("MATCH after OPTIONAL MATCH is not supported at line %d: graphdb runs every MATCH before OPTIONAL MATCH; put the MATCH first or split the query with WITH", token.Line)
+				return nil, syntaxErrorAt(token, "MATCH after OPTIONAL MATCH is not supported: graphdb runs every MATCH before OPTIONAL MATCH; put the MATCH first or split the query with WITH")
 			}
 			matchClause, err := p.parseMatch()
 			if err != nil {
@@ -89,12 +88,12 @@ func (p *Parser) Parse() (*Query, error) {
 
 		case TokenCall:
 			if query.Call != nil {
-				return nil, repeatedClauseError("CALL", token.Line)
+				return nil, repeatedClauseError("CALL", token)
 			}
 			// The plan runs CALL before every write and UNWIND, so a CALL
 			// written after one would silently run before it.
 			if w := clauseBeforeCall(query); w != "" {
-				return nil, fmt.Errorf("CALL after %s is not supported at line %d: graphdb runs CALL before %s; put the CALL before %s or split the query with WITH", w, token.Line, w, w)
+				return nil, syntaxErrorAt(token, "CALL after %s is not supported: graphdb runs CALL before %s; put the CALL before %s or split the query with WITH", w, w, w)
 			}
 			callClause, err := p.parseCall()
 			if err != nil {
@@ -104,7 +103,7 @@ func (p *Parser) Parse() (*Query, error) {
 
 		case TokenWhere:
 			if last != "MATCH" {
-				return nil, fmt.Errorf("WHERE after %s is not supported at line %d: graphdb filters right after MATCH; filter with WITH ... WHERE instead", clauseName(last), token.Line)
+				return nil, syntaxErrorAt(token, "WHERE after %s is not supported: graphdb filters right after MATCH; filter with WITH ... WHERE instead", clauseName(last))
 			}
 			whereClause, err := p.parseWhere()
 			if err != nil {
@@ -116,7 +115,7 @@ func (p *Parser) Parse() (*Query, error) {
 
 		case TokenReturn:
 			if query.Return != nil {
-				return nil, repeatedClauseError("RETURN", token.Line)
+				return nil, repeatedClauseError("RETURN", token)
 			}
 			returnClause, err := p.parseReturn()
 			if err != nil {
@@ -126,7 +125,7 @@ func (p *Parser) Parse() (*Query, error) {
 
 		case TokenCreate:
 			if query.Create != nil {
-				return nil, fmt.Errorf("repeated CREATE is not supported at line %d: put the patterns in one CREATE, separated by commas", token.Line)
+				return nil, syntaxErrorAt(token, "repeated CREATE is not supported: put the patterns in one CREATE, separated by commas")
 			}
 			createClause, err := p.parseCreate()
 			if err != nil {
@@ -141,7 +140,7 @@ func (p *Parser) Parse() (*Query, error) {
 			}
 			if query.Delete != nil {
 				if query.Delete.Detach != deleteClause.Detach {
-					return nil, fmt.Errorf("DELETE and DETACH DELETE in one query are not supported at line %d: use one form for every variable", token.Line)
+					return nil, syntaxErrorAt(token, "DELETE and DETACH DELETE in one query are not supported: use one form for every variable")
 				}
 				query.Delete.Variables = append(query.Delete.Variables, deleteClause.Variables...)
 			} else {
@@ -166,7 +165,7 @@ func (p *Parser) Parse() (*Query, error) {
 		case TokenMerge:
 			// The plan runs every MERGE before CREATE, SET, REMOVE and DELETE.
 			if w := writeClauseSeen(query); w != "" && w != "MERGE" {
-				return nil, fmt.Errorf("MERGE after %s is not supported at line %d: graphdb runs every MERGE before %s; put the MERGE first or split the query with WITH", w, token.Line, w)
+				return nil, syntaxErrorAt(token, "MERGE after %s is not supported: graphdb runs every MERGE before %s; put the MERGE first or split the query with WITH", w, w)
 			}
 			mergeClause, err := p.parseMerge()
 			if err != nil {
@@ -176,7 +175,7 @@ func (p *Parser) Parse() (*Query, error) {
 
 		case TokenUnwind:
 			if query.Unwind != nil {
-				return nil, fmt.Errorf("repeated UNWIND is not supported at line %d: split the query with WITH", token.Line)
+				return nil, syntaxErrorAt(token, "repeated UNWIND is not supported: split the query with WITH")
 			}
 			unwindClause, err := p.parseUnwind()
 			if err != nil {
@@ -217,7 +216,7 @@ func (p *Parser) Parse() (*Query, error) {
 			if limit, err := strconv.Atoi(limitToken.Value); err == nil {
 				query.Limit = limit
 			} else {
-				return nil, fmt.Errorf("invalid LIMIT value: %s", limitToken.Value)
+				return nil, syntaxErrorAt(limitToken, "invalid LIMIT value: %s", limitToken.Value)
 			}
 
 		case TokenSkip:
@@ -229,7 +228,7 @@ func (p *Parser) Parse() (*Query, error) {
 			if skip, err := strconv.Atoi(skipToken.Value); err == nil {
 				query.Skip = skip
 			} else {
-				return nil, fmt.Errorf("invalid SKIP value: %s", skipToken.Value)
+				return nil, syntaxErrorAt(skipToken, "invalid SKIP value: %s", skipToken.Value)
 			}
 
 		case TokenUnion:
@@ -254,7 +253,7 @@ func (p *Parser) Parse() (*Query, error) {
 			return query, nil
 
 		default:
-			return nil, fmt.Errorf("unexpected token: %s at line %d", token.Type, token.Line)
+			return nil, syntaxErrorAt(token, "unexpected token: %s", describeToken(token))
 		}
 		last = clauseTokenName(token.Type)
 	}
@@ -264,9 +263,21 @@ func (p *Parser) Parse() (*Query, error) {
 
 // Helper functions
 
+// eofToken is the token peek returns past the last token. It keeps the
+// position of the final token, so that an error at the end of the query
+// still has a line and a column.
+func (p *Parser) eofToken() Token {
+	eof := Token{Type: TokenEOF}
+	if len(p.tokens) > 0 {
+		last := p.tokens[len(p.tokens)-1]
+		eof.Pos, eof.Line, eof.Column = last.Pos, last.Line, last.Column
+	}
+	return eof
+}
+
 func (p *Parser) peek() Token {
 	if p.pos >= len(p.tokens) {
-		return Token{Type: TokenEOF}
+		return p.eofToken()
 	}
 	return p.tokens[p.pos]
 }
@@ -274,7 +285,7 @@ func (p *Parser) peek() Token {
 func (p *Parser) peekAhead(n int) Token {
 	pos := p.pos + n
 	if pos >= len(p.tokens) {
-		return Token{Type: TokenEOF}
+		return p.eofToken()
 	}
 	return p.tokens[pos]
 }
@@ -290,7 +301,7 @@ func (p *Parser) advance() Token {
 func (p *Parser) expect(tokenType TokenType) (Token, error) {
 	token := p.peek()
 	if token.Type != tokenType {
-		return Token{}, fmt.Errorf("expected %s, got %s at line %d", tokenType, token.Type, token.Line)
+		return Token{}, syntaxErrorAt(token, "expected %s, got %s", tokenType, describeToken(token))
 	}
 	return p.advance(), nil
 }
@@ -329,14 +340,14 @@ func clauseBeforeCall(q *Query) string {
 }
 
 // matchAfterCallError refuses a MATCH the plan would run before the CALL.
-func matchAfterCallError(clause string, line int) error {
-	return fmt.Errorf("%s after CALL is not supported at line %d: graphdb runs every MATCH before CALL; put the MATCH before CALL or split the query with WITH", clause, line)
+func matchAfterCallError(clause string, token Token) error {
+	return syntaxErrorAt(token, "%s after CALL is not supported: graphdb runs every MATCH before CALL; put the MATCH before CALL or split the query with WITH", clause)
 }
 
 // repeatedClauseError refuses a second clause of a kind the query can hold
 // once. Keeping only one of them would drop the other without a word.
-func repeatedClauseError(clause string, line int) error {
-	return fmt.Errorf("repeated %s is not supported at line %d", clause, line)
+func repeatedClauseError(clause string, token Token) error {
+	return syntaxErrorAt(token, "repeated %s is not supported", clause)
 }
 
 // clauseTokenName names the clause a top-level token starts, for the parser's
