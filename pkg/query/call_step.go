@@ -25,8 +25,8 @@ func (s *CallStep) Execute(ctx *ExecutionContext) error {
 
 	for _, y := range s.call.YieldItems {
 		for _, in := range ctx.results {
-			if _, bound := in.bindings[y]; bound {
-				return fmt.Errorf("YIELD %q is already bound by an earlier clause", y)
+			if err := refuseBound(in, y); err != nil {
+				return err
 			}
 		}
 	}
@@ -89,6 +89,9 @@ func (s *CallStep) bindRow(in *BindingSet, row map[string]any) (*BindingSet, err
 
 	if len(s.call.YieldItems) == 0 {
 		for k, v := range row {
+			if err := refuseBound(in, k); err != nil {
+				return nil, err
+			}
 			bindings[k] = v
 		}
 		return &BindingSet{bindings: bindings}, nil
@@ -103,6 +106,15 @@ func (s *CallStep) bindRow(in *BindingSet, row map[string]any) (*BindingSet, err
 		bindings[y] = v
 	}
 	return &BindingSet{bindings: bindings}, nil
+}
+
+// refuseBound stops a procedure column from overwriting a variable an earlier
+// clause bound. Without it the node would vanish from the row with no error.
+func refuseBound(in *BindingSet, name string) error {
+	if _, bound := in.bindings[name]; bound {
+		return fmt.Errorf("column %q is already bound by an earlier clause", name)
+	}
+	return nil
 }
 
 func sortedColumnNames(row map[string]any) []string {

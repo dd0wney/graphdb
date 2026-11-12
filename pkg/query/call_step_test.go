@@ -143,7 +143,7 @@ func TestCallStep_DetectCyclesColumnsSortedAndCounted(t *testing.T) {
 func TestCallStep_YieldNameCollidesWithBoundVariable(t *testing.T) {
 	ex, _, cleanup := setupCallGraph(t)
 	defer cleanup()
-	wantCallErr(t, ex, `MATCH (scores:Person) CALL algo.pageRank() YIELD scores RETURN scores AS scores`, "scores")
+	wantCallErr(t, ex, `MATCH (scores:Person) CALL algo.pageRank() YIELD scores RETURN scores AS scores`, "already bound", "scores")
 }
 
 func TestCallStep_LiteralArguments(t *testing.T) {
@@ -186,7 +186,7 @@ func TestCallStep_ArgumentFromMatchBoundProperty(t *testing.T) {
 func TestCallStep_WriteQueryStillReportsAffected(t *testing.T) {
 	ex, _, cleanup := setupCallGraph(t)
 	defer cleanup()
-	rs, err := runCypher(t, ex, `CREATE (n:Person {name: "Zed"})`)
+	rs, err := runCypher(t, ex, `CALL algo.pageRank() YIELD scores CREATE (n:Made)`)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

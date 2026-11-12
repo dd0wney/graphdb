@@ -346,8 +346,13 @@ func callResultSet(ec *ExecutionContext) *ResultSet {
 		}
 		rows = append(rows, row)
 	}
+	// A nil slice encodes as JSON null; every other response sends an array.
+	columns := ec.callColumns
+	if columns == nil {
+		columns = []string{}
+	}
 	return &ResultSet{
-		Columns: ec.callColumns,
+		Columns: columns,
 		Rows:    rows,
 		Count:   len(rows),
 		Notices: ec.notices,
