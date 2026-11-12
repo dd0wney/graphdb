@@ -256,12 +256,21 @@ func pageRankProcedure(_ context.Context, graph storage.Storage, tenantID string
 		if !ok {
 			return nil, fmt.Errorf("algo.pageRank: damping must be a number; got %T", args[0])
 		}
+		// Outside 0..1 the iteration diverges to -Inf, which the JSON encoder
+		// then refuses after the status line is already sent. NaN fails both
+		// comparisons below, so it is written as the negated in-range test.
+		if !(damping >= 0 && damping <= 1) {
+			return nil, fmt.Errorf("algo.pageRank: damping must be between 0 and 1; got %v", damping)
+		}
 		opts.DampingFactor = damping
 	}
 	if len(args) >= 2 {
 		maxIter, ok := coerceToInt(args[1])
 		if !ok {
 			return nil, fmt.Errorf("algo.pageRank: maxIterations must be an integer; got %T", args[1])
+		}
+		if maxIter < 1 {
+			return nil, fmt.Errorf("algo.pageRank: maxIterations must be at least 1; got %d", maxIter)
 		}
 		opts.MaxIterations = maxIter
 	}

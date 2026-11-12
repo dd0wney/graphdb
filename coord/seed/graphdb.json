@@ -675,6 +675,42 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: SKIP and LIMIT written after WITH apply to the final result, not to the WITH: MATCH (p:Person) WITH p LIMIT 1 MATCH (q:Person) RETURN q.id answered 1 row where openCypher answers 6"
+    },
+    {
+      "id": "v1.4-cypher-call-yield-collision-zero-rows",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: CallStep checks a YIELD name against the bound variables of the input rows, so with zero input rows MATCH (scores:NoSuch) CALL algo.pageRank() YIELD scores raises nothing. Check against the pattern variables of the AST instead"
+    },
+    {
+      "id": "v1.4-cypher-call-argument-parsing",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: an unbound variable as a procedure argument becomes nil and algo.labelPropagation and algo.eMeans then run with defaults; parseCall makes the comma between arguments optional (CALL algo.kHop(1 1) runs); 1e308 lexes as two arguments"
+    },
+    {
+      "id": "v1.4-procedures-ignore-context",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: algo.pageRank, kHop, shortestPath, nodeSimilarity, linkPrediction and detectCycles discard their context, so one procedure call cannot stop at the query timeout, and maxIterations has no cap. Pass ctx into the algorithms and check it per iteration"
+    },
+    {
+      "id": "v1.4-api-respond-json-status-before-encode",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: respondJSON writes the status line before it encodes the body, so a value encoding/json refuses (for example -Inf) answers HTTP 200 with an empty body. Encode into a buffer first and answer 500 on failure"
+    },
+    {
+      "id": "v1.4-cypher-explain-call-step-unknown",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: EXPLAIN CALL algo.nope() succeeds and shows step:Unknown, because CallStep has no step name or detail and EXPLAIN does not look the procedure up"
+    },
+    {
+      "id": "v1.4-procedure-registry-unlocked",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: RegisterProcedure writes procedureRegistry with no lock, and CALL now reads that map on every request"
     }
   ],
   "deps": [

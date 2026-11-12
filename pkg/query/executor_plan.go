@@ -51,6 +51,11 @@ type ExecutionContext struct {
 	// unchanged by construction. Read by traverseVariablePath and nowhere
 	// else.
 	pathOpts PathOptions
+
+	// callColumns are the output columns of a CALL step, in order. A CALL with
+	// no RETURN answers with exactly these, so the result does not fall back
+	// to the write-query "affected" row.
+	callColumns []string
 }
 
 // noteTruncation records the first limit a query ran into. The first is kept
@@ -216,6 +221,12 @@ func (e *Executor) buildExecutionPlan(query *Query) *ExecutionPlan {
 		})
 	}
 
+	// Add CALL step. After MATCH so an argument can read a bound variable, and
+	// before MERGE/CREATE so a write clause sees the yielded columns.
+	if query.Call != nil {
+		plan.Steps = append(plan.Steps, &CallStep{call: query.Call})
+	}
+
 	// Add MERGE step
 	// One step per MERGE, in text order. Keeping one slot here once made a
 	// second MERGE replace the first.
@@ -306,6 +317,12 @@ func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPl
 		return result, execCtx.truncation
 	}
 
+	// A bare CALL answers with the procedure's own columns. Only when the query
+	// has no write clause: a CALL followed by CREATE still reports affected.
+	if query.Call != nil && !hasWriteClause(query) {
+		return callResultSet(execCtx), execCtx.truncation
+	}
+
 	// For write queries, return count
 	return &ResultSet{
 		Columns: []string{"affected"},
@@ -313,4 +330,31 @@ func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPl
 		Count:   len(execCtx.results),
 		Notices: execCtx.notices,
 	}, execCtx.truncation
+}
+
+func hasWriteClause(query *Query) bool {
+	return query.Create != nil || query.Set != nil || query.Remove != nil ||
+		query.Delete != nil || len(query.Merges) > 0
+}
+
+func callResultSet(ec *ExecutionContext) *ResultSet {
+	rows := make([]map[string]any, 0, len(ec.results))
+	for _, b := range ec.results {
+		row := make(map[string]any, len(ec.callColumns))
+		for _, c := range ec.callColumns {
+			row[c] = b.bindings[c]
+		}
+		rows = append(rows, row)
+	}
+	// A nil slice encodes as JSON null; every other response sends an array.
+	columns := ec.callColumns
+	if columns == nil {
+		columns = []string{}
+	}
+	return &ResultSet{
+		Columns: columns,
+		Rows:    rows,
+		Count:   len(rows),
+		Notices: ec.notices,
+	}
 }
