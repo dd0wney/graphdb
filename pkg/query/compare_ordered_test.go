@@ -239,26 +239,30 @@ func TestCompareOrdered_SimpleCaseStringVsNumber(t *testing.T) {
 	}
 }
 
-// The expected order is what the code returned before compareOrdered existed.
-// This test pins it so the change cannot move it.
-func TestCompareOrdered_OrderByUnchanged(t *testing.T) {
-	ex := setupCompareGraph(t)
-	rs := parseAndExecute(t, ex, "MATCH (p:Person) RETURN p.id AS id ORDER BY p.age")
-	got := idsOf(t, rs)
-	want := []int64{0, 1, 2, 3}
-	if !reflect.DeepEqual(got, want) {
+// The nodes are created out of sorted order (ages 40, 20, 30), so a sort that
+// did nothing would fail. int64 ages order the same before and after
+// compareOrdered existed.
+func TestCompareOrdered_OrderByIntegersUnchanged(t *testing.T) {
+	gs, cleanup := setupExecutorTestGraph(t)
+	defer cleanup()
+	for i, age := range []int64{40, 20, 30} {
+		props := map[string]storage.Value{"id": storage.IntValue(int64(i)), "age": storage.IntValue(age)}
+		if _, err := gs.CreateNode([]string{"Person"}, props); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rs := parseAndExecute(t, NewExecutor(gs), "MATCH (p:Person) RETURN p.id AS id ORDER BY p.age")
+	if got, want := idsOf(t, rs), []int64{1, 2, 0}; !reflect.DeepEqual(got, want) {
 		t.Errorf("ORDER BY p.age = %v, want %v", got, want)
 	}
 }
 
-// KNOWN LIMIT: the executor has no three-valued logic. An ordering comparison
-// with null gives false here, so NOT turns it into true. openCypher gives null
-// for NOT null, and the WHERE would return zero rows. This test records the
-// current result. Do not read it as the correct one.
-func TestCompareOrdered_NotNullComparisonKnownLimit(t *testing.T) {
+// An ordering comparison with null is null, NOT null is null, and WHERE drops
+// the row. Before three-valued logic this returned every row.
+func TestCompareOrdered_NotNullComparisonDropsRow(t *testing.T) {
 	ex := setupCompareGraph(t)
 	rs := parseAndExecute(t, ex, "MATCH (p:Person) WHERE NOT (p.nosuch > 5) RETURN p.id AS id")
-	if got, want := sortedIDs(t, rs), []int64{0, 1, 2, 3}; !reflect.DeepEqual(got, want) {
-		t.Errorf("NOT (p.nosuch > 5) ids = %v, want %v (current behaviour, not openCypher)", got, want)
+	if got := idsOf(t, rs); len(got) != 0 {
+		t.Errorf("NOT (p.nosuch > 5) ids = %v, want none", got)
 	}
 }

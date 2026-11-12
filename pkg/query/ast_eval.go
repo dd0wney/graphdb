@@ -23,22 +23,9 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 	case "!=":
 		return !valuesEqual(leftVal, rightVal), nil
 	case ">", "<", ">=", "<=":
-		// No order (null, mixed types) is null in openCypher, and a null
-		// in WHERE removes the row. It is not an error.
-		cmp, ok := compareOrdered(leftVal, rightVal)
-		if !ok {
-			return false, nil
-		}
-		switch op {
-		case ">":
-			return cmp > 0, nil
-		case "<":
-			return cmp < 0, nil
-		case ">=":
-			return cmp >= 0, nil
-		default:
-			return cmp <= 0, nil
-		}
+		// No order (null, mixed types) is unknown, and unknown in WHERE
+		// removes the row. It is not an error.
+		return orderingTri(op, leftVal, rightVal) == triTrue, nil
 	case "IS NULL":
 		return leftVal == nil, nil
 	case "IS NOT NULL":
@@ -160,7 +147,8 @@ func extractValue(expr Expression, context map[string]any) any {
 		}
 		return result
 	case *BinaryExpression:
-		result, err := e.Eval(context)
+		// EvalValue, not Eval: an unknown comparison is null here.
+		result, err := e.EvalValue(context)
 		if err != nil {
 			return nil
 		}
