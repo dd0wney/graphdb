@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   writes does not run. The refusal does not depend on the data: a `MATCH` that finds no rows is
   refused too. After a `WITH`, only the names it binds are in scope. A `CALL` with no `YIELD`
   disables the check for the names after it, because its columns are known only when it runs.
+- **A call to a function that is not registered is now an error, where it gave null.**
+  `RETURN nosuchfn(1)` returned null; it now fails with `unknown function: nosuchfn()`, in any
+  clause, before any step runs. Function names are case-sensitive, as they were at evaluation:
+  `toupper` is not `toUpper`. `vector.similarity` is unknown until `SetVectorSearch` wires the
+  executor. An aggregate inside an expression, such as `size(collect(n.x))`, is refused the same
+  way; an aggregate works only as a whole `RETURN` or `WITH` item.
 - **A comparison with no order is null, and `NOT`, `AND` and `OR` follow three-valued logic.** An
   ordering comparison (`>`, `<`, `>=`, `<=`) with a null, or between types with no common order, is
   now null and `WHERE` removes the row; before, `>=` and `<=` passed it. `NOT`, `AND` and `OR`
@@ -29,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`RETURN` of an unordered comparison gives null, where it gave false.** `SET n.x = <comparison>`
   removes the property `x` when the comparison is null, as `SET n.x = null` does; before, it stored
   `true` or `false`.
+
+### Added
+- **`range(start, end[, step])`.** It returns the integers from `start` to `end`, both included,
+  as openCypher does: `step` is 1 when absent, a negative `step` counts down, and a range that
+  cannot reach `end` is the empty list. A `step` of 0, an argument that is not an integer, and a
+  list of more than 1,000,000 elements are errors. A literal fault is refused before the query
+  runs. A fault that is known only at run time, such as a parameter `$step` of 0, still gives null,
+  because the evaluator discards a function's error; that is a wider change, not made here.
 
 ### Fixed
 - **Booleans order, and every Go number kind compares by value.** `false` sorts before `true`, and

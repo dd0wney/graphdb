@@ -11,5 +11,8 @@ func checkQueryNames(q *Query) error {
 	if q == nil {
 		return nil
 	}
-	return checkUndefinedVariables(q)
+	if err := checkUndefinedVariables(q); err != nil {
+		return err
+	}
+	return checkUnknownFunctions(q)
 }
