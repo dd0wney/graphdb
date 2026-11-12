@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now null and `WHERE` removes the row; before, `>=` and `<=` passed it. `NOT`, `AND` and `OR`
   follow the Kleene rules over such a comparison, and `NOT` of a null value is null, so
   `WHERE NOT n.flag` no longer returns a node that has no `flag` property. Use
-  `n.flag IS NULL OR NOT n.flag` for the old result.
+  `n.flag IS NULL OR NOT n.flag` for the old result. `WHERE n.b AND n.c` and `WHERE n.b OR n.c` over
+  boolean properties now work; before, a bare property in `AND` or `OR` was an error and dropped every row.
 - **`RETURN` of an unordered comparison gives null, where it gave false.** `SET n.x = <comparison>`
   removes the property `x` when the comparison is null, as `SET n.x = null` does; before, it stored
   `true` or `false`.

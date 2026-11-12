@@ -134,6 +134,18 @@ func equalityOperand(expr Expression, context map[string]any) (val any, unknown 
 	return t == triTrue, false
 }
 
+// bareTri reads a property, variable, parameter or literal used as a boolean.
+// null is unknown, a boolean is its value, and any other value keeps the
+// coerceToBool result. Eval refuses a bare property outright, and that error
+// made AND and OR of two properties drop every row and NOT read null as true.
+func bareTri(expr Expression, context map[string]any) tri {
+	v := extractValue(expr, context)
+	if v == nil {
+		return triUnknown
+	}
+	return triFromBool(coerceToBool(v))
+}
+
 // evalTri evaluates expr with three-valued logic. Any expression other than
 // NOT, AND, OR and an ordering comparison keeps its two-valued Eval result.
 // AND and OR keep the short-circuit order of the two-valued code, and only
@@ -171,12 +183,19 @@ func evalTri(expr Expression, context map[string]any) (tri, error) {
 		case e.Operator == "=" || e.Operator == "!=":
 			return equalityTri(e.Operator, e.Left, e.Right, context), nil
 		}
+	case *PropertyExpression, *LiteralExpression:
+		return bareTri(expr, context), nil
+	case *ParameterExpression:
+		// A missing parameter stays an error, from Eval below.
+		if _, ok := context["$"+e.Name]; ok {
+			return bareTri(expr, context), nil
+		}
 	case *UnaryExpression:
 		if e.Operator == "NOT" {
 			operand, err := evalTri(e.Operand, context)
 			if err != nil {
-				// The operand cannot evaluate as a boolean (for example a
-				// bare property). Coerce its value, as NOT always did, but
+				// The operand still errors after bare operands became
+				// three-valued. Coerce its value, as NOT always did, but
 				// NOT of null is null in openCypher, not true.
 				v := extractValue(e.Operand, context)
 				if v == nil {
