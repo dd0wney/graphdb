@@ -484,7 +484,7 @@ func newDeleteTargets() *deleteTargets {
 func (dt *deleteTargets) add(binding *BindingSet, variable string) error {
 	obj, ok := binding.bindings[variable]
 	if !ok {
-		return fmt.Errorf("DELETE %s: variable is not defined by the query", variable)
+		return refusef("DELETE %s: variable is not defined by the query", variable)
 	}
 
 	switch v := obj.(type) {

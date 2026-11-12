@@ -1,7 +1,6 @@
 package query
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -213,7 +212,7 @@ func checkSegmentVariables(seg *Query, scope *segmentScope) error {
 		if use.unknown || (use.callColumns && clause != clauseCall) || use.has(pe.Variable) {
 			return
 		}
-		found = fmt.Errorf("undefined variable: %s (in %s)", pe.Variable, clause)
+		found = refusef("undefined variable: %s (in %s)", pe.Variable, clause)
 	})
 	return found
 }

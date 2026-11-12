@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `toupper` is not `toUpper`. `vector.similarity` is unknown until `SetVectorSearch` wires the
   executor. An aggregate inside an expression, such as `size(collect(n.x))`, is refused the same
   way; an aggregate works only as a whole `RETURN` or `WITH` item.
+- **`POST /query` answers 400 with the message for a refused query, where it answered 500.** An
+  undefined variable, an unknown function, an unknown procedure, a `YIELD` column the procedure
+  does not return, and the `WITH` refusals now give `Query error: <message>`. Every other executor
+  error keeps the 500 and the hidden text.
 - **A comparison with no order is null, and `NOT`, `AND` and `OR` follow three-valued logic.** An
   ordering comparison (`>`, `<`, `>=`, `<=`) with a null, or between types with no common order, is
   now null and `WHERE` removes the row; before, `>=` and `<=` passed it. `NOT`, `AND` and `OR`

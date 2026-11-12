@@ -32,7 +32,10 @@ func checkUnknownFunctions(q *Query) error {
 			return
 		}
 		if call.Name == "range" {
-			found = checkRangeLiterals(call.Args)
+			// The text names only the query's own literals and the limit.
+			if err := checkRangeLiterals(call.Args); err != nil {
+				found = &RefusalError{Message: err.Error()}
+			}
 		}
 	})
 	return found
@@ -40,9 +43,9 @@ func checkUnknownFunctions(q *Query) error {
 
 func unknownFunctionError(name string) error {
 	if isAggregateFunction(name) {
-		return fmt.Errorf("unknown function: %s() (an aggregate works only as a whole RETURN or WITH item, not inside an expression)", name)
+		return refusef("unknown function: %s() (an aggregate works only as a whole RETURN or WITH item, not inside an expression)", name)
 	}
-	return fmt.Errorf("unknown function: %s()", name)
+	return refusef("unknown function: %s()", name)
 }
 
 // checkRangeLiterals refuses what range() would refuse for any data, so the
