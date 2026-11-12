@@ -177,7 +177,7 @@ func (ce *CaseExpression) EvalValue(context map[string]any) (any, error) {
 		operandVal := extractValue(ce.Operand, context)
 		for _, wc := range ce.WhenClauses {
 			condVal := extractValue(wc.Condition, context)
-			if compareValues(operandVal, condVal) == 0 && operandVal != nil {
+			if valuesEqual(operandVal, condVal) && operandVal != nil {
 				return extractValue(wc.Result, context), nil
 			}
 		}
