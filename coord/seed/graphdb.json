@@ -759,6 +759,60 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: WHERE p.flag with no operator returns no rows, because Eval of a bare property is an error and the lenient filter drops the row; NOT of a function that returns null still coerces to true. Route a bare condition and function results through evalTri"
+    },
+    {
+      "id": "v1.4-cypher-missing-functions-coalesce-exists",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: coalesce(), exists() and the other common openCypher functions are not registered; they gave null and are now refused as unknown. Add coalesce first"
+    },
+    {
+      "id": "v1.4-cypher-function-names-case-sensitive",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: GetFunction matches a function name exactly, though its comment says case-insensitive, so toupper() and TOUPPER() are refused. openCypher function names are case-insensitive"
+    },
+    {
+      "id": "v1.4-cypher-function-error-becomes-null",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: extractValue (pkg/query/ast_eval.go) discards the error a function returns and gives null, so range(1,3,$step) with step 0 and size(range(0, p.id*1000000)) answer null or 0 with no error"
+    },
+    {
+      "id": "v1.4-cypher-expression-position",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: PropertyExpression and FunctionCallExpression hold no line and column, so undefined variable and unknown function errors have no position and are not a SyntaxError. Add the position in parsePrimaryExpression"
+    },
+    {
+      "id": "v1.4-cypher-clause-order-scope",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: the undefined-variable check uses one name set per segment, so MATCH (a) WHERE b.x = 1 CREATE (b) is accepted and answers 0 rows; a name in WHERE before a bare CALL and a CALL argument that names its own YIELD column also pass"
+    },
+    {
+      "id": "v1.4-cypher-names-check-allocations",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: checkQueryNames adds about 1 microsecond and 4 to 5 allocations per query (RETURN 1: 1559 ns to 1822 ns); bindSegment and orderScope build maps per segment"
+    },
+    {
+      "id": "v1.4-cypher-anonymous-start-node-no-rows",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MATCH ()-[:KNOWS]->(b) RETURN b answers 0 rows; an anonymous start node does not match"
+    },
+    {
+      "id": "v1.4-cypher-distinct-order-by-extra-column",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: RETURN DISTINCT p.city AS c ORDER BY p.id answers one row per node, because the injected sort column makes each row distinct"
+    },
+    {
+      "id": "v1.4-procedure-argument-errors-are-500",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: an error a procedure returns for its arguments (algo.kHop: sourceID must be a numeric node ID) is not a RefusalError, so POST /query answers 500 and hides the text"
     }
   ],
   "deps": [
