@@ -537,6 +537,120 @@
       "track": "v1.4",
       "status": "pending",
       "title": "test: TestEncryptedStore_WritesNoPlaintext/json-batching-compression/crash (pkg/storage/encryption_no_plaintext_test.go, #709) fails in about 2.5 percent of runs, 5 of 200 on main at 1ddd131. Each failure is the plaintext control at :213: the edgePropertyKey or edgePropertyValue marker is not on disk at the crash point, so the test cannot prove its search works. Find why the batched compressed WAL sometimes has no edge record at the crash point, then make the control deterministic. Acceptance: 1000 runs with -count=1000 pass, and the control can still fail when the marker is absent. Read at 1ddd131"
+    },
+    {
+      "id": "v1.4-cypher-with-alias-column-name",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MATCH (p:Person {id: 0}) WITH p.age AS age RETURN age names the result column age. with a trailing dot. Found by the Relate spike on 9eef8e1; row in pkg/queryutil/cypher_known_gaps_test.go"
+    },
+    {
+      "id": "v1.4-cypher-call-unknown-procedure-succeeds",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: CALL algo.nope() through the server executor path answers affected=1 with no error. An unknown procedure must be refused by name. Row in pkg/queryutil/cypher_known_gaps_test.go"
+    },
+    {
+      "id": "v1.4-cypher-call-bare-does-not-run",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: CALL algo.pageRank() with no YIELD answers affected=1 and no scores column, so the procedure result never reaches the caller. Row in pkg/queryutil/cypher_known_gaps_test.go"
+    },
+    {
+      "id": "v1.4-cypher-call-yield-returns-null",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: CALL algo.pageRank() YIELD scores RETURN scores returns a column named scores. with a null value, and YIELD of a column the procedure does not have (nodeId) is null instead of an error. Row in pkg/queryutil/cypher_known_gaps_test.go"
+    },
+    {
+      "id": "v1.4-cypher-return-undefined-variable",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MATCH (p:Person) RETURN q.name returns null for a variable the query never bound. Refuse it and name the variable; the WITH half is v1.4-cypher-with-undefined-variable"
+    },
+    {
+      "id": "v1.4-cypher-unknown-function-null",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: RETURN nosuchfn(1) AS x returns null with no error. An unknown function must be refused by name"
+    },
+    {
+      "id": "v1.4-cypher-range-returns-null",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: RETURN range(1,3) AS r returns null; range() should build the list, step argument included"
+    },
+    {
+      "id": "v1.4-cypher-arithmetic-error-null",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: RETURN 1 / 0 and a string plus an integer both return null with no error. Decided 2026-11-12: refuse both, after scripts/consumer-drive.sh shows no consumer relies on the null. Needs a spec of the rule per operator"
+    },
+    {
+      "id": "v1.4-cypher-count-star",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: count(*) is a parser error (unexpected token in expression); it should equal count of the matched rows"
+    },
+    {
+      "id": "v1.4-cypher-count-distinct",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: count(DISTINCT x) is a parser error (unexpected token in expression)"
+    },
+    {
+      "id": "v1.4-cypher-unwind-literal",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: UNWIND [1,2,3] AS x is refused (UNWIND expression must be a property reference); accept a list literal and a list parameter"
+    },
+    {
+      "id": "v1.4-cypher-negative-literal-in-map",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a negative number in a pattern property map, MATCH (p:Person {id: -1}), is a parser error (expected value); the same literal in WHERE parses"
+    },
+    {
+      "id": "v1.4-cypher-named-path-shortest-path",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a named path (MATCH p = ...), length(p) and shortestPath((a)-[:R*]-(b)) are parser errors. Needs a design before code"
+    },
+    {
+      "id": "v1.4-cypher-subqueries-and-comprehension",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: CALL { } subqueries, EXISTS { } subqueries and list comprehensions are parser or lexer errors. One design, one PR per form"
+    },
+    {
+      "id": "v1.4-query-parser-error-position",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a parser error prints a raw token number, e.g. unexpected token in expression: Token(54), with no token text and no column. Print the token text, line and column"
+    },
+    {
+      "id": "v1.4-query-error-hints",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: add one corrective hint sentence to the refusals an agent hits most (unknown procedure, undefined variable, unknown function, unsupported clause), as Relate does"
+    },
+    {
+      "id": "v1.4-query-row-limit-truncated",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: POST /query has no row limit and no truncated flag; a no-LIMIT scan returned 100000 rows. Add an opt-in limit, off by default, and a truncated field in the response. Check make contract-guard"
+    },
+    {
+      "id": "v1.4-vector-index-rebuild-on-open",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: an mmap store with 10000 64-dim vectors took 11.7 to 17.3 s to open (4 runs, btrfs NVMe, warm cache); the same graph without vectors opened in 2 ms. Measure open time against vector count first, then choose: persist the HNSW index (format bump), lazy build, or parallel build"
+    },
+    {
+      "id": "v1.4-cypher-cycle-match-slow",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a three-hop cycle MATCH (a)-[:KNOWS]->(b)-[:KNOWS]->(c)-[:KNOWS]->(a) WHERE a.id = 42 took 17.8 s on 100k nodes and 500k edges (correct answer). Profile before any change"
     }
   ],
   "deps": [
@@ -587,6 +701,14 @@
     {
       "from": "v1.4-snapshot-rlock-panic-safety",
       "to": "v1.4-lock-panic-safety"
+    },
+    {
+      "from": "v1.4-cypher-call-yield-returns-null",
+      "to": "v1.4-cypher-call-bare-does-not-run"
+    },
+    {
+      "from": "v1.4-query-error-hints",
+      "to": "v1.4-query-parser-error-position"
     }
   ]
 }
