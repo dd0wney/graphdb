@@ -711,6 +711,54 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: RegisterProcedure writes procedureRegistry with no lock, and CALL now reads that map on every request"
+    },
+    {
+      "id": "v1.4-cypher-three-valued-equality",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: = and <> of plain values are two-valued: p.nosuch <> 1 and p.s <> 1 return every row and null = null is true, where openCypher gives null and drops the row. Only = and <> over an unknown comparison are three-valued (pkg/query/three_valued.go). Changes many queries; needs a changelog entry"
+    },
+    {
+      "id": "v1.4-cypher-pattern-map-float-parameter",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MATCH (p {id: $v}) with a JSON number (float64) does not find an int64 property, because the pattern map uses MatchStep.valuesEqual (match_helpers.go), and MERGE (p:M {id: $v}) then creates a duplicate node"
+    },
+    {
+      "id": "v1.4-cypher-index-equality-int-float",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: with a property index, WHERE p.age = 40 does not return the node that holds 40.0; the scan path returns it. The index lookup and the scan must agree"
+    },
+    {
+      "id": "v1.4-cypher-order-by-null-not-total",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: the ORDER BY comparator returns 0 for a null or for types with no common order, so it is not a strict weak order and [2, null, 1] sorts to different results for different input orders. Give null and mixed types a fixed place, as openCypher does"
+    },
+    {
+      "id": "v1.4-cypher-min-max-mixed-types-order-dependent",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MIN and MAX over mixed types or NaN depend on the row order: ['a', 1] gives min a and max a, [1, 'a'] gives 1 and 1"
+    },
+    {
+      "id": "v1.4-cypher-avg-plain-int",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: sum adds a plain Go int but avg does not count it (isSummed in aggregation_functions.go), so avg of int 1 and int64 4 is 5, not 2.5. A plain int comes from COUNT and from procedure columns"
+    },
+    {
+      "id": "v1.4-graphql-compare-numeric-non-number",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "graphql: compareNumeric (pkg/graphql/filtering_eval.go) returns 0 for a value that is not a number, so gte and lte are true for a string or a boolean against a number, and a string gte a string is always true"
+    },
+    {
+      "id": "v1.4-cypher-bare-boolean-where",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: WHERE p.flag with no operator returns no rows, because Eval of a bare property is an error and the lenient filter drops the row; NOT of a function that returns null still coerces to true. Route a bare condition and function results through evalTri"
     }
   ],
   "deps": [
