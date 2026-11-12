@@ -154,8 +154,9 @@ func TestUnaryExpression_NOT(t *testing.T) {
 	}{
 		{"NOT true", &LiteralExpression{Value: true}, false},
 		{"NOT false", &LiteralExpression{Value: false}, true},
-		// NOT nil → true (null is falsy)
-		{"NOT nil", &LiteralExpression{Value: nil}, true},
+		// NOT null is null in openCypher. Eval reports true only for true, so
+		// the expectation is false (it was true while NOT coerced null to false).
+		{"NOT nil", &LiteralExpression{Value: nil}, false},
 		// NOT (nonzero) → false
 		{"NOT nonzero", &LiteralExpression{Value: int64(42)}, false},
 	}

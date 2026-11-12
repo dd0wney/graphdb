@@ -18,10 +18,10 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 	rightVal := extractValue(right, context)
 
 	switch op {
-	case "=":
-		return valuesEqual(leftVal, rightVal), nil
-	case "!=":
-		return !valuesEqual(leftVal, rightVal), nil
+	case "=", "!=":
+		// An operand that is an unknown comparison makes the result unknown,
+		// which WHERE drops. equalityTri holds that rule.
+		return equalityTri(op, left, right, context) == triTrue, nil
 	case ">", "<", ">=", "<=":
 		// No order (null, mixed types) is unknown, and unknown in WHERE
 		// removes the row. It is not an error.

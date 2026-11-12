@@ -36,12 +36,13 @@ func (be *BinaryExpression) Eval(context map[string]any) (bool, error) {
 }
 
 // EvalValue gives null where the result is unknown: AND, OR and an ordering
-// comparison. Every other operator is two-valued.
+// comparison, and = and != over such an operand. Every other operator is
+// two-valued.
 func (be *BinaryExpression) EvalValue(context map[string]any) (any, error) {
-	if be.Operator == "AND" || be.Operator == "OR" || isOrderingOp(be.Operator) {
+	if be.Operator == "AND" || be.Operator == "OR" || be.Operator == "=" || be.Operator == "!=" || isOrderingOp(be.Operator) {
 		result, err := evalTri(be, context)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
 		return result.value(), nil
 	}

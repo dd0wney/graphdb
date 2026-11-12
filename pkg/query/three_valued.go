@@ -87,6 +87,53 @@ func orderingTri(op string, leftVal, rightVal any) tri {
 	}
 }
 
+// isTriExpr reports the expression kinds that evalTri treats as three-valued.
+func isTriExpr(expr Expression) bool {
+	switch e := expr.(type) {
+	case *BinaryExpression:
+		return e.Operator == "AND" || e.Operator == "OR" || isOrderingOp(e.Operator)
+	case *UnaryExpression:
+		return e.Operator == "NOT"
+	default:
+		return false
+	}
+}
+
+// equalityTri is the one place that decides = and != over a three-valued
+// operand. The rule is narrow on purpose: only an operand that is itself an
+// ordering comparison, AND, OR or NOT can make the result unknown. = and !=
+// of plain values, null included, stay two-valued until coord task
+// v1.4-cypher-three-valued-equality changes that.
+func equalityTri(op string, left, right Expression, context map[string]any) tri {
+	l, lUnknown := equalityOperand(left, context)
+	r, rUnknown := equalityOperand(right, context)
+	if lUnknown || rUnknown {
+		return triUnknown
+	}
+	eq := valuesEqual(l, r)
+	if op == "!=" {
+		eq = !eq
+	}
+	return triFromBool(eq)
+}
+
+// equalityOperand returns the value of an operand, or unknown=true when the
+// operand is a three-valued expression that evaluates to unknown. An operand
+// that errors reads as nil, as extractValue always did.
+func equalityOperand(expr Expression, context map[string]any) (val any, unknown bool) {
+	if !isTriExpr(expr) {
+		return extractValue(expr, context), false
+	}
+	t, err := evalTri(expr, context)
+	if err != nil {
+		return nil, false
+	}
+	if t == triUnknown {
+		return nil, true
+	}
+	return t == triTrue, false
+}
+
 // evalTri evaluates expr with three-valued logic. Any expression other than
 // NOT, AND, OR and an ordering comparison keeps its two-valued Eval result.
 // AND and OR keep the short-circuit order of the two-valued code, and only
@@ -121,14 +168,21 @@ func evalTri(expr Expression, context map[string]any) (tri, error) {
 			return triOr(left, right), nil
 		case isOrderingOp(e.Operator):
 			return orderingTri(e.Operator, extractValue(e.Left, context), extractValue(e.Right, context)), nil
+		case e.Operator == "=" || e.Operator == "!=":
+			return equalityTri(e.Operator, e.Left, e.Right, context), nil
 		}
 	case *UnaryExpression:
 		if e.Operator == "NOT" {
 			operand, err := evalTri(e.Operand, context)
 			if err != nil {
 				// The operand cannot evaluate as a boolean (for example a
-				// bare property). Coerce its value, as NOT always did.
-				return triFromBool(!coerceToBool(extractValue(e.Operand, context))), nil
+				// bare property). Coerce its value, as NOT always did, but
+				// NOT of null is null in openCypher, not true.
+				v := extractValue(e.Operand, context)
+				if v == nil {
+					return triUnknown, nil
+				}
+				return triFromBool(!coerceToBool(v)), nil
 			}
 			return triNot(operand), nil
 		}
