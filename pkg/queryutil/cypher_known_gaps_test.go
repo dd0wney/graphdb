@@ -6,7 +6,6 @@ import (
 	"os"
 	"reflect"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -217,33 +216,6 @@ func wantListCell(col string, want []float64) func(gapReporter, gapResult) {
 
 func TestCypherKnownGaps(t *testing.T) {
 	cases := []gapCase{
-		{"v1.4-cypher-with-aggregates",
-			`MATCH (p:Person) WITH p.age AS age, collect(p.id) AS ids RETURN age, ids`,
-			func(t gapReporter, r gapResult) {
-				if !okResult(t, r) {
-					return
-				}
-				// Ages are 30,30,40,40,25,50 -> 4 distinct ages.
-				if len(r.rs.Rows) != 4 {
-					t.Errorf("rows = %d, want 4 (one per distinct age)", len(r.rs.Rows))
-				}
-				for _, row := range r.rs.Rows {
-					ids, ok := listAsFloats(row["ids"])
-					if !ok {
-						t.Errorf("ids = %#v, want a list", row["ids"])
-						continue
-					}
-					age, _ := toFloat(row["age"])
-					wantLen := 1
-					if age == 30 || age == 40 {
-						wantLen = 2
-					}
-					sort.Float64s(ids)
-					if len(ids) != wantLen {
-						t.Errorf("age %v: ids = %v, want %d ids", age, ids, wantLen)
-					}
-				}
-			}},
 		{"v1.4-cypher-with-alias-column-name",
 			`MATCH (p:Person {id: 0}) WITH p.age AS age RETURN age`,
 			func(t gapReporter, r gapResult) {

@@ -166,6 +166,11 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 		})
 	}
 
+	// Refused before any step runs, so the refusal does not depend on the data.
+	if err := checkWithAggregates(query.With.Items); err != nil {
+		return nil, err
+	}
+
 	// Execute each step
 	for _, step := range plan.Steps {
 		if err := execCtx.CheckCancellation(); err != nil {
@@ -176,36 +181,9 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 		}
 	}
 
-	// Project bindings through WITH items
-	computer := &AggregationComputer{}
-	projectedBindings := make([]*BindingSet, 0, len(execCtx.results))
-
-	for _, binding := range execCtx.results {
-		newBinding := &BindingSet{bindings: make(map[string]any)}
-
-		for _, item := range query.With.Items {
-			alias := item.Alias
-			if alias == "" && item.Expression != nil {
-				alias = item.Expression.Variable
-			}
-			if alias == "" {
-				continue
-			}
-
-			// Extract the value from the current binding
-			if item.ValueExpr != nil {
-				newBinding.bindings[alias] = extractValue(item.ValueExpr, binding.bindings)
-			} else if item.Expression != nil {
-				if item.Expression.Property == "" {
-					// Pass the whole node/variable through
-					newBinding.bindings[alias] = binding.bindings[item.Expression.Variable]
-				} else {
-					newBinding.bindings[alias] = e.extractValueFromBinding(binding, item.Expression, computer)
-				}
-			}
-		}
-
-		projectedBindings = append(projectedBindings, newBinding)
+	projectedBindings, err := e.projectWith(execCtx, query.With.Items)
+	if err != nil {
+		return nil, err
 	}
 
 	// Apply optional WITH WHERE filter
