@@ -365,15 +365,3 @@ func compareOrdered(left, right any) (cmp int, ok bool) {
 		return 0, false
 	}
 }
-
-// compareValues returns an ordering for every pair, so that a sort and
-// MIN/MAX have something to work with. A result of 0 can mean "equal" or "no
-// order between these two values". For that reason only a sort and MIN/MAX may
-// call it. A filter must call compareOrdered, or an unordered pair passes.
-func compareValues(left, right any) int {
-	cmp, ok := compareOrdered(left, right)
-	if !ok {
-		return 0
-	}
-	return cmp
-}

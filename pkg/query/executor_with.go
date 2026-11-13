@@ -148,7 +148,7 @@ func (e *Executor) groupedWithProjection(execCtx *ExecutionContext, items []*Ret
 		}
 		for name, value := range computer.ComputeAggregates(execCtx.aggregationContext(g.members), items) {
 			// count and the like give a Go int, but every integer that a
-			// property or a literal yields is an int64, and compareValues
+			// property or a literal yields is an int64, and compareOrdered
 			// calls an int and an int64 equal. Without this, WITH ... WHERE
 			// c > 1 would drop every group.
 			if n, ok := value.(int); ok {

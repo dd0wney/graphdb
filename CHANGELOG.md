@@ -121,6 +121,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CREATE (n:New {v: 1}) RETURN n.v / 0` leaves the node, and `MATCH (n:Person) SET n.y = 1 RETURN
   n.name + 1` writes `y` on every node, and both answer 400. A client must not send such a query
   again without a check of the store.
+- **`ORDER BY`, `MIN` and `MAX` use one total order of values.** A null sorts last for `ASC` and
+  first for `DESC`, where its place depended on the input order before. The old comparison
+  reported "equal" for a null against any value, and for two values of different types, so
+  `[2, null, 1]` sorted differently for different input orders. `MIN` and `MAX` gave the same
+  fault: `['a', 1]` gave `'a'` as the minimum and the maximum, and `[1, 'a']` gave `1` for both.
+  The order of types, ascending, is: map, node, relationship, list, string, boolean, number, NaN,
+  null. `DESC` reverses all of it. Inside one type: numbers by value across integer and float,
+  false before true, strings by bytes, lists element by element with a shorter prefix first,
+  nodes and relationships by id. Two maps compare by their sorted keys and then their values in
+  key order, which the openCypher TCK does not fix. The reference is the openCypher TCK, features
+  `ReturnOrderBy1` and `Aggregation2`. `MIN` and `MAX` still skip null, and now also take a list
+  or a map: `MIN` of a list property over mixed values returns the list, as `Aggregation2` [12]
+  requires, where the list was skipped before. The comparison operators (`<`, `>`, `<=`, `>=`,
+  `=`, `<>`) are not changed, and a comparison of values with no common order still gives null.
 - **A query that names a variable no clause defines is now an error, where it gave null.**
   `MATCH (p:Person) RETURN q.name` returned a column of nulls, `MATCH (p) SET q.x = 1` wrote
   nothing, and `CALL algo.labelPropagation(nosuch)` ran with its default values. The executor now

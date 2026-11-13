@@ -322,7 +322,7 @@ func TestCypherSet_NullValuedExpressionRemoves(t *testing.T) {
 // TestCypherAggregate_ListValuesIgnoredByNumericAggregates pins MIN, MAX and
 // AVG over a property where one node holds a list. A list read back as nil
 // before lists became readable, so these aggregates never met one: MIN and
-// MAX kept a list in first place (compareValues reports 0 against it), and
+// MAX kept a list in first place (the old comparison reported 0 against it), and
 // AVG divided by the count of every value while SUM skipped the list. IN on
 // a list of lists panicked on ==; on [5] it matched the list row.
 func TestCypherAggregate_ListValuesIgnoredByNumericAggregates(t *testing.T) {
@@ -348,8 +348,11 @@ func TestCypherAggregate_ListValuesIgnoredByNumericAggregates(t *testing.T) {
 		t.Fatalf("decode: %v body=%s", err, rr.Body.String())
 	}
 	row := resp.Rows[0]
-	if row["lo"] != 1.0 || row["hi"] != 5.0 || row["mean"] != 3.0 {
-		t.Errorf("min/max/avg = %v/%v/%v, want 1/5/3: %s", row["lo"], row["hi"], row["mean"], rr.Body.String())
+	// A list is the lowest type in the total order (TCK Aggregation2 [12]), so
+	// it is the minimum, and 5 is the maximum. AVG still counts numbers only.
+	lo, _ := row["lo"].([]any)
+	if len(lo) != 2 || lo[0] != "a" || lo[1] != "b" || row["hi"] != 5.0 || row["mean"] != 3.0 {
+		t.Errorf("min/max/avg = %v/%v/%v, want [a b]/5/3: %s", row["lo"], row["hi"], row["mean"], rr.Body.String())
 	}
 
 	for _, tc := range []struct {

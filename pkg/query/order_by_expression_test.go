@@ -11,8 +11,8 @@ import (
 
 // orderByStore creates six Person nodes in an order that is neither the name
 // order nor the age order. Bob and Carol share an age, so a stable sort keeps
-// Bob first. zed has no age; it is last in match order, where compareValues
-// (null equals everything) leaves it.
+// Bob first. zed has no age; it is last in match order, and null sorts last for
+// ASC and first for DESC (TCK ReturnOrderBy1 [11], [12]).
 func orderByStore(t *testing.T) *Executor {
 	t.Helper()
 	gs, ex := newGroupingGraph(t)
@@ -52,7 +52,7 @@ func TestOrderByExpression_Sorts(t *testing.T) {
 		{"plus one", `MATCH (p:Person) RETURN p.name AS n ORDER BY p.age + 1`, "n", "Bob,Carol,alice,eve,dave,zed"},
 		{"plain property for reference", `MATCH (p:Person) RETURN p.name AS n ORDER BY p.age`, "n", "Bob,Carol,alice,eve,dave,zed"},
 		{"negation", `MATCH (p:Person) RETURN p.name AS n ORDER BY -p.age`, "n", "dave,eve,alice,Bob,Carol,zed"},
-		{"modulo desc then name", `MATCH (p:Person) RETURN p.name AS n ORDER BY p.age % 2 DESC, p.name`, "n", "dave,eve,Bob,Carol,alice,zed"},
+		{"modulo desc then name", `MATCH (p:Person) RETURN p.name AS n ORDER BY p.age % 2 DESC, p.name`, "n", "zed,dave,eve,Bob,Carol,alice"},
 		{"function", `MATCH (p:Person) RETURN p.name AS n ORDER BY toUpper(p.name)`, "n", "alice,Bob,Carol,dave,eve,zed"},
 		{"case", `MATCH (p:Person) RETURN p.name AS n ORDER BY CASE WHEN p.age > 30 THEN 0 ELSE 1 END, p.name`, "n", "dave,eve,Bob,Carol,alice,zed"},
 		{"expression on a column not returned", `MATCH (p:Person) RETURN p.name AS n ORDER BY p.age * -1`, "n", "dave,eve,alice,Bob,Carol,zed"},
