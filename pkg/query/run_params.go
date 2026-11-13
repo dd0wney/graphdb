@@ -12,11 +12,18 @@ import "context"
 
 type runParamsKey struct{}
 
-// withRunParams returns ctx carrying params for seedRows. The map is read only.
-// It sets the value even when params is empty, so that a run with no
-// parameters does not see those of an outer run in the same context.
+// withRunParams returns ctx carrying params for seedRows. It sets the value
+// even when params is empty, so that a run with no parameters does not see
+// those of an outer run in the same context.
+//
+// The context holds the bindings under their final "$name" keys, built once
+// here: building the key for each row would allocate for each row.
 func withRunParams(ctx context.Context, params map[string]any) context.Context {
-	return context.WithValue(ctx, runParamsKey{}, params)
+	bindings := make(map[string]any, len(params))
+	for k, v := range params {
+		bindings["$"+k] = v
+	}
+	return context.WithValue(ctx, runParamsKey{}, bindings)
 }
 
 // seedRows returns the rows that enter a segment. An initial of nil means the
@@ -28,7 +35,7 @@ func seedRows(ctx context.Context, initial []*BindingSet) []*BindingSet {
 	if initial == nil {
 		initial = []*BindingSet{{bindings: make(map[string]any)}}
 	}
-	params, _ := ctx.Value(runParamsKey{}).(map[string]any)
+	params := runParamsOf(ctx)
 	if len(params) == 0 {
 		return initial
 	}
@@ -43,7 +50,7 @@ func seedRows(ctx context.Context, initial []*BindingSet) []*BindingSet {
 			bindings[k] = v
 		}
 		for k, v := range params {
-			bindings["$"+k] = v
+			bindings[k] = v
 		}
 		rows[i] = &BindingSet{bindings: bindings, vectorScores: row.vectorScores}
 	}
@@ -55,9 +62,15 @@ func seedRows(ctx context.Context, initial []*BindingSet) []*BindingSet {
 // copies nothing.
 func carriesParams(row *BindingSet, params map[string]any) bool {
 	for k := range params {
-		if _, ok := row.bindings["$"+k]; !ok {
+		if _, ok := row.bindings[k]; !ok {
 			return false
 		}
 	}
 	return true
+}
+
+// runParamsOf returns the "$name" bindings of the run that ctx belongs to, or nil.
+func runParamsOf(ctx context.Context) map[string]any {
+	params, _ := ctx.Value(runParamsKey{}).(map[string]any)
+	return params
 }

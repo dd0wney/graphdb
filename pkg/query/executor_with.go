@@ -58,8 +58,12 @@ func (e *Executor) projectWith(execCtx *ExecutionContext, items []*ReturnItem) (
 	computer := &AggregationComputer{}
 	if !hasAggregates(items) {
 		projected := make([]*BindingSet, 0, len(execCtx.results))
+		// The projected rows are new and owned here, so the run's parameters
+		// go in as each row is built. seedRows then finds them and copies
+		// nothing.
+		params := runParamsOf(execCtx.context)
 		for _, binding := range execCtx.results {
-			b, err := e.projectWithBinding(binding, items, computer)
+			b, err := e.projectWithBinding(binding, items, computer, params)
 			if err != nil {
 				return nil, err
 			}
@@ -74,9 +78,14 @@ func (e *Executor) projectWith(execCtx *ExecutionContext, items []*ReturnItem) (
 	return e.groupedWithProjection(execCtx, items, computer)
 }
 
-// projectWithBinding applies the non-aggregate WITH items to one binding.
-func (e *Executor) projectWithBinding(binding *BindingSet, items []*ReturnItem, computer *AggregationComputer) (*BindingSet, error) {
-	newBinding := &BindingSet{bindings: make(map[string]any)}
+// projectWithBinding applies the non-aggregate WITH items to one binding. The
+// new binding also holds params, which are "$name" bindings already: a WITH keeps only the names it
+// lists, and a parameter is not one of them.
+func (e *Executor) projectWithBinding(binding *BindingSet, items []*ReturnItem, computer *AggregationComputer, params map[string]any) (*BindingSet, error) {
+	newBinding := &BindingSet{bindings: make(map[string]any, len(items)+len(params))}
+	for k, v := range params {
+		newBinding.bindings[k] = v
+	}
 
 	for _, item := range items {
 		if item.Aggregate != "" {
@@ -121,7 +130,7 @@ func (e *Executor) groupedWithProjection(execCtx *ExecutionContext, items []*Ret
 	} else {
 		var err error
 		groups, err = groupBindings(execCtx.results, func(binding *BindingSet) ([]any, error) {
-			projected, err := e.projectWithBinding(binding, keyItems, computer)
+			projected, err := e.projectWithBinding(binding, keyItems, computer, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -141,7 +150,7 @@ func (e *Executor) groupedWithProjection(execCtx *ExecutionContext, items []*Ret
 		newBinding := &BindingSet{bindings: make(map[string]any)}
 		if g.first != nil {
 			var err error
-			newBinding, err = e.projectWithBinding(g.first, keyItems, computer)
+			newBinding, err = e.projectWithBinding(g.first, keyItems, computer, nil)
 			if err != nil {
 				return nil, err
 			}
