@@ -210,6 +210,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   made the encoder fail after the status line went out, so the client got status 200 with an empty
   or cut body. The server now encodes first and answers 500 with a JSON message that tells the
   client to read the state before it retries.
+- **The answer of a query no longer depends on an index or on the order of the operands of `AND` and `OR`.**
+  Take `MATCH (p:T) WHERE p.q AND p.id = 1 RETURN p.id AS id`, where node 2 holds a string in `q`.
+  With an index on `id` the query returned node 1, and with no index it was refused, because the scan read
+  node 2 and `p.q` is not a boolean; `WHERE p.id = 1 AND p.q` was not refused on the scan either. An error
+  in one operand of `AND` or `OR` is now discarded when the other operand decides the result (`false AND
+  error` is false, `true OR error` is true), and a `WHERE` or `CASE WHEN` condition that has a conjunct
+  which is false or unknown excludes the row whatever error another conjunct gives. An error on a row
+  that no conjunct excludes is still refused, with and without an index.
 - **A numeric property in a pattern map matches across integer and float.** `MATCH (p {id: $v})` and
   `MERGE (p:M {id: $v})` now find a stored integer 7 when `/query` delivers the JSON number 7 as the float
   `7.0`, by the rule `WHERE p.id = $v` uses; before, the match failed and each `MERGE` created another node.
