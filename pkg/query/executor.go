@@ -115,13 +115,17 @@ func (e *Executor) ExecuteWithOptions(ctx context.Context, query *Query, opts Pa
 		return nil, err
 	}
 
-	return e.executeSegment(ctx, query, opts)
+	return e.executeSegment(ctx, query, opts, query.InitialBindings)
 }
 
 // executeSegment runs one query segment, and the segments that follow it
 // through WITH and UNION. It is ExecuteWithOptions after the static checks
 // of the whole statement.
-func (e *Executor) executeSegment(ctx context.Context, query *Query, opts PathOptions) (*ResultSet, error) {
+//
+// initial holds the rows that enter this segment, or nil for one empty row. It
+// is an argument and not a field of query: every run of a parsed Query shares
+// it, and a write there raced with the other runs.
+func (e *Executor) executeSegment(ctx context.Context, query *Query, opts PathOptions, initial []*BindingSet) (*ResultSet, error) {
 	// Check for cancellation before starting
 	select {
 	case <-ctx.Done():
@@ -138,7 +142,7 @@ func (e *Executor) executeSegment(ctx context.Context, query *Query, opts PathOp
 
 	// Handle UNION before normal execution
 	if query.Union != nil && query.UnionNext != nil {
-		return e.executeUnion(ctx, query, opts)
+		return e.executeUnion(ctx, query, opts, initial)
 	}
 
 	// Build execution plan
@@ -161,30 +165,22 @@ func (e *Executor) executeSegment(ctx context.Context, query *Query, opts PathOp
 
 	// PROFILE: execute with timing instrumentation
 	if query.Profile {
-		return e.executeWithProfiling(ctx, optimizedPlan, query, opts)
+		return e.executeWithProfiling(ctx, optimizedPlan, query, opts, initial)
 	}
 
 	// Handle WITH chaining — needs bindings, not just results
 	if query.With != nil && query.Next != nil {
-		return e.executeWithChain(ctx, optimizedPlan, query, opts)
+		return e.executeWithChain(ctx, optimizedPlan, query, opts, initial)
 	}
 
 	// Execute optimized plan with context
-	return e.executePlanWithContext(ctx, optimizedPlan, query, opts)
+	return e.executePlanWithContext(ctx, optimizedPlan, query, opts, initial)
 }
 
 // executeWithChain handles WITH clause chaining between query segments
-func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, query *Query, opts PathOptions) (*ResultSet, error) {
+func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, query *Query, opts PathOptions, initial []*BindingSet) (*ResultSet, error) {
 	execCtx := newExecutionContext(ctx, e.graph, opts)
-
-	// Use initial bindings if provided, otherwise start with empty binding
-	if query.InitialBindings != nil {
-		execCtx.results = query.InitialBindings
-	} else {
-		execCtx.results = append(execCtx.results, &BindingSet{
-			bindings: make(map[string]any),
-		})
-	}
+	execCtx.results = seedRows(ctx, initial)
 
 	// Refused before any step runs, so the refusal does not depend on the data.
 	if err := checkWithChain(query); err != nil {
@@ -205,6 +201,9 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	if err != nil {
 		return nil, err
 	}
+	// The projection keeps only the names the WITH lists, and a parameter is
+	// not one of them. WITH ... WHERE x = $v reads it from these rows.
+	projectedBindings = seedRows(ctx, projectedBindings)
 
 	// Apply optional WITH WHERE filter
 	if query.With.Where != nil {
@@ -231,8 +230,7 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	// opts travels into the next segment too. Dropping it here would make the
 	// options apply to the first segment of a WITH chain and silently revert
 	// for the rest, which is worse than not offering them at all.
-	query.Next.InitialBindings = projectedBindings
-	result, err := e.executeSegment(ctx, query.Next, opts)
+	result, err := e.executeSegment(ctx, query.Next, opts, projectedBindings)
 	if result != nil && len(execCtx.notices) > 0 {
 		result.Notices = slices.Concat(execCtx.notices, result.Notices)
 	}
@@ -243,11 +241,9 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 // and injected into the query before execution. ParameterRef values in property maps
 // are resolved to actual values, and parameters are made available in bindings as "$name" keys.
 func (e *Executor) ExecuteWithParams(query *Query, params map[string]any) (*ResultSet, error) {
-	prepared, err := e.injectParams(query, params)
-	if err != nil {
-		return nil, err
-	}
-	return e.Execute(prepared)
+	ctx, cancel := context.WithTimeout(context.Background(), e.queryTimeout)
+	defer cancel()
+	return e.ExecuteWithParamsContext(ctx, query, params)
 }
 
 // ExecuteWithParamsContext is ExecuteWithParams that honours a caller-supplied
@@ -260,16 +256,16 @@ func (e *Executor) ExecuteWithParamsContext(ctx context.Context, query *Query, p
 	if err != nil {
 		return nil, err
 	}
-	return e.ExecuteWithContext(ctx, prepared)
+	return e.ExecuteWithContext(withRunParams(ctx, params), prepared)
 }
 
 // injectParams resolves ParameterRef values in property maps, validates that
-// every ParameterExpression has a corresponding param, and seeds the initial
-// bindings with "$name" keys. Shared by ExecuteWithParams[Context].
+// every ParameterExpression has a corresponding param. The caller passes
+// params on with withRunParams, so that each segment can read them. Shared by
+// ExecuteWithParams[Context].
 //
 // It returns a copy of query for the caller to run and leaves query alone: the
-// caller may run the same parsed Query again with other parameters, and the
-// executor writes InitialBindings into the segments it runs.
+// caller may run the same parsed Query again with other parameters.
 func (e *Executor) injectParams(query *Query, params map[string]any) (*Query, error) {
 	// Validate and resolve ParameterRef values in property maps
 	prepared, err := resolveParameters(query, params)
@@ -288,103 +284,45 @@ func (e *Executor) injectParams(query *Query, params map[string]any) (*Query, er
 		return nil, err
 	}
 
-	// Inject params into initial bindings with "$" prefix to avoid collision with variables
-	bindings := &BindingSet{bindings: make(map[string]any)}
-	for k, v := range params {
-		bindings.bindings["$"+k] = v
-	}
-	prepared.InitialBindings = []*BindingSet{bindings}
+	// The "$name" bindings travel in the context of the run, not in the query.
 	return prepared, nil
 }
 
-// validateParameterExpressions walks all expression trees in the query to find
-// ParameterExpression nodes and ensures corresponding params exist.
+// validateParameterExpressions refuses a parameter that params does not hold,
+// in every expression of every segment of the statement: the WITH chain and
+// each part of a UNION. It walks with walkQueryExpressions, which is the one
+// place that knows where a clause keeps an expression. The error is a
+// RefusalError, so a server answers 400 for it as it does for a pattern.
 func validateParameterExpressions(query *Query, params map[string]any) error {
-	if query.Where != nil {
-		if err := validateExprParams(query.Where.Expression, params); err != nil {
-			return err
+	var err error
+	walkQueryExpressions(query, func(_ string, expr Expression) {
+		if err != nil {
+			return
 		}
-	}
-	for _, om := range query.OptionalMatches {
-		if om.Where != nil {
-			if err := validateExprParams(om.Where.Expression, params); err != nil {
-				return err
+		if pe, ok := expr.(*ParameterExpression); ok {
+			if _, exists := params[pe.Name]; !exists {
+				err = refusef("missing parameter: $%s", pe.Name)
 			}
 		}
-	}
-	if query.Return != nil {
-		for _, item := range query.Return.Items {
-			if item.ValueExpr != nil {
-				if err := validateExprParams(item.ValueExpr, params); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if query.With != nil {
-		if query.With.Where != nil {
-			if err := validateExprParams(query.With.Where.Expression, params); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func validateExprParams(expr Expression, params map[string]any) error {
-	if expr == nil {
-		return nil
-	}
-	switch e := expr.(type) {
-	case *ParameterExpression:
-		if _, ok := params[e.Name]; !ok {
-			return fmt.Errorf("missing parameter: $%s", e.Name)
-		}
-	case *BinaryExpression:
-		if err := validateExprParams(e.Left, params); err != nil {
-			return err
-		}
-		return validateExprParams(e.Right, params)
-	case *FunctionCallExpression:
-		for _, arg := range e.Args {
-			if err := validateExprParams(arg, params); err != nil {
-				return err
-			}
-		}
-	case *CaseExpression:
-		if err := validateExprParams(e.Operand, params); err != nil {
-			return err
-		}
-		for _, wc := range e.WhenClauses {
-			if err := validateExprParams(wc.Condition, params); err != nil {
-				return err
-			}
-			if err := validateExprParams(wc.Result, params); err != nil {
-				return err
-			}
-		}
-		if err := validateExprParams(e.ElseResult, params); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
+	return err
 }
 
 // executeUnion executes two query segments and combines their results.
 // UNION deduplicates rows; UNION ALL preserves all rows.
-func (e *Executor) executeUnion(ctx context.Context, query *Query, opts PathOptions) (*ResultSet, error) {
+func (e *Executor) executeUnion(ctx context.Context, query *Query, opts PathOptions, initial []*BindingSet) (*ResultSet, error) {
 	// Execute first segment via a shallow copy to avoid mutating the original AST
 	firstSegment := *query
 	firstSegment.Union = nil
 	firstSegment.UnionNext = nil
 
-	first, err := e.executeSegment(ctx, &firstSegment, opts)
+	first, err := e.executeSegment(ctx, &firstSegment, opts, initial)
 	if err != nil {
 		return nil, fmt.Errorf("UNION first segment: %w", err)
 	}
 
 	// Execute second segment (handles chained UNIONs recursively)
-	second, err := e.executeSegment(ctx, query.UnionNext, opts)
+	second, err := e.executeSegment(ctx, query.UnionNext, opts, query.UnionNext.InitialBindings)
 	if err != nil {
 		return nil, fmt.Errorf("UNION second segment: %w", err)
 	}

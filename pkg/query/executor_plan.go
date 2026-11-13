@@ -273,21 +273,13 @@ func (e *Executor) buildExecutionPlan(query *Query) *ExecutionPlan {
 
 // executePlan executes an execution plan (without context - for backwards compatibility)
 func (e *Executor) executePlan(plan *ExecutionPlan, query *Query) (*ResultSet, error) {
-	return e.executePlanWithContext(context.Background(), plan, query, PathOptions{})
+	return e.executePlanWithContext(context.Background(), plan, query, PathOptions{}, query.InitialBindings)
 }
 
 // executePlanWithContext executes an execution plan with context support
-func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPlan, query *Query, opts PathOptions) (*ResultSet, error) {
+func (e *Executor) executePlanWithContext(ctx context.Context, plan *ExecutionPlan, query *Query, opts PathOptions, initial []*BindingSet) (*ResultSet, error) {
 	execCtx := newExecutionContext(ctx, e.graph, opts)
-
-	// Use initial bindings if provided (from WITH chaining), otherwise start with empty binding
-	if query.InitialBindings != nil {
-		execCtx.results = query.InitialBindings
-	} else {
-		execCtx.results = append(execCtx.results, &BindingSet{
-			bindings: make(map[string]any),
-		})
-	}
+	execCtx.results = seedRows(ctx, initial)
 
 	// Execute each step with cancellation checks
 	for i, step := range plan.Steps {
