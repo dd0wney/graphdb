@@ -27,7 +27,7 @@ func (fs *FilterStep) Execute(ctx *ExecutionContext) error {
 		}
 
 		// Evaluate expression with this binding
-		match, err := fs.where.Expression.Eval(binding.bindings)
+		match, err := evalPredicate(fs.where.Expression, binding.bindings)
 		if err != nil {
 			// A refusal stops the query in each mode: the lenient drop
 			// would turn an arithmetic error into an empty result.
@@ -731,7 +731,7 @@ func (oms *OptionalMatchStep) Execute(ctx *ExecutionContext) error {
 		if oms.where != nil && len(matches) > 0 {
 			filtered := make([]*BindingSet, 0)
 			for _, r := range matches {
-				match, err := oms.where.Expression.Eval(r.bindings)
+				match, err := evalPredicate(oms.where.Expression, r.bindings)
 				if err != nil {
 					if isRefusal(err) {
 						return err

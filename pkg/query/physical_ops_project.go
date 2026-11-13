@@ -24,7 +24,7 @@ func (o *FilterOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 			return nil, nil
 		}
 
-		match, err := o.Expression.Eval(binding.bindings)
+		match, err := evalPredicate(o.Expression, binding.bindings)
 		if err != nil {
 			return nil, err
 		}

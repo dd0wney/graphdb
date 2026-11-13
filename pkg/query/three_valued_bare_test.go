@@ -47,14 +47,13 @@ func TestThreeValued_BareBooleanOperands(t *testing.T) {
 		})
 	}
 
-	// A bare property alone in WHERE: records the result of the code before
-	// this change. It is not part of the three-valued rule.
+	// A bare boolean alone in WHERE selects the rows where it is true. The
+	// test expected no rows here: Eval of a bare property was always an error
+	// and the lenient filter dropped each row. That was a defect.
 	t.Run("bare p.b alone", func(t *testing.T) {
 		rs := parseAndExecute(t, ex, "MATCH (p:Person) WHERE p.b RETURN p.id AS id")
-		// Eval of a bare property is an error, and the filter drops the row.
-		// Same result on cad4f3c. Recorded, not endorsed.
-		if got := sortedIDs(t, rs); len(got) != 0 {
-			t.Errorf("WHERE p.b alone: ids = %v, want none (present behaviour)", got)
+		if got := sortedIDs(t, rs); !reflect.DeepEqual(got, []int64{1, 2, 3}) {
+			t.Errorf("WHERE p.b alone: ids = %v, want [1 2 3]", got)
 		}
 	})
 }

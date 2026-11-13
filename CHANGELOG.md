@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A bare boolean in a predicate position now works.** `WHERE p.b`, `WITH p.b AS b WHERE b`,
+  `OPTIONAL MATCH ... WHERE q.b` and `CASE WHEN p.b THEN ...` returned no rows (or null) because
+  `Eval` of a property was always an error and the lenient filter dropped each row. One function,
+  `evalPredicate`, now decides each of these places, and only true selects.
+- **`NOT` of a function or `CASE` that gives null is now null.** `WHERE NOT toBoolean(p.s)` kept
+  the row where `toBoolean` gave null, because the operand fell through to a two-valued `Eval`.
+  The row is now removed, as openCypher requires.
+
 ### Changed
 - **The column name of a bare variable has no trailing dot.** A result column that names a
   variable with no property was `n.`, with a dot after the variable. It is now the variable
@@ -20,6 +29,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The old name is not kept beside the new one. A client that reads a row by the old key, for
   example `row["n."]`, must change to the new key, `row["n"]`. A column with a property
   (`n.name`, `COUNT(n.age)`) and a column with an alias (`AS x`) keep their names.
+- **A non-boolean operand of `NOT`, `AND`, `OR` or `WHERE` is now an error, where it was coerced.**
+  `WHERE NOT n.s` with a string or number property used to read a non-empty string, a non-zero
+  number, a list or a node as true. It now stops the query with HTTP 400 and
+  `a boolean is necessary here, but the value is a string` (or integer, float, list, map, node).
+  null stays unknown, so a row with no value is dropped, not refused. `CASE WHEN` follows the
+  same rule. These forms selected rows before and now answer 400, because the value is not a
+  boolean: `WHERE search(p.name, 'alice')` (the function returns a float score, so write
+  `WHERE search(p.name, 'alice') > 0.5`), `WHERE size(p.name)`, `WHERE length(...)`,
+  `WHERE id(p)`, `WHERE abs(...)`, `WHERE keys(p)`, `WHERE labels(p)`, `WHERE toString(p.b)`,
+  `WHERE p.n + 0`, `WHERE -p.n`, `WHERE $x` with a string parameter, and
+  `WITH count(p) AS c WHERE c`. `CASE WHEN <condition>` selects the `ELSE` branch when the
+  condition is null, and the condition of a function that fails reads as null, so
+  `CASE WHEN toBoolean(p.tags) THEN 'y' ELSE 'n' END` with a list property gives 'n' where it gave null.
 - **An arithmetic error now stops the query with HTTP 400, where it returned null.**
   `RETURN 1 / 0`, `RETURN 1 % 0`, `RETURN 'a' + 1` and `RETURN -'a'` returned a null column; the
   same holds for `p.name + 1` over a string property and for `10 / p.zero`. They now fail with

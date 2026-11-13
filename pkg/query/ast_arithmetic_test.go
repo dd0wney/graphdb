@@ -2,6 +2,7 @@ package query
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -112,35 +113,21 @@ func TestArithmeticExpression_EvalValue(t *testing.T) {
 	}
 }
 
-func TestArithmeticExpression_Eval_BoolCoercion(t *testing.T) {
+// An arithmetic result is a number, and a number is not a boolean. Eval used to
+// coerce it (3+4 was true, 5-5 was false). openCypher gives a type error, and
+// the refusal names the Cypher type.
+func TestArithmeticExpression_Eval_NumberIsNotBoolean(t *testing.T) {
 	ctx := map[string]any{}
-
-	// Nonzero result → true
-	expr := &ArithmeticExpression{
-		Left:     &LiteralExpression{Value: int64(3)},
-		Operator: "+",
-		Right:    &LiteralExpression{Value: int64(4)},
-	}
-	result, err := expr.Eval(ctx)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result {
-		t.Error("expected true for 3+4=7")
-	}
-
-	// Zero result → false
-	expr2 := &ArithmeticExpression{
-		Left:     &LiteralExpression{Value: int64(5)},
-		Operator: "-",
-		Right:    &LiteralExpression{Value: int64(5)},
-	}
-	result2, err := expr2.Eval(ctx)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result2 {
-		t.Error("expected false for 5-5=0")
+	for _, op := range []string{"+", "-"} {
+		expr := &ArithmeticExpression{
+			Left:     &LiteralExpression{Value: int64(5)},
+			Operator: op,
+			Right:    &LiteralExpression{Value: int64(5)},
+		}
+		_, err := expr.Eval(ctx)
+		if !isRefusal(err) || !strings.Contains(err.Error(), "integer") {
+			t.Errorf("5 %s 5: err = %v, want a refusal naming integer", op, err)
+		}
 	}
 }
 
@@ -157,8 +144,6 @@ func TestUnaryExpression_NOT(t *testing.T) {
 		// NOT null is null in openCypher. Eval reports true only for true, so
 		// the expectation is false (it was true while NOT coerced null to false).
 		{"NOT nil", &LiteralExpression{Value: nil}, false},
-		// NOT (nonzero) → false
-		{"NOT nonzero", &LiteralExpression{Value: int64(42)}, false},
 	}
 
 	for _, tt := range tests {
@@ -303,5 +288,14 @@ func TestArithmeticExpression_WithPropertyExpression(t *testing.T) {
 	}
 	if result != int64(15) {
 		t.Errorf("expected 15, got %v", result)
+	}
+}
+
+// NOT of a number was false (the number was coerced). openCypher gives a type
+// error.
+func TestUnaryExpression_NOT_NumberIsRefused(t *testing.T) {
+	expr := &UnaryExpression{Operator: "NOT", Operand: &LiteralExpression{Value: int64(42)}}
+	if _, err := expr.Eval(map[string]any{}); !isRefusal(err) {
+		t.Errorf("NOT 42: err = %v, want a refusal", err)
 	}
 }
