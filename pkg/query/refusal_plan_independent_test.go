@@ -394,13 +394,6 @@ func TestRefusalPlan_ScanAndIndexAgreeInEachPosition(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			scanOut, scanStore := planWrite(t, false, tc.nodes, tc.text)
 			idxOut, idxStore := planWrite(t, true, tc.nodes, tc.text)
-			if tc.name == "refusal before a write" {
-				// KNOWN DEFECT, not fixed here: with an index the FilterStep runs after
-				// the SetStep (applyFilterPushdown appends it last when the MatchStep
-				// became an IndexLookupStep), so the index plan writes before the
-				// WHERE is read. Only the scan is asserted for this case.
-				idxOut, idxStore = scanOut, scanStore
-			}
 			if scanOut != idxOut || scanStore != idxStore {
 				t.Errorf("plans differ\n  scan:  %s %s\n  index: %s %s", scanOut, scanStore, idxOut, idxStore)
 			}
