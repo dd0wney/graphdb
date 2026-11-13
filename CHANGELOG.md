@@ -84,6 +84,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `true` or `false`.
 
 ### Added
+- **Context-aware algorithm variants, for library callers.** Each is the existing function with a
+  leading `context.Context`; the old function is unchanged and calls it with `context.Background()`.
+  In `pkg/algorithms`: `PageRankForTenantContext`, `ShortestPathForTenantContext`,
+  `KHopNeighboursForTenantContext`, `NodeSimilarityPairForTenantContext`,
+  `PredictLinkScoreForTenantContext`, `DetectCyclesForTenantContext`. In `pkg/vector`:
+  `(*Emeans).TrainContext`. Each returns an error that wraps `ctx.Err()` and no partial result.
 - **`range(start, end[, step])`.** It returns the integers from `start` to `end`, both included,
   as openCypher does: `step` is 1 when absent, a negative `step` counts down, and a range that
   cannot reach `end` is the empty list. A `step` of 0, an argument that is not an integer, and a
@@ -92,6 +98,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because the evaluator discards a function's error; that is a wider change, not made here.
 
 ### Fixed
+- **A `CALL` stops at the query timeout.** `algo.pageRank`, `algo.kHop`, `algo.shortestPath`,
+  `algo.nodeSimilarity`, `algo.linkPrediction` and `algo.detectCycles` discarded the context of the
+  query, so a `CALL` ran to the end after the timeout passed or the client left. Measured: `CALL
+  algo.pageRank(1.0, 1000000)` on a 201-node graph took 62.9 s under a 50 ms deadline and now takes
+  50 ms; `POST /query` with `timeout_seconds: 1` answered 408 after 67.8 s and now answers 408
+  after 1.0 s. `algo.eMeans` also stops inside its training loop. A stopped `CALL` returns no
+  rows. The check costs one counter and one compare per node or edge, with a context call once
+  every 1024; the PageRank benchmark did not change beyond noise. **Not changed:** `algo.pageRank`
+  still accepts any `maxIterations` of 1 or more, with no upper cap.
 - **A numeric property in a pattern map matches across integer and float.** `MATCH (p {id: $v})` and
   `MERGE (p:M {id: $v})` now find a stored integer 7 when `/query` delivers the JSON number 7 as the float
   `7.0`, by the rule `WHERE p.id = $v` uses; before, the match failed and each `MERGE` created another node.

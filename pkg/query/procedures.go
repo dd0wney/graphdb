@@ -60,7 +60,7 @@ func RegisterProcedure(name string, proc Procedure) {
 //
 // Returns a single result row: [{"path": []uint64}]. If no path exists
 // the inner path slice is nil (algorithm returns (nil, nil) for "no path").
-func shortestPathProcedure(_ context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+func shortestPathProcedure(ctx context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("algo.shortestPath requires 2 arguments (start, end node IDs); got %d", len(args))
 	}
@@ -74,7 +74,7 @@ func shortestPathProcedure(_ context.Context, graph storage.Storage, tenantID st
 		return nil, fmt.Errorf("algo.shortestPath: end argument must be a numeric node ID; got %T", args[1])
 	}
 
-	path, err := algorithms.ShortestPathForTenant(graph, startID, endID, tenantID)
+	path, err := algorithms.ShortestPathForTenantContext(ctx, graph, startID, endID, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("algo.shortestPath: %w", err)
 	}
@@ -90,7 +90,7 @@ func shortestPathProcedure(_ context.Context, graph storage.Storage, tenantID st
 // map[uint64]int, "totalReachable": int}]. Direction defaults to "out";
 // accepts "out" | "in" | "both". edgeTypes is an optional list of edge
 // type names; nil means "all types."
-func kHopProcedure(_ context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+func kHopProcedure(ctx context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("algo.kHop requires at least 2 arguments (sourceID, maxHops); got %d", len(args))
 	}
@@ -133,7 +133,7 @@ func kHopProcedure(_ context.Context, graph storage.Storage, tenantID string, ar
 		opts.EdgeTypes = types
 	}
 
-	result, err := algorithms.KHopNeighboursForTenant(graph, sourceID, opts, tenantID)
+	result, err := algorithms.KHopNeighboursForTenantContext(ctx, graph, sourceID, opts, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("algo.kHop: %w", err)
 	}
@@ -153,7 +153,7 @@ func kHopProcedure(_ context.Context, graph storage.Storage, tenantID string, ar
 // accepts "jaccard" | "overlap" | "cosine". Direction is fixed to "out"
 // — call sites that need other directions should be added when there's
 // a concrete need (the Phase A handoff scope is just the metric).
-func nodeSimilarityProcedure(_ context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+func nodeSimilarityProcedure(ctx context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("algo.nodeSimilarity requires at least 2 arguments (nodeA, nodeB); got %d", len(args))
 	}
@@ -184,7 +184,7 @@ func nodeSimilarityProcedure(_ context.Context, graph storage.Storage, tenantID 
 		}
 	}
 
-	score, err := algorithms.NodeSimilarityPairForTenant(graph, nodeA, nodeB, opts, tenantID)
+	score, err := algorithms.NodeSimilarityPairForTenantContext(ctx, graph, nodeA, nodeB, opts, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("algo.nodeSimilarity: %w", err)
 	}
@@ -199,7 +199,7 @@ func nodeSimilarityProcedure(_ context.Context, graph storage.Storage, tenantID 
 // "commonNeighbours"; accepts "commonNeighbours" | "adamicAdar" |
 // "preferentialAttachment". Note that scores across methods are not
 // comparable (counts vs weighted sums vs degree products).
-func linkPredictionProcedure(_ context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+func linkPredictionProcedure(ctx context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("algo.linkPrediction requires at least 2 arguments (fromID, toID); got %d", len(args))
 	}
@@ -230,7 +230,7 @@ func linkPredictionProcedure(_ context.Context, graph storage.Storage, tenantID 
 		}
 	}
 
-	score, err := algorithms.PredictLinkScoreForTenant(graph, fromID, toID, opts, tenantID)
+	score, err := algorithms.PredictLinkScoreForTenantContext(ctx, graph, fromID, toID, opts, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("algo.linkPrediction: %w", err)
 	}
@@ -248,7 +248,7 @@ func linkPredictionProcedure(_ context.Context, graph storage.Storage, tenantID 
 // callers should consider per-tenant rate limiting before exposing this
 // at unbounded HTTP surfaces. The handoff doc (Phase A) flags this as a
 // follow-up concern, not in-scope for procedure wiring.
-func pageRankProcedure(_ context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+func pageRankProcedure(ctx context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
 	opts := algorithms.DefaultPageRankOptions()
 
 	if len(args) >= 1 {
@@ -275,7 +275,7 @@ func pageRankProcedure(_ context.Context, graph storage.Storage, tenantID string
 		opts.MaxIterations = maxIter
 	}
 
-	result, err := algorithms.PageRankForTenant(graph, opts, tenantID)
+	result, err := algorithms.PageRankForTenantContext(ctx, graph, opts, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("algo.pageRank: %w", err)
 	}
@@ -351,11 +351,11 @@ func eMeansProcedure(ctx context.Context, graph storage.Storage, tenantID string
 
 // detectCyclesProcedure exposes algorithms.DetectCyclesForTenant as the
 // CALL algo.detectCycles() YIELD cycles, count procedure.
-func detectCyclesProcedure(_ context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
+func detectCyclesProcedure(ctx context.Context, graph storage.Storage, tenantID string, args []any) ([]map[string]any, error) {
 	if len(args) > 0 {
 		return nil, fmt.Errorf("algo.detectCycles takes 0 arguments; got %d", len(args))
 	}
-	cycles, err := algorithms.DetectCyclesForTenant(graph, tenantID)
+	cycles, err := algorithms.DetectCyclesForTenantContext(ctx, graph, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("algo.detectCycles: %w", err)
 	}
