@@ -160,6 +160,45 @@ func TestFilterOrderViolation(t *testing.T) {
 		})
 	}
 
+	// The row-neutral list holds ReturnStep and nothing else. A write that
+	// swaps places with a filter changes which rows it writes, or which rows
+	// the filter sees, so the guard must refuse it.
+	t.Run("a write moved from before a filter to after it", func(t *testing.T) {
+		in := &ExecutionPlan{Steps: []ExecutionStep{match, write, filter, ret}}
+		err := filterOrderViolation(in, &ExecutionPlan{Steps: []ExecutionStep{match, filter, write, ret}})
+		if err == nil || !strings.Contains(err.Error(), "came before the FilterStep") {
+			t.Errorf("error = %v, want a refusal that the write came before the filter", err)
+		}
+	})
+
+	t.Run("a pass lifts a filter above a SetStep", func(t *testing.T) {
+		in := &ExecutionPlan{Steps: []ExecutionStep{match, write, filter}}
+		opt := &Optimizer{}
+		got := opt.applyFilterPushdown(in, &Query{})
+		if err := filterOrderViolation(in, got); err != nil {
+			t.Errorf("the pass broke the order: %v", err)
+		}
+		if got.Steps[1] != ExecutionStep(write) || got.Steps[2] != ExecutionStep(filter) {
+			t.Errorf("applyFilterPushdown reordered %s, want the SetStep to stay before the FilterStep", planNames(got))
+		}
+	})
+
+	// An optimizer may add or swap in an access step. It may not add anything
+	// else, even before the first filter.
+	t.Run("a write added before the first filter", func(t *testing.T) {
+		err := filterOrderViolation(input, &ExecutionPlan{Steps: []ExecutionStep{del, match, filter, write, ret}})
+		if err == nil || !strings.Contains(err.Error(), "not an access step") {
+			t.Errorf("error = %v, want a refusal of a write that was added", err)
+		}
+	})
+
+	t.Run("a write swapped in for the access step", func(t *testing.T) {
+		err := filterOrderViolation(input, &ExecutionPlan{Steps: []ExecutionStep{del, filter, write, ret}})
+		if err == nil || !strings.Contains(err.Error(), "not an access step") {
+			t.Errorf("error = %v, want a refusal of a write put in place of the MatchStep", err)
+		}
+	})
+
 	t.Run("a filter may be lifted above a ReturnStep", func(t *testing.T) {
 		in := &ExecutionPlan{Steps: []ExecutionStep{match, ret, filter}}
 		if err := filterOrderViolation(in, &ExecutionPlan{Steps: []ExecutionStep{match, filter, ret}}); err != nil {

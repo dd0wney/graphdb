@@ -24,7 +24,9 @@ import (
 //
 //   - A step that came before the first filter may be replaced or dropped. The
 //     MatchStep that becomes an IndexLookupStep is the case this exists for.
-//   - A step that the optimizer added must sit before the first filter.
+//   - A step that the optimizer added, or put in place of one, must be an
+//     access step (isAccessStep) and sit before the first filter. A pass that
+//     adds or swaps in any other step, a write above all, is refused.
 //
 // A step that came after the first filter must survive by identity. If a pass
 // replaces such a step, this check cannot tell whether the replacement kept its
@@ -85,11 +87,29 @@ func filterOrderViolation(before, after *ExecutionPlan) error {
 	}
 
 	for i, s := range after.Steps {
-		if i > firstFilterOut && indexOfStep(before.Steps, s) < 0 {
+		if indexOfStep(before.Steps, s) >= 0 {
+			continue
+		}
+		if !isAccessStep(s) {
+			return fmt.Errorf("the optimizer added %T, which is not an access step", s)
+		}
+		if i > firstFilterOut {
 			return fmt.Errorf("the optimizer added %T after a FilterStep", s)
 		}
 	}
 	return nil
+}
+
+// isAccessStep reports whether a step only reads nodes into the rows, so an
+// optimizer may add it or put it in place of the MatchStep. The answer defaults
+// to no, because a step missing from this list only costs an optimization,
+// while a write step let in by mistake destroys data.
+func isAccessStep(s ExecutionStep) bool {
+	switch s.(type) {
+	case *IndexLookupStep, *VectorSearchStep:
+		return true
+	}
+	return false
 }
 
 // checkComparable refuses a plan whose steps cannot be compared with ==, which
