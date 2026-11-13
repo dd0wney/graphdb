@@ -15,9 +15,11 @@ const (
 	invalidColumnName = "<invalid>"
 )
 
-// orderByColKey returns the map key for an ORDER BY expression.
-// Bare variables (empty Property) use just the variable name to match aliases.
-func orderByColKey(expr *PropertyExpression) string {
+// exprColumnName is the one place that formats the name of a variable with an
+// optional property: "n" for a bare variable, "n.name" for a property. The
+// column name, the row key, the aggregate key and the ORDER BY lookup must all
+// use it, or a row key stops matching its column.
+func exprColumnName(expr *PropertyExpression) string {
 	if expr.Property == "" {
 		return expr.Variable
 	}
@@ -32,7 +34,7 @@ func buildColumnName(item *ReturnItem) string {
 
 	if item.Aggregate != "" {
 		if item.Expression != nil {
-			return fmt.Sprintf("%s(%s.%s)", item.Aggregate, item.Expression.Variable, item.Expression.Property)
+			return fmt.Sprintf("%s(%s)", item.Aggregate, exprColumnName(item.Expression))
 		}
 		return fmt.Sprintf("%s(*)", item.Aggregate)
 	}
@@ -47,7 +49,7 @@ func buildColumnName(item *ReturnItem) string {
 	}
 
 	if item.Expression != nil {
-		return fmt.Sprintf("%s.%s", item.Expression.Variable, item.Expression.Property)
+		return exprColumnName(item.Expression)
 	}
 
 	return invalidColumnName
@@ -174,7 +176,7 @@ func (e *Executor) buildGroupedResultSet(ctx *ExecutionContext, returnClause *Re
 		// GROUP BY expressions are also columns under their own name, as
 		// they were before implicit grouping existed.
 		for _, expr := range returnClause.GroupBy {
-			name := fmt.Sprintf("%s.%s", expr.Variable, expr.Property)
+			name := exprColumnName(expr)
 			if _, present := row[name]; !present {
 				row[name] = e.extractValueFromBinding(g.first, expr, computer)
 			}
@@ -190,7 +192,7 @@ func (e *Executor) buildGroupedResultSet(ctx *ExecutionContext, returnClause *Re
 		if ob.Expression == nil {
 			continue
 		}
-		name := orderByColKey(ob.Expression)
+		name := exprColumnName(ob.Expression)
 		col := groupedOrderColumn(returnClause, ob.Expression)
 		if col == "" || col == name {
 			continue
@@ -356,7 +358,7 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 		}
 		for _, ob := range returnClause.OrderBy {
 			if ob.Expression != nil {
-				name := orderByColKey(ob.Expression)
+				name := exprColumnName(ob.Expression)
 				if !colSet[name] {
 					extraSortCols = append(extraSortCols, name)
 					colSet[name] = true
@@ -374,7 +376,7 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 		}
 		for _, ob := range returnClause.OrderBy {
 			if ob.Expression != nil {
-				name := orderByColKey(ob.Expression)
+				name := exprColumnName(ob.Expression)
 				if _, exists := row[name]; !exists {
 					row[name] = e.extractValueFromBinding(binding, ob.Expression, computer)
 				}

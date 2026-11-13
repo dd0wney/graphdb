@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The row is now removed, as openCypher requires.
 
 ### Changed
+- **The column name of a bare variable has no trailing dot.** A result column that names a
+  variable with no property was `n.`, with a dot after the variable. It is now the variable
+  alone, in `columns` and as the key of each row, in `POST /query` and in the Go API.
+  `MATCH (n) RETURN n` named its column `n.` and now names it `n`.
+  `MATCH (p:Person) WITH p.age AS age RETURN age` named its column `age.` and now names it `age`.
+  `MATCH (n) RETURN count(n)` named its column `COUNT(n.)` and now names it `COUNT(n)`.
+  The old name is not kept beside the new one. A client that reads a row by the old key, for
+  example `row["n."]`, must change to the new key, `row["n"]`. A column with a property
+  (`n.name`, `COUNT(n.age)`) and a column with an alias (`AS x`) keep their names.
 - **A non-boolean operand of `NOT`, `AND`, `OR` or `WHERE` is now an error, where it was coerced.**
   `WHERE NOT n.s` with a string or number property used to read a non-empty string, a non-zero
   number, a list or a node as true. It now stops the query with HTTP 400 and

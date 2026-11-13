@@ -156,7 +156,7 @@ func checkGroupedOrderBy(rc *ReturnClause) error {
 		if ob.Expression == nil || groupedOrderColumn(rc, ob.Expression) != "" {
 			continue
 		}
-		return fmt.Errorf("ORDER BY %s after aggregation must name a RETURN column or a grouping key", orderByColKey(ob.Expression))
+		return fmt.Errorf("ORDER BY %s after aggregation must name a RETURN column or a grouping key", exprColumnName(ob.Expression))
 	}
 	return nil
 }
@@ -165,7 +165,7 @@ func checkGroupedOrderBy(rc *ReturnClause) error {
 // grouped rows by: a column of that name, or the column of the grouping key
 // written with the same expression.
 func groupedOrderColumn(rc *ReturnClause, expr *PropertyExpression) string {
-	name := orderByColKey(expr)
+	name := exprColumnName(expr)
 	for _, item := range rc.Items {
 		if buildColumnName(item) == name {
 			return name

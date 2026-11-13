@@ -1,8 +1,6 @@
 package query
 
 import (
-	"fmt"
-
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
@@ -25,15 +23,7 @@ func (ac *AggregationComputer) ComputeAggregates(ctx *ExecutionContext, returnIt
 			continue
 		}
 
-		// Build column name
-		columnName := item.Alias
-		if columnName == "" {
-			if item.Expression != nil {
-				columnName = fmt.Sprintf("%s(%s.%s)", item.Aggregate, item.Expression.Variable, item.Expression.Property)
-			} else {
-				columnName = fmt.Sprintf("%s(*)", item.Aggregate)
-			}
-		}
+		columnName := buildColumnName(item)
 
 		// Extract values from execution context
 		values := ac.extractValues(ctx, item)

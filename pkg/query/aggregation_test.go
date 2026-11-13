@@ -288,7 +288,7 @@ func TestAggregationComputer_ComputeAggregates(t *testing.T) {
 					},
 				},
 			},
-			expectedKey: "COUNT(n.)",
+			expectedKey: "COUNT(n)",
 			expectedVal: 3,
 		},
 		{

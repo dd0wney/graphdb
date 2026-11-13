@@ -118,7 +118,7 @@ func TestWith_BasicProjection(t *testing.T) {
 	// Verify the projected names are present
 	names := make(map[string]bool)
 	for _, row := range result.Rows {
-		if name, ok := row["name."].(string); ok {
+		if name, ok := row["name"].(string); ok {
 			names[name] = true
 		}
 	}

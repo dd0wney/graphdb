@@ -50,23 +50,12 @@ func (e *Executor) deduplicateRows(rows []map[string]any) []map[string]any {
 	return result
 }
 
-// orderByColumnName resolves the column name for an ORDER BY item.
-// It checks the row's existing keys for alias matches and falls back
-// to the formatted property expression.
+// orderByColumnName resolves the column name for an ORDER BY item. A bare
+// variable and an alias both resolve to the variable name, a property to
+// "var.prop".
 func orderByColumnName(item *OrderByItem, row map[string]any) string {
 	if item.Expression != nil {
-		// When property is empty, it's a bare variable name (possibly an alias)
-		if item.Expression.Property == "" {
-			if _, ok := row[item.Expression.Variable]; ok {
-				return item.Expression.Variable
-			}
-		}
-		// Try formatted name: "var.prop"
-		name := fmt.Sprintf("%s.%s", item.Expression.Variable, item.Expression.Property)
-		if _, ok := row[name]; ok {
-			return name
-		}
-		return name
+		return exprColumnName(item.Expression)
 	}
 	return "<expr>"
 }

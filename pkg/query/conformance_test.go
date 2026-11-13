@@ -692,8 +692,7 @@ func TestConformance_Phase4_StringConcatInWith(t *testing.T) {
 		t.Fatalf("expected 3 results, got %d", result.Count)
 	}
 
-	// Column name for projected variable "username" is "username."
-	// (PropertyExpression with empty Property)
+	// The column name for a projected variable is the variable name alone.
 	col := result.Columns[0]
 	usernames := make(map[string]bool)
 	for _, row := range result.Rows {

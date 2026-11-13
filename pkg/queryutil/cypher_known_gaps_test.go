@@ -195,16 +195,6 @@ func wantListCell(col string, want []float64) func(gapReporter, gapResult) {
 
 func TestCypherKnownGaps(t *testing.T) {
 	cases := []gapCase{
-		{"v1.4-cypher-with-alias-column-name",
-			`MATCH (p:Person {id: 0}) WITH p.age AS age RETURN age`,
-			func(t gapReporter, r gapResult) {
-				if !okResult(t, r) {
-					return
-				}
-				if !reflect.DeepEqual(r.rs.Columns, []string{"age"}) {
-					t.Errorf("columns = %q, want [\"age\"]", r.rs.Columns)
-				}
-			}},
 		{"v1.4-cypher-count-star",
 			`MATCH (p:Person) RETURN count(*) AS n`,
 			wantCell("n", 6)},
