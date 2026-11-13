@@ -76,25 +76,20 @@ type numericVal struct {
 	f float64
 }
 
-// coerceNumericPair converts two values to a numeric pair, promoting to float64 if either is float.
+// coerceNumericPair converts two values to a numeric pair. It reads every Go
+// number kind through asNumber, the one list of them. Both sides are integers
+// only if neither is a float or a uint64 above math.MaxInt64, which has no
+// int64 form; any other pair is promoted to float64.
 func coerceNumericPair(left, right any) (numericVal, numericVal, bool, error) {
-	lInt, lIsInt := left.(int64)
-	lFloat, lIsFloat := left.(float64)
-	rInt, rIsInt := right.(int64)
-	rFloat, rIsFloat := right.(float64)
-
-	switch {
-	case lIsInt && rIsInt:
-		return numericVal{i: lInt}, numericVal{i: rInt}, false, nil
-	case lIsFloat && rIsFloat:
-		return numericVal{f: lFloat}, numericVal{f: rFloat}, true, nil
-	case lIsInt && rIsFloat:
-		return numericVal{f: float64(lInt)}, numericVal{f: rFloat}, true, nil
-	case lIsFloat && rIsInt:
-		return numericVal{f: lFloat}, numericVal{f: float64(rInt)}, true, nil
-	default:
+	l, lOk := asNumber(left)
+	r, rOk := asNumber(right)
+	if !lOk || !rOk {
 		return numericVal{}, numericVal{}, false, fmt.Errorf("non-numeric operands")
 	}
+	if l.kind == numInt && r.kind == numInt {
+		return numericVal{i: l.i}, numericVal{i: r.i}, false, nil
+	}
+	return numericVal{f: l.asFloat()}, numericVal{f: r.asFloat()}, true, nil
 }
 
 func evalIntOp(left int64, op string, right int64) (any, error) {
@@ -148,6 +143,11 @@ func evalFloatOp(left float64, op string, right float64) (any, error) {
 // values: a server shows this text to the caller, and a value comes from the
 // graph.
 func refuseOperands(op string, left, right any) error {
+	// [1] + [2] is valid openCypher that this executor does not implement. Say
+	// so, rather than imply that the query is wrong.
+	if op == "+" && (cypherTypeName(left) == "list" || cypherTypeName(right) == "list") {
+		return refusef("list concatenation with + is not supported (got %s and %s)", cypherTypeName(left), cypherTypeName(right))
+	}
 	return refusef("cannot apply %s to %s and %s", op, cypherTypeName(left), cypherTypeName(right))
 }
 
@@ -217,14 +217,14 @@ func (ue *UnaryExpression) EvalValue(context map[string]any) (any, error) {
 		if val == nil {
 			return nil, nil
 		}
-		switch v := val.(type) {
-		case int64:
-			return -v, nil
-		case float64:
-			return -v, nil
-		default:
+		n, ok := asNumber(val)
+		if !ok {
 			return nil, refusef("cannot apply unary - to %s", cypherTypeName(val))
 		}
+		if n.kind == numInt {
+			return -n.i, nil
+		}
+		return -n.asFloat(), nil
 	default:
 		return nil, fmt.Errorf("unknown unary operator: %s", ue.Operator)
 	}

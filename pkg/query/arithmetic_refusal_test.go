@@ -90,6 +90,8 @@ func TestArithmeticNotRefused(t *testing.T) {
 		{"string concatenation", `RETURN 'a' + 'b' AS x`, "x", []string{"ab"}},
 		{"integer division", `RETURN 7 / 2 AS x`, "x", []string{"3"}},
 		{"float division", `RETURN 7.0 / 2 AS x`, "x", []string{"3.5"}},
+		{"missing property", `MATCH (p:Person) RETURN p.missing + 1 AS x`, "x", []string{"<nil>", "<nil>"}},
+		{"null from OPTIONAL MATCH", `MATCH (p:Person {id: 1}) OPTIONAL MATCH (p)-[:KNOWS]->(q) RETURN q.age + 1 AS x`, "x", []string{"<nil>"}},
 		// The CASE branch that divides is never evaluated for age 0.
 		{"CASE guards the division", `MATCH (p:Person) RETURN CASE WHEN p.age = 0 THEN 0 ELSE 100 / p.age END AS x`, "x", []string{"0", "20"}},
 		// Recorded, not designed: AND skips its right operand when the left is
