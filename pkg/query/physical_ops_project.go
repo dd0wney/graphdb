@@ -75,8 +75,7 @@ func (o *ProjectOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 			if item.Expression.Property == "" {
 				newBindings[alias] = binding.bindings[item.Expression.Variable]
 			} else {
-				val := extractValue(item.Expression, binding.bindings)
-				newBindings[alias] = val
+				newBindings[alias] = propertyValue(item.Expression, binding.bindings)
 			}
 		}
 	}
@@ -112,7 +111,7 @@ func (o *UnwindOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 				return nil, err
 			}
 
-			val := extractValue(o.Expression, o.curInput.bindings)
+			val := propertyValue(o.Expression, o.curInput.bindings)
 			if val == nil {
 				o.curInput = nil
 				continue

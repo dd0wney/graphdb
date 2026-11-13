@@ -267,14 +267,15 @@ func TestCypherReturn_ListAndMapRoundTrip(t *testing.T) {
 // removes the property, so a typo in a parameter name deleted data with a 200.
 func TestCypherSet_FailedValueRefusesAndKeepsProperty(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		query  string
-		params map[string]any
+		name       string
+		query      string
+		params     map[string]any
+		wantStatus int // 0 means any status but 200
 	}{
-		{"missing parameter, others bound", "MATCH (n:Probe) SET n.x = $missing", map[string]any{"other": 1.0}},
-		{"missing parameter, none bound", "MATCH (n:Probe) SET n.x = $missing", nil},
-		{"missing parameter in MERGE ON MATCH", "MERGE (n:Probe {keep: 'k'}) ON MATCH SET n.x = $missing", map[string]any{"other": 1.0}},
-		{"division by zero", "MATCH (n:Probe) SET n.x = n.i / 0", nil},
+		{"missing parameter, others bound", "MATCH (n:Probe) SET n.x = $missing", map[string]any{"other": 1.0}, 0},
+		{"missing parameter, none bound", "MATCH (n:Probe) SET n.x = $missing", nil, 0},
+		{"missing parameter in MERGE ON MATCH", "MERGE (n:Probe {keep: 'k'}) ON MATCH SET n.x = $missing", map[string]any{"other": 1.0}, 0},
+		{"division by zero", "MATCH (n:Probe) SET n.x = n.i / 0", nil, http.StatusBadRequest},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server, cleanup := setupTestServer(t)
@@ -292,6 +293,9 @@ func TestCypherSet_FailedValueRefusesAndKeepsProperty(t *testing.T) {
 			server.handleQuery(rr, reqWithTenant(t, http.MethodPost, "/query", body, "default"))
 			if rr.Code == http.StatusOK {
 				t.Errorf("status 200, want a refusal: %s", rr.Body.String())
+			}
+			if tc.wantStatus != 0 && rr.Code != tc.wantStatus {
+				t.Errorf("status %d, want %d: %s", rr.Code, tc.wantStatus, rr.Body.String())
 			}
 			if v, ok := storedProperty(t, server, id, "x"); !ok {
 				t.Errorf("x removed by a refused SET, want it kept (value was %+v)", v)

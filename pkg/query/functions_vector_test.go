@@ -433,7 +433,10 @@ func TestExtractValue_TypeVector(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := extractValue(tt.expr, context)
+			result, err := evalOperand(tt.expr, context)
+			if err != nil {
+				t.Fatalf("evalOperand: %v", err)
+			}
 
 			if tt.wantNil {
 				if result != nil {

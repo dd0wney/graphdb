@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **An arithmetic error now stops the query with HTTP 400, where it returned null.**
+  `RETURN 1 / 0`, `RETURN 1 % 0`, `RETURN 'a' + 1` and `RETURN -'a'` returned a null column; the
+  same holds for `p.name + 1` over a string property and for `10 / p.zero`. They now fail with
+  `Query error: division by zero`, `modulo by zero` or `cannot apply + to string and integer`.
+  The refusal applies in `RETURN`, `WITH`, `WHERE`, `SET`, function arguments and `CALL`
+  arguments. A `WHERE`, `WITH ... WHERE` or `OPTIONAL MATCH ... WHERE` filter used to drop the row
+  of such an error, so `WHERE p.age / 0 > 1` returned no rows; it now stops the query. `SET n.x =
+  n.i / 0` already failed and now answers 400, not 500, and `SET n.x = 100 / n.age + 1` or
+  `SET n.x = toString(1 / n.age)` no longer removes `x` where `age` is 0. An `ORDER BY` expression
+  is not evaluated by this executor, so `ORDER BY p.age / 0` does not refuse and is not covered.
+  The message names the operator and the Cypher types (integer, float, string, boolean, list,
+  map) and never a value. `[1] + [2]` is valid openCypher that this executor does not support; it
+  is refused with `list concatenation with + is not supported`. A null operand is still null
+  (`1 + null`, `null / 0`), and a `CASE` branch or the right side of `AND` or `OR` that is not
+  evaluated cannot refuse. Every Go number kind computes as `int64` or `float64`, so a
+  procedure column such as `count` and a library caller's `int` parameter work in arithmetic.
+  Integer overflow and the errors of functions and `CASE` keep their behaviour.
+  **A query that writes and then refuses keeps its writes.** The executor has no rollback, so
+  `CREATE (n:New {v: 1}) RETURN n.v / 0` leaves the node, and `MATCH (n:Person) SET n.y = 1 RETURN
+  n.name + 1` writes `y` on every node, and both answer 400. A client must not send such a query
+  again without a check of the store.
 - **A query that names a variable no clause defines is now an error, where it gave null.**
   `MATCH (p:Person) RETURN q.name` returned a column of nulls, `MATCH (p) SET q.x = 1` wrote
   nothing, and `CALL algo.labelPropagation(nosuch)` ran with its default values. The executor now

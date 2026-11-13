@@ -120,13 +120,6 @@ func okResult(t gapReporter, r gapResult) bool {
 	return true
 }
 
-func rowsOf(r gapResult) any {
-	if r.rs == nil {
-		return nil
-	}
-	return r.rs.Rows
-}
-
 // wantCell checks the first row's value under col equals want (numbers compared as float64).
 func wantCell(col string, want any) func(gapReporter, gapResult) {
 	return func(t gapReporter, r gapResult) {
@@ -210,20 +203,6 @@ func TestCypherKnownGaps(t *testing.T) {
 				}
 				if !reflect.DeepEqual(r.rs.Columns, []string{"age"}) {
 					t.Errorf("columns = %q, want [\"age\"]", r.rs.Columns)
-				}
-			}},
-		{"v1.4-cypher-arithmetic-error-null/div-zero",
-			`RETURN 1 / 0 AS x`,
-			func(t gapReporter, r gapResult) {
-				if r.err == nil {
-					t.Errorf("want division error, got none (rows=%v)", rowsOf(r))
-				}
-			}},
-		{"v1.4-cypher-arithmetic-error-null/type-mismatch",
-			`MATCH (p:Person {id: 0}) RETURN p.name + 1 AS x`,
-			func(t gapReporter, r gapResult) {
-				if r.err == nil {
-					t.Errorf("want type error, got none (rows=%v)", rowsOf(r))
 				}
 			}},
 		{"v1.4-cypher-count-star",

@@ -29,6 +29,11 @@ func (fs *FilterStep) Execute(ctx *ExecutionContext) error {
 		// Evaluate expression with this binding
 		match, err := fs.where.Expression.Eval(binding.bindings)
 		if err != nil {
+			// A refusal stops the query in each mode: the lenient drop
+			// would turn an arithmetic error into an empty result.
+			if isRefusal(err) {
+				return err
+			}
 			if fs.strictMode {
 				return fmt.Errorf("filter evaluation failed at row %d: %w", i, err)
 			}
@@ -664,7 +669,7 @@ func (us *UnwindStep) Execute(ctx *ExecutionContext) error {
 			// Variable reference without property — get the raw binding value
 			val = binding.bindings[expr.Variable]
 		} else {
-			val = extractValue(expr, binding.bindings)
+			val = propertyValue(expr, binding.bindings)
 		}
 		if val == nil {
 			continue // Skip nil values
@@ -728,6 +733,9 @@ func (oms *OptionalMatchStep) Execute(ctx *ExecutionContext) error {
 			for _, r := range matches {
 				match, err := oms.where.Expression.Eval(r.bindings)
 				if err != nil {
+					if isRefusal(err) {
+						return err
+					}
 					continue
 				}
 				if match {

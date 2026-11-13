@@ -62,7 +62,7 @@ func (pe *PropertyExpression) Eval(context map[string]any) (bool, error) {
 }
 
 func (pe *PropertyExpression) EvalValue(context map[string]any) (any, error) {
-	return extractValue(pe, context), nil
+	return propertyValue(pe, context), nil
 }
 
 // LiteralExpression represents a literal value
@@ -107,7 +107,11 @@ func (fce *FunctionCallExpression) EvalValue(context map[string]any) (any, error
 	// Evaluate arguments
 	args := make([]any, len(fce.Args))
 	for i, arg := range fce.Args {
-		args[i] = extractValue(arg, context)
+		v, err := evalOperand(arg, context)
+		if err != nil {
+			return nil, err
+		}
+		args[i] = v
 	}
 
 	return fn(args)
@@ -167,23 +171,29 @@ func (ce *CaseExpression) EvalValue(context map[string]any) (any, error) {
 				return nil, err
 			}
 			if match {
-				return extractValue(wc.Result, context), nil
+				return evalOperand(wc.Result, context)
 			}
 		}
 	} else {
 		// Simple form: CASE <operand> WHEN <value> THEN <result> ...
-		operandVal := extractValue(ce.Operand, context)
+		operandVal, err := evalOperand(ce.Operand, context)
+		if err != nil {
+			return nil, err
+		}
 		for _, wc := range ce.WhenClauses {
-			condVal := extractValue(wc.Condition, context)
+			condVal, err := evalOperand(wc.Condition, context)
+			if err != nil {
+				return nil, err
+			}
 			if valuesEqual(operandVal, condVal) && operandVal != nil {
-				return extractValue(wc.Result, context), nil
+				return evalOperand(wc.Result, context)
 			}
 		}
 	}
 
 	// No match — fall through to ELSE or nil
 	if ce.ElseResult != nil {
-		return extractValue(ce.ElseResult, context), nil
+		return evalOperand(ce.ElseResult, context)
 	}
 	return nil, nil
 }

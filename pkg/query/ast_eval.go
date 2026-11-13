@@ -3,6 +3,7 @@ package query
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -14,14 +15,21 @@ import (
 // Helper function to evaluate comparisons
 func evalComparison(left, right Expression, op string, context map[string]any) (bool, error) {
 	// Extract actual values
-	leftVal := extractValue(left, context)
-	rightVal := extractValue(right, context)
+	leftVal, err := evalOperand(left, context)
+	if err != nil {
+		return false, err
+	}
+	rightVal, err := evalOperand(right, context)
+	if err != nil {
+		return false, err
+	}
 
 	switch op {
 	case "=", "!=":
 		// An operand that is an unknown comparison makes the result unknown,
 		// which WHERE drops. equalityTri holds that rule.
-		return equalityTri(op, left, right, context) == triTrue, nil
+		t, err := equalityTri(op, left, right, context)
+		return t == triTrue, err
 	case ">", "<", ">=", "<=":
 		// No order (null, mixed types) is unknown, and unknown in WHERE
 		// removes the row. It is not an error.
@@ -88,86 +96,97 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 	}
 }
 
-// Extract actual value from expression
-func extractValue(expr Expression, context map[string]any) any {
+// isRefusal reports whether err is or wraps a *RefusalError, the one kind of
+// error that must reach the caller instead of becoming null or a dropped row.
+func isRefusal(err error) bool {
+	var refusal *RefusalError
+	return errors.As(err, &refusal)
+}
+
+// evalOperand returns the value of an operand. It returns an error only for a
+// *RefusalError raised below it, such as an arithmetic error.
+func evalOperand(expr Expression, context map[string]any) (any, error) {
 	switch e := expr.(type) {
 	case *PropertyExpression:
-		if obj, ok := context[e.Variable]; ok {
-			// Handle storage.Node objects
-			if node, ok := obj.(*storage.Node); ok {
-				if e.Property == "" {
-					return node
-				}
-				if val, found := node.Properties[e.Property]; found {
-					return extractStorageValue(val)
-				}
-				return nil
-			}
-			// Handle storage.Edge objects
-			if edge, ok := obj.(*storage.Edge); ok {
-				if e.Property == "" {
-					return edge
-				}
-				if val, found := edge.Properties[e.Property]; found {
-					return extractStorageValue(val)
-				}
-				return nil
-			}
-			// Fallback to map[string]any for backward compatibility
-			if m, ok := obj.(map[string]any); ok {
-				if e.Property == "" {
-					return m
-				}
-				return m[e.Property]
-			}
-			// Raw value binding (e.g., from WITH projections)
-			if e.Property == "" {
-				return obj
-			}
-		}
-		return nil
+		return propertyValue(e, context), nil
 	case *LiteralExpression:
-		return e.Value
-	case *FunctionCallExpression:
-		result, err := e.EvalValue(context)
-		if err != nil {
-			return nil
-		}
-		return result
+		return e.Value, nil
 	case *ParameterExpression:
 		val, ok := context["$"+e.Name]
 		if !ok {
-			return nil
+			return nil, nil
 		}
-		return val
+		return val, nil
+	case *FunctionCallExpression:
+		return nestedValue(e, context)
 	case *CaseExpression:
-		result, err := e.EvalValue(context)
-		if err != nil {
-			return nil
-		}
-		return result
+		return nestedValue(e, context)
 	case *BinaryExpression:
 		// EvalValue, not Eval: an unknown comparison is null here.
-		result, err := e.EvalValue(context)
-		if err != nil {
-			return nil
-		}
-		return result
+		return nestedValue(e, context)
 	case *ArithmeticExpression:
-		result, err := e.EvalValue(context)
-		if err != nil {
-			return nil
-		}
-		return result
+		return nestedValue(e, context)
 	case *UnaryExpression:
-		result, err := e.EvalValue(context)
-		if err != nil {
-			return nil
-		}
-		return result
+		return nestedValue(e, context)
 	default:
+		return nil, nil
+	}
+}
+
+// nestedValue evaluates a compound expression for evalOperand.
+func nestedValue(expr Expression, context map[string]any) (any, error) {
+	result, err := expr.EvalValue(context)
+	if err == nil {
+		return result, nil
+	}
+	if isRefusal(err) {
+		return nil, err
+	}
+	// Any other error reads as null, as it always did. The errors of
+	// functions and of CASE are not in the scope of the arithmetic refusal;
+	// refusing them is a separate change with its own tests.
+	return nil, nil
+}
+
+// propertyValue reads a variable or a property from the bindings. A missing
+// one is nil.
+func propertyValue(e *PropertyExpression, context map[string]any) any {
+	obj, ok := context[e.Variable]
+	if !ok {
 		return nil
 	}
+	// Handle storage.Node objects
+	if node, ok := obj.(*storage.Node); ok {
+		if e.Property == "" {
+			return node
+		}
+		if val, found := node.Properties[e.Property]; found {
+			return extractStorageValue(val)
+		}
+		return nil
+	}
+	// Handle storage.Edge objects
+	if edge, ok := obj.(*storage.Edge); ok {
+		if e.Property == "" {
+			return edge
+		}
+		if val, found := edge.Properties[e.Property]; found {
+			return extractStorageValue(val)
+		}
+		return nil
+	}
+	// Fallback to map[string]any for backward compatibility
+	if m, ok := obj.(map[string]any); ok {
+		if e.Property == "" {
+			return m
+		}
+		return m[e.Property]
+	}
+	// Raw value binding (e.g., from WITH projections)
+	if e.Property == "" {
+		return obj
+	}
+	return nil
 }
 
 // valuesEqual implements equality for the "=" / "!=" operators. It exists
