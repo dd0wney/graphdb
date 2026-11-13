@@ -399,7 +399,27 @@ func (em *Emeans) Train(vectors [][]float32) ([][]float32, []int, error) {
 // TrainContext is Train that stops when ctx ends. It returns an error wrapping
 // ctx.Err() and no centroids. The check runs once per mini-batch, which is the
 // loop that scales with the input and is large enough that the check is free.
+//
+// A failed or cancelled run leaves the model as it was before the call. The
+// body replaces every slice it writes with a fresh allocation, so a shallow
+// copy of the receiver taken first is a complete snapshot. Without the restore,
+// Assign would read half-trained centroids while Centroids and Assignments
+// still described the old model.
 func (em *Emeans) TrainContext(ctx context.Context, vectors [][]float32) ([][]float32, []int, error) {
+	// Before any work, and before the n <= k shortcut, which has no loop.
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	prior := *em
+	centroids, labels, err := em.train(ctx, vectors)
+	if err != nil {
+		*em = prior
+		return nil, nil, err
+	}
+	return centroids, labels, nil
+}
+
+func (em *Emeans) train(ctx context.Context, vectors [][]float32) ([][]float32, []int, error) {
 	n := len(vectors)
 	if n == 0 {
 		return nil, nil, fmt.Errorf("emeans: cannot train on empty vector slice")

@@ -6,10 +6,12 @@ import "context"
 // It is a power of two so the test is a mask, not a division.
 const cancelCheckInterval = 1024
 
-// cancelPoll lets a hot loop honour a context without paying for ctx.Err() on
-// every item. ctx.Err() takes a mutex on a cancellable context, so calling it
-// per node or per edge would show in a PageRank profile. The cost here is one
-// increment and one compare per item.
+// cancelPoll lets a hot loop honour a context without a context call on every
+// item. The call is not free: it is an interface dispatch and an atomic load,
+// and it would run once per node or edge in the tightest loops. One check for
+// each 1024 items still stops a run in good time, because 1024 items take
+// microseconds to milliseconds. The cost here is one increment and one compare
+// per item.
 type cancelPoll struct {
 	ctx context.Context
 	n   uint32
