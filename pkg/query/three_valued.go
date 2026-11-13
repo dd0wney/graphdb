@@ -95,7 +95,7 @@ func orderingTri(op string, leftVal, rightVal any) tri {
 func isTriExpr(expr Expression) bool {
 	switch e := expr.(type) {
 	case *BinaryExpression:
-		return e.Operator == "AND" || e.Operator == "OR" || isOrderingOp(e.Operator)
+		return e.Operator == "AND" || e.Operator == "OR" || e.Operator == "IN" || isOrderingOp(e.Operator)
 	case *UnaryExpression:
 		return e.Operator == "NOT"
 	default:
@@ -108,8 +108,8 @@ func isTriExpr(expr Expression) bool {
 // itself unknown: null = null is unknown, and WHERE removes the row. Only a
 // null operand does this. Two non-null values of different types are not
 // equal, so 'a' = 1 is false and 'a' <> 1 is true, as in openCypher. Lists and
-// maps compare by collectionsEqual, so [1, null] = [1, null] is true here,
-// where openCypher gives null.
+// maps follow equalTri: a null inside gives unknown unless a length, a key set
+// or another element already makes the result false.
 func equalityTri(op string, left, right Expression, context map[string]any) (tri, error) {
 	l, lUnknown, err := equalityOperand(left, context)
 	if err != nil {
@@ -119,14 +119,14 @@ func equalityTri(op string, left, right Expression, context map[string]any) (tri
 	if err != nil {
 		return triFalse, err
 	}
-	if lUnknown || rUnknown || l == nil || r == nil {
+	if lUnknown || rUnknown {
 		return triUnknown, nil
 	}
-	eq := valuesEqual(l, r)
+	eq := equalTri(l, r)
 	if op == "!=" {
-		eq = !eq
+		return triNot(eq), nil
 	}
-	return triFromBool(eq), nil
+	return eq, nil
 }
 
 // equalityOperand returns the value of an operand, or unknown=true when the
@@ -236,8 +236,18 @@ func evalTri(expr Expression, context map[string]any) (tri, error) {
 			return orderingTri(e.Operator, l, r), nil
 		case e.Operator == "=" || e.Operator == "!=":
 			return equalityTri(e.Operator, e.Left, e.Right, context)
+		case e.Operator == "IN":
+			l, err := evalOperand(e.Left, context)
+			if err != nil {
+				return triFalse, err
+			}
+			r, err := evalOperand(e.Right, context)
+			if err != nil {
+				return triFalse, err
+			}
+			return inTri(l, r)
 		}
-		// IS NULL, IN and the string predicates are two-valued. This is the
+		// IS NULL and the string predicates are two-valued. This is the
 		// only Eval that evalTri calls: the Eval of every other type calls
 		// evalPredicate, which calls evalTri.
 		b, err := e.Eval(context)

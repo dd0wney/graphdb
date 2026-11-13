@@ -35,11 +35,10 @@ func (be *BinaryExpression) Eval(context map[string]any) (bool, error) {
 	}
 }
 
-// EvalValue gives null where the result is unknown: AND, OR and an ordering
-// comparison, and = and != over such an operand. Every other operator is
-// two-valued.
+// EvalValue gives null where the result is unknown: AND, OR, an ordering
+// comparison, =, != and IN. Every other operator is two-valued.
 func (be *BinaryExpression) EvalValue(context map[string]any) (any, error) {
-	if be.Operator == "AND" || be.Operator == "OR" || be.Operator == "=" || be.Operator == "!=" || isOrderingOp(be.Operator) {
+	if be.Operator == "AND" || be.Operator == "OR" || be.Operator == "=" || be.Operator == "!=" || be.Operator == "IN" || isOrderingOp(be.Operator) {
 		result, err := evalTri(be, context)
 		if err != nil {
 			return nil, err
@@ -171,7 +170,9 @@ func (ce *CaseExpression) EvalValue(context map[string]any) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			if valuesEqual(operandVal, condVal) && operandVal != nil {
+			// Only true selects a branch: a null anywhere that decides the
+			// equality leaves it unknown, and unknown does not match.
+			if equalTri(operandVal, condVal) == triTrue {
 				return evalOperand(wc.Result, context)
 			}
 		}
