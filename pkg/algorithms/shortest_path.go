@@ -2,6 +2,7 @@ package algorithms
 
 import (
 	"container/list"
+	"context"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
@@ -21,6 +22,15 @@ import (
 // That means the edge-tenant filter is sufficient — no per-neighbor
 // GetNodeForTenant in the BFS hot loop.
 func ShortestPathForTenant(graph storage.Storage, startID, endID uint64, tenantID string) ([]uint64, error) {
+	return ShortestPathForTenantContext(context.Background(), graph, startID, endID, tenantID)
+}
+
+// ShortestPathForTenantContext is ShortestPathForTenant that stops when ctx
+// ends. It returns an error wrapping ctx.Err() and no path.
+func ShortestPathForTenantContext(ctx context.Context, graph storage.Storage, startID, endID uint64, tenantID string) ([]uint64, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if startID == endID {
 		return []uint64{startID}, nil
 	}
@@ -35,15 +45,25 @@ func ShortestPathForTenant(graph storage.Storage, startID, endID uint64, tenantI
 	backwardQueue.PushBack(endID)
 	backwardVisited[endID] = endID
 
+	poll := &cancelPoll{ctx: ctx}
 	for forwardQueue.Len() > 0 || backwardQueue.Len() > 0 {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if forwardQueue.Len() > 0 {
-			meetingNode := expandFrontierForTenant(graph, forwardQueue, forwardVisited, backwardVisited, tenantID)
+			meetingNode, err := expandFrontierForTenant(poll, graph, forwardQueue, forwardVisited, backwardVisited, tenantID)
+			if err != nil {
+				return nil, err
+			}
 			if meetingNode != 0 {
 				return reconstructPath(meetingNode, forwardVisited, backwardVisited), nil
 			}
 		}
 		if backwardQueue.Len() > 0 {
-			meetingNode := expandFrontierForTenant(graph, backwardQueue, backwardVisited, forwardVisited, tenantID)
+			meetingNode, err := expandFrontierForTenant(poll, graph, backwardQueue, backwardVisited, forwardVisited, tenantID)
+			if err != nil {
+				return nil, err
+			}
 			if meetingNode != 0 {
 				return reconstructPath(meetingNode, forwardVisited, backwardVisited), nil
 			}
@@ -56,14 +76,20 @@ func ShortestPathForTenant(graph storage.Storage, startID, endID uint64, tenantI
 // expandFrontierForTenant mirrors expandFrontier but only follows
 // edges owned by tenantID.
 func expandFrontierForTenant(
+	poll *cancelPoll,
 	graph storage.Storage,
 	queue *list.List,
 	visited map[uint64]uint64,
 	otherVisited map[uint64]uint64,
 	tenantID string,
-) uint64 {
+) (uint64, error) {
 	levelSize := queue.Len()
 	for i := 0; i < levelSize; i++ {
+		// One BFS level can hold most of the graph, so the per-level check
+		// in the caller is too coarse on its own.
+		if err := poll.tick(); err != nil {
+			return 0, err
+		}
 		currentID, ok := queue.Remove(queue.Front()).(uint64)
 		if !ok {
 			continue
@@ -79,7 +105,7 @@ func expandFrontierForTenant(
 
 			if _, found := otherVisited[neighborID]; found {
 				visited[neighborID] = currentID
-				return neighborID
+				return neighborID, nil
 			}
 
 			if _, seen := visited[neighborID]; !seen {
@@ -89,7 +115,7 @@ func expandFrontierForTenant(
 		}
 	}
 
-	return 0
+	return 0, nil
 }
 
 // ShortestPath finds the shortest path between two nodes using bidirectional BFS

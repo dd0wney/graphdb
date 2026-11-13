@@ -148,17 +148,30 @@ func computeSimilarity(setA, setB map[uint64]bool, metric SimilarityMetric) floa
 
 // NodeSimilarityPair computes similarity between two nodes (tenant-blind).
 func NodeSimilarityPair(graph storage.Storage, nodeA, nodeB uint64, opts NodeSimilarityOptions) (float64, error) {
-	return nodeSimilarityPairView(newTenantBlindView(graph), nodeA, nodeB, opts)
+	return nodeSimilarityPairView(context.Background(), newTenantBlindView(graph), nodeA, nodeB, opts)
 }
 
 // NodeSimilarityPairForTenant computes similarity restricted to the
 // caller's tenant. Audit A6c-algorithms.
 func NodeSimilarityPairForTenant(graph storage.Storage, nodeA, nodeB uint64, opts NodeSimilarityOptions, tenantID string) (float64, error) {
-	return nodeSimilarityPairView(newTenantScopedView(graph, tenantID), nodeA, nodeB, opts)
+	return NodeSimilarityPairForTenantContext(context.Background(), graph, nodeA, nodeB, opts, tenantID)
 }
 
-func nodeSimilarityPairView(view graphView, nodeA, nodeB uint64, opts NodeSimilarityOptions) (float64, error) {
+// NodeSimilarityPairForTenantContext is NodeSimilarityPairForTenant that stops
+// when ctx ends. It returns an error wrapping ctx.Err() and no score.
+func NodeSimilarityPairForTenantContext(ctx context.Context, graph storage.Storage, nodeA, nodeB uint64, opts NodeSimilarityOptions, tenantID string) (float64, error) {
+	return nodeSimilarityPairView(ctx, newTenantScopedView(graph, tenantID), nodeA, nodeB, opts)
+}
+
+func nodeSimilarityPairView(ctx context.Context, view graphView, nodeA, nodeB uint64, opts NodeSimilarityOptions) (float64, error) {
+	// A neighbour set of a hub node is the costly step, so check before each.
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	setA := getNeighborSet(view, nodeA, opts.Direction, opts.EdgeTypes)
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	setB := getNeighborSet(view, nodeB, opts.Direction, opts.EdgeTypes)
 	return computeSimilarity(setA, setB, opts.Metric), nil
 }

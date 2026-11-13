@@ -1,6 +1,8 @@
 package algorithms
 
 import (
+	"context"
+
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
@@ -18,16 +20,22 @@ type Cycle []uint64
 //
 // A GRAY node found during DFS is a back edge, indicating a cycle.
 func DetectCycles(graph storage.Storage) ([]Cycle, error) {
-	return detectCyclesView(newTenantBlindView(graph))
+	return detectCyclesView(context.Background(), newTenantBlindView(graph))
 }
 
 // DetectCyclesForTenant finds cycles within the caller's tenant
 // subgraph. Audit A6c-algorithms (2026-05-08).
 func DetectCyclesForTenant(graph storage.Storage, tenantID string) ([]Cycle, error) {
-	return detectCyclesView(newTenantScopedView(graph, tenantID))
+	return DetectCyclesForTenantContext(context.Background(), graph, tenantID)
 }
 
-func detectCyclesView(view graphView) ([]Cycle, error) {
+// DetectCyclesForTenantContext is DetectCyclesForTenant that stops when ctx
+// ends. It returns an error wrapping ctx.Err() and no partial cycle list.
+func DetectCyclesForTenantContext(ctx context.Context, graph storage.Storage, tenantID string) ([]Cycle, error) {
+	return detectCyclesView(ctx, newTenantScopedView(graph, tenantID))
+}
+
+func detectCyclesView(ctx context.Context, view graphView) ([]Cycle, error) {
 	const (
 		WHITE = 0
 		GRAY  = 1
@@ -51,9 +59,15 @@ func detectCyclesView(view graphView) ([]Cycle, error) {
 		return cycles, nil
 	}
 
+	poll := &cancelPoll{ctx: ctx}
 	for _, n := range allNodes {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if color[n.ID] == WHITE {
-			dfsDetectCycleView(view, n.ID, color, parent, &cycles)
+			if err := dfsDetectCycleView(view, poll, n.ID, color, parent, &cycles); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -62,23 +76,29 @@ func detectCyclesView(view graphView) ([]Cycle, error) {
 
 func dfsDetectCycleView(
 	view graphView,
+	poll *cancelPoll,
 	nodeID uint64,
 	color map[uint64]int,
 	parent map[uint64]uint64,
 	cycles *[]Cycle,
-) {
+) error {
 	const (
 		WHITE = 0
 		GRAY  = 1
 		BLACK = 2
 	)
 
+	// One DFS root can reach the whole graph, so the check in the caller's
+	// root loop is not enough.
+	if err := poll.tick(); err != nil {
+		return err
+	}
 	color[nodeID] = GRAY
 
 	edges, err := view.OutgoingEdges(nodeID)
 	if err != nil {
 		color[nodeID] = BLACK
-		return
+		return nil
 	}
 
 	for _, edge := range edges {
@@ -93,7 +113,9 @@ func dfsDetectCycleView(
 		switch color[neighborID] {
 		case WHITE:
 			parent[neighborID] = nodeID
-			dfsDetectCycleView(view, neighborID, color, parent, cycles)
+			if err := dfsDetectCycleView(view, poll, neighborID, color, parent, cycles); err != nil {
+				return err
+			}
 		case GRAY:
 			cycle := extractCycle(neighborID, nodeID, parent)
 			*cycles = append(*cycles, cycle)
@@ -101,6 +123,7 @@ func dfsDetectCycleView(
 	}
 
 	color[nodeID] = BLACK
+	return nil
 }
 
 // extractCycle reconstructs the cycle from parent pointers
@@ -144,7 +167,7 @@ func DetectCyclesWithOptionsForTenant(graph storage.Storage, opts CycleDetection
 }
 
 func detectCyclesWithOptionsView(view graphView, opts CycleDetectionOptions) ([]Cycle, error) {
-	allCycles, err := detectCyclesView(view)
+	allCycles, err := detectCyclesView(context.Background(), view)
 	if err != nil {
 		return nil, err
 	}

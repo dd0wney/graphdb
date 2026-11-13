@@ -1,6 +1,7 @@
 package algorithms
 
 import (
+	"context"
 	"math"
 	"sort"
 
@@ -62,19 +63,32 @@ func DefaultLinkPredictionOptions() LinkPredictionOptions {
 // PredictLinkScore computes the link prediction score between two
 // specific nodes (tenant-blind).
 func PredictLinkScore(graph storage.Storage, fromNodeID, toNodeID uint64, opts LinkPredictionOptions) (float64, error) {
-	return predictLinkScoreView(newTenantBlindView(graph), fromNodeID, toNodeID, opts)
+	return predictLinkScoreView(context.Background(), newTenantBlindView(graph), fromNodeID, toNodeID, opts)
 }
 
 // PredictLinkScoreForTenant restricts to the caller's tenant.
 // Audit A6c-algorithms.
 func PredictLinkScoreForTenant(graph storage.Storage, fromNodeID, toNodeID uint64, opts LinkPredictionOptions, tenantID string) (float64, error) {
-	return predictLinkScoreView(newTenantScopedView(graph, tenantID), fromNodeID, toNodeID, opts)
+	return PredictLinkScoreForTenantContext(context.Background(), graph, fromNodeID, toNodeID, opts, tenantID)
 }
 
-func predictLinkScoreView(view graphView, fromNodeID, toNodeID uint64, opts LinkPredictionOptions) (float64, error) {
+// PredictLinkScoreForTenantContext is PredictLinkScoreForTenant that stops
+// when ctx ends. It returns an error wrapping ctx.Err() and no score.
+func PredictLinkScoreForTenantContext(ctx context.Context, graph storage.Storage, fromNodeID, toNodeID uint64, opts LinkPredictionOptions, tenantID string) (float64, error) {
+	return predictLinkScoreView(ctx, newTenantScopedView(graph, tenantID), fromNodeID, toNodeID, opts)
+}
+
+func predictLinkScoreView(ctx context.Context, view graphView, fromNodeID, toNodeID uint64, opts LinkPredictionOptions) (float64, error) {
+	// A neighbour set of a hub node is the costly step, so check before each.
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	setFrom := getNeighborSet(view, fromNodeID, opts.Direction, opts.EdgeTypes)
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	setTo := getNeighborSet(view, toNodeID, opts.Direction, opts.EdgeTypes)
-	return computeLinkScore(view, setFrom, setTo, opts), nil
+	return computeLinkScore(ctx, view, setFrom, setTo, opts)
 }
 
 // PredictLinksFor predicts links for a source node against all other
@@ -120,7 +134,12 @@ func predictLinksForView(view graphView, sourceNodeID uint64, opts LinkPredictio
 		}
 
 		otherSet := getNeighborSet(view, otherID, opts.Direction, opts.EdgeTypes)
-		score := computeLinkScore(view, sourceSet, otherSet, opts)
+		// context.Background() never ends, so this error is unreachable today.
+		// It is returned, not dropped, so a future ctx parameter cannot lose it.
+		score, err := computeLinkScore(context.Background(), view, sourceSet, otherSet, opts)
+		if err != nil {
+			return nil, err
+		}
 		if score > 0 {
 			predictions = append(predictions, LinkPrediction{
 				FromNodeID: sourceNodeID,
@@ -144,10 +163,14 @@ func predictLinksForView(view graphView, sourceNodeID uint64, opts LinkPredictio
 }
 
 // computeLinkScore calculates the prediction score for a pair of neighbor sets.
-func computeLinkScore(view graphView, setA, setB map[uint64]bool, opts LinkPredictionOptions) float64 {
+//
+// Adamic-Adar rebuilds the neighbour set of every common neighbour, so it is
+// the one method whose cost is not bounded by the two input sets. It checks ctx
+// as it goes. The other methods are a count or a product and never fail.
+func computeLinkScore(ctx context.Context, view graphView, setA, setB map[uint64]bool, opts LinkPredictionOptions) (float64, error) {
 	switch opts.Method {
 	case LinkPredPreferentialAttachment:
-		return float64(len(setA)) * float64(len(setB))
+		return float64(len(setA)) * float64(len(setB)), nil
 
 	case LinkPredCommonNeighbours:
 		count := 0
@@ -160,7 +183,7 @@ func computeLinkScore(view graphView, setA, setB map[uint64]bool, opts LinkPredi
 				count++
 			}
 		}
-		return float64(count)
+		return float64(count), nil
 
 	case LinkPredAdamicAdar:
 		sum := 0.0
@@ -170,6 +193,9 @@ func computeLinkScore(view graphView, setA, setB map[uint64]bool, opts LinkPredi
 		}
 		for id := range small {
 			if big[id] {
+				if err := ctx.Err(); err != nil {
+					return 0, err
+				}
 				// Degree of the common neighbor
 				degree := len(getNeighborSet(view, id, opts.Direction, opts.EdgeTypes))
 				if degree > 1 {
@@ -177,9 +203,9 @@ func computeLinkScore(view graphView, setA, setB map[uint64]bool, opts LinkPredi
 				}
 			}
 		}
-		return sum
+		return sum, nil
 
 	default:
-		return 0.0
+		return 0.0, nil
 	}
 }

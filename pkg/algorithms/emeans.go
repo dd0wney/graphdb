@@ -178,7 +178,7 @@ func eMeansView(ctx context.Context, view graphView, opts EMeansOptions) (*EMean
 		return nil, err
 	}
 
-	centroids, labels, err := em.Train(vectors)
+	centroids, labels, err := em.TrainContext(ctx, vectors)
 	if err != nil {
 		return nil, err
 	}
