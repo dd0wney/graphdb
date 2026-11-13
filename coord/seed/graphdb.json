@@ -849,6 +849,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: [1] + [2] and p.nums + [3] are valid openCypher and are refused as not supported"
+    },
+    {
+      "id": "v1.4-cypher-list-and-in-null-equality",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: [1, null] = [1, null] is true and null IN [1] and 1 IN [null] are false, where openCypher gives null (TCK Comparison1 scenario 6 and 7, List5 scenario 20 to 41)"
     }
   ],
   "deps": [

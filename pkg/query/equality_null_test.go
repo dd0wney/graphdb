@@ -214,18 +214,18 @@ func TestEqualityNull_SetUnknownRemovesProperty(t *testing.T) {
 	}
 }
 
-// Behaviour recorded, not endorsed. openCypher gives null for null IN [1],
-// 1 IN [null] and [1, null] = [1, null]. IN and list equality are out of scope
-// for the = and <> null rule, so the present results are pinned here.
-func TestEqualityNull_RecordedLimits(t *testing.T) {
+// IN and the equality of lists give null where the comparison needs a null, as
+// openCypher does (TCK Comparison1 scenarios 6 and 7, List5 scenarios 20 to
+// 41). This pins the rows that the earlier = and <> null rule left out.
+func TestEqualityNull_InAndListEquality(t *testing.T) {
 	tests := []struct {
 		expr string
 		want any
 	}{
-		{"null IN [1]", false},
-		{"1 IN [null]", false},
+		{"null IN [1]", nil},
+		{"1 IN [null]", nil},
 		{"1 IN [1, null]", true},
-		{"[1, null] = [1, null]", true},
+		{"[1, null] = [1, null]", nil},
 		{"[1, 2] = [1, 2]", true},
 		{"[1, 2] <> [1, 3]", true},
 	}

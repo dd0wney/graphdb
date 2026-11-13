@@ -75,8 +75,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | `RETURN 'a' = 1` | false | false |
   | `SET n.x = (p.a = p.nosuch)` | stores false | removes `x` |
 
-  Not changed: `IN` (`null IN [1]` is false, `1 IN [null]` is false), and lists and maps, where
-  `[1, null] = [1, null]` is still true although openCypher gives null.
+  `IN`, and `=` and `<>` of lists and maps, follow the same null rule. A null inside a list or a
+  map makes the comparison null, unless a different length, a different key set or another element
+  already makes it false. `x IN list` is true if one element equals `x`, null if none does and one
+  comparison is null, and false otherwise. `x IN null` is null, and `x IN []` is false, also for a
+  null `x`. `WHERE x IN $list` returns the same rows as before, because null and false both remove
+  a row. `WHERE NOT (x IN $list)` now returns no row for a `$list` that holds a null and does not
+  hold `x`. The simple `CASE` form matches a `WHEN` branch only when the equality is true. The
+  pattern property match (`MATCH (n {tags: $v})`), `MERGE` and uniqueness rules still compare a
+  stored value with a pattern, and are not changed. A stored float32 vector compares with a
+  JSON number at float32 precision, so `WHERE p.embedding = $vec` still finds the node. The reference is the openCypher TCK:
+  `Comparison1.feature` scenarios 6 and 7, `List3.feature` and `List5.feature` scenarios 20 to 41.
+
+  | Query | Before | Now |
+  |---|---|---|
+  | `RETURN null IN [1]` | false | null |
+  | `RETURN 1 IN [null]` | false | null |
+  | `RETURN 1 IN [1, null]` | true | true |
+  | `RETURN 4 IN [1, null, 3]` | false | null |
+  | `RETURN null IN []` | false | false |
+  | `RETURN [1, null] = [1, null]` | true | null |
+  | `RETURN [null] = [1]` | false | null |
+  | `RETURN [1] = [1, null]` | false | false |
+  | `RETURN [1, 2] <> [1, null]` | true | null |
+  | `WHERE NOT (p.a IN [2, null])`, `a` is 1 | the node | no rows |
 - **An arithmetic error now stops the query with HTTP 400, where it returned null.**
   `RETURN 1 / 0`, `RETURN 1 % 0`, `RETURN 'a' + 1` and `RETURN -'a'` returned a null column; the
   same holds for `p.name + 1` over a string property and for `10 / p.zero`. They now fail with

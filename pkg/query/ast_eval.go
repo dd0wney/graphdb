@@ -39,28 +39,9 @@ func evalComparison(left, right Expression, op string, context map[string]any) (
 	case "IS NOT NULL":
 		return leftVal != nil, nil
 	case "IN":
-		// Cypher: null IN [...] evaluates to null (treated as false in boolean context)
-		if leftVal == nil {
-			return false, nil
-		}
-		list, ok := rightVal.([]any)
-		if !ok {
-			return false, fmt.Errorf("IN requires a list on the right side")
-		}
-		for _, item := range list {
-			if item == nil {
-				continue // skip null elements in list
-			}
-			// valuesEqual coerces int64 against float64, compares lists and
-			// maps by value, and never reaches == with an uncomparable
-			// type. compareValues was the fallback here, and it reports 0
-			// for any two types it does not know, so a list or a string
-			// matched a number.
-			if valuesEqual(leftVal, item) {
-				return true, nil
-			}
-		}
-		return false, nil
+		// Unknown removes the row, as false does. inTri holds the rule.
+		t, err := inTri(leftVal, rightVal)
+		return t == triTrue, err
 	case "STARTS WITH":
 		if leftVal == nil || rightVal == nil {
 			return false, nil
