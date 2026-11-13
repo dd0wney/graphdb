@@ -813,6 +813,24 @@
       "track": "v1.4",
       "status": "pending",
       "title": "api: an error a procedure returns for its arguments (algo.kHop: sourceID must be a numeric node ID) is not a RefusalError, so POST /query answers 500 and hides the text"
+    },
+    {
+      "id": "v1.4-cypher-boolean-operand-type",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a non-boolean operand of NOT, AND, OR or WHERE is refused, and a bare boolean works in each predicate position"
+    },
+    {
+      "id": "v1.4-cypher-optional-match-parameters",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: resolveParameters in pkg/query/executor.go does not replace a parameter in an OPTIONAL MATCH pattern, so OPTIONAL MATCH (p {id: $v}) binds null in silence for each parameter type"
+    },
+    {
+      "id": "v1.4-cypher-numeric-equality-above-2-53",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a stored integer above 2^53 and a float parameter compare as equal in WHERE and in a pattern map, because compareOrdered converts the integer to float64"
     }
   ],
   "deps": [
