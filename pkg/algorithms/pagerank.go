@@ -2,6 +2,7 @@ package algorithms
 
 import (
 	"container/heap"
+	"context"
 	"math"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -43,7 +44,7 @@ type RankedNode struct {
 // single-tenant deployments. Multi-tenant API callers must use
 // PageRankForTenant.
 func PageRank(graph storage.Storage, opts PageRankOptions) (*PageRankResult, error) {
-	return pageRankView(newTenantBlindView(graph), opts)
+	return pageRankView(context.Background(), newTenantBlindView(graph), opts)
 }
 
 // PageRankForTenant computes PageRank scores for nodes owned by the
@@ -52,13 +53,20 @@ func PageRank(graph storage.Storage, opts PageRankOptions) (*PageRankResult, err
 // the tenant — foreign-tenant nodes are excluded from the scoring
 // graph and edges to foreign-tenant nodes are dropped at expansion.
 func PageRankForTenant(graph storage.Storage, opts PageRankOptions, tenantID string) (*PageRankResult, error) {
-	return pageRankView(newTenantScopedView(graph, tenantID), opts)
+	return PageRankForTenantContext(context.Background(), graph, opts, tenantID)
+}
+
+// PageRankForTenantContext is PageRankForTenant that stops when ctx ends. It
+// returns an error wrapping ctx.Err() and no partial scores. A CALL
+// algo.pageRank passes the query context here so the query timeout applies.
+func PageRankForTenantContext(ctx context.Context, graph storage.Storage, opts PageRankOptions, tenantID string) (*PageRankResult, error) {
+	return pageRankView(ctx, newTenantScopedView(graph, tenantID), opts)
 }
 
 // pageRankView is the shared algorithm body. Operates against a
 // graphView so tenant-blind and tenant-scoped public functions can
 // share one implementation — see pkg/algorithms/view.go.
-func pageRankView(view graphView, opts PageRankOptions) (*PageRankResult, error) {
+func pageRankView(ctx context.Context, view graphView, opts PageRankOptions) (*PageRankResult, error) {
 	// An incomplete node set would make the result below confidently wrong,
 	// so ADR 0003's error is fatal here rather than degraded. See the
 	// AllNodes contract in view.go.
@@ -86,9 +94,14 @@ func pageRankView(view graphView, opts PageRankOptions) (*PageRankResult, error)
 		scores[nodeID] = initialScore
 	}
 
+	poll := &cancelPoll{ctx: ctx}
+
 	// Get outgoing edge counts for each node
 	outDegree := make(map[uint64]int)
 	for _, nodeID := range nodeIDs {
+		if err := poll.tick(); err != nil {
+			return nil, err
+		}
 		edges, err := view.OutgoingEdges(nodeID)
 		if err == nil {
 			outDegree[nodeID] = len(edges)
@@ -101,9 +114,17 @@ func pageRankView(view graphView, opts PageRankOptions) (*PageRankResult, error)
 	iterations := 0
 
 	for iterations < opts.MaxIterations {
+		// Checked every iteration as well as inside the node loop: a small
+		// graph with a huge MaxIterations never reaches the node-loop interval.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		iterations++
 
 		for _, nodeID := range nodeIDs {
+			if err := poll.tick(); err != nil {
+				return nil, err
+			}
 			newScore := (1.0 - opts.DampingFactor) / float64(len(nodeIDs))
 
 			incomingEdges, err := view.IncomingEdges(nodeID)

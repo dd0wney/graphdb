@@ -1,6 +1,7 @@
 package algorithms
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -40,7 +41,7 @@ type bfsEntry struct {
 // runs across every tenant. Multi-tenant API callers must use
 // KHopNeighboursForTenant. The source node is never included in results.
 func KHopNeighbours(graph storage.Storage, sourceNodeID uint64, opts KHopOptions) (*KHopResult, error) {
-	return kHopNeighboursView(newTenantBlindView(graph), sourceNodeID, opts)
+	return kHopNeighboursView(context.Background(), newTenantBlindView(graph), sourceNodeID, opts)
 }
 
 // KHopNeighboursForTenant performs the same BFS as KHopNeighbours but
@@ -49,14 +50,20 @@ func KHopNeighbours(graph storage.Storage, sourceNodeID uint64, opts KHopOptions
 // foreign-tenant node IDs never appear in ByHop / Distances. Pairs
 // with the tenant-strict fix to the /algorithms khop handler.
 func KHopNeighboursForTenant(graph storage.Storage, sourceNodeID uint64, opts KHopOptions, tenantID string) (*KHopResult, error) {
-	return kHopNeighboursView(newTenantScopedView(graph, tenantID), sourceNodeID, opts)
+	return KHopNeighboursForTenantContext(context.Background(), graph, sourceNodeID, opts, tenantID)
+}
+
+// KHopNeighboursForTenantContext is KHopNeighboursForTenant that stops when
+// ctx ends. It returns an error wrapping ctx.Err() and no partial result.
+func KHopNeighboursForTenantContext(ctx context.Context, graph storage.Storage, sourceNodeID uint64, opts KHopOptions, tenantID string) (*KHopResult, error) {
+	return kHopNeighboursView(ctx, newTenantScopedView(graph, tenantID), sourceNodeID, opts)
 }
 
 // kHopNeighboursView is the shared algorithm body operating against
 // a graphView — see pkg/algorithms/view.go for the abstraction that
 // lets the tenant-blind and tenant-scoped public functions share one
 // implementation.
-func kHopNeighboursView(view graphView, sourceNodeID uint64, opts KHopOptions) (*KHopResult, error) {
+func kHopNeighboursView(ctx context.Context, view graphView, sourceNodeID uint64, opts KHopOptions) (*KHopResult, error) {
 	if opts.MaxHops < 1 {
 		return nil, fmt.Errorf("MaxHops must be >= 1, got %d", opts.MaxHops)
 	}
@@ -74,7 +81,14 @@ func kHopNeighboursView(view graphView, sourceNodeID uint64, opts KHopOptions) (
 
 	queue := []bfsEntry{{nodeID: sourceNodeID, hop: 0}}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	poll := &cancelPoll{ctx: ctx}
 	for len(queue) > 0 {
+		if err := poll.tick(); err != nil {
+			return nil, err
+		}
 		current := queue[0]
 		queue = queue[1:]
 

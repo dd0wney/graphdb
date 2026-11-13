@@ -11,6 +11,7 @@
 package vector
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -392,6 +393,13 @@ func (em *Emeans) reviveDeadClusters(rng *rand.Rand, tau float64) int {
 // Train runs E-means on the input vectors and returns the final (k, d) centroids
 // and exact nearest-centroid assignment labels for each input vector.
 func (em *Emeans) Train(vectors [][]float32) ([][]float32, []int, error) {
+	return em.TrainContext(context.Background(), vectors)
+}
+
+// TrainContext is Train that stops when ctx ends. It returns an error wrapping
+// ctx.Err() and no centroids. The check runs once per mini-batch, which is the
+// loop that scales with the input and is large enough that the check is free.
+func (em *Emeans) TrainContext(ctx context.Context, vectors [][]float32) ([][]float32, []int, error) {
 	n := len(vectors)
 	if n == 0 {
 		return nil, nil, fmt.Errorf("emeans: cannot train on empty vector slice")
@@ -484,6 +492,9 @@ func (em *Emeans) Train(vectors [][]float32) ([][]float32, []int, error) {
 		epPerm := rng.Perm(n)
 
 		for begin := 0; begin < epRows; begin += recipe.BatchSize {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, err
+			}
 			end := begin + recipe.BatchSize
 			if end > epRows {
 				end = epRows
