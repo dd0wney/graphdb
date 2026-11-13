@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dd0wney/graphdb/pkg/search"
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
@@ -60,6 +61,11 @@ func TestBooleanOperand_NonBooleanIsRefused(t *testing.T) {
 		{"RETURN", `MATCH (p) RETURN p.s AND true AS v`, "string", nil},
 		{"CASE WHEN", `MATCH (p) RETURN CASE WHEN p.s THEN 1 ELSE 0 END AS v`, "string", nil},
 		{"WITH WHERE", `MATCH (p) WITH p.s AS s WHERE s RETURN s`, "string", nil},
+		{"size()", `MATCH (p) WHERE size(p.s) RETURN p.id AS id`, "integer", nil},
+		{"id()", `MATCH (p) WHERE id(p) RETURN p.id AS id`, "integer", nil},
+		{"toString()", `MATCH (p) WHERE toString(p.b) RETURN p.id AS id`, "string", nil},
+		{"addition", `MATCH (p) WHERE p.z + 0 RETURN p.id AS id`, "integer", nil},
+		{"unary minus", `MATCH (p) WHERE -p.z RETURN p.id AS id`, "integer", nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -195,5 +201,57 @@ func TestBooleanOperand_OptionalMatchWhere(t *testing.T) {
 	}
 	if got := sortedIDs(t, rs); !reflect.DeepEqual(got, []int64{11}) {
 		t.Errorf("ids = %v, want [11]", got)
+	}
+}
+
+// search() gives a float score. Used bare as a boolean it is refused, and the
+// comparison form selects rows.
+func TestBooleanOperand_SearchScore(t *testing.T) {
+	gs, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = gs.Close() })
+	for _, title := range []string{"Quantum Computing Revolution", "Classical Music Guide"} {
+		if _, err := gs.CreateNode([]string{"Article"}, map[string]storage.Value{"title": storage.StringValue(title)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ex := NewExecutor(gs)
+	ex.SetSearchIndex(search.NewFullTextIndex(gs))
+
+	_, err = runWithParams(t, ex, `MATCH (n:Article) WHERE search(n.title, "quantum computing") RETURN n.title`, nil)
+	if !isRefusal(err) || !strings.Contains(err.Error(), "float") {
+		t.Errorf("bare search(): err = %v, want a refusal naming float", err)
+	}
+	rs, err := runWithParams(t, ex, `MATCH (n:Article) WHERE search(n.title, "quantum computing") > 0.5 RETURN n.title`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rs.Count != 1 || rs.Rows[0]["n.title"] != "Quantum Computing Revolution" {
+		t.Errorf("rows = %v, want the one quantum title", rs.Rows)
+	}
+}
+
+// A CASE condition that is null selects ELSE. The condition of a function that
+// fails reads as null, so toBoolean of a list gives 'n', where the whole CASE
+// gave null before.
+func TestBooleanOperand_CaseWhenFailingFunction(t *testing.T) {
+	gs, err := storage.NewGraphStorage(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = gs.Close() })
+	if _, err := gs.CreateNode([]string{"T"}, map[string]storage.Value{
+		"tags": storage.StringValue("x"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rs, err := runWithParams(t, NewExecutor(gs), `RETURN CASE WHEN toBoolean([1]) THEN 'y' ELSE 'n' END AS v`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs.Rows) != 1 || rs.Rows[0]["v"] != "n" {
+		t.Errorf("rows = %v, want n", rs.Rows)
 	}
 }

@@ -236,6 +236,14 @@ func evalTri(expr Expression, context map[string]any) (tri, error) {
 		case e.Operator == "=" || e.Operator == "!=":
 			return equalityTri(e.Operator, e.Left, e.Right, context)
 		}
+		// IS NULL, IN and the string predicates are two-valued. This is the
+		// only Eval that evalTri calls: the Eval of every other type calls
+		// evalPredicate, which calls evalTri.
+		b, err := e.Eval(context)
+		if err != nil {
+			return triFalse, err
+		}
+		return triFromBool(b), nil
 	case *PropertyExpression, *LiteralExpression, *FunctionCallExpression,
 		*CaseExpression, *ArithmeticExpression:
 		return valueTri(expr, context)
@@ -256,11 +264,12 @@ func evalTri(expr Expression, context map[string]any) (tri, error) {
 			return triNot(operand), nil
 		case "-":
 			return valueTri(expr, context)
+		default:
+			return triFalse, fmt.Errorf("unknown unary operator: %s", e.Operator)
 		}
 	}
-	b, err := expr.Eval(context)
-	if err != nil {
-		return triFalse, err
-	}
-	return triFromBool(b), nil
+	// A type with no case above would loop if it reached Eval, because its Eval
+	// calls evalPredicate. A stack overflow is fatal and recover cannot stop it,
+	// so an unknown type is an error. A new Expression type needs a case here.
+	return triFalse, fmt.Errorf("evalTri: no boolean rule for expression type %T", expr)
 }
