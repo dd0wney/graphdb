@@ -19,9 +19,13 @@ func equalTri(left, right any) tri {
 	if left == nil || right == nil {
 		return triUnknown
 	}
+	// The common scalar pairs are the hot path of every WHERE filter, so they
+	// are decided by a type switch before any reflection runs.
+	if t, ok := scalarEqualTri(left, right); ok {
+		return t
+	}
 	if isNumericValue(left) && isNumericValue(right) {
-		cmp, ok := compareOrdered(left, right)
-		return triFromBool(ok && cmp == 0)
+		return numericEqualTri(left, right)
 	}
 	// []byte is a scalar: a bytes property is not a list of numbers.
 	if lb, ok := left.([]byte); ok {
@@ -53,6 +57,77 @@ func equalTri(left, right any) tri {
 		return triFalse
 	}
 	return triFromBool(left == right)
+}
+
+// scalarEqualTri decides two values of the common scalar types without
+// reflection. ok is false when either value is not one of those types, which
+// sends it to the general path.
+func scalarEqualTri(left, right any) (t tri, ok bool) {
+	switch l := left.(type) {
+	case string:
+		switch r := right.(type) {
+		case string:
+			return triFromBool(l == r), true
+		case int64, int, float64, bool:
+			return triFalse, true
+		}
+	case bool:
+		switch r := right.(type) {
+		case bool:
+			return triFromBool(l == r), true
+		case int64, int, float64, string:
+			return triFalse, true
+		}
+	case int64:
+		switch r := right.(type) {
+		case int64:
+			return triFromBool(l == r), true
+		case int, float64:
+			return numericEqualTri(left, right), true
+		case string, bool:
+			return triFalse, true
+		}
+	case int:
+		switch right.(type) {
+		case int64, int, float64:
+			return numericEqualTri(left, right), true
+		case string, bool:
+			return triFalse, true
+		}
+	case float64:
+		switch r := right.(type) {
+		case float64:
+			// == is false for NaN, as the rule needs.
+			return triFromBool(l == r), true
+		case int64, int:
+			return numericEqualTri(left, right), true
+		case string, bool:
+			return triFalse, true
+		}
+	}
+	return triFalse, false
+}
+
+// numericEqualTri compares two numbers by value. A float32 on either side is
+// the element of a stored vector, which holds float32 precision, so the other
+// number is rounded to float32 before the comparison: a JSON 0.1 is the
+// float64 nearest 0.1, and widening the stored float32 would never equal it.
+func numericEqualTri(left, right any) tri {
+	l32, lIs32 := left.(float32)
+	r32, rIs32 := right.(float32)
+	if lIs32 || rIs32 {
+		if !lIs32 {
+			ln, _ := asNumber(left)
+			l32 = float32(ln.asFloat())
+		}
+		if !rIs32 {
+			rn, _ := asNumber(right)
+			r32 = float32(rn.asFloat())
+		}
+		return triFromBool(l32 == r32)
+	}
+	cmp, ok := compareOrdered(left, right)
+	return triFromBool(ok && cmp == 0)
 }
 
 // listEqualTri compares two lists. A length difference is false before any

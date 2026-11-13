@@ -74,7 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a row. `WHERE NOT (x IN $list)` now returns no row for a `$list` that holds a null and does not
   hold `x`. The simple `CASE` form matches a `WHEN` branch only when the equality is true. The
   pattern property match (`MATCH (n {tags: $v})`), `MERGE` and uniqueness rules still compare a
-  stored value with a pattern, and are not changed. The reference is the openCypher TCK:
+  stored value with a pattern, and are not changed. A stored float32 vector compares with a
+  JSON number at float32 precision, so `WHERE p.embedding = $vec` still finds the node. The reference is the openCypher TCK:
   `Comparison1.feature` scenarios 6 and 7, `List3.feature` and `List5.feature` scenarios 20 to 41.
 
   | Query | Before | Now |
