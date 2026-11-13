@@ -57,18 +57,25 @@ func orderBySortKey(i int) string {
 	return fmt.Sprintf("\x00order-by-%d", i)
 }
 
-// orderByColumnName resolves the row key that ORDER BY item i sorts by. A bare
-// variable and an alias both resolve to the variable name, a property to
-// "var.prop", an expression to its sort key. Every caller must have put a value
-// under that key or refused the query first.
-func orderByColumnName(i int, item *OrderByItem) string {
-	if item.ValueExpr != nil {
-		return orderBySortKey(i)
+// orderByKeys resolves the row key of each ORDER BY item, one time for the
+// query. A bare variable and an alias both resolve to the variable name, a
+// property to "var.prop", an expression to its sort key. Callers must hoist
+// this out of any per-row or per-comparison loop, because each key is a new
+// string. Every caller must have put a value under each key or refused the
+// query first.
+func orderByKeys(orderBy []*OrderByItem) []string {
+	keys := make([]string, len(orderBy))
+	for i, item := range orderBy {
+		switch {
+		case item.ValueExpr != nil:
+			keys[i] = orderBySortKey(i)
+		case item.Expression != nil:
+			keys[i] = exprColumnName(item.Expression)
+		default:
+			keys[i] = invalidColumnName
+		}
 	}
-	if item.Expression != nil {
-		return exprColumnName(item.Expression)
-	}
-	return invalidColumnName
+	return keys
 }
 
 // sortRows sorts result rows according to ORDER BY criteria
@@ -77,9 +84,10 @@ func (e *Executor) sortRows(rows []map[string]any, orderBy []*OrderByItem) {
 		return
 	}
 
+	keys := orderByKeys(orderBy)
 	sort.SliceStable(rows, func(i, j int) bool {
 		for k, item := range orderBy {
-			colName := orderByColumnName(k, item)
+			colName := keys[k]
 			valI := rows[i][colName]
 			valJ := rows[j][colName]
 

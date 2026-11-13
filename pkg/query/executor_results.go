@@ -402,10 +402,12 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 	// key that no query can write (it starts with NUL) and leaves with the
 	// other sort columns.
 	exprOrder := hasOrderByExpression(returnClause.OrderBy)
+	var sortKeys []string
 	if exprOrder {
+		sortKeys = orderByKeys(returnClause.OrderBy)
 		for i, ob := range returnClause.OrderBy {
 			if ob.ValueExpr != nil {
-				extraSortCols = append(extraSortCols, orderBySortKey(i))
+				extraSortCols = append(extraSortCols, sortKeys[i])
 			}
 		}
 	}
@@ -418,7 +420,7 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 			return nil, err
 		}
 		if exprOrder {
-			if err := addOrderByExpressionValues(row, binding, returnClause); err != nil {
+			if err := addOrderByExpressionValues(row, binding, returnClause, sortKeys); err != nil {
 				return nil, err
 			}
 		}
@@ -451,7 +453,7 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 // variables of the binding and the aliases of RETURN. An alias wins over a
 // variable of the same name, as in openCypher: after RETURN p.age AS p, the
 // name p in ORDER BY means the age.
-func addOrderByExpressionValues(row map[string]any, binding *BindingSet, rc *ReturnClause) error {
+func addOrderByExpressionValues(row map[string]any, binding *BindingSet, rc *ReturnClause, sortKeys []string) error {
 	scope := make(map[string]any, len(binding.bindings)+len(rc.Items))
 	for name, v := range binding.bindings {
 		scope[name] = v
@@ -469,7 +471,7 @@ func addOrderByExpressionValues(row map[string]any, binding *BindingSet, rc *Ret
 		if err != nil {
 			return err
 		}
-		row[orderBySortKey(i)] = v
+		row[sortKeys[i]] = v
 	}
 	return nil
 }
