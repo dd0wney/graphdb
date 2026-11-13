@@ -813,6 +813,42 @@
       "track": "v1.4",
       "status": "pending",
       "title": "api: an error a procedure returns for its arguments (algo.kHop: sourceID must be a numeric node ID) is not a RefusalError, so POST /query answers 500 and hides the text"
+    },
+    {
+      "id": "v1.4-cypher-optional-match-parameters",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: resolveParameters in pkg/query/executor.go does not replace a parameter in an OPTIONAL MATCH pattern, so OPTIONAL MATCH (p {id: $v}) binds null in silence for each parameter type"
+    },
+    {
+      "id": "v1.4-cypher-numeric-equality-above-2-53",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a stored integer above 2^53 and a float parameter compare as equal in WHERE and in a pattern map, because compareOrdered converts the integer to float64"
+    },
+    {
+      "id": "v1.4-cypher-refusal-depends-on-index",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a query can refuse on a scan and return rows when an index selects fewer nodes, for example MATCH (p:T) WHERE p.q AND p.id = 1 RETURN p.id where another node holds a string in q. The index path in pkg/query/optimizer.go never reads the other node. The same query must give the same answer for both plans"
+    },
+    {
+      "id": "v1.4-cypher-order-by-expression-ignored",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: an ORDER BY expression is never evaluated. RETURN p.name ORDER BY p.age / 0 does not refuse, and an ORDER BY expression does not sort"
+    },
+    {
+      "id": "v1.4-cypher-no-rollback-after-refusal",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: the executor has no rollback, so a query that writes and then refuses keeps its writes and answers 400. Needs a design"
+    },
+    {
+      "id": "v1.4-cypher-list-concatenation",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: [1] + [2] and p.nums + [3] are valid openCypher and are refused as not supported"
     }
   ],
   "deps": [

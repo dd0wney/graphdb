@@ -10,7 +10,7 @@ import (
 
 // ArithmeticExpression represents binary arithmetic: +, -, *, /, %
 // Uses the dual-eval pattern: EvalValue returns the computed value,
-// Eval coerces to bool for WHERE context.
+// Eval reads the value as a predicate, which refuses a non-boolean.
 type ArithmeticExpression struct {
 	Left     Expression
 	Operator string // "+", "-", "*", "/", "%"
@@ -18,11 +18,7 @@ type ArithmeticExpression struct {
 }
 
 func (ae *ArithmeticExpression) Eval(context map[string]any) (bool, error) {
-	val, err := ae.EvalValue(context)
-	if err != nil {
-		return false, err
-	}
-	return coerceToBool(val), nil
+	return evalPredicate(ae, context)
 }
 
 func (ae *ArithmeticExpression) EvalValue(context map[string]any) (any, error) {
@@ -191,11 +187,7 @@ func (ue *UnaryExpression) Eval(context map[string]any) (bool, error) {
 		result, err := evalTri(ue, context)
 		return result == triTrue, err
 	case "-":
-		val, err := ue.EvalValue(context)
-		if err != nil {
-			return false, err
-		}
-		return coerceToBool(val), nil
+		return evalPredicate(ue, context)
 	default:
 		return false, fmt.Errorf("unknown unary operator: %s", ue.Operator)
 	}

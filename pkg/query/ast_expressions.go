@@ -55,10 +55,10 @@ type PropertyExpression struct {
 	Property string
 }
 
+// Eval reads the property as a predicate. It goes through evalPredicate so that
+// a filter and Eval cannot disagree about a bare boolean.
 func (pe *PropertyExpression) Eval(context map[string]any) (bool, error) {
-	// This returns the property value, not a boolean
-	// Used in comparisons
-	return false, fmt.Errorf("property expression must be used in comparison")
+	return evalPredicate(pe, context)
 }
 
 func (pe *PropertyExpression) EvalValue(context map[string]any) (any, error) {
@@ -71,11 +71,7 @@ type LiteralExpression struct {
 }
 
 func (le *LiteralExpression) Eval(context map[string]any) (bool, error) {
-	// Convert value to boolean
-	if b, ok := le.Value.(bool); ok {
-		return b, nil
-	}
-	return false, fmt.Errorf("cannot convert literal to boolean")
+	return evalPredicate(le, context)
 }
 
 func (le *LiteralExpression) EvalValue(context map[string]any) (any, error) {
@@ -88,13 +84,10 @@ type FunctionCallExpression struct {
 	Args []Expression
 }
 
-// Eval evaluates the function and coerces the result to bool (for WHERE usage)
+// Eval reads the function result as a predicate: null and false do not
+// select, and a non-boolean result is refused.
 func (fce *FunctionCallExpression) Eval(context map[string]any) (bool, error) {
-	result, err := fce.EvalValue(context)
-	if err != nil {
-		return false, err
-	}
-	return coerceToBool(result), nil
+	return evalPredicate(fce, context)
 }
 
 // EvalValue evaluates the function and returns the raw result
@@ -123,11 +116,7 @@ type ParameterExpression struct {
 }
 
 func (pe *ParameterExpression) Eval(context map[string]any) (bool, error) {
-	val, ok := context["$"+pe.Name]
-	if !ok {
-		return false, fmt.Errorf("missing parameter: $%s", pe.Name)
-	}
-	return coerceToBool(val), nil
+	return evalPredicate(pe, context)
 }
 
 // EvalValue returns the raw parameter value for use in comparisons
@@ -152,13 +141,9 @@ type CaseWhen struct {
 	Result    Expression
 }
 
-// Eval evaluates CASE as a boolean (for WHERE usage) by coercing the result value
+// Eval reads the CASE result as a predicate.
 func (ce *CaseExpression) Eval(context map[string]any) (bool, error) {
-	val, err := ce.EvalValue(context)
-	if err != nil {
-		return false, err
-	}
-	return coerceToBool(val), nil
+	return evalPredicate(ce, context)
 }
 
 // EvalValue returns the raw value of the first matching WHEN branch
@@ -166,7 +151,8 @@ func (ce *CaseExpression) EvalValue(context map[string]any) (any, error) {
 	if ce.Operand == nil {
 		// Searched form: CASE WHEN <bool> THEN <result> ...
 		for _, wc := range ce.WhenClauses {
-			match, err := wc.Condition.Eval(context)
+			// Unknown selects no branch, so it falls to ELSE.
+			match, err := evalPredicate(wc.Condition, context)
 			if err != nil {
 				return nil, err
 			}
@@ -196,23 +182,4 @@ func (ce *CaseExpression) EvalValue(context map[string]any) (any, error) {
 		return evalOperand(ce.ElseResult, context)
 	}
 	return nil, nil
-}
-
-// coerceToBool converts an arbitrary value to a boolean
-func coerceToBool(val any) bool {
-	if val == nil {
-		return false
-	}
-	switch v := val.(type) {
-	case bool:
-		return v
-	case int64:
-		return v != 0
-	case float64:
-		return v != 0
-	case string:
-		return v != ""
-	default:
-		return true
-	}
 }

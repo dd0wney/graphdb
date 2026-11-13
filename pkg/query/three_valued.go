@@ -1,5 +1,10 @@
 package query
 
+import (
+	"fmt"
+	"strings"
+)
+
 // tri is a three-valued truth value. openCypher gives null to an ordering
 // comparison of values that have no order, and NOT, AND and OR propagate it by
 // the Kleene rules. Only the ordering comparisons produce triUnknown so far.
@@ -144,19 +149,46 @@ func equalityOperand(expr Expression, context map[string]any) (val any, unknown 
 	return t == triTrue, false, nil
 }
 
-// bareTri reads a property, variable, parameter or literal used as a boolean.
-// null is unknown, a boolean is its value, and any other value keeps the
-// coerceToBool result. Eval refuses a bare property outright, and that error
-// made AND and OR of two properties drop every row and NOT read null as true.
-func bareTri(expr Expression, context map[string]any) (tri, error) {
+// triFromValue is the one rule for a value used as a boolean. null is
+// unknown, a boolean is its value, and anything else is a type error that the
+// caller can fix. The message names the Cypher type and never the value,
+// because a server shows it and the value comes from the graph.
+func triFromValue(v any) (tri, error) {
+	switch b := v.(type) {
+	case nil:
+		return triUnknown, nil
+	case bool:
+		return triFromBool(b), nil
+	default:
+		return triFalse, refusef("a boolean is necessary here, but the value is %s %s", article(cypherTypeName(v)), cypherTypeName(v))
+	}
+}
+
+// article gives "an" before the Cypher type words that start with a vowel.
+func article(word string) string {
+	if strings.ContainsRune("aeiou", rune(word[0])) {
+		return "an"
+	}
+	return "a"
+}
+
+// valueTri reads a value-type expression as a boolean through its value. It
+// does not call Eval: the Eval of a value type calls evalPredicate, which
+// calls evalTri, which would loop.
+func valueTri(expr Expression, context map[string]any) (tri, error) {
 	v, err := evalOperand(expr, context)
 	if err != nil {
 		return triFalse, err
 	}
-	if v == nil {
-		return triUnknown, nil
-	}
-	return triFromBool(coerceToBool(v)), nil
+	return triFromValue(v)
+}
+
+// evalPredicate decides whether a row or a CASE branch is selected. Only true
+// selects: unknown and false both give false. An error, a RefusalError
+// included, goes to the caller, which decides what a lenient filter does.
+func evalPredicate(expr Expression, context map[string]any) (bool, error) {
+	t, err := evalTri(expr, context)
+	return t == triTrue, err
 }
 
 // evalTri evaluates expr with three-valued logic. Any expression other than
@@ -204,35 +236,40 @@ func evalTri(expr Expression, context map[string]any) (tri, error) {
 		case e.Operator == "=" || e.Operator == "!=":
 			return equalityTri(e.Operator, e.Left, e.Right, context)
 		}
-	case *PropertyExpression, *LiteralExpression:
-		return bareTri(expr, context)
-	case *ParameterExpression:
-		// A missing parameter stays an error, from Eval below.
-		if _, ok := context["$"+e.Name]; ok {
-			return bareTri(expr, context)
+		// IS NULL, IN and the string predicates are two-valued. This is the
+		// only Eval that evalTri calls: the Eval of every other type calls
+		// evalPredicate, which calls evalTri.
+		b, err := e.Eval(context)
+		if err != nil {
+			return triFalse, err
 		}
+		return triFromBool(b), nil
+	case *PropertyExpression, *LiteralExpression, *FunctionCallExpression,
+		*CaseExpression, *ArithmeticExpression:
+		return valueTri(expr, context)
+	case *ParameterExpression:
+		// evalOperand reads a missing parameter as null, which would make it
+		// unknown. It is an error, as it always was.
+		if _, ok := context["$"+e.Name]; !ok {
+			return triFalse, fmt.Errorf("missing parameter: $%s", e.Name)
+		}
+		return valueTri(expr, context)
 	case *UnaryExpression:
-		if e.Operator == "NOT" {
+		switch e.Operator {
+		case "NOT":
 			operand, err := evalTri(e.Operand, context)
 			if err != nil {
-				// The operand still errors after bare operands became
-				// three-valued. Coerce its value, as NOT always did, but
-				// NOT of null is null in openCypher, not true.
-				v, verr := evalOperand(e.Operand, context)
-				if verr != nil {
-					return triFalse, verr
-				}
-				if v == nil {
-					return triUnknown, nil
-				}
-				return triFromBool(!coerceToBool(v)), nil
+				return triFalse, err
 			}
 			return triNot(operand), nil
+		case "-":
+			return valueTri(expr, context)
+		default:
+			return triFalse, fmt.Errorf("unknown unary operator: %s", e.Operator)
 		}
 	}
-	b, err := expr.Eval(context)
-	if err != nil {
-		return triFalse, err
-	}
-	return triFromBool(b), nil
+	// A type with no case above would loop if it reached Eval, because its Eval
+	// calls evalPredicate. A stack overflow is fatal and recover cannot stop it,
+	// so an unknown type is an error. A new Expression type needs a case here.
+	return triFalse, fmt.Errorf("evalTri: no boolean rule for expression type %T", expr)
 }
