@@ -70,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because the evaluator discards a function's error; that is a wider change, not made here.
 
 ### Fixed
+- **A response that JSON cannot encode answers 500, not 200.** A value such as an infinite float
+  made the encoder fail after the status line went out, so the client got status 200 with an empty
+  or cut body. The server now encodes first and answers 500 with a JSON message that tells the
+  client to read the state before it retries.
 - **A numeric property in a pattern map matches across integer and float.** `MATCH (p {id: $v})` and
   `MERGE (p:M {id: $v})` now find a stored integer 7 when `/query` delivers the JSON number 7 as the float
   `7.0`, by the rule `WHERE p.id = $v` uses; before, the match failed and each `MERGE` created another node.
