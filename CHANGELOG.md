@@ -172,6 +172,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A numeric property in a pattern map matches across integer and float.** `MATCH (p {id: $v})` and
   `MERGE (p:M {id: $v})` now find a stored integer 7 when `/query` delivers the JSON number 7 as the float
   `7.0`, by the rule `WHERE p.id = $v` uses; before, the match failed and each `MERGE` created another node.
+- **A parameter in a pattern property map is resolved in each clause and each query segment.**
+  `OPTIONAL MATCH (p {id: $v})`, a `MATCH` or `OPTIONAL MATCH` after `WITH`, and each later part of a `UNION`
+  kept the unresolved `$v`, which equals no stored value, so the query bound null or returned no rows with no
+  error. A parameter that the caller did not supply now fails with `missing parameter: $v` in each of these
+  places, and `Execute` (no parameters at all) refuses the same query instead of returning no rows. A parsed
+  query that runs twice with different parameters now uses the second values; before, the first run's values
+  stayed in the query.
 - **Booleans order, and every Go number kind compares by value.** `false` sorts before `true`, and
   `=`, `!=`, `IN`, `ORDER BY`, `MIN` and `MAX` compare `int`, `int64`, the other integer kinds and
   floats by value; before, a Go `int` never differed from an `int64` and a string compared equal to

@@ -119,31 +119,11 @@ func TestPatternMap_Merge_OtherGoKinds(t *testing.T) {
 	}
 }
 
-// resolveParameters does not substitute parameters inside OPTIONAL MATCH
-// patterns (a separate defect, recorded in the report), so this test resolves
-// them by hand and runs the pattern comparison itself.
 func TestPatternMap_OptionalMatch_FloatValueBinds(t *testing.T) {
 	ex, _ := numericMatchStore(t, storage.IntValue(7))
-	lexer := NewLexer(`MATCH (x:Person) OPTIONAL MATCH (p:Person {id: $v}) RETURN p.id AS pid`)
-	tokens, err := lexer.Tokenize()
-	if err != nil {
-		t.Fatalf("Tokenize: %v", err)
-	}
-	q, err := NewParser(tokens).Parse()
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	for _, om := range q.OptionalMatches {
-		for _, pat := range om.Patterns {
-			if err := resolvePatternParams(pat, map[string]any{"v": float64(7)}); err != nil {
-				t.Fatalf("resolve: %v", err)
-			}
-		}
-	}
-	res, err := ex.Execute(q)
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
+	res := parseAndExecuteWithParams(t, ex,
+		`MATCH (x:Person) OPTIONAL MATCH (p:Person {id: $v}) RETURN p.id AS pid`,
+		map[string]any{"v": float64(7)})
 	if res.Count != 1 {
 		t.Fatalf("rows = %d, want 1", res.Count)
 	}

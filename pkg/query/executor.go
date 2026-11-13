@@ -109,6 +109,12 @@ func (e *Executor) ExecuteWithOptions(ctx context.Context, query *Query, opts Pa
 		return nil, err
 	}
 
+	// A pattern parameter that is still here was never supplied: Execute has no
+	// parameters, and ExecuteWithParams resolves them before it calls this.
+	if err := checkNoUnresolvedPatternParams(query); err != nil {
+		return nil, err
+	}
+
 	return e.executeSegment(ctx, query, opts)
 }
 
@@ -237,10 +243,11 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 // and injected into the query before execution. ParameterRef values in property maps
 // are resolved to actual values, and parameters are made available in bindings as "$name" keys.
 func (e *Executor) ExecuteWithParams(query *Query, params map[string]any) (*ResultSet, error) {
-	if err := e.injectParams(query, params); err != nil {
+	prepared, err := e.injectParams(query, params)
+	if err != nil {
 		return nil, err
 	}
-	return e.Execute(query)
+	return e.Execute(prepared)
 }
 
 // ExecuteWithParamsContext is ExecuteWithParams that honours a caller-supplied
@@ -249,24 +256,36 @@ func (e *Executor) ExecuteWithParams(query *Query, params map[string]any) (*Resu
 // timeout — calling ExecuteWithContext directly drops req.Parameters and stores
 // the literal "&{name}" instead of the value (#237).
 func (e *Executor) ExecuteWithParamsContext(ctx context.Context, query *Query, params map[string]any) (*ResultSet, error) {
-	if err := e.injectParams(query, params); err != nil {
+	prepared, err := e.injectParams(query, params)
+	if err != nil {
 		return nil, err
 	}
-	return e.ExecuteWithContext(ctx, query)
+	return e.ExecuteWithContext(ctx, prepared)
 }
 
 // injectParams resolves ParameterRef values in property maps, validates that
 // every ParameterExpression has a corresponding param, and seeds the initial
 // bindings with "$name" keys. Shared by ExecuteWithParams[Context].
-func (e *Executor) injectParams(query *Query, params map[string]any) error {
+//
+// It returns a copy of query for the caller to run and leaves query alone: the
+// caller may run the same parsed Query again with other parameters, and the
+// executor writes InitialBindings into the segments it runs.
+func (e *Executor) injectParams(query *Query, params map[string]any) (*Query, error) {
 	// Validate and resolve ParameterRef values in property maps
-	if err := resolveParameters(query, params); err != nil {
-		return err
+	prepared, err := resolveParameters(query, params)
+	if err != nil {
+		return nil, err
+	}
+
+	// resolveParameters is meant to leave nothing. A clause that it forgets
+	// must fail here, by name, and not run with a value that matches nothing.
+	if name, clause, found := findUnresolvedPatternParam(prepared); found {
+		return nil, fmt.Errorf("internal error: parameter $%s in %s was not resolved", name, clause)
 	}
 
 	// Validate that all ParameterExpression references have corresponding params
-	if err := validateParameterExpressions(query, params); err != nil {
-		return err
+	if err := validateParameterExpressions(prepared, params); err != nil {
+		return nil, err
 	}
 
 	// Inject params into initial bindings with "$" prefix to avoid collision with variables
@@ -274,71 +293,8 @@ func (e *Executor) injectParams(query *Query, params map[string]any) error {
 	for k, v := range params {
 		bindings.bindings["$"+k] = v
 	}
-	query.InitialBindings = []*BindingSet{bindings}
-	return nil
-}
-
-// resolveParameters replaces ParameterRef values in pattern property maps with actual param values
-func resolveParameters(query *Query, params map[string]any) error {
-	if query.Match != nil {
-		for _, pattern := range query.Match.Patterns {
-			if err := resolvePatternParams(pattern, params); err != nil {
-				return err
-			}
-		}
-	}
-	if query.Create != nil {
-		for _, pattern := range query.Create.Patterns {
-			if err := resolvePatternParams(pattern, params); err != nil {
-				return err
-			}
-		}
-	}
-	for _, merge := range query.Merges {
-		if err := resolvePatternParams(merge.Pattern, params); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func resolvePatternParams(pattern *Pattern, params map[string]any) error {
-	for _, node := range pattern.Nodes {
-		resolved, err := resolvePropertyParams(node.Properties, params)
-		if err != nil {
-			return err
-		}
-		node.Properties = resolved
-	}
-	for _, rel := range pattern.Relationships {
-		resolved, err := resolvePropertyParams(rel.Properties, params)
-		if err != nil {
-			return err
-		}
-		rel.Properties = resolved
-	}
-	return nil
-}
-
-// resolvePropertyParams returns a new map with ParameterRef values replaced by actual values.
-// The original map is not modified, making repeated calls with different params safe.
-func resolvePropertyParams(props map[string]any, params map[string]any) (map[string]any, error) {
-	if props == nil {
-		return nil, nil
-	}
-	resolved := make(map[string]any, len(props))
-	for key, val := range props {
-		if ref, ok := val.(*ParameterRef); ok {
-			actual, exists := params[ref.Name]
-			if !exists {
-				return nil, fmt.Errorf("missing parameter: $%s", ref.Name)
-			}
-			resolved[key] = actual
-		} else {
-			resolved[key] = val
-		}
-	}
-	return resolved, nil
+	prepared.InitialBindings = []*BindingSet{bindings}
+	return prepared, nil
 }
 
 // validateParameterExpressions walks all expression trees in the query to find
@@ -505,6 +461,9 @@ func rowKey(row map[string]any, columns []string) string {
 func (e *Executor) ExecuteWithText(queryText string, query *Query) (*ResultSet, error) {
 	// This path does not go through ExecuteWithOptions, so it checks here.
 	if err := checkQueryNames(query); err != nil {
+		return nil, err
+	}
+	if err := checkNoUnresolvedPatternParams(query); err != nil {
 		return nil, err
 	}
 
