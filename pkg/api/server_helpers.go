@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -113,11 +114,51 @@ func valueToInterface(v storage.Value) any {
 	return storage.ValueToJSON(v)
 }
 
+// jsonEncodeFailedMessage is the fixed message of the 500 that respondJSON
+// sends when data cannot be encoded. It never contains a value from the
+// store. A handler may already have applied a write before the encode
+// failed, so the text tells the client to read the state instead of
+// retrying blindly.
+const jsonEncodeFailedMessage = "The response could not be encoded as JSON. The operation may be complete. Read the state before you send the request again."
+
+// respondJSON encodes data before it writes the status line. A value that
+// encoding/json refuses, such as an infinite float, then answers 500 with
+// a JSON error body. Without this order the client would get the status
+// first and an empty or cut body after it.
 func (s *Server) respondJSON(w http.ResponseWriter, status int, data any) {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(data); err != nil {
+		log.Printf("Error encoding JSON response: %v", err)
+		s.respondJSONEncodeFailed(w)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		log.Printf("Error encoding JSON response: %v", err)
+	if _, err := buf.WriteTo(w); err != nil {
+		log.Printf("Error writing JSON response: %v", err)
+	}
+}
+
+// respondJSONEncodeFailed answers the 500 for a response that could not be
+// encoded. It does not call respondJSON, because that would loop on the
+// same failure. The error body holds only strings and an integer, so
+// json.Marshal of it should not fail. If it does, the status goes out with
+// no body.
+func (s *Server) respondJSONEncodeFailed(w http.ResponseWriter) {
+	body, err := json.Marshal(ErrorResponse{
+		Error:   http.StatusText(http.StatusInternalServerError),
+		Message: jsonEncodeFailedMessage,
+		Code:    http.StatusInternalServerError,
+	})
+	if err != nil {
+		log.Printf("Error encoding JSON error response: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	if _, err := w.Write(append(body, '\n')); err != nil {
+		log.Printf("Error writing JSON error response: %v", err)
 	}
 }
 
