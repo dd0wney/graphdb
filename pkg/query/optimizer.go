@@ -120,12 +120,7 @@ func (o *Optimizer) optimizeMatchWithIndex(match *MatchStep, query *Query) Execu
 		return match
 	}
 
-	return &IndexLookupStep{
-		propertyKey: indexInfo.propertyKey,
-		value:       storageValue,
-		variable:    node.Variable,
-		labels:      node.Labels,
-	}
+	return newIndexLookupStep(indexInfo.propertyKey, storageValue, node.Variable, node.Labels)
 }
 
 // indexReplaceableNode returns the node pattern that an IndexLookupStep may

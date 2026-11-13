@@ -101,21 +101,43 @@ func dumpStore(t *testing.T, gs *storage.GraphStorage) (nodes, edges []string) {
 	return nodes, edges
 }
 
-func runIndexedWrite(t *testing.T, withIndex bool, text string) indexedWriteOutcome {
+// indexedCase is one query for the oracle. params, when set, send the query
+// through ExecuteWithParams. noIndex marks a query whose plan must NOT use the
+// index, so the case still compares the two stores but does not demand a lookup.
+type indexedCase struct {
+	query   string
+	params  map[string]any
+	noIndex bool
+}
+
+// usesIndexLookup reports whether any segment of the query, WITH-chained
+// segments included, plans an IndexLookupStep.
+func usesIndexLookup(gs *storage.GraphStorage, ex *Executor, parsed *Query) bool {
+	for q := parsed; q != nil; q = q.Next {
+		for _, s := range NewOptimizer(gs).Optimize(ex.buildExecutionPlan(q), q).Steps {
+			if _, ok := s.(*IndexLookupStep); ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func runIndexedWrite(t *testing.T, withIndex bool, c indexedCase) indexedWriteOutcome {
 	t.Helper()
 	gs := seedIndexedWriteStore(t, withIndex)
 	ex := NewExecutor(gs)
-	parsed := parseCallInput(t, text)
 
 	var out indexedWriteOutcome
-	plan := NewOptimizer(gs).Optimize(ex.buildExecutionPlan(parsed), parsed)
-	for _, s := range plan.Steps {
-		if _, ok := s.(*IndexLookupStep); ok {
-			out.usedIdx = true
-		}
-	}
+	out.usedIdx = usesIndexLookup(gs, ex, parseCallInput(t, c.query))
 
-	res, err := ex.Execute(parseCallInput(t, text))
+	var res *ResultSet
+	var err error
+	if c.params != nil {
+		res, err = ex.ExecuteWithParams(parseCallInput(t, c.query), c.params)
+	} else {
+		res, err = ex.Execute(parseCallInput(t, c.query))
+	}
 	if err != nil {
 		out.err = err.Error()
 	} else {
@@ -179,24 +201,35 @@ var indexedWriteCases = []string{
 	"MATCH (p:T) WHERE p.pid = 1 AND p.k > 5 WITH count(p) AS c RETURN c",
 }
 
+func allIndexedCases() []indexedCase {
+	cases := make([]indexedCase, 0, len(indexedWriteCases)+len(indexedInputRowCases))
+	for _, q := range indexedWriteCases {
+		cases = append(cases, indexedCase{query: q})
+	}
+	return append(cases, indexedInputRowCases...)
+}
+
 func TestIndexedWrite_SameEffectWithAndWithoutIndex(t *testing.T) {
-	for _, text := range indexedWriteCases {
-		t.Run(text, func(t *testing.T) {
+	for _, c := range allIndexedCases() {
+		t.Run(c.query, func(t *testing.T) {
 			// A form that does not parse proves nothing; say so instead of passing.
-			if toks, lerr := NewLexer(text).Tokenize(); lerr != nil {
+			if toks, lerr := NewLexer(c.query).Tokenize(); lerr != nil {
 				t.Skipf("does not lex: %v", lerr)
 			} else if _, perr := NewParser(toks).Parse(); perr != nil {
 				t.Skipf("does not parse: %v", perr)
 			}
 
-			want := runIndexedWrite(t, false, text)
-			got := runIndexedWrite(t, true, text)
+			want := runIndexedWrite(t, false, c)
+			got := runIndexedWrite(t, true, c)
 
 			if want.usedIdx {
 				t.Fatalf("the store with no index used an IndexLookupStep")
 			}
-			if !got.usedIdx {
+			if !c.noIndex && !got.usedIdx {
 				t.Fatalf("the indexed store did not use an IndexLookupStep, so the case proves nothing")
+			}
+			if c.noIndex && got.usedIdx {
+				t.Fatalf("the case expects no IndexLookupStep and the indexed store used one")
 			}
 			if want.err != "" {
 				t.Fatalf("the query fails with no index, so the case proves nothing: %s", want.err)

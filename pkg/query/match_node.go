@@ -32,12 +32,9 @@ func (ms *MatchStep) matchNode(ctx *ExecutionContext, nodePattern *NodePattern, 
 		}
 	}
 
-	// Audit A6c-query: tenant-scoped node enumeration. Replaces the
-	// "iterate 1..stats.NodeCount via GetNode" cross-tenant scan
-	// anti-pattern (same shape as the A6c-graphql-resolvers cleanup).
-	nodes, err := ctx.graph.GetAllNodesForTenant(ctx.tenantID)
+	nodes, err := ms.candidateNodes(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("node scan: %w", err)
+		return nil, err
 	}
 	for _, node := range nodes {
 		// Check labels
