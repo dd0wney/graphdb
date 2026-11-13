@@ -61,6 +61,10 @@ func (e *Executor) buildResultSet(ctx *ExecutionContext, returnClause *ReturnCla
 		return nil, err
 	}
 
+	if err := checkOrderByExpressions(returnClause); err != nil {
+		return nil, err
+	}
+
 	// Group when the query says GROUP BY, or, as openCypher does, when it
 	// aggregates next to a non-aggregate item: that item is a grouping key.
 	if len(returnClause.GroupBy) > 0 || (hasAggregates(returnClause.Items) && len(nonAggregateItems(returnClause.Items)) > 0) {
@@ -74,6 +78,33 @@ func (e *Executor) buildResultSet(ctx *ExecutionContext, returnClause *ReturnCla
 
 	// Build regular results
 	return e.buildRegularResultSet(ctx, returnClause, limit, skip)
+}
+
+// checkOrderByExpressions refuses an ORDER BY expression on a path that cannot
+// evaluate it. Only the plain path has a binding per row to evaluate against.
+// After an aggregate or DISTINCT a row is a result row, not a binding, and
+// openCypher lets ORDER BY name only a returned column there. Sorting by
+// nothing, in silence, is the defect this check prevents.
+func checkOrderByExpressions(rc *ReturnClause) error {
+	if !hasOrderByExpression(rc.OrderBy) {
+		return nil
+	}
+	if len(rc.GroupBy) > 0 || hasAggregates(rc.Items) {
+		return refusef("ORDER BY with an expression is not supported after an aggregate; order by a returned column or alias")
+	}
+	if rc.Distinct {
+		return refusef("ORDER BY with an expression is not supported with DISTINCT; order by a returned column or alias")
+	}
+	return nil
+}
+
+func hasOrderByExpression(orderBy []*OrderByItem) bool {
+	for _, ob := range orderBy {
+		if ob.ValueExpr != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // checkAggregateInputs refuses sum, avg, min or max of a node or a
@@ -367,12 +398,31 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 		}
 	}
 
+	// An expression has no column name, so its value goes in the row under a
+	// key that no query can write (it starts with NUL) and leaves with the
+	// other sort columns.
+	exprOrder := hasOrderByExpression(returnClause.OrderBy)
+	var sortKeys []string
+	if exprOrder {
+		sortKeys = orderByKeys(returnClause.OrderBy)
+		for i, ob := range returnClause.OrderBy {
+			if ob.ValueExpr != nil {
+				extraSortCols = append(extraSortCols, sortKeys[i])
+			}
+		}
+	}
+
 	// Build rows with extra sort columns injected from bindings
 	computer := &AggregationComputer{}
 	for _, binding := range ctx.results {
 		row, err := e.buildRow(binding, returnClause.Items, resultSet.Columns, computer)
 		if err != nil {
 			return nil, err
+		}
+		if exprOrder {
+			if err := addOrderByExpressionValues(row, binding, returnClause, sortKeys); err != nil {
+				return nil, err
+			}
 		}
 		for _, ob := range returnClause.OrderBy {
 			if ob.Expression != nil {
@@ -396,6 +446,34 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 	}
 
 	return resultSet, nil
+}
+
+// addOrderByExpressionValues evaluates each ORDER BY expression once for the
+// row and stores the value under its sort key. The expression reads the
+// variables of the binding and the aliases of RETURN. An alias wins over a
+// variable of the same name, as in openCypher: after RETURN p.age AS p, the
+// name p in ORDER BY means the age.
+func addOrderByExpressionValues(row map[string]any, binding *BindingSet, rc *ReturnClause, sortKeys []string) error {
+	scope := make(map[string]any, len(binding.bindings)+len(rc.Items))
+	for name, v := range binding.bindings {
+		scope[name] = v
+	}
+	for _, item := range rc.Items {
+		if item.Alias != "" {
+			scope[item.Alias] = row[item.Alias]
+		}
+	}
+	for i, ob := range rc.OrderBy {
+		if ob.ValueExpr == nil {
+			continue
+		}
+		v, err := evalOperand(ob.ValueExpr, scope)
+		if err != nil {
+			return err
+		}
+		row[sortKeys[i]] = v
+	}
+	return nil
 }
 
 // buildRow builds a single result row from a binding

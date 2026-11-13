@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`NOT` of a function or `CASE` that gives null is now null.** `WHERE NOT toBoolean(p.s)` kept
   the row where `toBoolean` gave null, because the operand fell through to a two-valued `Eval`.
   The row is now removed, as openCypher requires.
+- **An `ORDER BY` expression is now evaluated and sorts, where it was ignored.** `ORDER BY
+  p.age + 1`, `-p.age`, `toUpper(p.name)` and `CASE ... END` returned the rows in match order with
+  no error, and `ORDER BY p.age / 0` did not refuse. The expression is now evaluated once for each
+  row, over the variables of the row and the aliases of `RETURN` (an alias wins over a variable of
+  the same name), and it sorts with `ASC`, `DESC` and further sort items. The value never reaches
+  the result. An arithmetic or type error in the expression stops the query with a 400. Two forms
+  cannot sort and are refused as not supported: an `ORDER BY` expression after an aggregate, and an
+  `ORDER BY` expression with `RETURN DISTINCT`. Order by a returned column or alias in those
+  queries. `WITH ... ORDER BY` is not valid syntax here, as before.
 
 ### Changed
 - **The column name of a bare variable has no trailing dot.** A result column that names a
@@ -76,8 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arguments. A `WHERE`, `WITH ... WHERE` or `OPTIONAL MATCH ... WHERE` filter used to drop the row
   of such an error, so `WHERE p.age / 0 > 1` returned no rows; it now stops the query. `SET n.x =
   n.i / 0` already failed and now answers 400, not 500, and `SET n.x = 100 / n.age + 1` or
-  `SET n.x = toString(1 / n.age)` no longer removes `x` where `age` is 0. An `ORDER BY` expression
-  is not evaluated by this executor, so `ORDER BY p.age / 0` does not refuse and is not covered.
+  `SET n.x = toString(1 / n.age)` no longer removes `x` where `age` is 0.
   The message names the operator and the Cypher types (integer, float, string, boolean, list,
   map) and never a value. `[1] + [2]` is valid openCypher that this executor does not support; it
   is refused with `list concatenation with + is not supported`. A null operand is still null
