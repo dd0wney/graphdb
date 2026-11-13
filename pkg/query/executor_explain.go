@@ -1,7 +1,6 @@
 package query
 
 import (
-	"context"
 	"fmt"
 	"time"
 )
@@ -60,59 +59,26 @@ func buildExplainResult(plan *ExecutionPlan) *ResultSet {
 	return result
 }
 
-// executeWithProfiling executes the plan while collecting per-step timing and cardinality
-func (e *Executor) executeWithProfiling(ctx context.Context, plan *ExecutionPlan, query *Query, opts PathOptions, initial []*BindingSet) (*ResultSet, error) {
-	execCtx := newExecutionContext(ctx, e.graph, opts)
-	execCtx.results = seedRows(ctx, initial)
-
-	profiles := make([]StepProfile, 0, len(plan.Steps))
-
-	for i, step := range plan.Steps {
-		if err := execCtx.CheckCancellation(); err != nil {
-			return nil, fmt.Errorf("cancelled at step %d: %w", i, err)
-		}
-
-		start := time.Now()
-		if err := step.Execute(execCtx); err != nil {
-			return nil, err
-		}
-		elapsed := time.Since(start)
-
-		sp := StepProfile{
-			Duration: elapsed,
-			RowsOut:  len(execCtx.results),
-		}
-		if describer, ok := step.(StepDescriber); ok {
-			sp.StepName = describer.StepName()
-			sp.Detail = describer.StepDetail()
-		}
-		profiles = append(profiles, sp)
+// runStep runs one step. Under PROFILE it also records the step's timing and
+// the number of rows it left. Every segment of a WITH chain and every part of a
+// UNION runs its steps through here, so a profile covers the whole statement and
+// the query returns the rows it returns without PROFILE.
+func runStep(execCtx *ExecutionContext, step ExecutionStep, profiles *[]StepProfile) error {
+	if !profiling(execCtx.context) {
+		return step.Execute(execCtx)
 	}
-
-	if err := execCtx.CheckCancellation(); err != nil {
-		return nil, fmt.Errorf("cancelled before building results: %w", err)
+	start := time.Now()
+	if err := step.Execute(execCtx); err != nil {
+		return err
 	}
-
-	var result *ResultSet
-	if query.Return != nil {
-		var err error
-		if result, err = e.buildResultSet(execCtx, query.Return, query.Limit, query.Skip); err != nil {
-			return nil, err
-		}
-	} else if query.Call != nil && !hasWriteClause(query) {
-		result = callResultSet(execCtx)
-	} else {
-		result = &ResultSet{
-			Columns: []string{"affected"},
-			Rows:    []map[string]any{{"affected": len(execCtx.results)}},
-			Count:   len(execCtx.results),
-		}
+	sp := StepProfile{
+		Duration: time.Since(start),
+		RowsOut:  len(execCtx.results),
 	}
-
-	result.Profile = profiles
-	result.Notices = execCtx.notices
-	// execCtx.truncation travels WITH the results, never instead of them —
-	// the same rule executePlanWithContext already follows. A PROFILE query
-	// that hit an engine limit must say so, not just the un-profiled path.
-	return result, execCtx.truncation
+	if describer, ok := step.(StepDescriber); ok {
+		sp.StepName = describer.StepName()
+		sp.Detail = describer.StepDetail()
+	}
+	*profiles = append(*profiles, sp)
+	return nil
 }

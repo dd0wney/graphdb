@@ -178,12 +178,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error. A parameter that the caller did not supply now fails with `missing parameter: $v` in each of these
   places, and `Execute` (no parameters at all) refuses the same query instead of returning no rows. A parsed
   query that runs twice with different parameters now uses the second values; before, the first run's values
-  stayed in the query. A parameter in `WHERE`, `RETURN`, `SET`, `ORDER BY` or a `CALL` argument after a
-  `WITH`, in `WITH ... WHERE`, or in a later part of a `UNION` read as null before, so the query returned no
-  rows or partial rows with no error; it now has its value. A missing parameter in an expression answers 400
-  where it answered 500, and it is an error in every segment. `EXPLAIN` of a query with a parameter returns
-  its plan with no value supplied. One parsed query can run from more than one goroutine: the executor no
-  longer writes the bindings of the next `WITH` segment into the query.
+  stayed in the query. A parameter in `WHERE`, `RETURN`, `SET` or a `CALL` argument after a `WITH`, in
+  `WITH ... WHERE`, or in a later part of a `UNION` read as null before, so the query returned no rows or
+  partial rows with no error; it now has its value. A parameter that the caller did not supply is a refusal
+  that names it, in every expression and every segment, through every entry point: `Execute`,
+  `ExecuteWithContext`, `ExecuteWithOptions` and `ExecuteWithText` returned no rows, or a null row, and
+  `POST /query` with no `parameters` field did the same. `POST /query` answers 400 for it where it answered
+  500 for `WHERE` and `SET`. A run reads only the parameters that its own entry point set: a nested call
+  with the context of an outer run no longer sees the outer values. A parameter inside a list literal
+  (`RETURN [1, $v]`, `WHERE p.id IN [$v, 2]`, `SET p.tags = [$a, 'x']`) is resolved; before, the response
+  held an internal object (`[1,{"Name":"v"}]`) and the `IN` test lost the row. `EXPLAIN` returns its plan
+  through every entry point, with or without parameter values; `ExecuteWithText` used to run an `EXPLAIN`
+  query. `PROFILE` of a query with `WITH`, or of a `UNION`, ran the first segment only and answered
+  `affected=N` (and skipped a write after the `WITH`); it now returns the rows of the query without
+  `PROFILE`, and its profile covers every segment. One parsed query can run from more than one goroutine:
+  the executor no longer writes the bindings of the next `WITH` segment into the query.
 - **Booleans order, and every Go number kind compares by value.** `false` sorts before `true`, and
   `=`, `!=`, `IN`, `ORDER BY`, `MIN` and `MAX` compare `int`, `int64`, the other integer kinds and
   floats by value; before, a Go `int` never differed from an `int64` and a string compared equal to

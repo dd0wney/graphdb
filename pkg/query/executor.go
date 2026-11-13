@@ -129,6 +129,8 @@ func (e *Executor) execute(ctx context.Context, query *Query, opts PathOptions, 
 		}
 	}
 	ctx = withRunParams(ctx, params)
+	// Set for every run, so that a nested call does not inherit PROFILE.
+	ctx = withProfiling(ctx, query.Profile)
 
 	return e.executeSegment(ctx, query, opts, query.InitialBindings)
 }
@@ -178,11 +180,6 @@ func (e *Executor) executeSegment(ctx context.Context, query *Query, opts PathOp
 		return buildExplainResult(optimizedPlan), nil
 	}
 
-	// PROFILE: execute with timing instrumentation
-	if query.Profile {
-		return e.executeWithProfiling(ctx, optimizedPlan, query, opts, initial)
-	}
-
 	// Handle WITH chaining — needs bindings, not just results
 	if query.With != nil && query.Next != nil {
 		return e.executeWithChain(ctx, optimizedPlan, query, opts, initial)
@@ -203,11 +200,12 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	}
 
 	// Execute each step
+	var profiles []StepProfile
 	for _, step := range plan.Steps {
 		if err := execCtx.CheckCancellation(); err != nil {
 			return nil, err
 		}
-		if err := step.Execute(execCtx); err != nil {
+		if err := runStep(execCtx, step, &profiles); err != nil {
 			return nil, err
 		}
 	}
@@ -246,6 +244,10 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	// options apply to the first segment of a WITH chain and silently revert
 	// for the rest, which is worse than not offering them at all.
 	result, err := e.executeSegment(ctx, query.Next, opts, projectedBindings)
+	if result != nil {
+		// The profile covers this segment and then each one that follows.
+		result.Profile = slices.Concat(profiles, result.Profile)
+	}
 	if result != nil && len(execCtx.notices) > 0 {
 		result.Notices = slices.Concat(execCtx.notices, result.Notices)
 	}
@@ -351,6 +353,7 @@ func (e *Executor) executeUnion(ctx context.Context, query *Query, opts PathOpti
 		Rows:    make([]map[string]any, 0, len(first.Rows)+len(second.Rows)),
 	}
 
+	combined.Profile = slices.Concat(first.Profile, second.Profile)
 	combined.Rows = append(combined.Rows, first.Rows...)
 
 	for _, row := range second.Rows {

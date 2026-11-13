@@ -74,3 +74,17 @@ func runParamsOf(ctx context.Context) map[string]any {
 	params, _ := ctx.Value(runParamsKey{}).(map[string]any)
 	return params
 }
+
+type profilingKey struct{}
+
+// withProfiling marks ctx as the context of a PROFILE run, or of a run that is
+// not one. A segment is profiled by this mark and not by its own Profile flag,
+// because only the first segment of a statement has the flag.
+func withProfiling(ctx context.Context, on bool) context.Context {
+	return context.WithValue(ctx, profilingKey{}, on)
+}
+
+func profiling(ctx context.Context) bool {
+	on, _ := ctx.Value(profilingKey{}).(bool)
+	return on
+}
