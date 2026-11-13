@@ -75,12 +75,9 @@ func TestAPI_Query_Decode_PropertyAccess(t *testing.T) {
 // raw {Type, Data} shape — asserting on the lowercase "properties" key
 // containing a decoded "name"/"age" must fail pre-fix.
 //
-// Uses "AS n" to pin the column name to "n": buildColumnName
-// (pkg/query/executor_results.go, out of scope for this fix) names a
-// bare unaliased `RETURN n` column "n." (variable + "." + empty
-// property) rather than "n" — a pre-existing, unrelated quirk. The
-// explicit alias sidesteps it so this test exercises only the
-// decode-shape behavior under test.
+// Uses "AS n" so this test exercises only the decode shape. The column
+// name of an unaliased bare variable has its own test,
+// TestAPI_Query_BareVariableColumnName.
 func TestAPI_Query_Decode_ReturnNode(t *testing.T) {
 	server, cleanup, _ := setupTestServerWithLabelNode(t)
 	defer cleanup()

@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The column name of a bare variable has no trailing dot.** A result column that names a
+  variable with no property was `n.`, with a dot after the variable. It is now the variable
+  alone, in `columns` and as the key of each row, in `POST /query` and in the Go API.
+  `MATCH (n) RETURN n` named its column `n.` and now names it `n`.
+  `MATCH (p:Person) WITH p.age AS age RETURN age` named its column `age.` and now names it `age`.
+  `MATCH (n) RETURN count(n)` named its column `COUNT(n.)` and now names it `COUNT(n)`.
+  The old name is not kept beside the new one. A client that reads a row by the old key, for
+  example `row["n."]`, must change to the new key, `row["n"]`. A column with a property
+  (`n.name`, `COUNT(n.age)`) and a column with an alias (`AS x`) keep their names.
 - **An arithmetic error now stops the query with HTTP 400, where it returned null.**
   `RETURN 1 / 0`, `RETURN 1 % 0`, `RETURN 'a' + 1` and `RETURN -'a'` returned a null column; the
   same holds for `p.name + 1` over a string property and for `10 / p.zero`. They now fail with

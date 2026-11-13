@@ -21,7 +21,7 @@ func (ac *AggregationComputer) ComputeGroupedAggregates(ctx *ExecutionContext, r
 		groupValues := ac.parseGroupKey(groupKey)
 		for i, expr := range groupByExprs {
 			if i < len(groupValues) {
-				columnName := fmt.Sprintf("%s.%s", expr.Variable, expr.Property)
+				columnName := exprColumnName(expr)
 				row[columnName] = groupValues[i]
 			}
 		}

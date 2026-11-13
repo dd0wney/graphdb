@@ -54,7 +54,7 @@ func TestExecutor_Aggregation_COUNT(t *testing.T) {
 	}
 
 	// Check the count value
-	count := result.Rows[0]["COUNT(n.)"]
+	count := result.Rows[0]["COUNT(n)"]
 	if count != 5 {
 		t.Errorf("Expected COUNT=5, got %v", count)
 	}
@@ -668,7 +668,7 @@ func TestExecutor_GroupBy_Single(t *testing.T) {
 
 	// Check Engineering group
 	if eng, ok := groups["Engineering"]; ok {
-		if count := eng["COUNT(n.)"]; count != 3 {
+		if count := eng["COUNT(n)"]; count != 3 {
 			t.Errorf("Expected Engineering count=3, got %v", count)
 		}
 		if avg := eng["AVG(n.salary)"]; avg != float64(60000) {
@@ -680,7 +680,7 @@ func TestExecutor_GroupBy_Single(t *testing.T) {
 
 	// Check Sales group
 	if sales, ok := groups["Sales"]; ok {
-		if count := sales["COUNT(n.)"]; count != 2 {
+		if count := sales["COUNT(n)"]; count != 2 {
 			t.Errorf("Expected Sales count=2, got %v", count)
 		}
 		if avg := sales["AVG(n.salary)"]; avg != float64(42500) {
@@ -760,7 +760,7 @@ func TestExecutor_GroupBy_Multiple(t *testing.T) {
 	for _, row := range result.Rows {
 		if row["n.department"] == "Engineering" && row["n.location"] == "NYC" {
 			found = true
-			if count := row["COUNT(n.)"]; count != 2 {
+			if count := row["COUNT(n)"]; count != 2 {
 				t.Errorf("Expected Engineering-NYC count=2, got %v", count)
 			}
 			if avg := row["AVG(n.salary)"]; avg != float64(105000) {
@@ -1018,7 +1018,7 @@ func TestExecutor_EmptyAggregation(t *testing.T) {
 		t.Errorf("Expected 1 row for aggregation on empty set, got %d", result.Count)
 	}
 
-	count := result.Rows[0]["COUNT(n.)"]
+	count := result.Rows[0]["COUNT(n)"]
 	if count != 0 {
 		t.Errorf("Expected COUNT=0 on empty set, got %v", count)
 	}
@@ -1103,8 +1103,8 @@ func TestExecutor_ComplexQuery(t *testing.T) {
 		if _, ok := row["n.department"]; !ok {
 			t.Error("Expected n.department in results")
 		}
-		if _, ok := row["COUNT(n.)"]; !ok {
-			t.Error("Expected COUNT(n.) in results")
+		if _, ok := row["COUNT(n)"]; !ok {
+			t.Error("Expected COUNT(n) in results")
 		}
 		if _, ok := row["AVG(n.salary)"]; !ok {
 			t.Error("Expected AVG(n.salary) in results")
