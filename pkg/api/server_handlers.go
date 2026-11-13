@@ -219,6 +219,14 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("ERROR [query execution]: %v", err)
 			s.respondError(w, http.StatusConflict, "query execution refused: a unique constraint is violated")
 			return
+		} else if refusal := (*query.RefusalError)(nil); errors.As(err, &refusal) {
+			// The executor refused the query text itself (an undefined
+			// variable, an unknown function or procedure). The message holds
+			// only names from the caller's own query, so it is shown, as a
+			// parser error is. It sits after the timeout check and before the
+			// generic 500, which hides every other executor error.
+			s.respondError(w, http.StatusBadRequest, fmt.Sprintf("Query error: %s", refusal.Message))
+			return
 		} else {
 			s.respondError(w, http.StatusInternalServerError, sanitizeError(err, "query execution"))
 			return

@@ -1,7 +1,6 @@
 package query
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -17,20 +16,20 @@ func checkWithAggregates(items []*ReturnItem) error {
 			// get a nil key and fall into one group.
 			bare := item.Expression != nil && item.Expression.Property == ""
 			if aggregating && item.Alias == "" && !bare {
-				return fmt.Errorf("WITH: a grouping key that is not a variable needs a name; add AS <name>")
+				return refusef("WITH: a grouping key that is not a variable needs a name; add AS <name>")
 			}
 			continue
 		}
 		// An aggregate has no name of its own to bind, and WITH is the only
 		// place its result is visible to the next segment.
 		if item.Alias == "" {
-			return fmt.Errorf("WITH: the aggregate %s(...) needs a name for its result; add AS <name>", withAggName(item))
+			return refusef("WITH: the aggregate %s(...) needs a name for its result; add AS <name>", withAggName(item))
 		}
 		// The parser leaves Expression nil when the argument is not a property
 		// or a variable (for example a literal). RETURN then counts rows and
 		// collects nothing, which is a wrong answer, so WITH refuses.
 		if item.Expression == nil {
-			return fmt.Errorf("WITH: %s(...) AS %s: the argument must be a variable or a property", withAggName(item), item.Alias)
+			return refusef("WITH: %s(...) AS %s: the argument must be a variable or a property", withAggName(item), item.Alias)
 		}
 	}
 	return nil

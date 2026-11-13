@@ -1,7 +1,6 @@
 package query
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 )
@@ -20,7 +19,7 @@ type CallStep struct {
 func (s *CallStep) Execute(ctx *ExecutionContext) error {
 	proc, ok := procedureRegistry[s.call.ProcedureName]
 	if !ok {
-		return fmt.Errorf("unknown procedure: %s", s.call.ProcedureName)
+		return refusef("unknown procedure: %s", s.call.ProcedureName)
 	}
 
 	for _, y := range s.call.YieldItems {
@@ -100,7 +99,7 @@ func (s *CallStep) bindRow(in *BindingSet, row map[string]any) (*BindingSet, err
 	for _, y := range s.call.YieldItems {
 		v, ok := row[y]
 		if !ok {
-			return nil, fmt.Errorf("procedure %s has no column %q; it returns: %s",
+			return nil, refusef("procedure %s has no column %q; it returns: %s",
 				s.call.ProcedureName, y, strings.Join(sortedColumnNames(row), ", "))
 		}
 		bindings[y] = v
@@ -112,7 +111,7 @@ func (s *CallStep) bindRow(in *BindingSet, row map[string]any) (*BindingSet, err
 // clause bound. Without it the node would vanish from the row with no error.
 func refuseBound(in *BindingSet, name string) error {
 	if _, bound := in.bindings[name]; bound {
-		return fmt.Errorf("column %q is already bound by an earlier clause", name)
+		return refusef("column %q is already bound by an earlier clause", name)
 	}
 	return nil
 }

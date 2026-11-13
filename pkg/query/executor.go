@@ -102,6 +102,20 @@ func (e *Executor) ExecuteWithOptions(ctx context.Context, query *Query, opts Pa
 		}
 	}()
 
+	// Refuse a name no clause defines before any segment runs, for the whole
+	// WITH chain and both sides of a UNION: an earlier segment can write. The
+	// segments below run through executeSegment, which does not check again.
+	if err := checkQueryNames(query); err != nil {
+		return nil, err
+	}
+
+	return e.executeSegment(ctx, query, opts)
+}
+
+// executeSegment runs one query segment, and the segments that follow it
+// through WITH and UNION. It is ExecuteWithOptions after the static checks
+// of the whole statement.
+func (e *Executor) executeSegment(ctx context.Context, query *Query, opts PathOptions) (*ResultSet, error) {
 	// Check for cancellation before starting
 	select {
 	case <-ctx.Done():
@@ -209,7 +223,7 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	// options apply to the first segment of a WITH chain and silently revert
 	// for the rest, which is worse than not offering them at all.
 	query.Next.InitialBindings = projectedBindings
-	result, err := e.ExecuteWithOptions(ctx, query.Next, opts)
+	result, err := e.executeSegment(ctx, query.Next, opts)
 	if result != nil && len(execCtx.notices) > 0 {
 		result.Notices = slices.Concat(execCtx.notices, result.Notices)
 	}
@@ -405,13 +419,13 @@ func (e *Executor) executeUnion(ctx context.Context, query *Query, opts PathOpti
 	firstSegment.Union = nil
 	firstSegment.UnionNext = nil
 
-	first, err := e.ExecuteWithOptions(ctx, &firstSegment, opts)
+	first, err := e.executeSegment(ctx, &firstSegment, opts)
 	if err != nil {
 		return nil, fmt.Errorf("UNION first segment: %w", err)
 	}
 
 	// Execute second segment (handles chained UNIONs recursively)
-	second, err := e.ExecuteWithOptions(ctx, query.UnionNext, opts)
+	second, err := e.executeSegment(ctx, query.UnionNext, opts)
 	if err != nil {
 		return nil, fmt.Errorf("UNION second segment: %w", err)
 	}
@@ -486,6 +500,11 @@ func rowKey(row map[string]any, columns []string) string {
 
 // ExecuteWithText executes a query from text and uses query caching
 func (e *Executor) ExecuteWithText(queryText string, query *Query) (*ResultSet, error) {
+	// This path does not go through ExecuteWithOptions, so it checks here.
+	if err := checkQueryNames(query); err != nil {
+		return nil, err
+	}
+
 	// Check cache
 	cachedPlan, found := e.cache.Get(queryText)
 

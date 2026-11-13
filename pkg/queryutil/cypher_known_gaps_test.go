@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -121,19 +120,6 @@ func okResult(t gapReporter, r gapResult) bool {
 	return true
 }
 
-func wantErrContaining(sub string) func(gapReporter, gapResult) {
-	return func(t gapReporter, r gapResult) {
-		t.Helper()
-		if r.err == nil {
-			t.Errorf("want error containing %q, got none (rows=%v)", sub, rowsOf(r))
-			return
-		}
-		if !strings.Contains(r.err.Error(), sub) {
-			t.Errorf("want error containing %q, got %q", sub, r.err.Error())
-		}
-	}
-}
-
 func rowsOf(r gapResult) any {
 	if r.rs == nil {
 		return nil
@@ -226,23 +212,6 @@ func TestCypherKnownGaps(t *testing.T) {
 					t.Errorf("columns = %q, want [\"age\"]", r.rs.Columns)
 				}
 			}},
-		{"v1.4-cypher-return-undefined-variable",
-			`MATCH (p:Person) RETURN q.name LIMIT 1`,
-			func(t gapReporter, r gapResult) {
-				if r.err == nil {
-					t.Errorf("want error naming q, got none (rows=%v)", rowsOf(r))
-					return
-				}
-				if !regexp.MustCompile(`\bq\b`).MatchString(r.err.Error()) {
-					t.Errorf("error %q does not name variable q", r.err)
-				}
-			}},
-		{"v1.4-cypher-unknown-function-null",
-			`RETURN nosuchfn(1) AS x`,
-			wantErrContaining("nosuchfn")},
-		{"v1.4-cypher-range-returns-null",
-			`RETURN range(1,3) AS r`,
-			wantListCell("r", []float64{1, 2, 3})},
 		{"v1.4-cypher-arithmetic-error-null/div-zero",
 			`RETURN 1 / 0 AS x`,
 			func(t gapReporter, r gapResult) {

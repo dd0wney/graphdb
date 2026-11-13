@@ -23,7 +23,7 @@ type propertyTarget interface {
 func resolvePropertyTarget(binding *BindingSet, clause, variable string) (propertyTarget, error) {
 	obj, ok := binding.bindings[variable]
 	if !ok {
-		return nil, fmt.Errorf("%s %s: variable is not defined by the query", clause, variable)
+		return nil, refusef("%s %s: variable is not defined by the query", clause, variable)
 	}
 
 	switch v := obj.(type) {
