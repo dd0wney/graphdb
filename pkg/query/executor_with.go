@@ -59,7 +59,11 @@ func (e *Executor) projectWith(execCtx *ExecutionContext, items []*ReturnItem) (
 	if !hasAggregates(items) {
 		projected := make([]*BindingSet, 0, len(execCtx.results))
 		for _, binding := range execCtx.results {
-			projected = append(projected, e.projectWithBinding(binding, items, computer))
+			b, err := e.projectWithBinding(binding, items, computer)
+			if err != nil {
+				return nil, err
+			}
+			projected = append(projected, b)
 		}
 		return projected, nil
 	}
@@ -67,11 +71,11 @@ func (e *Executor) projectWith(execCtx *ExecutionContext, items []*ReturnItem) (
 	if err := checkAggregateInputs(execCtx, items); err != nil {
 		return nil, err
 	}
-	return e.groupedWithProjection(execCtx, items, computer), nil
+	return e.groupedWithProjection(execCtx, items, computer)
 }
 
 // projectWithBinding applies the non-aggregate WITH items to one binding.
-func (e *Executor) projectWithBinding(binding *BindingSet, items []*ReturnItem, computer *AggregationComputer) *BindingSet {
+func (e *Executor) projectWithBinding(binding *BindingSet, items []*ReturnItem, computer *AggregationComputer) (*BindingSet, error) {
 	newBinding := &BindingSet{bindings: make(map[string]any)}
 
 	for _, item := range items {
@@ -87,7 +91,11 @@ func (e *Executor) projectWithBinding(binding *BindingSet, items []*ReturnItem, 
 		}
 
 		if item.ValueExpr != nil {
-			newBinding.bindings[alias] = extractValue(item.ValueExpr, binding.bindings)
+			v, err := evalOperand(item.ValueExpr, binding.bindings)
+			if err != nil {
+				return nil, err
+			}
+			newBinding.bindings[alias] = v
 		} else if item.Expression != nil {
 			if item.Expression.Property == "" {
 				// Pass the whole node/variable through
@@ -97,12 +105,12 @@ func (e *Executor) projectWithBinding(binding *BindingSet, items []*ReturnItem, 
 			}
 		}
 	}
-	return newBinding
+	return newBinding, nil
 }
 
 // groupedWithProjection makes one binding for each group of the segment's
 // bindings. The non-aggregate items are the key, as they are under RETURN.
-func (e *Executor) groupedWithProjection(execCtx *ExecutionContext, items []*ReturnItem, computer *AggregationComputer) []*BindingSet {
+func (e *Executor) groupedWithProjection(execCtx *ExecutionContext, items []*ReturnItem, computer *AggregationComputer) ([]*BindingSet, error) {
 	keyItems := nonAggregateItems(items)
 
 	var groups []*bindingGroup
@@ -111,21 +119,32 @@ func (e *Executor) groupedWithProjection(execCtx *ExecutionContext, items []*Ret
 		// RETURN count(n) over no rows gives one row holding 0.
 		groups = []*bindingGroup{{members: execCtx.results}}
 	} else {
-		groups = groupBindings(execCtx.results, func(binding *BindingSet) []any {
-			projected := e.projectWithBinding(binding, keyItems, computer)
+		var err error
+		groups, err = groupBindings(execCtx.results, func(binding *BindingSet) ([]any, error) {
+			projected, err := e.projectWithBinding(binding, keyItems, computer)
+			if err != nil {
+				return nil, err
+			}
 			parts := make([]any, 0, len(keyItems))
 			for _, item := range keyItems {
 				parts = append(parts, projected.bindings[withKeyName(item)])
 			}
-			return parts
+			return parts, nil
 		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	out := make([]*BindingSet, 0, len(groups))
 	for _, g := range groups {
 		newBinding := &BindingSet{bindings: make(map[string]any)}
 		if g.first != nil {
-			newBinding = e.projectWithBinding(g.first, keyItems, computer)
+			var err error
+			newBinding, err = e.projectWithBinding(g.first, keyItems, computer)
+			if err != nil {
+				return nil, err
+			}
 		}
 		for name, value := range computer.ComputeAggregates(execCtx.aggregationContext(g.members), items) {
 			// count and the like give a Go int, but every integer that a
@@ -139,7 +158,7 @@ func (e *Executor) groupedWithProjection(execCtx *ExecutionContext, items []*Ret
 		}
 		out = append(out, newBinding)
 	}
-	return out
+	return out, nil
 }
 
 // withKeyName is the name projectWithBinding binds a key item under.

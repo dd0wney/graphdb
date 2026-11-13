@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **An arithmetic error now stops the query with HTTP 400, where it returned null.**
+  `RETURN 1 / 0`, `RETURN 1 % 0`, `RETURN 'a' + 1` and `RETURN -'a'` returned a null column; the
+  same holds for `p.name + 1` over a string property and for `10 / p.zero`. They now fail with
+  `Query error: division by zero`, `modulo by zero` or `cannot apply + to string and integer`,
+  in any clause: `RETURN`, `WHERE`, `WITH`, a function argument and a `CALL` argument. A `WHERE`,
+  `WITH ... WHERE` or `OPTIONAL MATCH ... WHERE` filter used to drop the row of such an error, so
+  `WHERE p.age / 0 > 1` returned no rows; it now stops the query. `SET n.x = n.i / 0` already
+  failed and now answers 400, not 500. The message names the operator and the Cypher types
+  (integer, float, string, boolean, list, map) and never a value. A null operand is still null
+  (`1 + null`, `null / 0`), and a `CASE` branch or the right side of `AND` or `OR` that is not
+  evaluated cannot refuse. Integer overflow and the errors of functions and `CASE` keep their behaviour.
 - **A query that names a variable no clause defines is now an error, where it gave null.**
   `MATCH (p:Person) RETURN q.name` returned a column of nulls, `MATCH (p) SET q.x = 1` wrote
   nothing, and `CALL algo.labelPropagation(nosuch)` ran with its default values. The executor now

@@ -62,7 +62,7 @@ func (e *Executor) buildResultSet(ctx *ExecutionContext, returnClause *ReturnCla
 	// Group when the query says GROUP BY, or, as openCypher does, when it
 	// aggregates next to a non-aggregate item: that item is a grouping key.
 	if len(returnClause.GroupBy) > 0 || (hasAggregates(returnClause.Items) && len(nonAggregateItems(returnClause.Items)) > 0) {
-		return e.buildGroupedResultSet(ctx, returnClause, limit, skip), nil
+		return e.buildGroupedResultSet(ctx, returnClause, limit, skip)
 	}
 
 	// Aggregates with no key: one row over all bindings.
@@ -71,7 +71,7 @@ func (e *Executor) buildResultSet(ctx *ExecutionContext, returnClause *ReturnCla
 	}
 
 	// Build regular results
-	return e.buildRegularResultSet(ctx, returnClause, limit, skip), nil
+	return e.buildRegularResultSet(ctx, returnClause, limit, skip)
 }
 
 // checkAggregateInputs refuses sum, avg, min or max of a node or a
@@ -125,7 +125,7 @@ func (e *Executor) buildAggregateResultSet(ctx *ExecutionContext, returnClause *
 // first appear, and each output row takes its key columns from the first
 // binding of its group, so a key keeps its type: an int stays an int, a node
 // stays a node.
-func (e *Executor) buildGroupedResultSet(ctx *ExecutionContext, returnClause *ReturnClause, limit, skip int) *ResultSet {
+func (e *Executor) buildGroupedResultSet(ctx *ExecutionContext, returnClause *ReturnClause, limit, skip int) (*ResultSet, error) {
 	resultSet := &ResultSet{
 		Columns: make([]string, 0, len(returnClause.Items)),
 		Rows:    make([]map[string]any, 0),
@@ -141,24 +141,34 @@ func (e *Executor) buildGroupedResultSet(ctx *ExecutionContext, returnClause *Re
 		keyCols[i] = buildColumnName(item)
 	}
 
-	order := groupBindings(ctx.results, func(binding *BindingSet) []any {
+	order, err := groupBindings(ctx.results, func(binding *BindingSet) ([]any, error) {
 		var parts []any
 		if len(returnClause.GroupBy) > 0 {
 			for _, expr := range returnClause.GroupBy {
 				parts = append(parts, e.extractValueFromBinding(binding, expr, computer))
 			}
-			return parts
+			return parts, nil
 		}
-		row := e.buildRow(binding, keyItems, keyCols, computer)
+		row, err := e.buildRow(binding, keyItems, keyCols, computer)
+		if err != nil {
+			return nil, err
+		}
 		for _, col := range keyCols {
 			parts = append(parts, row[col])
 		}
-		return parts
+		return parts, nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	for _, g := range order {
 		row := computer.ComputeAggregates(ctx.aggregationContext(g.members), returnClause.Items)
-		for col, val := range e.buildRow(g.first, keyItems, keyCols, computer) {
+		keyRow, err := e.buildRow(g.first, keyItems, keyCols, computer)
+		if err != nil {
+			return nil, err
+		}
+		for col, val := range keyRow {
 			row[col] = val
 		}
 		// GROUP BY expressions are also columns under their own name, as
@@ -199,7 +209,7 @@ func (e *Executor) buildGroupedResultSet(ctx *ExecutionContext, returnClause *Re
 			delete(row, col)
 		}
 	}
-	return resultSet
+	return resultSet, nil
 }
 
 // bindingGroup is the bindings that share one grouping key. The first one is
@@ -213,11 +223,15 @@ type bindingGroup struct {
 // RETURN and WITH both group through it, so they cannot disagree on what makes
 // two keys equal (see groupKey). Groups keep the order in which their first
 // member appears.
-func groupBindings(bindings []*BindingSet, keyParts func(*BindingSet) []any) []*bindingGroup {
+func groupBindings(bindings []*BindingSet, keyParts func(*BindingSet) ([]any, error)) ([]*bindingGroup, error) {
 	var order []*bindingGroup
 	byKey := make(map[string]*bindingGroup)
 	for _, binding := range bindings {
-		key := groupKey(keyParts(binding))
+		parts, err := keyParts(binding)
+		if err != nil {
+			return nil, err
+		}
+		key := groupKey(parts)
 		g, ok := byKey[key]
 		if !ok {
 			g = &bindingGroup{first: binding}
@@ -226,7 +240,7 @@ func groupBindings(bindings []*BindingSet, keyParts func(*BindingSet) []any) []*
 		}
 		g.members = append(g.members, binding)
 	}
-	return order
+	return order, nil
 }
 
 // nonAggregateItems returns the RETURN items that are grouping keys.
@@ -322,7 +336,7 @@ func canonicalFloat(f float64) string {
 }
 
 // buildRegularResultSet builds results for regular (non-aggregate) queries
-func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *ReturnClause, limit, skip int) *ResultSet {
+func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *ReturnClause, limit, skip int) (*ResultSet, error) {
 	resultSet := &ResultSet{
 		Columns: make([]string, 0),
 		Rows:    make([]map[string]any, 0),
@@ -354,7 +368,10 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 	// Build rows with extra sort columns injected from bindings
 	computer := &AggregationComputer{}
 	for _, binding := range ctx.results {
-		row := e.buildRow(binding, returnClause.Items, resultSet.Columns, computer)
+		row, err := e.buildRow(binding, returnClause.Items, resultSet.Columns, computer)
+		if err != nil {
+			return nil, err
+		}
 		for _, ob := range returnClause.OrderBy {
 			if ob.Expression != nil {
 				name := orderByColKey(ob.Expression)
@@ -376,11 +393,11 @@ func (e *Executor) buildRegularResultSet(ctx *ExecutionContext, returnClause *Re
 		}
 	}
 
-	return resultSet
+	return resultSet, nil
 }
 
 // buildRow builds a single result row from a binding
-func (e *Executor) buildRow(binding *BindingSet, items []*ReturnItem, columns []string, computer *AggregationComputer) map[string]any {
+func (e *Executor) buildRow(binding *BindingSet, items []*ReturnItem, columns []string, computer *AggregationComputer) (map[string]any, error) {
 	row := make(map[string]any)
 
 	for i, item := range items {
@@ -388,7 +405,11 @@ func (e *Executor) buildRow(binding *BindingSet, items []*ReturnItem, columns []
 
 		// ValueExpr takes precedence (e.g. function calls)
 		if item.ValueExpr != nil {
-			row[columnName] = extractValue(item.ValueExpr, binding.bindings)
+			v, err := evalOperand(item.ValueExpr, binding.bindings)
+			if err != nil {
+				return nil, err
+			}
+			row[columnName] = v
 			continue
 		}
 
@@ -398,7 +419,7 @@ func (e *Executor) buildRow(binding *BindingSet, items []*ReturnItem, columns []
 		}
 	}
 
-	return row
+	return row, nil
 }
 
 // extractValueFromBinding extracts a value from a binding based on expression

@@ -65,7 +65,11 @@ func (o *CallOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 			// Evaluate arguments
 			argValues := make([]any, len(o.Arguments))
 			for i, arg := range o.Arguments {
-				argValues[i] = extractValue(arg, row.bindings)
+				v, err := evalOperand(arg, row.bindings)
+				if err != nil {
+					return nil, err
+				}
+				argValues[i] = v
 			}
 
 			results, err := proc(ctx.context, ctx.graph, ctx.tenantID, argValues)

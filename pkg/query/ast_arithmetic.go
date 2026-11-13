@@ -3,6 +3,9 @@ package query
 import (
 	"fmt"
 	"math"
+	"reflect"
+
+	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
 // ArithmeticExpression represents binary arithmetic: +, -, *, /, %
@@ -23,8 +26,14 @@ func (ae *ArithmeticExpression) Eval(context map[string]any) (bool, error) {
 }
 
 func (ae *ArithmeticExpression) EvalValue(context map[string]any) (any, error) {
-	leftVal := extractValue(ae.Left, context)
-	rightVal := extractValue(ae.Right, context)
+	leftVal, err := evalOperand(ae.Left, context)
+	if err != nil {
+		return nil, err
+	}
+	rightVal, err := evalOperand(ae.Right, context)
+	if err != nil {
+		return nil, err
+	}
 
 	// Null propagation: any nil operand → nil
 	if leftVal == nil || rightVal == nil {
@@ -45,14 +54,14 @@ func evalArithmetic(left any, op string, right any) (any, error) {
 		}
 		// One string, one non-string → type error
 		if lOk || rOk {
-			return nil, fmt.Errorf("cannot use %s with mixed string and %T", op, selectNonString(left, right))
+			return nil, refuseOperands(op, left, right)
 		}
 	}
 
 	// Numeric operations: coerce to numeric pair
 	lNum, rNum, isFloat, err := coerceNumericPair(left, right)
 	if err != nil {
-		return nil, fmt.Errorf("cannot use %s with %T and %T", op, left, right)
+		return nil, refuseOperands(op, left, right)
 	}
 
 	if isFloat {
@@ -98,12 +107,12 @@ func evalIntOp(left int64, op string, right int64) (any, error) {
 		return left * right, nil
 	case "/":
 		if right == 0 {
-			return nil, fmt.Errorf("division by zero")
+			return nil, refusef("division by zero")
 		}
 		return left / right, nil
 	case "%":
 		if right == 0 {
-			return nil, fmt.Errorf("division by zero")
+			return nil, refusef("modulo by zero")
 		}
 		return left % right, nil
 	default:
@@ -121,12 +130,12 @@ func evalFloatOp(left float64, op string, right float64) (any, error) {
 		return left * right, nil
 	case "/":
 		if right == 0 {
-			return nil, fmt.Errorf("division by zero")
+			return nil, refusef("division by zero")
 		}
 		return left / right, nil
 	case "%":
 		if right == 0 {
-			return nil, fmt.Errorf("division by zero")
+			return nil, refusef("modulo by zero")
 		}
 		return math.Mod(left, right), nil
 	default:
@@ -134,12 +143,39 @@ func evalFloatOp(left float64, op string, right float64) (any, error) {
 	}
 }
 
-// selectNonString returns whichever value is not a string (for error messages).
-func selectNonString(a, b any) any {
-	if _, ok := a.(string); !ok {
-		return a
+// refuseOperands refuses an operator applied to a pair of types that have no
+// arithmetic. The message names the types in Cypher words and never the
+// values: a server shows this text to the caller, and a value comes from the
+// graph.
+func refuseOperands(op string, left, right any) error {
+	return refusef("cannot apply %s to %s and %s", op, cypherTypeName(left), cypherTypeName(right))
+}
+
+// cypherTypeName names the type of a value in Cypher words, not Go words.
+func cypherTypeName(v any) string {
+	if n, ok := asNumber(v); ok {
+		if n.kind == numFloat {
+			return "float"
+		}
+		return "integer"
 	}
-	return b
+	switch v.(type) {
+	case string:
+		return "string"
+	case bool:
+		return "boolean"
+	case *storage.Node:
+		return "node"
+	case *storage.Edge:
+		return "relationship"
+	}
+	if isCollection(v) {
+		if reflect.TypeOf(v).Kind() == reflect.Map {
+			return "map"
+		}
+		return "list"
+	}
+	return "value"
 }
 
 // UnaryExpression represents unary operators: NOT, -
@@ -174,7 +210,10 @@ func (ue *UnaryExpression) EvalValue(context map[string]any) (any, error) {
 		}
 		return result.value(), nil
 	case "-":
-		val := extractValue(ue.Operand, context)
+		val, err := evalOperand(ue.Operand, context)
+		if err != nil {
+			return nil, err
+		}
 		if val == nil {
 			return nil, nil
 		}
@@ -184,7 +223,7 @@ func (ue *UnaryExpression) EvalValue(context map[string]any) (any, error) {
 		case float64:
 			return -v, nil
 		default:
-			return nil, fmt.Errorf("cannot negate %T", val)
+			return nil, refusef("cannot apply unary - to %s", cypherTypeName(val))
 		}
 	default:
 		return nil, fmt.Errorf("unknown unary operator: %s", ue.Operator)

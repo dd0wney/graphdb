@@ -41,7 +41,11 @@ func (s *CallStep) Execute(ctx *ExecutionContext) error {
 
 		args := make([]any, len(s.call.Arguments))
 		for i, arg := range s.call.Arguments {
-			args[i] = extractValue(arg, in.bindings)
+			v, err := evalOperand(arg, in.bindings)
+			if err != nil {
+				return err
+			}
+			args[i] = v
 		}
 
 		rows, err := proc(ctx.context, ctx.graph, ctx.tenantID, args)

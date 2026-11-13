@@ -104,46 +104,59 @@ func isTriExpr(expr Expression) bool {
 // ordering comparison, AND, OR or NOT can make the result unknown. = and !=
 // of plain values, null included, stay two-valued until coord task
 // v1.4-cypher-three-valued-equality changes that.
-func equalityTri(op string, left, right Expression, context map[string]any) tri {
-	l, lUnknown := equalityOperand(left, context)
-	r, rUnknown := equalityOperand(right, context)
+func equalityTri(op string, left, right Expression, context map[string]any) (tri, error) {
+	l, lUnknown, err := equalityOperand(left, context)
+	if err != nil {
+		return triFalse, err
+	}
+	r, rUnknown, err := equalityOperand(right, context)
+	if err != nil {
+		return triFalse, err
+	}
 	if lUnknown || rUnknown {
-		return triUnknown
+		return triUnknown, nil
 	}
 	eq := valuesEqual(l, r)
 	if op == "!=" {
 		eq = !eq
 	}
-	return triFromBool(eq)
+	return triFromBool(eq), nil
 }
 
 // equalityOperand returns the value of an operand, or unknown=true when the
 // operand is a three-valued expression that evaluates to unknown. An operand
-// that errors reads as nil, as extractValue always did.
-func equalityOperand(expr Expression, context map[string]any) (val any, unknown bool) {
+// that errors with anything but a refusal reads as nil, as it always did.
+func equalityOperand(expr Expression, context map[string]any) (val any, unknown bool, err error) {
 	if !isTriExpr(expr) {
-		return extractValue(expr, context), false
+		v, err := evalOperand(expr, context)
+		return v, false, err
 	}
 	t, err := evalTri(expr, context)
 	if err != nil {
-		return nil, false
+		if isRefusal(err) {
+			return nil, false, err
+		}
+		return nil, false, nil
 	}
 	if t == triUnknown {
-		return nil, true
+		return nil, true, nil
 	}
-	return t == triTrue, false
+	return t == triTrue, false, nil
 }
 
 // bareTri reads a property, variable, parameter or literal used as a boolean.
 // null is unknown, a boolean is its value, and any other value keeps the
 // coerceToBool result. Eval refuses a bare property outright, and that error
 // made AND and OR of two properties drop every row and NOT read null as true.
-func bareTri(expr Expression, context map[string]any) tri {
-	v := extractValue(expr, context)
-	if v == nil {
-		return triUnknown
+func bareTri(expr Expression, context map[string]any) (tri, error) {
+	v, err := evalOperand(expr, context)
+	if err != nil {
+		return triFalse, err
 	}
-	return triFromBool(coerceToBool(v))
+	if v == nil {
+		return triUnknown, nil
+	}
+	return triFromBool(coerceToBool(v)), nil
 }
 
 // evalTri evaluates expr with three-valued logic. Any expression other than
@@ -179,16 +192,24 @@ func evalTri(expr Expression, context map[string]any) (tri, error) {
 			}
 			return triOr(left, right), nil
 		case isOrderingOp(e.Operator):
-			return orderingTri(e.Operator, extractValue(e.Left, context), extractValue(e.Right, context)), nil
+			l, err := evalOperand(e.Left, context)
+			if err != nil {
+				return triFalse, err
+			}
+			r, err := evalOperand(e.Right, context)
+			if err != nil {
+				return triFalse, err
+			}
+			return orderingTri(e.Operator, l, r), nil
 		case e.Operator == "=" || e.Operator == "!=":
-			return equalityTri(e.Operator, e.Left, e.Right, context), nil
+			return equalityTri(e.Operator, e.Left, e.Right, context)
 		}
 	case *PropertyExpression, *LiteralExpression:
-		return bareTri(expr, context), nil
+		return bareTri(expr, context)
 	case *ParameterExpression:
 		// A missing parameter stays an error, from Eval below.
 		if _, ok := context["$"+e.Name]; ok {
-			return bareTri(expr, context), nil
+			return bareTri(expr, context)
 		}
 	case *UnaryExpression:
 		if e.Operator == "NOT" {
@@ -197,7 +218,10 @@ func evalTri(expr Expression, context map[string]any) (tri, error) {
 				// The operand still errors after bare operands became
 				// three-valued. Coerce its value, as NOT always did, but
 				// NOT of null is null in openCypher, not true.
-				v := extractValue(e.Operand, context)
+				v, verr := evalOperand(e.Operand, context)
+				if verr != nil {
+					return triFalse, verr
+				}
 				if v == nil {
 					return triUnknown, nil
 				}
