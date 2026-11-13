@@ -81,17 +81,21 @@ func (ac *AggregationComputer) max(values []any) any {
 }
 
 // extreme returns the value furthest in the direction of sign (-1 for the
-// minimum, 1 for the maximum), or nil when there is none. Lists and maps have
-// no order against scalars (compare reports 0, so one in first place was never
-// displaced); they are skipped as nulls are.
+// minimum, 1 for the maximum), or nil when there is none. Null is skipped. Every
+// other value, a list and a map included, takes part through compareTotal, so
+// the answer does not depend on the order of the rows (TCK Aggregation2 [9] to
+// [12]). A NaN is the greatest number, as compareTotal places it; no TCK
+// scenario covers NaN in min or max.
 func (ac *AggregationComputer) extreme(values []any, sign int) any {
 	var best any
+	found := false
 	for _, v := range values {
-		if isCollection(v) {
+		if isNullValue(v) {
 			continue
 		}
-		if best == nil || sign*ac.compare(v, best) > 0 {
+		if !found || sign*compareTotal(v, best) > 0 {
 			best = v
+			found = true
 		}
 	}
 	return best
@@ -106,10 +110,4 @@ func (ac *AggregationComputer) collect(values []any) []any {
 		}
 	}
 	return result
-}
-
-// compare compares two values (returns -1, 0, or 1)
-// Now delegates to the unified compareValues function
-func (ac *AggregationComputer) compare(a, b any) int {
-	return compareValues(a, b)
 }

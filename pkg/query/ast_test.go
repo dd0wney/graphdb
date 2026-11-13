@@ -353,7 +353,7 @@ func TestLiteralExpression_NonBoolean(t *testing.T) {
 
 // TestCompareValues_IntComparison tests integer comparison
 func TestCompareValues_IntComparison(t *testing.T) {
-	// This tests the internal compareValues function via BinaryExpression
+	// This tests the internal compareOrdered function via BinaryExpression
 	context := map[string]any{
 		"item": map[string]any{
 			"count": 5,
@@ -493,7 +493,7 @@ func TestCompareValues_TypeMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Eval failed: %v", err)
 	}
-	// Type mismatch should return false (compareValues returns 0)
+	// Type mismatch should return false (compareOrdered has no order)
 	if result {
 		t.Error("Expected type mismatch comparison to be false")
 	}

@@ -185,7 +185,7 @@ func TestCaseExpression_EvalValue_Simple(t *testing.T) {
 }
 
 func TestCaseExpression_SimpleCrosType(t *testing.T) {
-	// Verify int64 matches float64 via compareValues (not interface equality)
+	// Verify int64 matches float64 via compareOrdered (not interface equality)
 	caseExpr := &CaseExpression{
 		Operand: &LiteralExpression{Value: int64(1)},
 		WhenClauses: []CaseWhen{

@@ -78,7 +78,9 @@ func orderByKeys(orderBy []*OrderByItem) []string {
 	return keys
 }
 
-// sortRows sorts result rows according to ORDER BY criteria
+// sortRows sorts result rows according to ORDER BY criteria. compareTotal gives
+// every pair an order, with null last for ASC and first for DESC, so the result
+// does not depend on the order of the input rows.
 func (e *Executor) sortRows(rows []map[string]any, orderBy []*OrderByItem) {
 	if len(orderBy) == 0 || len(rows) == 0 {
 		return
@@ -91,7 +93,7 @@ func (e *Executor) sortRows(rows []map[string]any, orderBy []*OrderByItem) {
 			valI := rows[i][colName]
 			valJ := rows[j][colName]
 
-			cmp := compareValues(valI, valJ)
+			cmp := compareTotal(valI, valJ)
 			if cmp == 0 {
 				continue // tie — check next column
 			}
