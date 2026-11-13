@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because the evaluator discards a function's error; that is a wider change, not made here.
 
 ### Fixed
+- **A numeric property in a pattern map matches across integer and float.** `MATCH (p {id: $v})` and
+  `MERGE (p:M {id: $v})` now find a stored integer 7 when `/query` delivers the JSON number 7 as the float
+  `7.0`, by the rule `WHERE p.id = $v` uses; before, the match failed and each `MERGE` created another node.
 - **Booleans order, and every Go number kind compares by value.** `false` sorts before `true`, and
   `=`, `!=`, `IN`, `ORDER BY`, `MIN` and `MAX` compare `int`, `int64`, the other integer kinds and
   floats by value; before, a Go `int` never differed from an `int64` and a string compared equal to

@@ -311,7 +311,7 @@ func (o *MergeOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 			match := true
 			for k, v := range nodePat.Properties {
 				if propVal, ok := n.Properties[k]; ok {
-					if !compareStorageValue(propVal, convertToStorageValue(v)) {
+					if !propertyMatchesPattern(propVal, v) {
 						match = false
 						break
 					}

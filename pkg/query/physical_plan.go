@@ -51,6 +51,11 @@ type PhysicalOperator interface {
 // Kept here (not in a family file) because it is shared by MergeOperator
 // (physical_ops_mutate.go) and OptionalMatchOperator (physical_ops_scan.go).
 func compareStorageValue(a, b storage.Value) bool {
+	// An integer and a float holding the same number have different bytes, so
+	// the byte comparison below would call them different.
+	if isNumericStorage(a) && isNumericStorage(b) {
+		return valuesEqual(extractStorageValue(a), extractStorageValue(b))
+	}
 	if a.Type != b.Type {
 		return false
 	}
