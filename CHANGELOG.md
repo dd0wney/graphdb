@@ -42,6 +42,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `WITH count(p) AS c WHERE c`. `CASE WHEN <condition>` selects the `ELSE` branch when the
   condition is null, and the condition of a function that fails reads as null, so
   `CASE WHEN toBoolean(p.tags) THEN 'y' ELSE 'n' END` with a list property gives 'n' where it gave null.
+- **`=` and `<>` with a null operand now give null, and `WHERE` removes the row.** A null operand
+  is a null literal, a property the node does not have, a null parameter, a null variable from
+  `OPTIONAL MATCH`, or an operand that is itself unknown. `null = null` and `null <> null` are null.
+  `WHERE p.x = null` returned the nodes that have no `x` before and returns no rows now. It was
+  never the correct form: write `WHERE p.x IS NULL`. `WHERE p.x <> 1` no longer returns a node
+  that has no `x`. Two non-null values of different types are still not equal, so `'a' = 1` is
+  false and `'a' <> 1` is true. `RETURN` shows null in place of true or false for these forms.
+  The simple `CASE p.x WHEN ...` form already matched no branch for a null operand and is unchanged.
+
+  | Query | Before | Now |
+  |---|---|---|
+  | `WHERE p.nosuch <> 1` | every node | no rows |
+  | `WHERE p.a <> 1` (a is 1, 2, none) | the nodes with a=2 and with no `a` | the node with a=2 |
+  | `WHERE p.nosuch = null` | every node | no rows |
+  | `WHERE p.a = null` | the nodes with no `a` | no rows |
+  | `WHERE p.a = $v`, `v` null | the nodes with no `a` | no rows |
+  | `WHERE NOT (p.nosuch = 1)` | every node | no rows |
+  | `WHERE p.s <> 1`, `s` a string | every node | the nodes that have an `s` |
+  | `RETURN null = null` | true | null |
+  | `RETURN 1 = null` | false | null |
+  | `RETURN p.nosuch <> 1` | true | null |
+  | `RETURN 'a' = 1` | false | false |
+  | `SET n.x = (p.a = p.nosuch)` | stores false | removes `x` |
+
+  Not changed: `IN` (`null IN [1]` is false, `1 IN [null]` is false), and lists and maps, where
+  `[1, null] = [1, null]` is still true although openCypher gives null.
 - **An arithmetic error now stops the query with HTTP 400, where it returned null.**
   `RETURN 1 / 0`, `RETURN 1 % 0`, `RETURN 'a' + 1` and `RETURN -'a'` returned a null column; the
   same holds for `p.name + 1` over a string property and for `10 / p.zero`. They now fail with
@@ -59,6 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   evaluated cannot refuse. Every Go number kind computes as `int64` or `float64`, so a
   procedure column such as `count` and a library caller's `int` parameter work in arithmetic.
   Integer overflow and the errors of functions and `CASE` keep their behaviour.
+  Float division by zero (`1.0 / 0`, `0.0 / 0.0`) is refused too. openCypher gives infinity or NaN
+  there; this server refuses on purpose, because a JSON response cannot carry either value.
   **A query that writes and then refuses keeps its writes.** The executor has no rollback, so
   `CREATE (n:New {v: 1}) RETURN n.v / 0` leaves the node, and `MATCH (n:Person) SET n.y = 1 RETURN
   n.name + 1` writes `y` on every node, and both answer 400. A client must not send such a query

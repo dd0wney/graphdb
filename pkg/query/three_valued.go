@@ -6,9 +6,8 @@ import (
 )
 
 // tri is a three-valued truth value. openCypher gives null to an ordering
-// comparison of values that have no order, and NOT, AND and OR propagate it by
-// the Kleene rules. Only the ordering comparisons produce triUnknown so far.
-// = and != stay two-valued (coord task v1.4-cypher-three-valued-equality).
+// comparison of values that have no order and to = and <> with a null operand,
+// and NOT, AND and OR propagate it by the Kleene rules.
 type tri int
 
 const (
@@ -104,11 +103,13 @@ func isTriExpr(expr Expression) bool {
 	}
 }
 
-// equalityTri is the one place that decides = and != over a three-valued
-// operand. The rule is narrow on purpose: only an operand that is itself an
-// ordering comparison, AND, OR or NOT can make the result unknown. = and !=
-// of plain values, null included, stay two-valued until coord task
-// v1.4-cypher-three-valued-equality changes that.
+// equalityTri is the one place that decides = and != (the parser reads <> as
+// !=). A null operand makes the result unknown, and so does an operand that is
+// itself unknown: null = null is unknown, and WHERE removes the row. Only a
+// null operand does this. Two non-null values of different types are not
+// equal, so 'a' = 1 is false and 'a' <> 1 is true, as in openCypher. Lists and
+// maps compare by collectionsEqual, so [1, null] = [1, null] is true here,
+// where openCypher gives null.
 func equalityTri(op string, left, right Expression, context map[string]any) (tri, error) {
 	l, lUnknown, err := equalityOperand(left, context)
 	if err != nil {
@@ -118,7 +119,7 @@ func equalityTri(op string, left, right Expression, context map[string]any) (tri
 	if err != nil {
 		return triFalse, err
 	}
-	if lUnknown || rUnknown {
+	if lUnknown || rUnknown || l == nil || r == nil {
 		return triUnknown, nil
 	}
 	eq := valuesEqual(l, r)

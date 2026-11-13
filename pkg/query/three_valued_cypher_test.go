@@ -44,11 +44,10 @@ func TestThreeValued_Where(t *testing.T) {
 		{"p.age >= 18 AND p.id >= 3", []int64{}},
 		{"NOT (p.age >= 18 AND p.id < 0)", []int64{1, 2, 3, 4}},
 		{"NOT (p.nosuch > 5)", []int64{}},
-		// Behaviour recorded, not endorsed: = and != stay two-valued. The
-		// openCypher result is zero rows for a null operand. See coord task
-		// v1.4-cypher-three-valued-equality.
-		{"p.nosuch <> 1", []int64{1, 2, 3, 4}},
-		{"p.age <> 1", []int64{1, 2, 3, 4}},
+		// A null operand makes = and <> unknown. The string "x" is not null,
+		// so it differs from 1 and node 4 stays.
+		{"p.nosuch <> 1", []int64{}},
+		{"p.age <> 1", []int64{1, 2, 4}},
 		{"p.age IN [10.0]", []int64{1}},
 	}
 	for _, tt := range tests {
