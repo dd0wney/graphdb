@@ -111,8 +111,15 @@ func (e *Executor) ExecuteWithOptions(ctx context.Context, query *Query, opts Pa
 
 	// A pattern parameter that is still here was never supplied: Execute has no
 	// parameters, and ExecuteWithParams resolves them before it calls this.
-	if err := checkNoUnresolvedPatternParams(query); err != nil {
-		return nil, err
+	// EXPLAIN builds the plan and returns it before any step runs
+	// (executeSegment), and a plan needs no value. A UNION is the exception:
+	// executeUnion runs its second part even under EXPLAIN, so it keeps the
+	// check. PROFILE runs the query and keeps the check.
+	explainOnly := query.Explain && query.UnionNext == nil
+	if !explainOnly {
+		if err := checkNoUnresolvedPatternParams(query); err != nil {
+			return nil, err
+		}
 	}
 
 	return e.executeSegment(ctx, query, opts, query.InitialBindings)

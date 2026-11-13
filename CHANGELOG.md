@@ -178,7 +178,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error. A parameter that the caller did not supply now fails with `missing parameter: $v` in each of these
   places, and `Execute` (no parameters at all) refuses the same query instead of returning no rows. A parsed
   query that runs twice with different parameters now uses the second values; before, the first run's values
-  stayed in the query.
+  stayed in the query. A parameter in `WHERE`, `RETURN`, `SET`, `ORDER BY` or a `CALL` argument after a
+  `WITH`, in `WITH ... WHERE`, or in a later part of a `UNION` read as null before, so the query returned no
+  rows or partial rows with no error; it now has its value. A missing parameter in an expression answers 400
+  where it answered 500, and it is an error in every segment. `EXPLAIN` of a query with a parameter returns
+  its plan with no value supplied. One parsed query can run from more than one goroutine: the executor no
+  longer writes the bindings of the next `WITH` segment into the query.
 - **Booleans order, and every Go number kind compares by value.** `false` sorts before `true`, and
   `=`, `!=`, `IN`, `ORDER BY`, `MIN` and `MAX` compare `int`, `int64`, the other integer kinds and
   floats by value; before, a Go `int` never differed from an `int64` and a string compared equal to

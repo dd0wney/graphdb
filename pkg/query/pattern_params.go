@@ -40,14 +40,18 @@ func mapQueryPatterns(q *Query, fn func(*Pattern) (*Pattern, error)) (*Query, er
 		if err != nil {
 			return nil, err
 		}
-		cp.Match = &MatchClause{Patterns: patterns}
+		match := *q.Match
+		match.Patterns = patterns
+		cp.Match = &match
 	}
 	if q.Create != nil {
 		patterns, err := mapPatternList(q.Create.Patterns, fn)
 		if err != nil {
 			return nil, err
 		}
-		cp.Create = &CreateClause{Patterns: patterns}
+		create := *q.Create
+		create.Patterns = patterns
+		cp.Create = &create
 	}
 	if q.OptionalMatches != nil {
 		cp.OptionalMatches = make([]*OptionalMatchClause, len(q.OptionalMatches))
@@ -132,7 +136,9 @@ func resolvePatternParams(pattern *Pattern, params map[string]any) (*Pattern, er
 		return &nCopy, nil
 	}
 
-	out := &Pattern{}
+	// A copy of the struct value, so a field added to Pattern later is kept.
+	out := *pattern
+	out.Nodes, out.Relationships = nil, nil
 	if pattern.Nodes != nil {
 		out.Nodes = make([]*NodePattern, len(pattern.Nodes))
 		for i, n := range pattern.Nodes {
@@ -164,7 +170,7 @@ func resolvePatternParams(pattern *Pattern, params map[string]any) (*Pattern, er
 			out.Relationships[i] = &relCopy
 		}
 	}
-	return out, nil
+	return &out, nil
 }
 
 // resolvePropertyParams returns a new map with ParameterRef values replaced by actual values.
