@@ -89,7 +89,8 @@ func propertyMatchesPattern(stored storage.Value, patternValue any) bool {
 }
 
 func (ms *MatchStep) copyBinding(binding *BindingSet) *BindingSet {
-	newBindings := make(map[string]any)
+	// One slot beyond the input: nearly every caller adds the variable it binds.
+	newBindings := make(map[string]any, len(binding.bindings)+1)
 	for k, v := range binding.bindings {
 		newBindings[k] = v
 	}

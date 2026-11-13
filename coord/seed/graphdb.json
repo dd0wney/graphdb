@@ -239,6 +239,12 @@
       "title": "query: MATCH (a:P)-[:R]->(b:Q) WHERE a.pid = 1 RETURN b.name returns x with no index and null once a property index exists on pid. The optimizer swaps the whole MatchStep for an IndexLookupStep (pkg/query/optimizer.go:97) without checking for relationships, so the expansion is lost. Creating an index changes query results. Probed at 5988924 (scratchpad zz_gap_probe_test.go.keep). Acceptance: same rows with and without the index, seen red first"
     },
     {
+      "id": "v1.4-cypher-indexed-write-ignores-where",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: with a property index, MATCH (p) WHERE p.indexed = 1 AND p.other > 5 DELETE p deletes the node when the second condition is false, because applyFilterPushdown puts the FilterStep after the write step when the MatchStep became an IndexLookupStep"
+    },
+    {
       "id": "v1.4-cypher-delete-edge-noop",
       "track": "v1.4",
       "status": "pending",

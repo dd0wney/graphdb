@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A write query that used a property index ignored every other condition of its `WHERE`.**
+  With an index on `pid`, `MATCH (p:T) WHERE p.pid = 1 AND p.k > 5 DELETE p` deleted a node whose
+  `k` is 1, although the `WHERE` is false for it. The index took the row, the `DELETE` ran on it,
+  and the `WHERE` ran after the `DELETE`. `SET`, `REMOVE`, `DETACH DELETE`, `CREATE` and `MERGE`
+  after such a `MATCH` wrote in the same way. A write that changed the property that the `WHERE`
+  reads, for example `SET p.k = 9` with `p.k = 1`, answered `affected` 0 for a row that it changed.
+  With no index on the property, each of these queries was correct. A read query returned the right
+  rows. The cause is in the shape of `applyFilterPushdown`, which put the filter after the first
+  `MatchStep` and, once the index had replaced that step, at the end of the plan. That code is the
+  same in each release from v1.0.0 to v1.12.0, so each of them has the defect.
+  The filter now stays directly after the step that reads the nodes, and `Optimize` checks this on
+  every plan and runs the unoptimised plan if a pass breaks it. A user who ran such queries must
+  check each `SET`, `REMOVE`, `DELETE`, `CREATE` or `MERGE` query that has a `WHERE` with an equality
+  on an indexed property and one more condition. Look for nodes that were deleted or changed, and
+  for nodes or relationships that were created, when the other condition was false.
+
+  The same index path had a second defect. With a property index, a `MATCH` after a `WITH` lost
+  the rows of the `WITH`, and a parameter in another condition of the `WHERE` read as null. A write
+  therefore ran when the first part of the query matched nothing, and a read returned no rows.
+  For example, `MATCH (a:Nope) WITH a MATCH (p:T) WHERE p.pid = 1 DELETE p` deleted every node
+  with `pid` 1 although no `:Nope` node exists, and `MATCH (p:T) WHERE p.pid = 1 AND p.k > $one
+  SET p.x = 1` wrote nothing and `... RETURN p.pid` returned no rows, although the node matched.
+  A variable that the `WITH` had bound was also not kept to the same node. With no index, both
+  queries were correct. The same releases, v1.0.0 to v1.12.0, have this defect. The index now only
+  supplies the candidate nodes, and the code of `MatchStep` binds them to each input row. A user
+  must also check each query that has an indexed equality and follows a `WITH`, or has a `$name`
+  parameter in the same `WHERE`, whether it reads or writes.
 - **A bare boolean in a predicate position now works.** `WHERE p.b`, `WITH p.b AS b WHERE b`,
   `OPTIONAL MATCH ... WHERE q.b` and `CASE WHEN p.b THEN ...` returned no rows (or null) because
   `Eval` of a property was always an error and the lenient filter dropped each row. One function,
