@@ -187,43 +187,75 @@ func valueTri(expr Expression, context map[string]any) (tri, error) {
 // evalPredicate decides whether a row or a CASE branch is selected. Only true
 // selects: unknown and false both give false. An error, a RefusalError
 // included, goes to the caller, which decides what a lenient filter does.
+//
+// A conjunct of the top-level AND chain that is false or unknown excludes the
+// row, and then an error in another conjunct is discarded. The reason: the row
+// is not in the result under any plan, so the error tells the caller nothing,
+// and an index on one conjunct would never have read the row. Without this the
+// answer of a query depends on the plan and on the order of the operands. Every
+// caller selects on true only, so the rule holds for each of them. When no
+// conjunct excludes the row, the first error stays. The walk runs only after
+// an error, so a function operand can run twice on a row that fails.
 func evalPredicate(expr Expression, context map[string]any) (bool, error) {
+	// The row with no error takes the same path as before. Only an error starts
+	// the walk, which evaluates the chain again, so the walk costs nothing on
+	// the common path.
 	t, err := evalTri(expr, context)
-	return t == triTrue, err
+	if err == nil {
+		return t == triTrue, nil
+	}
+	var firstErr error
+	if excludedByConjunct(expr, context, &firstErr) {
+		return false, nil
+	}
+	if firstErr != nil {
+		return false, firstErr
+	}
+	return true, nil
+}
+
+// excludedByConjunct walks the AND chain of expr from left to right, down
+// through AND nodes only, as extractIndexableCondition does. It stops at the
+// first conjunct that is false or unknown. An error does not stop it: the walk
+// records the first error in firstErr and goes on, to look for a conjunct that
+// excludes the row.
+func excludedByConjunct(expr Expression, context map[string]any, firstErr *error) bool {
+	if be, ok := expr.(*BinaryExpression); ok && be.Operator == "AND" {
+		return excludedByConjunct(be.Left, context, firstErr) ||
+			excludedByConjunct(be.Right, context, firstErr)
+	}
+	t, err := evalTri(expr, context)
+	if err != nil {
+		if *firstErr == nil {
+			*firstErr = err
+		}
+		return false
+	}
+	return t != triTrue
 }
 
 // evalTri evaluates expr with three-valued logic. Any expression other than
 // NOT, AND, OR and an ordering comparison keeps its two-valued Eval result.
+//
 // AND and OR keep the short-circuit order of the two-valued code, and only
 // where the Kleene rule allows it: false AND x and true OR x skip x, but
 // unknown AND x and unknown OR x evaluate x.
+//
+// An error in one operand of AND or OR is discarded when the other operand
+// decides the result: false AND error is false, and true OR error is true. The
+// reason: the result is the same whatever the failed operand would have given,
+// so the answer must not depend on the operand order or on the plan. In each
+// other case an error stays an error, and when both operands fail the error of
+// the left operand wins. The second operand runs after an error in the first
+// operand only, so the path with no error does the same work as before.
 func evalTri(expr Expression, context map[string]any) (tri, error) {
 	switch e := expr.(type) {
 	case *BinaryExpression:
 		switch {
 		case e.Operator == "AND":
-			left, err := evalTri(e.Left, context)
-			if err != nil || left == triFalse {
-				return triFalse, err
-			}
-			right, err := evalTri(e.Right, context)
-			if err != nil {
-				return triFalse, err
-			}
-			return triAnd(left, right), nil
+			return evalAnd(e, context)
 		case e.Operator == "OR":
-			left, err := evalTri(e.Left, context)
-			if err != nil {
-				return triFalse, err
-			}
-			if left == triTrue {
-				return triTrue, nil
-			}
-			right, err := evalTri(e.Right, context)
-			if err != nil {
-				return triFalse, err
-			}
-			return triOr(left, right), nil
+			return evalOr(e, context)
 		case isOrderingOp(e.Operator):
 			l, err := evalOperand(e.Left, context)
 			if err != nil {
@@ -283,4 +315,47 @@ func evalTri(expr Expression, context map[string]any) (tri, error) {
 	// calls evalPredicate. A stack overflow is fatal and recover cannot stop it,
 	// so an unknown type is an error. A new Expression type needs a case here.
 	return triFalse, fmt.Errorf("evalTri: no boolean rule for expression type %T", expr)
+}
+
+// evalAnd evaluates AND. A false operand fixes the result, and an error in the
+// other operand is then discarded. The branches with no error come first and
+// have the shape of the code before this rule, because every WHERE runs them.
+func evalAnd(e *BinaryExpression, context map[string]any) (tri, error) {
+	left, lerr := evalTri(e.Left, context)
+	if lerr == nil {
+		if left == triFalse {
+			return triFalse, nil
+		}
+		right, rerr := evalTri(e.Right, context)
+		if rerr == nil {
+			return triAnd(left, right), nil
+		}
+		return triFalse, rerr
+	}
+	right, rerr := evalTri(e.Right, context)
+	if rerr == nil && right == triFalse {
+		return triFalse, nil
+	}
+	return triFalse, lerr
+}
+
+// evalOr evaluates OR. A true operand fixes the result, and an error in the
+// other operand is then discarded.
+func evalOr(e *BinaryExpression, context map[string]any) (tri, error) {
+	left, lerr := evalTri(e.Left, context)
+	if lerr == nil {
+		if left == triTrue {
+			return triTrue, nil
+		}
+		right, rerr := evalTri(e.Right, context)
+		if rerr == nil {
+			return triOr(left, right), nil
+		}
+		return triFalse, rerr
+	}
+	right, rerr := evalTri(e.Right, context)
+	if rerr == nil && right == triTrue {
+		return triTrue, nil
+	}
+	return triFalse, lerr
 }
