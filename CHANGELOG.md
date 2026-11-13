@@ -10,7 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A bare boolean in a predicate position now works.** `WHERE p.b`, `WITH p.b AS b WHERE b`,
+  `OPTIONAL MATCH ... WHERE q.b` and `CASE WHEN p.b THEN ...` returned no rows (or null) because
+  `Eval` of a property was always an error and the lenient filter dropped each row. One function,
+  `evalPredicate`, now decides each of these places, and only true selects.
+- **`NOT` of a function or `CASE` that gives null is now null.** `WHERE NOT toBoolean(p.s)` kept
+  the row where `toBoolean` gave null, because the operand fell through to a two-valued `Eval`.
+  The row is now removed, as openCypher requires.
+
 ### Changed
+- **A non-boolean operand of `NOT`, `AND`, `OR` or `WHERE` is now an error, where it was coerced.**
+  `WHERE NOT n.s` with a string or number property used to read a non-empty string, a non-zero
+  number, a list or a node as true. It now stops the query with HTTP 400 and
+  `a boolean is necessary here, but the value is a string` (or integer, float, list, map, node).
+  null stays unknown, so a row with no value is dropped, not refused. `CASE WHEN` follows the
+  same rule.
 - **An arithmetic error now stops the query with HTTP 400, where it returned null.**
   `RETURN 1 / 0`, `RETURN 1 % 0`, `RETURN 'a' + 1` and `RETURN -'a'` returned a null column; the
   same holds for `p.name + 1` over a string property and for `10 / p.zero`. They now fail with

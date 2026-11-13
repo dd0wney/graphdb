@@ -31,6 +31,7 @@ func TestAPI_Query_RefusalIs400WithMessage(t *testing.T) {
 		{`MATCH (p:Person) WITH p.age AS age, count(p) RETURN age AS age`, "WITH"},
 		{`RETURN 1 / 0 AS x`, "division by zero"},
 		{`MATCH (p:Person) RETURN p.name + 1 AS x`, "cannot apply + to string and integer"},
+		{`MATCH (p:Person) WHERE p.name AND true RETURN p.name`, "a boolean is necessary here, but the value is a string"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.query, func(t *testing.T) {

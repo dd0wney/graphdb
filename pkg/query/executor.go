@@ -204,7 +204,7 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	if query.With.Where != nil {
 		filtered := make([]*BindingSet, 0)
 		for _, binding := range projectedBindings {
-			match, err := query.With.Where.Expression.Eval(binding.bindings)
+			match, err := evalPredicate(query.With.Where.Expression, binding.bindings)
 			if err != nil {
 				if isRefusal(err) {
 					return nil, err
