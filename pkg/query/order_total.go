@@ -83,7 +83,7 @@ func compareTotal(left, right any) int {
 	case rankBytes:
 		return bytes.Compare(left.([]byte), right.([]byte))
 	case rankList:
-		return compareLists(asList(left), asList(right))
+		return compareLists(sortList(left), sortList(right))
 	case rankMap:
 		return compareMaps(asStringMap(left), asStringMap(right))
 	case rankOther:
@@ -166,8 +166,10 @@ func isNullValue(v any) bool {
 	return totalRank(v) == rankNull
 }
 
-// asList reads a list value as []any. The common case, []any, is not copied.
-func asList(v any) []any {
+// sortList reads a value of rankList as []any. The common case, []any, is not
+// copied. It is not asList (equal_tri.go): that one answers "is this a list",
+// and refuses an array, where totalRank has already decided the rank here.
+func sortList(v any) []any {
 	if l, ok := v.([]any); ok {
 		return l
 	}
