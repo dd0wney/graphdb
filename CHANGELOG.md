@@ -178,7 +178,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error. A parameter that the caller did not supply now fails with `missing parameter: $v` in each of these
   places, and `Execute` (no parameters at all) refuses the same query instead of returning no rows. A parsed
   query that runs twice with different parameters now uses the second values; before, the first run's values
-  stayed in the query. A parameter in `WHERE`, `RETURN`, `SET` or a `CALL` argument after a `WITH`, in
+  stayed in the query. A parameter in `WHERE`, `RETURN`, `SET`, an `ORDER BY` expression or a `CALL` argument after a `WITH`, in
   `WITH ... WHERE`, or in a later part of a `UNION` read as null before, so the query returned no rows or
   partial rows with no error; it now has its value. A parameter that the caller did not supply is a refusal
   that names it, in every expression and every segment, through every entry point: `Execute`,

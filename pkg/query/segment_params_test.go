@@ -25,8 +25,7 @@ var segmentPositions = []struct {
 }{
 	{"WHERE", `MATCH (b:Person) WHERE b.id = <V> RETURN b.name AS n`, "1", int64(1), ""},
 	{"RETURN", `MATCH (b:Person {id: 2}) RETURN b.id + <V> AS n`, "10", int64(10), ""},
-	{"ORDER BY", `MATCH (b:Person) RETURN b.name AS n ORDER BY b.id * <V>`, "-1", int64(-1),
-		"the executor ignores an ORDER BY expression that is not a bare property (orderByColumnName returns \"<expr>\"), so no row ever depends on its value"},
+	{"ORDER BY", `MATCH (b:Person) RETURN b.name AS n ORDER BY b.id * <V>`, "-1", int64(-1), ""},
 	{"SET", `MATCH (b:Person {id: 2}) SET b.score = <V> RETURN b.score AS n`, "5", int64(5), ""},
 	{"CALL", `CALL algo.kHop(<ANN>, <V>) YIELD totalReachable RETURN totalReachable AS n`, "1", int64(1), ""},
 }
