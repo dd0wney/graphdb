@@ -74,7 +74,78 @@ func (le *LiteralExpression) Eval(context map[string]any) (bool, error) {
 }
 
 func (le *LiteralExpression) EvalValue(context map[string]any) (any, error) {
-	return le.Value, nil
+	return literalValue(le, context)
+}
+
+// literalValue returns the value of a literal. A list literal may hold a
+// *ParameterRef (the parser keeps one for [1, $v]). The reference becomes the
+// value of the "$name" binding of the row, in a new list: the parsed query is
+// shared by every run and stays read only.
+//
+// The grammar keeps only scalars and parameters in a list (parseValue), so one
+// level is all there is. A map or a nested list is handled the same way.
+func literalValue(le *LiteralExpression, context map[string]any) (any, error) {
+	return resolveLiteralParams(le.Value, context)
+}
+
+func resolveLiteralParams(v any, context map[string]any) (any, error) {
+	switch x := v.(type) {
+	case *ParameterRef:
+		val, ok := context["$"+x.Name]
+		if !ok {
+			return nil, refusef("missing parameter: $%s", x.Name)
+		}
+		return val, nil
+	case []any:
+		if !containsParameterRef(x) {
+			return x, nil
+		}
+		out := make([]any, len(x))
+		for i, e := range x {
+			r, err := resolveLiteralParams(e, context)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = r
+		}
+		return out, nil
+	case map[string]any:
+		if !containsParameterRef(x) {
+			return x, nil
+		}
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			r, err := resolveLiteralParams(e, context)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = r
+		}
+		return out, nil
+	default:
+		return v, nil
+	}
+}
+
+// containsParameterRef reports whether v holds a *ParameterRef at any depth.
+func containsParameterRef(v any) bool {
+	switch x := v.(type) {
+	case *ParameterRef:
+		return true
+	case []any:
+		for _, e := range x {
+			if containsParameterRef(e) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, e := range x {
+			if containsParameterRef(e) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // FunctionCallExpression represents a function call (e.g., toLower(n.name))
