@@ -861,6 +861,78 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: [1, null] = [1, null] is true and null IN [1] and 1 IN [null] are false, where openCypher gives null (TCK Comparison1 scenario 6 and 7, List5 scenario 20 to 41)"
+    },
+    {
+      "id": "v1.4-cypher-bound-non-node-variable-rematched",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: WITH 1 AS p MATCH (p:T) WHERE p.pid = 1 SET p.z = 1 binds p again to each matching node and writes them, where openCypher refuses a MATCH of a variable that holds a value that is not a node (matchNode in pkg/query/match_node.go falls through to the scan). Same result with and without an index"
+    },
+    {
+      "id": "v1.4-cypher-vector-step-refusal-depends-on-plan",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: VectorSearchStep selects the top-k nodes before the WHERE filter runs, so a refusal on a row it hides depends on a vector index. The plan-independence rules of evalPredicate do not cover it, because the vector step does not run the other conjuncts"
+    },
+    {
+      "id": "v1.4-cypher-explain-union-runs-second-part",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: EXPLAIN of a UNION runs the second part, because executeUnion runs each later part under EXPLAIN. It must return a plan for each part and run no step. EXPLAIN of a UNION also keeps the missing-parameter check for this reason"
+    },
+    {
+      "id": "v1.4-query-execute-with-text-ignores-with-and-union",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: ExecuteWithText runs the first segment only: a write after WITH answers affected=N and writes nothing, and a UNION returns the rows of its first part. QueryCache.Get and Put also race on the cache map from many goroutines, and the cached plan is not dropped when an index is created or removed. Only cmd/integration-test calls it: make it use the normal path or remove it"
+    },
+    {
+      "id": "v1.4-storage-create-node-keeps-caller-map",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "storage: createLiveNodeLocked stores the properties map and the labels slice of the caller in the live node with no copy and no documented ownership rule, so a caller that changes its map after CreateNode changes the stored node outside the lock and the WAL, and a later SET changes the map of the caller. Copy on create, or document that the store takes ownership, with a measured cost for the bulk path"
+    },
+    {
+      "id": "v1.4-cypher-nested-list-literal",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: the parser refuses a list literal inside a list literal (invalid list element: expected value, got '['), which blocks 27 of the 37 scenarios of TCK List5 at the query level. The 27 scenarios are skipped rows in pkg/query/equality_collections_test.go, and TestInTri_SkipListIsHonest fails when one starts to parse"
+    },
+    {
+      "id": "v1.4-cypher-with-order-by",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: WITH ... ORDER BY does not parse (unexpected token ORDER), with SKIP and LIMIT after it. No scenario of TCK WithOrderBy1 to WithOrderBy4 runs (292 scenarios)"
+    },
+    {
+      "id": "v1.4-cypher-aggregate-in-order-by",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: ORDER BY max(x) and ORDER BY count(n) are refused (an aggregate works only as a whole RETURN or WITH item), and RETURN c.city, count(p) AS c ORDER BY c * -1 is refused as an expression after an aggregate. TCK ReturnOrderBy2 scenario 3 and ReturnOrderBy6 scenario 1 need the first form"
+    },
+    {
+      "id": "v1.4-cypher-parameter-row-cost",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a parameter costs one map entry in each row that enters a segment, so a WITH chain on 100,000 rows takes about 17 percent more time with a parameter than with a literal, with equal allocations. Replace each ParameterExpression with a literal in the copy of the query that each run already makes for patterns, so no row holds a $name key"
+    },
+    {
+      "id": "v1.4-cypher-set-list-json-number-type",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: SET p.t = [$a, 2] through POST /query stores a general JSON list, where the literal [1, 2] stores an integer list, because JSON gives each number as a float64 and the list then holds mixed number types. Decide the stored type of a list of mixed JSON numbers and add a test"
+    },
+    {
+      "id": "v1.4-cypher-index-uses-first-equality-only",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: extractIndexableCondition returns the first equality of the AND chain, so WHERE p.k = 1 AND p.pid = 1 does not use an index on pid when k has none. Costs speed only: try each equality of the chain"
+    },
+    {
+      "id": "v1.4-cypher-tck-known-gaps-table",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "test: make the openCypher TCK feature files the source of TestCypherKnownGaps. A harness that runs each scenario and records parse-and-pass, parse-and-fail and no-parse gave, on 2026-11-13: ReturnOrderBy2 to 6, 4 of 23 pass; WithOrderBy1 to 4, 0 of 292 run; List5, 10 of 37 run as query text. Commit the harness and the counts so that each parser fix moves a measured number"
     }
   ],
   "deps": [
