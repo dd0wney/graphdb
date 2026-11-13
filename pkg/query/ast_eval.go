@@ -91,7 +91,7 @@ func evalOperand(expr Expression, context map[string]any) (any, error) {
 	case *PropertyExpression:
 		return propertyValue(e, context), nil
 	case *LiteralExpression:
-		return e.Value, nil
+		return literalValue(e, context)
 	case *ParameterExpression:
 		val, ok := context["$"+e.Name]
 		if !ok {
