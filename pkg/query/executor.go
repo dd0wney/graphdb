@@ -91,7 +91,15 @@ func (e *Executor) ExecuteWithContext(ctx context.Context, query *Query) (*Resul
 // cache and calls executePlan directly, so it always runs the zero PathOptions.
 // A caller that wants the options parses first and calls this, giving up the
 // plan cache.
-func (e *Executor) ExecuteWithOptions(ctx context.Context, query *Query, opts PathOptions) (result *ResultSet, err error) {
+func (e *Executor) ExecuteWithOptions(ctx context.Context, query *Query, opts PathOptions) (*ResultSet, error) {
+	return e.execute(ctx, query, opts, nil)
+}
+
+// execute is the one place that every entry point with a context goes
+// through. params are the parameters of this run: nil for an entry point that
+// takes none. They replace any parameters that ctx carries from an outer run,
+// so a nested call never reads the values of its caller.
+func (e *Executor) execute(ctx context.Context, query *Query, opts PathOptions, params map[string]any) (result *ResultSet, err error) {
 	// Panic recovery - prevent server crashes from query execution panics
 	defer func() {
 		if r := recover(); r != nil {
@@ -109,18 +117,18 @@ func (e *Executor) ExecuteWithOptions(ctx context.Context, query *Query, opts Pa
 		return nil, err
 	}
 
-	// A pattern parameter that is still here was never supplied: Execute has no
-	// parameters, and ExecuteWithParams resolves them before it calls this.
-	// EXPLAIN builds the plan and returns it before any step runs
-	// (executeSegment), and a plan needs no value. A UNION is the exception:
-	// executeUnion runs its second part even under EXPLAIN, so it keeps the
-	// check. PROFILE runs the query and keeps the check.
-	explainOnly := query.Explain && query.UnionNext == nil
-	if !explainOnly {
-		if err := checkNoUnresolvedPatternParams(query); err != nil {
+	// Refuse a parameter that this run does not hold, in a pattern or in an
+	// expression of any segment, before any segment runs. Without it the
+	// query returns no rows, or null, with no error. EXPLAIN builds the plan
+	// and returns it before any step runs (executeSegment), and a plan needs no
+	// value. A UNION is the exception: executeUnion runs its second part even
+	// under EXPLAIN, so it keeps the check. PROFILE runs the query and keeps it.
+	if !explainsOnly(query) {
+		if err := validateParameterExpressions(query, params); err != nil {
 			return nil, err
 		}
 	}
+	ctx = withRunParams(ctx, params)
 
 	return e.executeSegment(ctx, query, opts, query.InitialBindings)
 }
@@ -263,53 +271,48 @@ func (e *Executor) ExecuteWithParamsContext(ctx context.Context, query *Query, p
 	if err != nil {
 		return nil, err
 	}
-	return e.ExecuteWithContext(withRunParams(ctx, params), prepared)
+	return e.execute(ctx, prepared, PathOptions{}, params)
 }
 
-// injectParams resolves ParameterRef values in property maps, validates that
-// every ParameterExpression has a corresponding param. The caller passes
-// params on with withRunParams, so that each segment can read them. Shared by
-// ExecuteWithParams[Context].
+// injectParams resolves ParameterRef values in property maps. execute passes
+// params on with withRunParams, so that each segment can read them, and
+// validates them. Shared by ExecuteWithParams[Context].
 //
 // It returns a copy of query for the caller to run and leaves query alone: the
 // caller may run the same parsed Query again with other parameters.
 func (e *Executor) injectParams(query *Query, params map[string]any) (*Query, error) {
-	// Validate and resolve ParameterRef values in property maps
-	prepared, err := resolveParameters(query, params)
-	if err != nil {
-		return nil, err
-	}
+	// EXPLAIN needs no value, so a parameter that is not supplied stays.
+	// validateParameterExpressions, in execute, refuses what remains in any
+	// query that runs.
+	return resolveParameters(query, params, explainsOnly(query))
+}
 
-	// resolveParameters is meant to leave nothing. A clause that it forgets
-	// must fail here, by name, and not run with a value that matches nothing.
-	if name, clause, found := findUnresolvedPatternParam(prepared); found {
-		return nil, fmt.Errorf("internal error: parameter $%s in %s was not resolved", name, clause)
-	}
-
-	// Validate that all ParameterExpression references have corresponding params
-	if err := validateParameterExpressions(prepared, params); err != nil {
-		return nil, err
-	}
-
-	// The "$name" bindings travel in the context of the run, not in the query.
-	return prepared, nil
+// explainsOnly reports whether the query returns a plan and runs no step.
+func explainsOnly(query *Query) bool {
+	return query.Explain && query.UnionNext == nil
 }
 
 // validateParameterExpressions refuses a parameter that params does not hold,
-// in every expression of every segment of the statement: the WITH chain and
-// each part of a UNION. It walks with walkQueryExpressions, which is the one
-// place that knows where a clause keeps an expression. The error is a
-// RefusalError, so a server answers 400 for it as it does for a pattern.
+// in every expression and every pattern of every segment of the statement: the
+// WITH chain and each part of a UNION. params may be nil. It walks with
+// walkQueryExpressions, which is the one place that knows where a clause keeps
+// an expression. The error is a RefusalError, so a server answers 400.
+//
+// A parameter that a pattern still holds is refused even when params has its
+// name: resolveParameters replaces each one, so a survivor means that a clause
+// escaped it, and a *ParameterRef matches no stored value.
 func validateParameterExpressions(query *Query, params map[string]any) error {
 	var err error
-	walkQueryExpressions(query, func(_ string, expr Expression) {
+	walkQueryExpressions(query, func(clause string, expr Expression) {
 		if err != nil {
 			return
 		}
-		if pe, ok := expr.(*ParameterExpression); ok {
-			if _, exists := params[pe.Name]; !exists {
-				err = refusef("missing parameter: $%s", pe.Name)
-			}
+		pe, ok := expr.(*ParameterExpression)
+		if !ok {
+			return
+		}
+		if _, exists := params[pe.Name]; !exists || patternClauses[clause] {
+			err = refusef("missing parameter: $%s", pe.Name)
 		}
 	})
 	return err
@@ -408,7 +411,11 @@ func (e *Executor) ExecuteWithText(queryText string, query *Query) (*ResultSet, 
 	if err := checkQueryNames(query); err != nil {
 		return nil, err
 	}
-	if err := checkNoUnresolvedPatternParams(query); err != nil {
+	if explainsOnly(query) {
+		// A plan needs no value, and this path would otherwise run the query.
+		return buildExplainResult(e.optimizer.Optimize(e.buildExecutionPlan(query), query)), nil
+	}
+	if err := validateParameterExpressions(query, nil); err != nil {
 		return nil, err
 	}
 

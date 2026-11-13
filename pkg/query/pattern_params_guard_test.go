@@ -43,7 +43,7 @@ func handMadeQueries() map[string]*Query {
 func TestCheckNoUnresolvedPatternParams_FindsEachPlace(t *testing.T) {
 	for name, q := range handMadeQueries() {
 		t.Run(name, func(t *testing.T) {
-			err := checkNoUnresolvedPatternParams(q)
+			err := validateParameterExpressions(q, nil)
 			if err == nil {
 				t.Fatalf("a parameter in %s was not found", name)
 			}
@@ -60,14 +60,14 @@ func TestCheckNoUnresolvedPatternParams_FindsEachPlace(t *testing.T) {
 func TestResolveParameters_LeavesNothingAndKeepsOriginal(t *testing.T) {
 	for name, q := range handMadeQueries() {
 		t.Run(name, func(t *testing.T) {
-			resolved, err := resolveParameters(q, map[string]any{"p": int64(5)})
+			resolved, err := resolveParameters(q, map[string]any{"p": int64(5)}, false)
 			if err != nil {
 				t.Fatalf("resolveParameters: %v", err)
 			}
-			if err := checkNoUnresolvedPatternParams(resolved); err != nil {
+			if err := validateParameterExpressions(resolved, map[string]any{"p": int64(5)}); err != nil {
 				t.Errorf("resolveParameters left a parameter: %v", err)
 			}
-			if err := checkNoUnresolvedPatternParams(q); err == nil {
+			if err := validateParameterExpressions(q, map[string]any{"p": int64(5)}); err == nil {
 				t.Errorf("resolveParameters wrote into the original query")
 			}
 		})
@@ -77,7 +77,7 @@ func TestResolveParameters_LeavesNothingAndKeepsOriginal(t *testing.T) {
 func TestResolveParameters_MissingParameterNamesItInEachPlace(t *testing.T) {
 	for name, q := range handMadeQueries() {
 		t.Run(name, func(t *testing.T) {
-			_, err := resolveParameters(q, map[string]any{})
+			_, err := resolveParameters(q, map[string]any{}, false)
 			if err == nil || !strings.Contains(err.Error(), "missing parameter: $p") {
 				t.Errorf("error = %v, want missing parameter: $p", err)
 			}
@@ -95,8 +95,10 @@ func TestInjectParamsCheckCatchesAForgottenPlace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mapQueryPatterns: %v", err)
 	}
-	if name, clause, found := findUnresolvedPatternParam(forgotten); !found || name != "p" || clause != clauseMerge {
-		t.Errorf("findUnresolvedPatternParam = (%q, %q, %v), want (p, MERGE, true)", name, clause, found)
+	// Even with the name supplied, a parameter that a pattern still holds is refused.
+	err = validateParameterExpressions(forgotten, map[string]any{"p": int64(5)})
+	if err == nil || !strings.Contains(err.Error(), "$p") {
+		t.Errorf("a pattern parameter that the resolver forgot was not refused: %v", err)
 	}
 }
 
@@ -104,7 +106,7 @@ func TestInjectParamsCheckCatchesAForgottenPlace(t *testing.T) {
 // split them would make a later filter read the unresolved node.
 func TestResolvePatternParams_KeepsNodeIdentity(t *testing.T) {
 	orig := refPattern("p")
-	got, err := resolvePatternParams(orig, map[string]any{"p": int64(5)})
+	got, err := resolvePatternParams(orig, map[string]any{"p": int64(5)}, false)
 	if err != nil {
 		t.Fatalf("resolvePatternParams: %v", err)
 	}

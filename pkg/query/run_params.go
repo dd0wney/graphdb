@@ -13,10 +13,9 @@ import "context"
 type runParamsKey struct{}
 
 // withRunParams returns ctx carrying params for seedRows. The map is read only.
+// It sets the value even when params is empty, so that a run with no
+// parameters does not see those of an outer run in the same context.
 func withRunParams(ctx context.Context, params map[string]any) context.Context {
-	if len(params) == 0 {
-		return ctx
-	}
 	return context.WithValue(ctx, runParamsKey{}, params)
 }
 

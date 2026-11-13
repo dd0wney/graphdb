@@ -116,7 +116,7 @@ func TestPatternParamsCopy_KeepsEveryField(t *testing.T) {
 	t.Run("Pattern", func(t *testing.T) {
 		p := &Pattern{}
 		fillNonZero(t, reflect.ValueOf(p).Elem(), map[string]bool{"Nodes": true, "Relationships": true})
-		cp, err := resolvePatternParams(p, nil)
+		cp, err := resolvePatternParams(p, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}

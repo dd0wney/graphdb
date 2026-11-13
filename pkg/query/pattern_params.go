@@ -20,9 +20,12 @@ package query
 // resolveParameters returns a copy of query in which each *ParameterRef in a
 // pattern is replaced with its value from params. The copy shares everything
 // that is not a pattern with the original, which resolution does not touch.
-func resolveParameters(query *Query, params map[string]any) (*Query, error) {
+//
+// keepMissing leaves a parameter that params does not hold in place and does
+// not fail. EXPLAIN uses it: a plan needs no value.
+func resolveParameters(query *Query, params map[string]any, keepMissing bool) (*Query, error) {
 	return mapQueryPatterns(query, func(p *Pattern) (*Pattern, error) {
-		return resolvePatternParams(p, params)
+		return resolvePatternParams(p, params, keepMissing)
 	})
 }
 
@@ -117,7 +120,7 @@ func mapPatternList(patterns []*Pattern, fn func(*Pattern) (*Pattern, error)) ([
 // resolvePatternParams returns a copy of pattern with its parameters resolved.
 // A relationship's From and To point at nodes of the same pattern, and the
 // copy keeps that identity.
-func resolvePatternParams(pattern *Pattern, params map[string]any) (*Pattern, error) {
+func resolvePatternParams(pattern *Pattern, params map[string]any, keepMissing bool) (*Pattern, error) {
 	copies := make(map[*NodePattern]*NodePattern, len(pattern.Nodes))
 	resolveNode := func(n *NodePattern) (*NodePattern, error) {
 		if n == nil {
@@ -126,7 +129,7 @@ func resolvePatternParams(pattern *Pattern, params map[string]any) (*Pattern, er
 		if done, ok := copies[n]; ok {
 			return done, nil
 		}
-		props, err := resolvePropertyParams(n.Properties, params)
+		props, err := resolvePropertyParams(n.Properties, params, keepMissing)
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +158,7 @@ func resolvePatternParams(pattern *Pattern, params map[string]any) (*Pattern, er
 			if rel == nil {
 				continue
 			}
-			props, err := resolvePropertyParams(rel.Properties, params)
+			props, err := resolvePropertyParams(rel.Properties, params, keepMissing)
 			if err != nil {
 				return nil, err
 			}
@@ -175,7 +178,7 @@ func resolvePatternParams(pattern *Pattern, params map[string]any) (*Pattern, er
 
 // resolvePropertyParams returns a new map with ParameterRef values replaced by actual values.
 // The original map is not modified, making repeated calls with different params safe.
-func resolvePropertyParams(props map[string]any, params map[string]any) (map[string]any, error) {
+func resolvePropertyParams(props map[string]any, params map[string]any, keepMissing bool) (map[string]any, error) {
 	if props == nil {
 		return nil, nil
 	}
@@ -187,6 +190,10 @@ func resolvePropertyParams(props map[string]any, params map[string]any) (map[str
 			continue
 		}
 		actual, exists := params[ref.Name]
+		if !exists && keepMissing {
+			resolved[key] = val
+			continue
+		}
 		if !exists {
 			// A refusal, so a server answers 400: the name came from the caller.
 			return nil, refusef("missing parameter: $%s", ref.Name)
@@ -205,28 +212,4 @@ var patternClauses = map[string]bool{
 	clauseOptionalMatch: true,
 	clauseMerge:         true,
 	clauseCreate:        true,
-}
-
-// findUnresolvedPatternParam returns the name of the first *ParameterRef that
-// a pattern of the whole statement still holds, and the clause that holds it.
-func findUnresolvedPatternParam(q *Query) (name, clause string, found bool) {
-	walkQueryExpressions(q, func(c string, expr Expression) {
-		if found || !patternClauses[c] {
-			return
-		}
-		if p, ok := expr.(*ParameterExpression); ok {
-			name, clause, found = p.Name, c, true
-		}
-	})
-	return name, clause, found
-}
-
-// checkNoUnresolvedPatternParams refuses a query whose pattern still holds a
-// parameter. A *ParameterRef compares unequal to every stored value, so such a
-// query would return no rows, or null for OPTIONAL MATCH, with no error.
-func checkNoUnresolvedPatternParams(q *Query) error {
-	if name, _, found := findUnresolvedPatternParam(q); found {
-		return refusef("missing parameter: $%s", name)
-	}
-	return nil
 }
