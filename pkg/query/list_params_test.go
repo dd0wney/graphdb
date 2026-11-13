@@ -71,11 +71,14 @@ func TestListParams_MissingParameterIsRefused(t *testing.T) {
 			ex, ann := segmentStore(t)
 			text := strings.ReplaceAll(tc.par, "<ANN>", fmt.Sprint(ann))
 			_, err := ex.ExecuteWithParams(parsePatternQuery(t, text), map[string]any{})
+			// The refusal names the first missing parameter in the text. A map
+			// has no fixed order, so the name is found by position: picking the
+			// first key of tc.params made this test fail on some runs.
 			var name string
+			first := len(text)
 			for k := range tc.params {
-				if strings.Contains(text, "$"+k) {
-					name = k
-					break
+				if at := strings.Index(text, "$"+k); at >= 0 && at < first {
+					name, first = k, at
 				}
 			}
 			wantMissingParam(t, err, name)
