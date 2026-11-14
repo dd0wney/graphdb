@@ -88,7 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   times keeps the first value of a parameter in a pattern map, for example `MATCH (p:T {pid: $v})`
   (the HTTP API parses each request, so it does not have this defect). A query that names a
   `$name` parameter and runs with no parameter map (`Execute`, `ExecuteWithContext`, or an HTTP
-  request with no `parameters`) reads each parameter as null and is not refused, so `MATCH (p:T)
+  request with no `parameters`) reads each parameter as null and is not refused before it runs
+  (only a `SET` value that is one parameter is refused while the query runs), so `MATCH (p:T)
   WHERE p.pid = 1 AND $v IS NULL DELETE p` deletes the node. Always send the parameters with a
   query that names one. The next minor release
   corrects the first of these (#754 on `main`).
