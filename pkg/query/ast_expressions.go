@@ -81,7 +81,45 @@ func (le *LiteralExpression) Eval(context map[string]any) (bool, error) {
 }
 
 func (le *LiteralExpression) EvalValue(context map[string]any) (any, error) {
-	return le.Value, nil
+	return resolveListParams(le.Value, context)
+}
+
+// resolveListParams gives a list literal the values of its parameters. The
+// parser stores a *ParameterRef in the []any of a list literal, and the value is
+// read here, from the "$name" key of the row, at each evaluation. Nothing is
+// written into the parsed query, so a second run of the same parsed query with
+// another value uses the other value. A value with no parameter in it is
+// returned as it is, with no copy.
+func resolveListParams(value any, context map[string]any) (any, error) {
+	list, ok := value.([]any)
+	if !ok || !listHasParams(list) {
+		return value, nil
+	}
+	out := make([]any, len(list))
+	for i, item := range list {
+		ref, isRef := item.(*ParameterRef)
+		if !isRef {
+			out[i] = item
+			continue
+		}
+		// A missing key leaves a null item. ExecuteWithParams refuses a missing
+		// parameter before any part runs, so this is reached only by a run
+		// with no parameter map. Such a run reads each scalar parameter as
+		// null, and a list must do the same for one item: an error here made
+		// the whole list null, and "NOT x IN [1, $v]" then became true.
+		out[i] = context["$"+ref.Name]
+	}
+	return out, nil
+}
+
+// listHasParams reports whether a list literal holds a *ParameterRef.
+func listHasParams(list []any) bool {
+	for _, item := range list {
+		if _, ok := item.(*ParameterRef); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // FunctionCallExpression represents a function call (e.g., toLower(n.name))
@@ -207,4 +245,10 @@ func coerceToBool(val any) bool {
 	default:
 		return true
 	}
+}
+
+// literalHasParams reports whether a literal is a list that holds a parameter.
+func literalHasParams(lit *LiteralExpression) bool {
+	list, ok := lit.Value.([]any)
+	return ok && listHasParams(list)
 }

@@ -600,10 +600,11 @@ func TestIndexLookupExecution(t *testing.T) {
 		labels:      []string{"User"},
 	}
 
+	// A query starts with one empty row; a step with no input row gives none.
 	ctx := &ExecutionContext{
 		graph:    graph,
 		bindings: make(map[string]any),
-		results:  make([]*BindingSet, 0),
+		results:  []*BindingSet{{bindings: make(map[string]any)}},
 	}
 
 	err = step.Execute(ctx)

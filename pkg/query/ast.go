@@ -26,6 +26,13 @@ type Query struct {
 
 	// InitialBindings are injected by WITH clause chaining
 	InitialBindings []*BindingSet
+
+	// params holds the query parameters as row keys, each key in the "$name"
+	// form. injectParams sets it on every segment of the query, and a later
+	// ExecuteWithParams replaces it. A segment can get no row (a MATCH that
+	// finds nothing before a WITH), so the parameters must not be read back
+	// from a row: executeWithChain and executeUnion copy them from this field.
+	params map[string]any
 }
 
 // MatchClause represents a MATCH pattern

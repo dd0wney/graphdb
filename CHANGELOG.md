@@ -26,6 +26,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it still compiles. Go packages are outside `docs/STABILITY_POLICY.md` (#721).
 
 ### Fixed
+- **A write query that used a property index ignored every other condition of its `WHERE`.**
+  With an index on `pid`, `MATCH (p:T) WHERE p.pid = 1 AND p.k > 5 DELETE p` deleted a node whose
+  `k` is 1, although the `WHERE` is false for it. The index took the row, the `DELETE` ran on it,
+  and the `WHERE` ran after the `DELETE`. `SET`, `REMOVE`, `DETACH DELETE`, `CREATE` and `MERGE`
+  after such a `MATCH` wrote in the same way. A write that changed the property that the `WHERE`
+  reads, for example `SET p.k = 9` with `p.k = 1`, answered `affected` 0 for a row that it changed.
+  With no index on the property, each of these queries was correct. A read query returned the right
+  rows. The cause is in the shape of `applyFilterPushdown`, which put the filter after the first
+  `MatchStep` and, once the index had replaced that step, at the end of the plan. That code is the
+  same in each release from v1.0.0 to v1.12.0, so each of them has the defect (backport of #752).
+  The filter now stays directly after the step that reads the nodes, and `Optimize` checks this on
+  every plan and runs the unoptimised plan if a pass breaks it. A user who ran such queries must
+  check each `SET`, `REMOVE`, `DELETE`, `CREATE` or `MERGE` query that has a `WHERE` with an equality
+  on an indexed property and one more condition. Look for nodes that were deleted or changed, and
+  for nodes or relationships that were created, when the other condition was false.
+
+  The same index path had a second defect. With a property index, a `MATCH` after a `WITH` lost
+  the rows of the `WITH`, and a parameter in another condition of the `WHERE` read as null. A write
+  therefore ran when the first part of the query matched nothing, and a read returned no rows.
+  For example, `MATCH (a:Nope) WITH a MATCH (p:T) WHERE p.pid = 1 DELETE p` deleted every node
+  with `pid` 1 although no `:Nope` node exists, and `MATCH (p:T) WHERE p.pid = 1 AND p.k > $one
+  SET p.x = 1` wrote nothing and `... RETURN p.pid` returned no rows, although the node matched.
+  A variable that the `WITH` had bound was also not kept to the same node. With no index, both
+  queries were correct. The same releases, v1.0.0 to v1.12.0, have this defect. The index now only
+  supplies the candidate nodes, and the code of `MatchStep` binds them to each input row. A user
+  must also check each query that has an indexed equality and follows a `WITH`, or has a `$name`
+  parameter in the same `WHERE`, whether it reads or writes.
+
+  A third defect did not need an index. A `$name` parameter read as null in each part of a query
+  after a `WITH`, because the `WITH` kept only its own items. A write there ran on a null
+  condition. For example, with `one` = 5, `MATCH (a:T) WHERE a.k = 1 WITH a MATCH (p:T) WHERE
+  p.pid = 1 AND $one IS NULL DELETE p` deleted the node, and `... AND p.k < $lim SET p.x = 1`
+  wrote nothing when the condition was true. The second and each later branch of a `UNION` read
+  a parameter as null in the same way. A parameter in a pattern map after a `WITH` or in a later
+  `UNION` branch, for example `MATCH (p:T {pid: $v})`, matched nothing, and `CREATE` or `MERGE`
+  with such a map was refused with a message that named the wrong cause. A parameter that the
+  caller did not supply was refused only in the first part of a query, and only where it stood in
+  a comparison, a function call or a `CASE`. After a `WITH` or in a `UNION` branch it read as
+  null, with no error. In a `NOT`, a `-` sign, an arithmetic expression, a `WITH` item, an
+  `ORDER BY` item or a `SET` value (also in `MERGE ... ON CREATE SET` and `ON MATCH SET`) it read as
+  null in each part, and the write ran. A `SET` value that was only the parameter was refused
+  while the query ran, after the writes before it. A parameter now has its value in each part of a
+  query. The query keeps the parameters in each part and does not read them from a row, so a
+  first part that finds no row, for example `MATCH (a:Nope) WITH a ... UNION ...`, no longer loses the parameters
+  in the later parts. When the caller supplies a parameter map (`ExecuteWithParams`, or an HTTP
+  request with `parameters`), a parameter that is missing from the map is refused with `missing
+  parameter: $name` before any part runs. Two more places were wrong in the same way. A parameter in
+  an `OPTIONAL MATCH` pattern map, for example `OPTIONAL MATCH (p)-[:R]->(q {pid: $v})`, never
+  matched, so with `v` = 2 `MATCH (p:T) WHERE p.pid = 1 OPTIONAL MATCH (p)-[:R]->(q {pid: $v})
+  WITH p, q WHERE q IS NULL DETACH DELETE p` deleted `p`. A parameter inside a list literal was
+  not evaluated, so with `v` = 1 `MATCH (p:T) WHERE p.pid = 1 AND NOT p.k IN [$v] DELETE p`
+  deleted the node, `RETURN [$v]` returned an internal pointer, and `SET p.k = [$v]` stored a
+  different value from `SET p.k = [1]`. Both now work, and a parameter that is missing
+  from the map is refused in either place. A user must check each query that has a `$name`
+  parameter after a `WITH` or in a later branch of a `UNION`, in an `OPTIONAL MATCH` pattern map,
+  or in a list literal.
+  Not corrected in this patch release: `PROFILE` runs a query with each parameter as null. Do not
+  use `PROFILE` on a write query that has a parameter. A query that is refused while a later part
+  runs keeps the writes of the parts before it. A parsed query that an embedding program runs two
+  times keeps the first value of a parameter in a pattern map, for example `MATCH (p:T {pid: $v})`
+  (the HTTP API parses each request, so it does not have this defect). A query that names a
+  `$name` parameter and runs with no parameter map (`Execute`, `ExecuteWithContext`, or an HTTP
+  request with no `parameters`) reads each parameter as null and is not refused before it runs
+  (only a `SET` value that is one parameter is refused while the query runs), so `MATCH (p:T)
+  WHERE p.pid = 1 AND $v IS NULL DELETE p` deletes the node. Always send the parameters with a
+  query that names one. The next minor release
+  corrects the first of these (#754 on `main`).
 - **`lsm.LSMStorage.GetStats` no longer deadlocks against a flush.** It took `lsm.stats.mu` and
   then `lsm.mu`, while `flush` and `compact` take them in the opposite order, so a `GetStats`
   that ran during a flush could block both for ever. Only callers of the public `GetStats` (and
