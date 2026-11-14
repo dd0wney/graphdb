@@ -255,6 +255,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decision of the owner, and the query timeout is the control.
   A cancelled `(*vector.Emeans).TrainContext` leaves the model as it was before the call.
 
+## [1.12.1] - 2026-11-14
+
+A patch release from the branch `release/v1.12.x`, which starts at `v1.12.0`. It is not an ancestor
+of `main`. It contains only corrections for Cypher queries that deleted or changed data that the
+query did not select, in each release from v1.0.0 to v1.12.0. See the advisory
+[GHSA-fjm7-wf5c-2jhh](https://github.com/dd0wney/graphdb/security/advisories/GHSA-fjm7-wf5c-2jhh)
+and the [release notes](https://github.com/dd0wney/graphdb/releases/tag/v1.12.1) for the affected
+queries and for what a user must check.
+
+### Fixed
+- **A write query that used a property index ignored every other condition of its `WHERE`, and an
+  index lookup lost the rows that entered it.** This is the backport of #752. `main` has the same
+  correction under `[Unreleased]`.
+- **A `$name` parameter read as null after a `WITH`, in a later `UNION` branch, in an
+  `OPTIONAL MATCH` pattern map and in a list literal, and a parameter that was missing from the
+  parameter map was not refused in many places.** The release branch has a narrow correction
+  (#758). `main` has the full correction (#741, #754), which also refuses a query that names a
+  parameter and has no parameter map, and which gives `PROFILE` its parameters. v1.12.1 does not
+  correct those two cases.
+
 ## [1.12.0] - 2026-11-07
 
 A minor release. An encrypted store now seals the uniqueness-rule registry (`rules.json`), which

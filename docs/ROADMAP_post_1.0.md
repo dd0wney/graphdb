@@ -2,7 +2,9 @@
 
 **Status:** proposal / living planning doc. Sketches the minor-version line from the
 v1.0.0 GA to the next major (v2.0.0).
-**Current release:** `v1.12.0` (2026-11-07, GPG-signed). An encrypted store seals `rules.json`,
+**Current release:** `v1.12.1` (2026-11-14, GPG-signed), a patch from `release/v1.12.x`: Cypher
+writes with a property index honour the full `WHERE`, and a parameter has its value in each part of
+a query (advisory GHSA-fjm7-wf5c-2jhh). `v1.12.0` (2026-11-07): an encrypted store seals `rules.json`,
 `Storage.SetEncryption` returns `error`, and a lock-order deadlock in `lsm` `GetStats` is fixed.
 `v1.11.1` (2026-11-07) was a patch: `DeleteAllNodes` now resets
 the counts, the tenant ID sets and the vectors, and a large bulk create into a store with no WAL
