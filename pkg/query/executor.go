@@ -313,6 +313,24 @@ func resolveParameters(query *Query, params map[string]any) error {
 			return err
 		}
 	}
+	return forEachLaterSegment(query, func(segment *Query) error {
+		return resolveParameters(segment, params)
+	})
+}
+
+// forEachLaterSegment calls fn on the segment after a WITH and on the next
+// branch of a UNION. A check or a rewrite that looked only at the first segment
+// let a parameter in a later one read as null, and a write there ran on a null
+// condition.
+func forEachLaterSegment(query *Query, fn func(*Query) error) error {
+	for _, segment := range []*Query{query.Next, query.UnionNext} {
+		if segment == nil {
+			continue
+		}
+		if err := fn(segment); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -386,7 +404,9 @@ func validateParameterExpressions(query *Query, params map[string]any) error {
 			}
 		}
 	}
-	return nil
+	return forEachLaterSegment(query, func(segment *Query) error {
+		return validateParameterExpressions(segment, params)
+	})
 }
 
 func validateExprParams(expr Expression, params map[string]any) error {
@@ -428,6 +448,26 @@ func validateExprParams(expr Expression, params map[string]any) error {
 	return nil
 }
 
+// parameterBindings returns one row that holds only the "$name" keys of the
+// first row of rows, or nil if that row has no parameter. injectParams puts
+// every parameter in each row, so the first row has them all.
+func parameterBindings(rows []*BindingSet) *BindingSet {
+	if len(rows) == 0 {
+		return nil
+	}
+	var out *BindingSet
+	for key, value := range rows[0].bindings {
+		if !strings.HasPrefix(key, "$") {
+			continue
+		}
+		if out == nil {
+			out = &BindingSet{bindings: make(map[string]any)}
+		}
+		out.bindings[key] = value
+	}
+	return out
+}
+
 // executeUnion executes two query segments and combines their results.
 // UNION deduplicates rows; UNION ALL preserves all rows.
 func (e *Executor) executeUnion(ctx context.Context, query *Query, opts PathOptions) (*ResultSet, error) {
@@ -441,7 +481,15 @@ func (e *Executor) executeUnion(ctx context.Context, query *Query, opts PathOpti
 		return nil, fmt.Errorf("UNION first segment: %w", err)
 	}
 
-	// Execute second segment (handles chained UNIONs recursively)
+	// Execute second segment (handles chained UNIONs recursively). A parameter
+	// belongs to the whole query, so the next branch starts with the "$name"
+	// keys of this one. Without them each parameter read as null there.
+	// The assignment is unconditional, so a run with no parameter does not keep
+	// the values of an earlier run of the same parsed query.
+	query.UnionNext.InitialBindings = nil
+	if params := parameterBindings(query.InitialBindings); params != nil {
+		query.UnionNext.InitialBindings = []*BindingSet{params}
+	}
 	second, err := e.ExecuteWithOptions(ctx, query.UnionNext, opts)
 	if err != nil {
 		return nil, fmt.Errorf("UNION second segment: %w", err)

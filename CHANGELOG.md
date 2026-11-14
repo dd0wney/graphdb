@@ -58,11 +58,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after a `WITH`, because the `WITH` kept only its own items. A write there ran on a null
   condition. For example, with `one` = 5, `MATCH (a:T) WHERE a.k = 1 WITH a MATCH (p:T) WHERE
   p.pid = 1 AND $one IS NULL DELETE p` deleted the node, and `... AND p.k < $lim SET p.x = 1`
-  wrote nothing when the condition was true. The parameters now stay through each `WITH`. A user
-  must check each query that has a `$name` parameter after a `WITH`.
+  wrote nothing when the condition was true. The second and each later branch of a `UNION` read
+  a parameter as null in the same way. A parameter in a pattern map after a `WITH` or in a later
+  `UNION` branch, for example `MATCH (p:T {pid: $v})`, matched nothing, and `CREATE` or `MERGE`
+  with such a map was refused with a message that named the wrong cause. A parameter that the
+  caller did not supply was refused only in the first part of a query. After a `WITH` or in a
+  `UNION` branch it read as null, with no error. A parameter now has its value in each part of a
+  query, and a query with a parameter that the caller did not supply is refused with `missing
+  parameter: $name` before any part runs. A user must check each query that has a `$name`
+  parameter after a `WITH` or in a later branch of a `UNION`.
   Not corrected in this patch release: `PROFILE` runs a query with each parameter as null. Do not
-  use `PROFILE` on a write query that has a parameter. The next minor release corrects this
-  (#754 on `main`).
+  use `PROFILE` on a write query that has a parameter. A query that is refused while a later part
+  runs keeps the writes of the parts before it. The next minor release corrects the first of
+  these (#754 on `main`).
 - **`lsm.LSMStorage.GetStats` no longer deadlocks against a flush.** It took `lsm.stats.mu` and
   then `lsm.mu`, while `flush` and `compact` take them in the opposite order, so a `GetStats`
   that ran during a flush could block both for ever. Only callers of the public `GetStats` (and
