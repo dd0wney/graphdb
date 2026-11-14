@@ -66,18 +66,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a comparison, a function call or a `CASE`. After a `WITH` or in a `UNION` branch it read as
   null, with no error. In a `NOT`, a `-` sign, an arithmetic expression, a `WITH` item, an
   `ORDER BY` item or a `SET` value (also in `MERGE ... ON CREATE SET` and `ON MATCH SET`) it read as
-  null in each part, and the write ran. A parameter now has its value in each part of a query. The
+  null in each part, and the write ran. A `SET` value that was only the parameter was refused
+  while the query ran, after the writes before it. A parameter now has its value in each part of a
+  query, except in an `OPTIONAL MATCH` pattern map and in a list literal (see below). The
   query keeps the parameters in each part and does not read them from a row, so a first part that
   finds no row, for example `MATCH (a:Nope) WITH a ... UNION ...`, no longer loses the parameters
-  in the later parts. A parameter that the caller did not supply is refused in each place where
-  it can stand, with `missing parameter: $name`, before any part runs. A user must check each
+  in the later parts. A parameter that the caller did not supply is refused with `missing
+  parameter: $name` before any part runs, except in an `OPTIONAL MATCH` pattern map and in a list
+  literal. A user must check each
   query that has a `$name` parameter after a `WITH` or in a later branch of a `UNION`.
   Not corrected in this patch release: `PROFILE` runs a query with each parameter as null. Do not
   use `PROFILE` on a write query that has a parameter. A query that is refused while a later part
   runs keeps the writes of the parts before it. A parsed query that an embedding program runs two
   times keeps the first value of a parameter in a pattern map, for example `MATCH (p:T {pid: $v})`
-  (the HTTP API parses each request, so it does not have this defect). The next minor release
-  corrects the first of these (#754 on `main`).
+  (the HTTP API parses each request, so it does not have this defect). A parameter in an
+  `OPTIONAL MATCH` pattern map, for example `OPTIONAL MATCH (p)-[:R]->(q {pid: $v})`, never
+  matches, also when the caller supplies it, so `... WITH p, q WHERE q IS NULL DETACH DELETE p`
+  deletes `p`. Put the condition in the `WHERE` of the `OPTIONAL MATCH` instead. A parameter
+  inside a list literal, for example `[$v]` or `p.k IN [1, $v]`, is not evaluated, so
+  `... AND NOT p.k IN [$v] DELETE p` deletes the node. Pass the whole list as one parameter,
+  `p.k IN $list`, instead. The next minor release corrects the first of these (#754 on `main`).
 - **`lsm.LSMStorage.GetStats` no longer deadlocks against a flush.** It took `lsm.stats.mu` and
   then `lsm.mu`, while `flush` and `compact` take them in the opposite order, so a `GetStats`
   that ran during a flush could block both for ever. Only callers of the public `GetStats` (and
