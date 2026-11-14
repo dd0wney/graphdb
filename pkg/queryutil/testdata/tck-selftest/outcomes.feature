@@ -278,3 +278,11 @@ Feature: Harness self-test
       | v | e |
       | 1 | 1 |
       | 2 | 3 |
+
+  Scenario: error expected and the query fails when it runs
+    Given any graph
+    When executing query:
+      """
+      RETURN 1 / 0 AS x
+      """
+    Then a ArgumentError should be raised at runtime: NumberOutOfRange

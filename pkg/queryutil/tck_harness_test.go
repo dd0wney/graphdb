@@ -13,7 +13,9 @@ package queryutil
 // The harness is a measuring instrument, so its comparison never reports
 // "pass" for a check that it did not fully make. Where it cannot judge a
 // scenario, for example when a result holds a node literal, the outcome is
-// "unsupported". TestTCKHarnessSelfTest proves that each outcome can occur.
+// "unsupported". A scenario that expects an error never gets "pass": the
+// harness does not check the class or the phase, so it reports
+// "error-unchecked". TestTCKHarnessSelfTest proves that each outcome can occur.
 //
 // Environment:
 //
@@ -47,7 +49,7 @@ type tckRow struct {
 
 func (r tckRow) key() string { return r.feature + "\t" + r.name }
 
-var tckOutcomes = []string{outPass, outFail, outNoParse, outUnsupported}
+var tckOutcomes = []string{outPass, outFail, outNoParse, outUnsupported, outErrorUnchecked}
 
 func tckRunAll(t *testing.T, dir string) []tckRow {
 	t.Helper()
@@ -119,13 +121,13 @@ func logTCKCounts(t *testing.T, rows []tckRow) {
 		total[r.outcome]++
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n%-18s %6s %6s %9s %12s %6s\n", "feature", "pass", "fail", "no-parse", "unsupported", "total")
+	fmt.Fprintf(&b, "\n%-18s %6s %6s %9s %12s %16s %6s\n", "feature", "pass", "fail", "no-parse", "unsupported", "error-unchecked", "total")
 	line := func(name string, c map[string]int) {
 		sum := 0
 		for _, o := range tckOutcomes {
 			sum += c[o]
 		}
-		fmt.Fprintf(&b, "%-18s %6d %6d %9d %12d %6d\n", name, c[outPass], c[outFail], c[outNoParse], c[outUnsupported], sum)
+		fmt.Fprintf(&b, "%-18s %6d %6d %9d %12d %16d %6d\n", name, c[outPass], c[outFail], c[outNoParse], c[outUnsupported], c[outErrorUnchecked], sum)
 	}
 	for _, f := range slices.Sorted(maps.Keys(per)) {
 		line(f, per[f])
@@ -169,31 +171,32 @@ func readTCKBaseline() (map[string]string, error) {
 // scenario name is a key of the table below, and the table has no other key.
 func TestTCKHarnessSelfTest(t *testing.T) {
 	want := map[string]string{
-		"passes":                                  outPass,
-		"wrong expected value":                    outFail,
-		"integer against float":                   outFail,
-		"float against integer":                   outFail,
-		"string against integer":                  outFail,
-		"list order matters":                      outFail,
-		"rows in the wrong sequence, in order":    outFail,
-		"rows in the wrong sequence, any order":   outPass,
-		"duplicate rows are a multiset":           outFail,
-		"wrong column name":                       outFail,
-		"query that does not parse":               outNoParse,
-		"setup that does not parse":               outNoParse,
-		"error expected and the query is refused": outPass,
-		"error expected and the query runs":       outFail,
-		"no side effects after a create":          outFail,
-		"side effects table that holds":           outPass,
-		"side effects table that is wrong":        outFail,
-		"unknown step":                            outUnsupported,
-		"node literal in the result":              outUnsupported,
-		"result step that is not read":            outUnsupported,
-		"expected empty and rows come back":       outFail,
-		"expected empty and none come back":       outPass,
-		"parameter is bound":                      outPass,
-		"outline {ex 1}":                          outPass,
-		"outline {ex 2}":                          outFail,
+		"passes":                                          outPass,
+		"wrong expected value":                            outFail,
+		"integer against float":                           outFail,
+		"float against integer":                           outFail,
+		"string against integer":                          outFail,
+		"list order matters":                              outFail,
+		"rows in the wrong sequence, in order":            outFail,
+		"rows in the wrong sequence, any order":           outPass,
+		"duplicate rows are a multiset":                   outFail,
+		"wrong column name":                               outFail,
+		"query that does not parse":                       outNoParse,
+		"setup that does not parse":                       outNoParse,
+		"error expected and the query is refused":         outErrorUnchecked,
+		"error expected and the query runs":               outFail,
+		"error expected and the query fails when it runs": outErrorUnchecked,
+		"no side effects after a create":                  outFail,
+		"side effects table that holds":                   outPass,
+		"side effects table that is wrong":                outFail,
+		"unknown step":                                    outUnsupported,
+		"node literal in the result":                      outUnsupported,
+		"result step that is not read":                    outUnsupported,
+		"expected empty and rows come back":               outFail,
+		"expected empty and none come back":               outPass,
+		"parameter is bound":                              outPass,
+		"outline {ex 1}":                                  outPass,
+		"outline {ex 2}":                                  outFail,
 	}
 	rows := tckRunAll(t, tckSelfTestDir)
 	got := map[string]tckRow{}
@@ -218,7 +221,7 @@ func TestTCKHarnessSelfTest(t *testing.T) {
 			t.Errorf("fixture scenario %q has no expected outcome in the table", name)
 		}
 	}
-	// Each of the four outcomes must occur, or the table proves too little.
+	// Each of the five outcomes must occur, or the table proves too little.
 	for _, o := range tckOutcomes {
 		if !slices.ContainsFunc(rows, func(r tckRow) bool { return r.outcome == o }) {
 			t.Errorf("no fixture gives the outcome %s", o)

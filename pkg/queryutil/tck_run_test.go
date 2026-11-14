@@ -20,6 +20,10 @@ const (
 	outFail        = "fail"        // the query ran and a check did not hold
 	outNoParse     = "no-parse"    // the lexer or parser refused a query
 	outUnsupported = "unsupported" // the harness cannot judge the scenario
+	// outErrorUnchecked: the scenario expected an error and an error came at
+	// some phase. The harness checks neither the class nor the phase, so this
+	// is not a pass. A pass means the harness fully compared expected rows.
+	outErrorUnchecked = "error-unchecked"
 )
 
 type tckResult struct {
@@ -95,8 +99,10 @@ func tckInterpret(sc *tckScenario) *tckSpec {
 			sp.deferred = "result step not read by the harness: " + st.text
 		case tckErrorStep.MatchString(st.text):
 			// The class and the phase are not checked. An error at any phase
-			// satisfies the step. This is a simplification on purpose: the
-			// product names its errors differently from the TCK.
+			// satisfies the step, but the outcome is error-unchecked and never
+			// pass, because the harness did not compare what the error was.
+			// This is on purpose: the product names its errors differently
+			// from the TCK.
 			sp.expect = expError
 		case st.text == "no side effects":
 			sp.noSideEffects = true
@@ -246,6 +252,7 @@ func tckRunScenario(sc *tckScenario, workDir string) (res tckResult) {
 		if qerr == nil {
 			return tckResult{outFail, "no error where an error was expected"}
 		}
+		checks = append(checks, tckResult{outErrorUnchecked, "error came; class and phase not checked"})
 	} else if sp.expect != expUnread {
 		checks = append(checks, tckCheckResult(sp, rs))
 	}
@@ -258,14 +265,16 @@ func tckRunScenario(sc *tckScenario, workDir string) (res tckResult) {
 	return tckCombine(checks)
 }
 
-// tckCombine gives fail over unsupported over pass.
+// tckCombine gives fail over unsupported over error-unchecked over pass.
 func tckCombine(checks []tckResult) tckResult {
 	best := tckResult{outcome: outPass}
 	for _, c := range checks {
 		switch {
 		case c.outcome == outFail:
 			return c
-		case c.outcome == outUnsupported && best.outcome == outPass:
+		case c.outcome == outUnsupported:
+			best = c
+		case c.outcome == outErrorUnchecked && best.outcome == outPass:
 			best = c
 		}
 	}
