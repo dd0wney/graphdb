@@ -102,11 +102,12 @@ func resolveListParams(value any, context map[string]any) (any, error) {
 			out[i] = item
 			continue
 		}
-		bound, found := context["$"+ref.Name]
-		if !found {
-			return nil, fmt.Errorf("missing parameter: $%s", ref.Name)
-		}
-		out[i] = bound
+		// A missing key leaves a null item. ExecuteWithParams refuses a missing
+		// parameter before any part runs, so this is reached only by a run
+		// with no parameter map. Such a run reads each scalar parameter as
+		// null, and a list must do the same for one item: an error here made
+		// the whole list null, and "NOT x IN [1, $v]" then became true.
+		out[i] = context["$"+ref.Name]
 	}
 	return out, nil
 }

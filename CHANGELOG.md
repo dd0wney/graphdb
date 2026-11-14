@@ -70,20 +70,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while the query ran, after the writes before it. A parameter now has its value in each part of a
   query. The query keeps the parameters in each part and does not read them from a row, so a
   first part that finds no row, for example `MATCH (a:Nope) WITH a ... UNION ...`, no longer loses the parameters
-  in the later parts. A parameter that the caller did not supply is refused with `missing
+  in the later parts. When the caller supplies a parameter map (`ExecuteWithParams`, or an HTTP
+  request with `parameters`), a parameter that is missing from the map is refused with `missing
   parameter: $name` before any part runs. Two more places were wrong in the same way. A parameter in
   an `OPTIONAL MATCH` pattern map, for example `OPTIONAL MATCH (p)-[:R]->(q {pid: $v})`, never
   matched, so with `v` = 2 `MATCH (p:T) WHERE p.pid = 1 OPTIONAL MATCH (p)-[:R]->(q {pid: $v})
   WITH p, q WHERE q IS NULL DETACH DELETE p` deleted `p`. A parameter inside a list literal was
   not evaluated, so with `v` = 1 `MATCH (p:T) WHERE p.pid = 1 AND NOT p.k IN [$v] DELETE p`
   deleted the node, `RETURN [$v]` returned an internal pointer, and `SET p.k = [$v]` stored a
-  different value from `SET p.k = [1]`. Both now work, and a missing parameter in either place is
-  refused. A user must check each query that has a `$name` parameter after a `WITH` or in a later branch of a `UNION`.
+  different value from `SET p.k = [1]`. Both now work, and a parameter that is missing
+  from the map is refused in either place. A user must check each query that has a `$name`
+  parameter after a `WITH` or in a later branch of a `UNION`, in an `OPTIONAL MATCH` pattern map,
+  or in a list literal.
   Not corrected in this patch release: `PROFILE` runs a query with each parameter as null. Do not
   use `PROFILE` on a write query that has a parameter. A query that is refused while a later part
   runs keeps the writes of the parts before it. A parsed query that an embedding program runs two
   times keeps the first value of a parameter in a pattern map, for example `MATCH (p:T {pid: $v})`
-  (the HTTP API parses each request, so it does not have this defect). The next minor release
+  (the HTTP API parses each request, so it does not have this defect). A query that names a
+  `$name` parameter and runs with no parameter map (`Execute`, `ExecuteWithContext`, or an HTTP
+  request with no `parameters`) reads each parameter as null and is not refused, so `MATCH (p:T)
+  WHERE p.pid = 1 AND $v IS NULL DELETE p` deletes the node. Always send the parameters with a
+  query that names one. The next minor release
   corrects the first of these (#754 on `main`).
 - **`lsm.LSMStorage.GetStats` no longer deadlocks against a flush.** It took `lsm.stats.mu` and
   then `lsm.mu`, while `flush` and `compact` take them in the opposite order, so a `GetStats`
