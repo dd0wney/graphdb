@@ -53,6 +53,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supplies the candidate nodes, and the code of `MatchStep` binds them to each input row. A user
   must also check each query that has an indexed equality and follows a `WITH`, or has a `$name`
   parameter in the same `WHERE`, whether it reads or writes.
+
+  A third defect did not need an index. A `$name` parameter read as null in each part of a query
+  after a `WITH`, because the `WITH` kept only its own items. A write there ran on a null
+  condition. For example, with `one` = 5, `MATCH (a:T) WHERE a.k = 1 WITH a MATCH (p:T) WHERE
+  p.pid = 1 AND $one IS NULL DELETE p` deleted the node, and `... AND p.k < $lim SET p.x = 1`
+  wrote nothing when the condition was true. The parameters now stay through each `WITH`. A user
+  must check each query that has a `$name` parameter after a `WITH`.
+  Not corrected in this patch release: `PROFILE` runs a query with each parameter as null. Do not
+  use `PROFILE` on a write query that has a parameter. The next minor release corrects this
+  (#754 on `main`).
 - **`lsm.LSMStorage.GetStats` no longer deadlocks against a flush.** It took `lsm.stats.mu` and
   then `lsm.mu`, while `flush` and `compact` take them in the opposite order, so a `GetStats`
   that ran during a flush could block both for ever. Only callers of the public `GetStats` (and

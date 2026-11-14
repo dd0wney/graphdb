@@ -183,6 +183,15 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	for _, binding := range execCtx.results {
 		newBinding := &BindingSet{bindings: make(map[string]any)}
 
+		// A parameter is not a variable, so a WITH does not remove it. Without
+		// this copy the next segment read each "$name" as null, and a write
+		// there ran on a null condition.
+		for key, value := range binding.bindings {
+			if strings.HasPrefix(key, "$") {
+				newBinding.bindings[key] = value
+			}
+		}
+
 		for _, item := range query.With.Items {
 			alias := item.Alias
 			if alias == "" && item.Expression != nil {
