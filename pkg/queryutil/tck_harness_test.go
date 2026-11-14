@@ -15,7 +15,7 @@ package queryutil
 // scenario, for example when a result holds a node literal, the outcome is
 // "unsupported". A scenario that expects an error never gets "pass": the
 // harness does not check the class or the phase, so it reports
-// "error-unchecked". TestTCKHarnessSelfTest proves that each outcome can occur.
+// "error-at-parse" or "error-at-run". TestTCKHarnessSelfTest proves that each outcome can occur.
 //
 // Environment:
 //
@@ -49,7 +49,7 @@ type tckRow struct {
 
 func (r tckRow) key() string { return r.feature + "\t" + r.name }
 
-var tckOutcomes = []string{outPass, outFail, outNoParse, outUnsupported, outErrorUnchecked}
+var tckOutcomes = []string{outPass, outFail, outNoParse, outUnsupported, outErrorAtParse, outErrorAtRun}
 
 func tckRunAll(t *testing.T, dir string) []tckRow {
 	t.Helper()
@@ -121,13 +121,19 @@ func logTCKCounts(t *testing.T, rows []tckRow) {
 		total[r.outcome]++
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n%-18s %6s %6s %9s %12s %16s %6s\n", "feature", "pass", "fail", "no-parse", "unsupported", "error-unchecked", "total")
+	fmt.Fprintf(&b, "\n%-18s", "feature")
+	for _, o := range tckOutcomes {
+		fmt.Fprintf(&b, " %14s", o)
+	}
+	fmt.Fprintf(&b, " %6s\n", "total")
 	line := func(name string, c map[string]int) {
 		sum := 0
+		fmt.Fprintf(&b, "%-18s", name)
 		for _, o := range tckOutcomes {
 			sum += c[o]
+			fmt.Fprintf(&b, " %14d", c[o])
 		}
-		fmt.Fprintf(&b, "%-18s %6d %6d %9d %12d %16d %6d\n", name, c[outPass], c[outFail], c[outNoParse], c[outUnsupported], c[outErrorUnchecked], sum)
+		fmt.Fprintf(&b, " %6d\n", sum)
 	}
 	for _, f := range slices.Sorted(maps.Keys(per)) {
 		line(f, per[f])
@@ -183,9 +189,9 @@ func TestTCKHarnessSelfTest(t *testing.T) {
 		"wrong column name":                               outFail,
 		"query that does not parse":                       outNoParse,
 		"setup that does not parse":                       outNoParse,
-		"error expected and the query is refused":         outErrorUnchecked,
+		"error expected and the query is refused":         outErrorAtParse,
 		"error expected and the query runs":               outFail,
-		"error expected and the query fails when it runs": outErrorUnchecked,
+		"error expected and the query fails when it runs": outErrorAtRun,
 		"no side effects after a create":                  outFail,
 		"side effects table that holds":                   outPass,
 		"side effects table that is wrong":                outFail,
@@ -196,6 +202,22 @@ func TestTCKHarnessSelfTest(t *testing.T) {
 		"expected empty and none come back":               outPass,
 		"parameter is bound":                              outPass,
 		"outline {ex 1}":                                  outPass,
+		"extra column in the output":                      outFail,
+		"columns in a different order":                    outPass,
+		"map equal":                                       outPass,
+		"map with an extra key in the expected value":     outFail,
+		"map with an extra key in the actual value":       outFail,
+		"NaN equals NaN":                                  outPass,
+		"NaN against a float":                             outFail,
+		"negative infinity equals negative infinity":      outPass,
+		"negative infinity against positive infinity":     outFail,
+		"extra row in the output":                         outFail,
+		"missing row in the output":                       outFail,
+		"string content differs":                          outFail,
+		"boolean value differs":                           outFail,
+		"side effects table omits a counter":              outFail,
+		"pipe in a table cell":                            outPass,
+		"newline escape in a string":                      outPass,
 		"outline {ex 2}":                                  outFail,
 	}
 	rows := tckRunAll(t, tckSelfTestDir)
@@ -216,12 +238,18 @@ func TestTCKHarnessSelfTest(t *testing.T) {
 			t.Errorf("%q: outcome %s, want %s (%s)", name, r.outcome, outcome, r.detail)
 		}
 	}
+	if d := got["wrong column name"].detail; !strings.Contains(d, "equal by position") {
+		t.Errorf("a wrong column name with equal values must say so in the detail, got %q", d)
+	}
+	if d := got["extra column in the output"].detail; strings.Contains(d, "equal by position") {
+		t.Errorf("an extra column must not claim equal values by position, got %q", d)
+	}
 	for name := range got {
 		if _, ok := want[name]; !ok {
 			t.Errorf("fixture scenario %q has no expected outcome in the table", name)
 		}
 	}
-	// Each of the five outcomes must occur, or the table proves too little.
+	// Each of the six outcomes must occur, or the table proves too little.
 	for _, o := range tckOutcomes {
 		if !slices.ContainsFunc(rows, func(r tckRow) bool { return r.outcome == o }) {
 			t.Errorf("no fixture gives the outcome %s", o)

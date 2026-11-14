@@ -20,10 +20,11 @@ const (
 	outFail        = "fail"        // the query ran and a check did not hold
 	outNoParse     = "no-parse"    // the lexer or parser refused a query
 	outUnsupported = "unsupported" // the harness cannot judge the scenario
-	// outErrorUnchecked: the scenario expected an error and an error came at
-	// some phase. The harness checks neither the class nor the phase, so this
-	// is not a pass. A pass means the harness fully compared expected rows.
-	outErrorUnchecked = "error-unchecked"
+	// A scenario that expects an error never gets pass. The harness checks
+	// neither the class nor the phase of the error, so it reports where the
+	// error came from and nothing more.
+	outErrorAtParse = "error-at-parse" // the sanitiser, lexer or parser refused the query
+	outErrorAtRun   = "error-at-run"   // the query parsed and the run gave an error
 )
 
 type tckResult struct {
@@ -99,7 +100,7 @@ func tckInterpret(sc *tckScenario) *tckSpec {
 			sp.deferred = "result step not read by the harness: " + st.text
 		case tckErrorStep.MatchString(st.text):
 			// The class and the phase are not checked. An error at any phase
-			// satisfies the step, but the outcome is error-unchecked and never
+			// satisfies the step, but the outcome is error-at-parse or error-at-run and never
 			// pass, because the harness did not compare what the error was.
 			// This is on purpose: the product names its errors differently
 			// from the TCK.
@@ -252,7 +253,11 @@ func tckRunScenario(sc *tckScenario, workDir string) (res tckResult) {
 		if qerr == nil {
 			return tckResult{outFail, "no error where an error was expected"}
 		}
-		checks = append(checks, tckResult{outErrorUnchecked, "error came; class and phase not checked"})
+		kind := outErrorAtRun
+		if refused {
+			kind = outErrorAtParse
+		}
+		checks = append(checks, tckResult{kind, "error came; class and phase not checked"})
 	} else if sp.expect != expUnread {
 		checks = append(checks, tckCheckResult(sp, rs))
 	}
@@ -265,7 +270,7 @@ func tckRunScenario(sc *tckScenario, workDir string) (res tckResult) {
 	return tckCombine(checks)
 }
 
-// tckCombine gives fail over unsupported over error-unchecked over pass.
+// tckCombine gives fail over unsupported over error-at-parse and error-at-run over pass.
 func tckCombine(checks []tckResult) tckResult {
 	best := tckResult{outcome: outPass}
 	for _, c := range checks {
@@ -274,7 +279,7 @@ func tckCombine(checks []tckResult) tckResult {
 			return c
 		case c.outcome == outUnsupported:
 			best = c
-		case c.outcome == outErrorUnchecked && best.outcome == outPass:
+		case (c.outcome == outErrorAtParse || c.outcome == outErrorAtRun) && best.outcome == outPass:
 			best = c
 		}
 	}
@@ -292,8 +297,9 @@ func tckCheckResult(sp *tckSpec, rs *query.ResultSet) tckResult {
 		}
 		return tckResult{outPass, ""}
 	}
-	if !slices.Equal(sp.header, rs.Columns) {
-		return tckResult{outFail, fmt.Sprintf("columns %q, want %q", rs.Columns, sp.header)}
+	// Columns compare by name. A different order alone is not a failure.
+	if !sameNames(sp.header, rs.Columns) {
+		return tckResult{outFail, fmt.Sprintf("columns %q, want %q%s", rs.Columns, sp.header, tckPositionNote(sp, rs))}
 	}
 	if len(rs.Rows) != len(sp.rows) {
 		return tckResult{outFail, fmt.Sprintf("%d rows, want %d", len(rs.Rows), len(sp.rows))}
@@ -443,4 +449,27 @@ func tckString(v tckVal) string {
 		return "<relationship>"
 	}
 	return "<opaque " + v.s + ">"
+}
+
+func sameNames(a, b []string) bool {
+	x, y := slices.Clone(a), slices.Clone(b)
+	slices.Sort(x)
+	slices.Sort(y)
+	return slices.Equal(x, y)
+}
+
+// tckPositionNote says whether the values would be equal if the columns were
+// matched by position. It is detail text only. The outcome stays fail.
+func tckPositionNote(sp *tckSpec, rs *query.ResultSet) string {
+	if len(rs.Columns) != len(sp.header) || len(rs.Rows) != len(sp.rows) {
+		return ""
+	}
+	for i, row := range rs.Rows {
+		for j, col := range rs.Columns {
+			if tckCompare(tckParseValue(rowCell(sp.rows[i], j)), tckGoValue(row[col])) != triEq {
+				return ""
+			}
+		}
+	}
+	return " (the values are equal by position)"
 }

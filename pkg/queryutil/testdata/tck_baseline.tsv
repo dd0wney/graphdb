@@ -22,12 +22,12 @@ Aggregation6	[1] `percentileDisc()` {ex 3}	fail
 Aggregation6	[2] `percentileCont()` {ex 1}	fail
 Aggregation6	[2] `percentileCont()` {ex 2}	fail
 Aggregation6	[2] `percentileCont()` {ex 3}	fail
-Aggregation6	[3] `percentileCont()` failing on bad arguments {ex 1}	error-unchecked
-Aggregation6	[3] `percentileCont()` failing on bad arguments {ex 2}	error-unchecked
-Aggregation6	[3] `percentileCont()` failing on bad arguments {ex 3}	error-unchecked
-Aggregation6	[4] `percentileDisc()` failing on bad arguments {ex 1}	error-unchecked
-Aggregation6	[4] `percentileDisc()` failing on bad arguments {ex 2}	error-unchecked
-Aggregation6	[4] `percentileDisc()` failing on bad arguments {ex 3}	error-unchecked
+Aggregation6	[3] `percentileCont()` failing on bad arguments {ex 1}	error-at-run
+Aggregation6	[3] `percentileCont()` failing on bad arguments {ex 2}	error-at-run
+Aggregation6	[3] `percentileCont()` failing on bad arguments {ex 3}	error-at-run
+Aggregation6	[4] `percentileDisc()` failing on bad arguments {ex 1}	error-at-run
+Aggregation6	[4] `percentileDisc()` failing on bad arguments {ex 2}	error-at-run
+Aggregation6	[4] `percentileDisc()` failing on bad arguments {ex 3}	error-at-run
 Aggregation6	[5] `percentileDisc()` failing in more involved query	no-parse
 Aggregation8	[1] Distinct on unbound node	no-parse
 Aggregation8	[2] Distinct on null	no-parse
@@ -40,7 +40,7 @@ Comparison1	[13] Handling explicit equality of large integer, non-equal values	p
 Comparison1	[14] Direction of traversed relationship is not significant for path equality, simple	no-parse
 Comparison1	[15] It is unknown - i.e. null - if a null is equal to a null	pass
 Comparison1	[16] It is unknown - i.e. null - if a null is not equal to a null	pass
-Comparison1	[17] Failing when comparing to an undefined variable	error-unchecked
+Comparison1	[17] Failing when comparing to an undefined variable	error-at-run
 Comparison1	[1] Number-typed integer comparison	no-parse
 Comparison1	[2] Number-typed float comparison	no-parse
 Comparison1	[3] Any-typed string comparison	no-parse
@@ -110,24 +110,24 @@ List1	[2] Indexing into nested literal lists	no-parse
 List1	[3] Use list lookup based on parameters when there is no type information	no-parse
 List1	[4] Use list lookup based on parameters when there is lhs type information	no-parse
 List1	[5] Use list lookup based on parameters when there is rhs type information	no-parse
-List1	[6] Fail when indexing a non-list #Example: boolean {ex 1}	error-unchecked
-List1	[6] Fail when indexing a non-list #Example: float {ex 3}	error-unchecked
-List1	[6] Fail when indexing a non-list #Example: integer {ex 2}	error-unchecked
-List1	[6] Fail when indexing a non-list #Example: string {ex 4}	error-unchecked
-List1	[7] Fail when indexing a non-list given by a parameter #Example: boolean {ex 1}	error-unchecked
-List1	[7] Fail when indexing a non-list given by a parameter #Example: float {ex 3}	error-unchecked
-List1	[7] Fail when indexing a non-list given by a parameter #Example: integer {ex 2}	error-unchecked
-List1	[7] Fail when indexing a non-list given by a parameter #Example: string {ex 4}	error-unchecked
-List1	[8] Fail when indexing with a non-integer #Example: boolean {ex 1}	error-unchecked
-List1	[8] Fail when indexing with a non-integer #Example: float {ex 2}	error-unchecked
-List1	[8] Fail when indexing with a non-integer #Example: list {ex 4}	error-unchecked
-List1	[8] Fail when indexing with a non-integer #Example: map {ex 5}	error-unchecked
-List1	[8] Fail when indexing with a non-integer #Example: string {ex 3}	error-unchecked
-List1	[9] Fail when indexing with a non-integer given by a parameter #Example: boolean {ex 1}	error-unchecked
-List1	[9] Fail when indexing with a non-integer given by a parameter #Example: float {ex 2}	error-unchecked
-List1	[9] Fail when indexing with a non-integer given by a parameter #Example: list {ex 4}	error-unchecked
-List1	[9] Fail when indexing with a non-integer given by a parameter #Example: map {ex 5}	error-unchecked
-List1	[9] Fail when indexing with a non-integer given by a parameter #Example: string {ex 3}	error-unchecked
+List1	[6] Fail when indexing a non-list #Example: boolean {ex 1}	error-at-parse
+List1	[6] Fail when indexing a non-list #Example: float {ex 3}	error-at-parse
+List1	[6] Fail when indexing a non-list #Example: integer {ex 2}	error-at-parse
+List1	[6] Fail when indexing a non-list #Example: string {ex 4}	error-at-parse
+List1	[7] Fail when indexing a non-list given by a parameter #Example: boolean {ex 1}	error-at-parse
+List1	[7] Fail when indexing a non-list given by a parameter #Example: float {ex 3}	error-at-parse
+List1	[7] Fail when indexing a non-list given by a parameter #Example: integer {ex 2}	error-at-parse
+List1	[7] Fail when indexing a non-list given by a parameter #Example: string {ex 4}	error-at-parse
+List1	[8] Fail when indexing with a non-integer #Example: boolean {ex 1}	error-at-parse
+List1	[8] Fail when indexing with a non-integer #Example: float {ex 2}	error-at-parse
+List1	[8] Fail when indexing with a non-integer #Example: list {ex 4}	error-at-parse
+List1	[8] Fail when indexing with a non-integer #Example: map {ex 5}	error-at-parse
+List1	[8] Fail when indexing with a non-integer #Example: string {ex 3}	error-at-parse
+List1	[9] Fail when indexing with a non-integer given by a parameter #Example: boolean {ex 1}	error-at-parse
+List1	[9] Fail when indexing with a non-integer given by a parameter #Example: float {ex 2}	error-at-parse
+List1	[9] Fail when indexing with a non-integer given by a parameter #Example: list {ex 4}	error-at-parse
+List1	[9] Fail when indexing with a non-integer given by a parameter #Example: map {ex 5}	error-at-parse
+List1	[9] Fail when indexing with a non-integer given by a parameter #Example: string {ex 3}	error-at-parse
 List11	[1] Create list from `range()` with default step {ex 10}	pass
 List11	[1] Create list from `range()` with default step {ex 11}	pass
 List11	[1] Create list from `range()` with default step {ex 12}	pass
@@ -169,31 +169,31 @@ List11	[2] Create list from `range()` with explicitly given step {ex 7}	pass
 List11	[2] Create list from `range()` with explicitly given step {ex 8}	pass
 List11	[2] Create list from `range()` with explicitly given step {ex 9}	pass
 List11	[3] Create an empty list if range direction and step direction are inconsistent	no-parse
-List11	[4] Fail on invalid arguments for `range()` {ex 1}	error-unchecked
-List11	[4] Fail on invalid arguments for `range()` {ex 2}	error-unchecked
-List11	[4] Fail on invalid arguments for `range()` {ex 3}	error-unchecked
-List11	[4] Fail on invalid arguments for `range()` {ex 4}	error-unchecked
+List11	[4] Fail on invalid arguments for `range()` {ex 1}	error-at-run
+List11	[4] Fail on invalid arguments for `range()` {ex 2}	error-at-run
+List11	[4] Fail on invalid arguments for `range()` {ex 3}	error-at-run
+List11	[4] Fail on invalid arguments for `range()` {ex 4}	error-at-run
 List11	[5] Fail on invalid argument types for `range()` {ex 10}	fail
-List11	[5] Fail on invalid argument types for `range()` {ex 11}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 12}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 13}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 14}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 15}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 16}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 17}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 18}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 19}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 1}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 20}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 21}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 22}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 2}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 3}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 4}	error-unchecked
+List11	[5] Fail on invalid argument types for `range()` {ex 11}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 12}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 13}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 14}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 15}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 16}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 17}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 18}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 19}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 1}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 20}	error-at-parse
+List11	[5] Fail on invalid argument types for `range()` {ex 21}	error-at-parse
+List11	[5] Fail on invalid argument types for `range()` {ex 22}	error-at-parse
+List11	[5] Fail on invalid argument types for `range()` {ex 2}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 3}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 4}	error-at-run
 List11	[5] Fail on invalid argument types for `range()` {ex 5}	fail
 List11	[5] Fail on invalid argument types for `range()` {ex 6}	fail
-List11	[5] Fail on invalid argument types for `range()` {ex 7}	error-unchecked
-List11	[5] Fail on invalid argument types for `range()` {ex 8}	error-unchecked
+List11	[5] Fail on invalid argument types for `range()` {ex 7}	error-at-run
+List11	[5] Fail on invalid argument types for `range()` {ex 8}	error-at-run
 List11	[5] Fail on invalid argument types for `range()` {ex 9}	fail
 List12	[1] Collect and extract using a list comprehension	no-parse
 List12	[2] Collect and filter using a list comprehension	no-parse
@@ -201,7 +201,7 @@ List12	[3] Size of list comprehension	no-parse
 List12	[4] Returning a list comprehension	no-parse
 List12	[5] Using a list comprehension in a WITH	no-parse
 List12	[6] Using a list comprehension in a WHERE	no-parse
-List12	[7] Fail when using aggregation in list comprehension	error-unchecked
+List12	[7] Fail when using aggregation in list comprehension	error-at-parse
 List2	[10] List slice with parameterised range	no-parse
 List2	[11] List slice with parameterised invalid range	no-parse
 List2	[1] List slice	no-parse
@@ -265,7 +265,7 @@ List5	[42] Failing when using IN on a non-list literal {ex 1}	fail
 List5	[42] Failing when using IN on a non-list literal {ex 2}	fail
 List5	[42] Failing when using IN on a non-list literal {ex 3}	fail
 List5	[42] Failing when using IN on a non-list literal {ex 4}	fail
-List5	[42] Failing when using IN on a non-list literal {ex 5}	error-unchecked
+List5	[42] Failing when using IN on a non-list literal {ex 5}	error-at-parse
 List5	[4] IN should work with literal list slices	no-parse
 List5	[5] IN should return false when matching a number with a string	pass
 List5	[6] IN should return false when matching a number with a string - list version	no-parse
@@ -277,15 +277,15 @@ List6	[1] Return list size	pass
 List6	[2] Setting and returning the size of a list property	fail
 List6	[3] Concatenating and returning the size of literal lists	no-parse
 List6	[4] `size()` on null list	fail
-List6	[5] Fail for `size()` on paths	error-unchecked
-List6	[6] Fail for `size()` on pattern predicates {ex 1}	error-unchecked
-List6	[6] Fail for `size()` on pattern predicates {ex 2}	error-unchecked
-List6	[6] Fail for `size()` on pattern predicates {ex 3}	error-unchecked
-List6	[6] Fail for `size()` on pattern predicates {ex 4}	error-unchecked
-List6	[6] Fail for `size()` on pattern predicates {ex 5}	error-unchecked
-List6	[6] Fail for `size()` on pattern predicates {ex 6}	error-unchecked
-List6	[6] Fail for `size()` on pattern predicates {ex 7}	error-unchecked
-List6	[6] Fail for `size()` on pattern predicates {ex 8}	error-unchecked
+List6	[5] Fail for `size()` on paths	error-at-parse
+List6	[6] Fail for `size()` on pattern predicates {ex 1}	error-at-parse
+List6	[6] Fail for `size()` on pattern predicates {ex 2}	error-at-parse
+List6	[6] Fail for `size()` on pattern predicates {ex 3}	error-at-parse
+List6	[6] Fail for `size()` on pattern predicates {ex 4}	error-at-parse
+List6	[6] Fail for `size()` on pattern predicates {ex 5}	error-at-parse
+List6	[6] Fail for `size()` on pattern predicates {ex 6}	error-at-parse
+List6	[6] Fail for `size()` on pattern predicates {ex 7}	error-at-parse
+List6	[6] Fail for `size()` on pattern predicates {ex 8}	error-at-parse
 List6	[7] Using size of pattern comprehension to test existence	no-parse
 List6	[8] Get node degree via size of pattern comprehension	no-parse
 List6	[9] Get node degree via size of pattern comprehension that specifies a relationship type	no-parse
@@ -306,7 +306,7 @@ ReturnOrderBy2	[10] Returned columns do not change from using ORDER BY	unsupport
 ReturnOrderBy2	[11] Aggregates ordered by arithmetics	no-parse
 ReturnOrderBy2	[12] Aggregation of named paths	no-parse
 ReturnOrderBy2	[13] Fail when sorting on variable removed by DISTINCT	fail
-ReturnOrderBy2	[14] Fail on aggregation in ORDER BY after RETURN	error-unchecked
+ReturnOrderBy2	[14] Fail on aggregation in ORDER BY after RETURN	error-at-run
 ReturnOrderBy2	[1] ORDER BY should return results in ascending order	no-parse
 ReturnOrderBy2	[2] ORDER BY DESC should return results in descending order	no-parse
 ReturnOrderBy2	[3] Sort on aggregated function	fail
@@ -323,8 +323,8 @@ ReturnOrderBy5	[1] Renaming columns before ORDER BY should return results in asc
 ReturnOrderBy6	[1] Handle constants and parameters inside an order by item which contains an aggregation expression	fail
 ReturnOrderBy6	[2] Handle returned aliases inside an order by item which contains an aggregation expression	no-parse
 ReturnOrderBy6	[3] Handle returned property accesses inside an order by item which contains an aggregation expression	no-parse
-ReturnOrderBy6	[4] Fail if not returned variables are used inside an order by item which contains an aggregation expression	error-unchecked
-ReturnOrderBy6	[5] Fail if more complex expressions, even if returned, are used inside an order by item which contains an aggregation expression	error-unchecked
+ReturnOrderBy6	[4] Fail if not returned variables are used inside an order by item which contains an aggregation expression	error-at-parse
+ReturnOrderBy6	[5] Fail if more complex expressions, even if returned, are used inside an order by item which contains an aggregation expression	error-at-parse
 WithOrderBy1	[10] Sort lists in descending order	no-parse
 WithOrderBy1	[11] Sort dates in ascending order	no-parse
 WithOrderBy1	[12] Sort dates in descending order	no-parse
@@ -405,16 +405,16 @@ WithOrderBy1	[45] Sort order should be consistent with comparisons where compari
 WithOrderBy1	[45] Sort order should be consistent with comparisons where comparisons are defined #Example: localtimes {ex 7}	no-parse
 WithOrderBy1	[45] Sort order should be consistent with comparisons where comparisons are defined #Example: string {ex 4}	no-parse
 WithOrderBy1	[45] Sort order should be consistent with comparisons where comparisons are defined #Example: times {ex 8}	no-parse
-WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: never defined {ex 10}	error-unchecked
-WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: never defined {ex 6}	error-unchecked
-WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: never defined {ex 7}	error-unchecked
-WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: never defined {ex 8}	error-unchecked
-WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: never defined {ex 9}	error-unchecked
-WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: out of scope {ex 1}	error-unchecked
-WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: out of scope {ex 2}	error-unchecked
-WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: out of scope {ex 3}	error-unchecked
-WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: out of scope {ex 4}	error-unchecked
-WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: out of scope {ex 5}	error-unchecked
+WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: never defined {ex 10}	error-at-parse
+WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: never defined {ex 6}	error-at-parse
+WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: never defined {ex 7}	error-at-parse
+WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: never defined {ex 8}	error-at-parse
+WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: never defined {ex 9}	error-at-parse
+WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: out of scope {ex 1}	error-at-parse
+WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: out of scope {ex 2}	error-at-parse
+WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: out of scope {ex 3}	error-at-parse
+WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: out of scope {ex 4}	error-at-parse
+WithOrderBy1	[46] Fail on sorting by an undefined variable #Example: out of scope {ex 5}	error-at-parse
 WithOrderBy1	[4] Sort integers in descending order	no-parse
 WithOrderBy1	[5] Sort floats in ascending order	no-parse
 WithOrderBy1	[6] Sort floats in descending order	no-parse
@@ -459,31 +459,31 @@ WithOrderBy2	[23] Sort by an expression that is only partially orderable on a no
 WithOrderBy2	[23] Sort by an expression that is only partially orderable on a non-distinct binding table, but used in parts as a grouping key {ex 2}	no-parse
 WithOrderBy2	[24] Sort by an expression that is only partially orderable on a non-distinct binding table, but made distinct {ex 1}	no-parse
 WithOrderBy2	[24] Sort by an expression that is only partially orderable on a non-distinct binding table, but made distinct {ex 2}	no-parse
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 10}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 11}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 12}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 13}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 14}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 15}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 16}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 17}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 18}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 19}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 1}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 20}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 21}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 22}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 23}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 24}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 25}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 2}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 3}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 4}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 5}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 6}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 7}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 8}	error-unchecked
-WithOrderBy2	[25] Fail on sorting by an aggregation {ex 9}	error-unchecked
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 10}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 11}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 12}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 13}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 14}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 15}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 16}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 17}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 18}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 19}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 1}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 20}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 21}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 22}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 23}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 24}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 25}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 2}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 3}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 4}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 5}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 6}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 7}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 8}	error-at-parse
+WithOrderBy2	[25] Fail on sorting by an aggregation {ex 9}	error-at-parse
 WithOrderBy2	[2] Sort by a boolean expression in descending order {ex 1}	no-parse
 WithOrderBy2	[2] Sort by a boolean expression in descending order {ex 2}	no-parse
 WithOrderBy2	[3] Sort by an integer expression in ascending order {ex 1}	no-parse
@@ -567,36 +567,36 @@ WithOrderBy3	[7] The order direction cannot be overwritten {ex 6}	no-parse
 WithOrderBy3	[7] The order direction cannot be overwritten {ex 7}	no-parse
 WithOrderBy3	[7] The order direction cannot be overwritten {ex 8}	no-parse
 WithOrderBy3	[7] The order direction cannot be overwritten {ex 9}	no-parse
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: mixed {ex 27}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: mixed {ex 28}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: mixed {ex 29}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: mixed {ex 30}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 14}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 15}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 16}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 17}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 18}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 19}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 20}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 21}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 22}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 23}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 24}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 25}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 26}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 10}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 11}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 12}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 13}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 1}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 2}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 3}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 4}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 5}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 6}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 7}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 8}	error-unchecked
-WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 9}	error-unchecked
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: mixed {ex 27}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: mixed {ex 28}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: mixed {ex 29}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: mixed {ex 30}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 14}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 15}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 16}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 17}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 18}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 19}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 20}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 21}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 22}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 23}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 24}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 25}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: never defined {ex 26}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 10}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 11}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 12}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 13}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 1}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 2}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 3}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 4}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 5}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 6}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 7}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 8}	error-at-parse
+WithOrderBy3	[8] Fail on sorting by any number of undefined variables in any position #Example: out of scope {ex 9}	error-at-parse
 WithOrderBy4	[10] Sort by a non-projected expression containing an alias of a projected expression containing the variable shadowed by the alias	no-parse
 WithOrderBy4	[11] Sort by an aggregate projection	no-parse
 WithOrderBy4	[12] Sort by an aliased aggregate projection	no-parse
@@ -606,9 +606,9 @@ WithOrderBy4	[15] Sort by an aliased aggregate projection does allow subsequent 
 WithOrderBy4	[16] Handle constants and parameters inside an order by item which contains an aggregation expression	no-parse
 WithOrderBy4	[17] Handle projected variables inside an order by item which contains an aggregation expression	no-parse
 WithOrderBy4	[18]  Handle projected property accesses inside an order by item which contains an aggregation expression	no-parse
-WithOrderBy4	[19] Fail if not projected variables are used inside an order by item which contains an aggregation expression	error-unchecked
+WithOrderBy4	[19] Fail if not projected variables are used inside an order by item which contains an aggregation expression	error-at-parse
 WithOrderBy4	[1] Sort by a projected expression	no-parse
-WithOrderBy4	[20] Fail if more complex expressions, even if projected, are used inside an order by item which contains an aggregation expression	error-unchecked
+WithOrderBy4	[20] Fail if more complex expressions, even if projected, are used inside an order by item which contains an aggregation expression	error-at-parse
 WithOrderBy4	[2] Sort by an alias of a projected expression	no-parse
 WithOrderBy4	[3] Sort by two projected expressions with order priority being different than projection order	no-parse
 WithOrderBy4	[4] Sort by one projected expression and one alias of a projected expression with order priority being different than projection order	no-parse
