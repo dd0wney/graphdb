@@ -92,51 +92,65 @@ type IndexLookupStep struct {
 	value       storage.Value // The value to lookup
 	variable    string        // Variable name to bind results to
 	labels      []string      // Optional label filters to apply
+
+	// shape is the MATCH clause this step stands in for, laid out inside the
+	// step so that building it costs the step's own allocation and no other.
+	// newIndexLookupStep fills it. A step made by a struct literal has none,
+	// and Execute builds a local one.
+	shape indexMatchShape
 }
 
+// indexMatchShape holds a one-node MatchClause and the pointers that join it.
+type indexMatchShape struct {
+	node     NodePattern
+	nodes    [1]*NodePattern
+	pattern  Pattern
+	patterns [1]*Pattern
+	clause   MatchClause
+}
+
+func (sh *indexMatchShape) fill(variable string, labels []string) *MatchClause {
+	sh.node = NodePattern{Variable: variable, Labels: labels}
+	sh.nodes[0] = &sh.node
+	sh.pattern = Pattern{Nodes: sh.nodes[:]}
+	sh.patterns[0] = &sh.pattern
+	sh.clause = MatchClause{Patterns: sh.patterns[:]}
+	return &sh.clause
+}
+
+func newIndexLookupStep(propertyKey string, value storage.Value, variable string, labels []string) *IndexLookupStep {
+	ils := &IndexLookupStep{propertyKey: propertyKey, value: value, variable: variable, labels: labels}
+	ils.shape.fill(variable, labels)
+	return ils
+}
+
+// Execute gives the rows that the MatchStep it stands in for gives. It runs
+// that step's own code with the index as the source of candidates, so a row
+// that enters keeps its bindings (a WITH segment's variables and the "$name"
+// parameters), a variable the row already binds must be the same node, and no
+// input row gives no output row. The first version built its rows from the
+// index alone and dropped all of that.
 func (ils *IndexLookupStep) Execute(ctx *ExecutionContext) error {
-	// Use index for O(1) lookup, scoped to caller's tenant.
-	// Audit A6c-query (2026-05-08).
+	clause := &ils.shape.clause
+	if clause.Patterns == nil {
+		// Not built by newIndexLookupStep. Build on this call's own copy,
+		// because a step in a cached plan may run on several goroutines.
+		var local indexMatchShape
+		clause = local.fill(ils.variable, ils.labels)
+	}
+	match := MatchStep{match: clause, index: ils}
+	return match.Execute(ctx)
+}
+
+// lookup asks the index for the nodes with the value, scoped to the caller's
+// tenant like the scan it replaces. Audit A6c-query (2026-05-08).
+func (ils *IndexLookupStep) lookup(ctx *ExecutionContext) ([]*storage.Node, error) {
 	nodes, err := ctx.graph.FindNodesByPropertyIndexedForTenant(ils.propertyKey, ils.value, ctx.tenantID)
 	if err != nil {
 		// Index lookup failed, this shouldn't happen if optimizer did its job
-		return fmt.Errorf("index lookup failed: %w", err)
+		return nil, fmt.Errorf("index lookup failed: %w", err)
 	}
-
-	newResults := make([]*BindingSet, 0, len(nodes))
-
-	for _, node := range nodes {
-		// Apply label filter if specified
-		if len(ils.labels) > 0 {
-			hasAllLabels := true
-			for _, requiredLabel := range ils.labels {
-				found := false
-				for _, nodeLabel := range node.Labels {
-					if nodeLabel == requiredLabel {
-						found = true
-						break
-					}
-				}
-				if !found {
-					hasAllLabels = false
-					break
-				}
-			}
-			if !hasAllLabels {
-				continue
-			}
-		}
-
-		// Create binding for this node
-		newBinding := &BindingSet{bindings: make(map[string]any)}
-		if ils.variable != "" {
-			newBinding.bindings[ils.variable] = node
-		}
-		newResults = append(newResults, newBinding)
-	}
-
-	ctx.results = newResults
-	return nil
+	return nodes, nil
 }
 
 // CreateStep executes a CREATE clause

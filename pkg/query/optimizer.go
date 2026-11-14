@@ -1,6 +1,8 @@
 package query
 
 import (
+	"log"
+
 	"github.com/dd0wney/graphdb/pkg/storage"
 )
 
@@ -14,7 +16,16 @@ type Optimizer struct {
 	similarityFn   VectorSimilarityFunc
 	hasVectorIndex HasVectorIndexFunc
 	getNodeFn      GetNodeFunc
+
+	// extraPasses run after the built-in passes. Production code leaves it
+	// empty. A test adds a pass that breaks the filter order to prove that
+	// Optimize falls back to the plan it was given.
+	extraPasses []optimizerPass
 }
+
+// optimizerPass rewrites a plan. It must keep every FilterStep where
+// buildExecutionPlan put it; Optimize enforces that with filterOrderViolation.
+type optimizerPass func(plan *ExecutionPlan, query *Query) *ExecutionPlan
 
 // NewOptimizer creates a new query optimizer
 func NewOptimizer(graph *storage.GraphStorage) *Optimizer {
@@ -24,14 +35,34 @@ func NewOptimizer(graph *storage.GraphStorage) *Optimizer {
 	}
 }
 
-// Optimize optimizes an execution plan
+// Optimize optimizes an execution plan.
+//
+// It returns the plan it was given when a pass moved a FilterStep relative to
+// the other steps. The unoptimised plan is always correct, and an optimised
+// plan that runs a write before its WHERE destroys data, so the check costs a
+// missed optimisation at worst. The log line names the violation so that the
+// pass at fault is found rather than silently paid for on every query.
 func (o *Optimizer) Optimize(plan *ExecutionPlan, query *Query) *ExecutionPlan {
+	result := o.runPasses(plan, query)
+	if err := filterOrderViolation(plan, result); err != nil {
+		log.Printf("WARNING: query optimizer broke the filter order, running the unoptimized plan: %v", err)
+		return plan
+	}
+	return result
+}
+
+// runPasses applies each optimization pass in order and returns the raw result,
+// unchecked. Tests call it to see what the passes did before any guard ran.
+func (o *Optimizer) runPasses(plan *ExecutionPlan, query *Query) *ExecutionPlan {
 	// Vector search optimization runs first — it can replace the scan strategy
 	result := o.applyVectorSearchOptimization(plan, query)
 	result = o.applyIndexSelection(result, query)
 	result = o.applyFilterPushdown(result, query)
 	result = o.applyJoinOrdering(result, query)
 	result = o.applyEarlyTermination(result, query)
+	for _, pass := range o.extraPasses {
+		result = pass(result, query)
+	}
 
 	return result
 }
@@ -89,12 +120,7 @@ func (o *Optimizer) optimizeMatchWithIndex(match *MatchStep, query *Query) Execu
 		return match
 	}
 
-	return &IndexLookupStep{
-		propertyKey: indexInfo.propertyKey,
-		value:       storageValue,
-		variable:    node.Variable,
-		labels:      node.Labels,
-	}
+	return newIndexLookupStep(indexInfo.propertyKey, storageValue, node.Variable, node.Labels)
 }
 
 // indexReplaceableNode returns the node pattern that an IndexLookupStep may
@@ -338,42 +364,47 @@ func (o *Optimizer) extractVectorCondition(expr Expression) *vectorCondition {
 	}
 }
 
-// applyFilterPushdown moves filters as early as possible in execution
+// applyFilterPushdown keeps every step in the order buildExecutionPlan gave it,
+// with one exception: it lifts a FilterStep above a ReturnStep that directly
+// precedes it.
+//
+// buildExecutionPlan already puts the FilterStep directly after the MatchStep,
+// which is as early as a filter can run, so the plans it makes need no push.
+// The exception serves a hand-made plan that puts the filter after the RETURN;
+// TestFilterPushdown builds one. A ReturnStep changes no row, so the lift
+// cannot change the answer.
+//
+// The pass once moved every filter to just after the first *MatchStep, and to
+// the end of the plan when it found none. That was wrong the moment
+// applyIndexSelection replaced the MatchStep with an IndexLookupStep: the
+// filters went after the write step, and
+// `MATCH (p) WHERE p.pid = 1 AND p.k > 5 DELETE p` deleted a node the WHERE
+// rejects. The rule holds for every access step, so the pass names none. Do not
+// reorder here without filterOrderViolation accepting the result.
 func (o *Optimizer) applyFilterPushdown(plan *ExecutionPlan, query *Query) *ExecutionPlan {
-	optimized := &ExecutionPlan{Steps: make([]ExecutionStep, 0)}
+	if !hasFilterAfterRowNeutralStep(plan.Steps) {
+		return plan
+	}
 
-	// Find filter steps
-	var filterSteps []*FilterStep
-	var otherSteps []ExecutionStep
-
-	for _, step := range plan.Steps {
-		if filterStep, ok := step.(*FilterStep); ok {
-			filterSteps = append(filterSteps, filterStep)
-		} else {
-			otherSteps = append(otherSteps, step)
+	steps := append([]ExecutionStep(nil), plan.Steps...)
+	for i, step := range steps {
+		if _, ok := step.(*FilterStep); !ok {
+			continue
+		}
+		for j := i; j > 0 && isRowNeutral(steps[j-1]); j-- {
+			steps[j-1], steps[j] = steps[j], steps[j-1]
 		}
 	}
+	return &ExecutionPlan{Steps: steps}
+}
 
-	// Apply filters as early as possible
-	// For now, just reconstruct the plan
-	for _, step := range otherSteps {
-		optimized.Steps = append(optimized.Steps, step)
-
-		// Insert applicable filters after match steps (but not after optional match)
-		if _, ok := step.(*MatchStep); ok {
-			for _, filter := range filterSteps {
-				optimized.Steps = append(optimized.Steps, ExecutionStep(filter))
-			}
-			filterSteps = nil // Clear applied filters
+func hasFilterAfterRowNeutralStep(steps []ExecutionStep) bool {
+	for i := 1; i < len(steps); i++ {
+		if _, ok := steps[i].(*FilterStep); ok && isRowNeutral(steps[i-1]) {
+			return true
 		}
 	}
-
-	// Add any remaining filters
-	for _, filter := range filterSteps {
-		optimized.Steps = append(optimized.Steps, filter)
-	}
-
-	return optimized
+	return false
 }
 
 // applyJoinOrdering reorders joins to start with most selective
