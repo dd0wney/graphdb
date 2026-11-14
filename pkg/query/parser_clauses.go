@@ -345,7 +345,9 @@ func (p *Parser) parseSet() (*SetClause, error) {
 			Property: propToken.Value,
 		}
 		// If the expression is a simple literal, store in Value for backward compat
-		if lit, ok := expr.(*LiteralExpression); ok {
+		// A list literal with a parameter in it stays an expression: the
+		// executor reads the parameter when it evaluates the expression.
+		if lit, ok := expr.(*LiteralExpression); ok && !literalHasParams(lit) {
 			assignment.Value = lit.Value
 		} else {
 			assignment.ValueExpr = expr

@@ -130,7 +130,11 @@ func extractValue(expr Expression, context map[string]any) any {
 		}
 		return nil
 	case *LiteralExpression:
-		return e.Value
+		value, err := resolveListParams(e.Value, context)
+		if err != nil {
+			return nil
+		}
+		return value
 	case *FunctionCallExpression:
 		result, err := e.EvalValue(context)
 		if err != nil {

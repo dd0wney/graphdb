@@ -337,6 +337,13 @@ func resolveParameters(query *Query, params map[string]any) error {
 			return err
 		}
 	}
+	for _, optional := range query.OptionalMatches {
+		for _, pattern := range optional.Patterns {
+			if err := resolvePatternParams(pattern, params); err != nil {
+				return err
+			}
+		}
+	}
 	return forEachLaterSegment(query, func(segment *Query) error {
 		return resolveParameters(segment, params)
 	})
@@ -405,7 +412,9 @@ func resolvePropertyParams(props map[string]any, params map[string]any) (map[str
 // each field of Query and of its clauses that can hold an Expression: WHERE,
 // OPTIONAL MATCH WHERE, RETURN items, ORDER BY items, WITH items, WITH WHERE,
 // SET values, the SET of MERGE (ON CREATE and ON MATCH), and CALL arguments.
-// A parameter in a pattern map is a ParameterRef, which resolveParameters checks.
+// A parameter in a pattern map is a ParameterRef, which resolveParameters checks
+// (MATCH, CREATE, MERGE and OPTIONAL MATCH patterns). A parameter in a list literal is
+// a ParameterRef in a LiteralExpression, which validateExprParams checks.
 func validateParameterExpressions(query *Query, params map[string]any) error {
 	if query.Where != nil {
 		if err := validateExprParams(query.Where.Expression, params); err != nil {
@@ -504,6 +513,17 @@ func validateExprParams(expr Expression, params map[string]any) error {
 		return validateExprParams(e.Right, params)
 	case *UnaryExpression:
 		return validateExprParams(e.Operand, params)
+	case *LiteralExpression:
+		// A list literal can hold a *ParameterRef.
+		if list, ok := e.Value.([]any); ok {
+			for _, item := range list {
+				if ref, ok := item.(*ParameterRef); ok {
+					if _, found := params[ref.Name]; !found {
+						return fmt.Errorf("missing parameter: $%s", ref.Name)
+					}
+				}
+			}
+		}
 	case *FunctionCallExpression:
 		for _, arg := range e.Args {
 			if err := validateExprParams(arg, params); err != nil {
