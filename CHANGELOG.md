@@ -62,15 +62,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a parameter as null in the same way. A parameter in a pattern map after a `WITH` or in a later
   `UNION` branch, for example `MATCH (p:T {pid: $v})`, matched nothing, and `CREATE` or `MERGE`
   with such a map was refused with a message that named the wrong cause. A parameter that the
-  caller did not supply was refused only in the first part of a query. After a `WITH` or in a
-  `UNION` branch it read as null, with no error. A parameter now has its value in each part of a
-  query, and a query with a parameter that the caller did not supply is refused with `missing
-  parameter: $name` before any part runs. A user must check each query that has a `$name`
-  parameter after a `WITH` or in a later branch of a `UNION`.
+  caller did not supply was refused only in the first part of a query, and only where it stood in
+  a comparison, a function call or a `CASE`. After a `WITH` or in a `UNION` branch it read as
+  null, with no error. In a `NOT`, a `-` sign, an arithmetic expression, a `WITH` item, an
+  `ORDER BY` item or a `SET` value (also in `MERGE ... ON CREATE SET` and `ON MATCH SET`) it read as
+  null in each part, and the write ran. A parameter now has its value in each part of a query. The
+  query keeps the parameters in each part and does not read them from a row, so a first part that
+  finds no row, for example `MATCH (a:Nope) WITH a ... UNION ...`, no longer loses the parameters
+  in the later parts. A parameter that the caller did not supply is refused in each place where
+  it can stand, with `missing parameter: $name`, before any part runs. A user must check each
+  query that has a `$name` parameter after a `WITH` or in a later branch of a `UNION`.
   Not corrected in this patch release: `PROFILE` runs a query with each parameter as null. Do not
   use `PROFILE` on a write query that has a parameter. A query that is refused while a later part
-  runs keeps the writes of the parts before it. The next minor release corrects the first of
-  these (#754 on `main`).
+  runs keeps the writes of the parts before it. A parsed query that an embedding program runs two
+  times keeps the first value of a parameter in a pattern map, for example `MATCH (p:T {pid: $v})`
+  (the HTTP API parses each request, so it does not have this defect). The next minor release
+  corrects the first of these (#754 on `main`).
 - **`lsm.LSMStorage.GetStats` no longer deadlocks against a flush.** It took `lsm.stats.mu` and
   then `lsm.mu`, while `flush` and `compact` take them in the opposite order, so a `GetStats`
   that ran during a flush could block both for ever. Only callers of the public `GetStats` (and
