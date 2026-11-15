@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **The development `docker-compose.yml` no longer publishes its ports to the network.** The server
+  (8080), the license server (8082) and Postgres (5432) were published on every network interface.
+  That file sets a public default `JWT_SECRET`, with which anyone who could reach the server could sign
+  their own tokens, and a fixed Postgres password. The ports are now published on `127.0.0.1` only. Set
+  `GRAPHDB_BIND=0.0.0.0` to reach them from other machines on purpose. `docker-compose.prod.yml` and
+  the deployment scripts, which write their own compose file, are unchanged.
+
 ### Fixed
 - **A write query that used a property index ignored every other condition of its `WHERE`.**
   With an index on `pid`, `MATCH (p:T) WHERE p.pid = 1 AND p.k > 5 DELETE p` deleted a node whose
