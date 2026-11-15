@@ -4,6 +4,11 @@ version: '3.8'
 # retired. Bring up with `JWT_SECRET=... podman compose up -d --build`.
 # `alias docker=podman` keeps `docker compose ...` working. See the syntopica-v2
 # migration spec: docs/superpowers/specs/2026-06-24-podman-apple-container-migration-design.md
+#
+# Every port is published on this computer only (127.0.0.1). This file is for local development: it carries a
+# public default JWT_SECRET, with which anyone who can reach the server can sign their own tokens, and a fixed
+# Postgres password. To reach it from other machines on purpose, set GRAPHDB_BIND=0.0.0.0 and real secrets;
+# for a deployment use docker-compose.prod.yml.
 
 services:
   # PostgreSQL database for license server
@@ -15,7 +20,7 @@ services:
       POSTGRES_USER: cluso
       POSTGRES_PASSWORD: cluso_dev_password
     ports:
-      - "5432:5432"
+      - "${GRAPHDB_BIND:-127.0.0.1}:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -34,7 +39,7 @@ services:
       PORT: "8082"
       DATABASE_URL: "postgres://cluso:cluso_dev_password@postgres:5432/cluso_licenses?sslmode=disable"
     ports:
-      - "8082:8082"
+      - "${GRAPHDB_BIND:-127.0.0.1}:8082:8082"
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,7 +64,7 @@ services:
       # for production: export JWT_SECRET=... before `docker-compose up`.
       JWT_SECRET: "${JWT_SECRET:-dev-only-secret-not-for-production}"
     ports:
-      - "8080:8080"
+      - "${GRAPHDB_BIND:-127.0.0.1}:8080:8080"
     volumes:
       - graphdb_data:/data
     healthcheck:
