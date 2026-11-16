@@ -3,6 +3,7 @@ package query
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/dd0wney/graphdb/pkg/storage"
@@ -201,4 +202,71 @@ func TestUnwind_WriteAfterUnwind_Probe(t *testing.T) {
 		}
 	}
 	t.Skip("probe for v1.4-cypher-unwind-write-per-item")
+}
+
+// The plan runs MATCH, OPTIONAL MATCH and MERGE before UNWIND in one segment.
+// While UNWIND took only a property reference nobody wrote these forms; once
+// it took a list, they ran and gave wrong results with no error: UNWIND []
+// then MERGE made a node, and UNWIND then MATCH ... WHERE a.id = x gave no
+// rows (review of #765). The parser refuses them and names the WITH split.
+func TestUnwind_ClauseThatRunsBeforeUnwindIsRefused(t *testing.T) {
+	queries := map[string]string{
+		"MATCH":          `UNWIND [1, 2] AS x MATCH (a:A) WHERE a.id = x RETURN x`,
+		"OPTIONAL MATCH": `UNWIND [1, 2] AS x OPTIONAL MATCH (a:A) WHERE a.id = x RETURN x, a.id`,
+		"MERGE":          `UNWIND [] AS x MERGE (n:L) RETURN n`,
+	}
+	for clause, text := range queries {
+		t.Run(clause, func(t *testing.T) {
+			tokens, err := NewLexer(text).Tokenize()
+			if err != nil {
+				t.Fatalf("Tokenize %q: %v", text, err)
+			}
+			_, err = NewParser(tokens).Parse()
+			if err == nil {
+				t.Fatalf("%q parsed; %s after UNWIND must be refused", text, clause)
+			}
+			want := clause + " after UNWIND is not supported"
+			if !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "WITH") {
+				t.Fatalf("error = %q, want it to contain %q and name the WITH split", err, want)
+			}
+		})
+	}
+}
+
+func countLabel(t *testing.T, ex *Executor, label string) int {
+	t.Helper()
+	nodes, err := ex.graph.FindNodesByLabelAcrossTenants(label)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(nodes)
+}
+
+// The refusal names WITH as the way out, so that form must give the
+// openCypher result.
+func TestUnwind_WithSplitGivesTheOpenCypherResult(t *testing.T) {
+	ex := unwindStore(t)
+	if _, err := ex.graph.CreateNode([]string{"A"}, map[string]storage.Value{"id": storage.IntValue(1)}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := runUnwind(t, ex, `UNWIND [1, 2] AS x WITH x MATCH (a:A) WHERE a.id = x RETURN x`, nil)
+	if err != nil {
+		t.Fatalf("UNWIND ... WITH x MATCH: %v", err)
+	}
+	wantRows(t, res, "map[x:1]")
+
+	res, err = runUnwind(t, ex, `UNWIND $xs AS x WITH x MERGE (n:L) ON CREATE SET n.v = x RETURN n.v AS v`, map[string]any{"xs": []any{int64(1), int64(2)}})
+	if err != nil {
+		t.Fatalf("UNWIND ... WITH x MERGE: %v", err)
+	}
+	// Row one creates the node and sets v = 1; row two matches it.
+	wantRows(t, res, "map[v:1]", "map[v:1]")
+
+	before := countLabel(t, ex, "M")
+	if _, err := runUnwind(t, ex, `UNWIND [] AS x WITH x MERGE (n:M) RETURN n`, nil); err != nil {
+		t.Fatalf("UNWIND [] ... WITH x MERGE: %v", err)
+	}
+	if after := countLabel(t, ex, "M"); after != before {
+		t.Fatalf("UNWIND [] then MERGE made %d :M nodes, want 0", after-before)
+	}
 }

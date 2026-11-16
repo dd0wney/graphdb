@@ -5,15 +5,15 @@ Aggregation2	[11] `max()` over mixed values	no-parse
 Aggregation2	[12] `min()` over mixed values	no-parse
 Aggregation2	[1] `max()` over integers	no-parse
 Aggregation2	[2] `min()` over integers	no-parse
-Aggregation2	[3] `max()` over floats	no-parse
-Aggregation2	[4] `min()` over floats	no-parse
-Aggregation2	[5] `max()` over mixed numeric values	no-parse
-Aggregation2	[6] `min()` over mixed numeric values	no-parse
-Aggregation2	[7] `max()` over strings	no-parse
-Aggregation2	[8] `min()` over strings	no-parse
+Aggregation2	[3] `max()` over floats	fail
+Aggregation2	[4] `min()` over floats	fail
+Aggregation2	[5] `max()` over mixed numeric values	fail
+Aggregation2	[6] `min()` over mixed numeric values	fail
+Aggregation2	[7] `max()` over strings	fail
+Aggregation2	[8] `min()` over strings	fail
 Aggregation2	[9] `max()` over list values	no-parse
 Aggregation3	[1] Sum only non-null values	no-parse
-Aggregation3	[2] No overflow during summation	no-parse
+Aggregation3	[2] No overflow during summation	fail
 Aggregation5	[1] `collect()` filtering nulls	fail
 Aggregation5	[2] OPTIONAL MATCH and `collect()` on node property	no-parse
 Aggregation6	[1] `percentileDisc()` {ex 1}	fail
@@ -28,7 +28,7 @@ Aggregation6	[3] `percentileCont()` failing on bad arguments {ex 3}	error-at-run
 Aggregation6	[4] `percentileDisc()` failing on bad arguments {ex 1}	error-at-run
 Aggregation6	[4] `percentileDisc()` failing on bad arguments {ex 2}	error-at-run
 Aggregation6	[4] `percentileDisc()` failing on bad arguments {ex 3}	error-at-run
-Aggregation6	[5] `percentileDisc()` failing in more involved query	no-parse
+Aggregation6	[5] `percentileDisc()` failing in more involved query	error-at-parse
 Aggregation8	[1] Distinct on unbound node	no-parse
 Aggregation8	[2] Distinct on null	no-parse
 Aggregation8	[3] Collect distinct nulls	no-parse
@@ -293,14 +293,14 @@ List9	[1] Returning nested expressions based on list property	fail
 ReturnOrderBy1	[10] ORDER BY DESC should order lists in the expected order	no-parse
 ReturnOrderBy1	[11] ORDER BY should order distinct types in the expected order	no-parse
 ReturnOrderBy1	[12] ORDER BY DESC should order distinct types in the expected order	no-parse
-ReturnOrderBy1	[1] ORDER BY should order booleans in the expected order	no-parse
-ReturnOrderBy1	[2] ORDER BY DESC should order booleans in the expected order	no-parse
-ReturnOrderBy1	[3] ORDER BY should order strings in the expected order	no-parse
-ReturnOrderBy1	[4] ORDER BY DESC should order strings in the expected order	no-parse
-ReturnOrderBy1	[5] ORDER BY should order ints in the expected order	no-parse
-ReturnOrderBy1	[6] ORDER BY DESC should order ints in the expected order	no-parse
-ReturnOrderBy1	[7] ORDER BY should order floats in the expected order	no-parse
-ReturnOrderBy1	[8] ORDER BY DESC should order floats in the expected order	no-parse
+ReturnOrderBy1	[1] ORDER BY should order booleans in the expected order	pass
+ReturnOrderBy1	[2] ORDER BY DESC should order booleans in the expected order	pass
+ReturnOrderBy1	[3] ORDER BY should order strings in the expected order	pass
+ReturnOrderBy1	[4] ORDER BY DESC should order strings in the expected order	pass
+ReturnOrderBy1	[5] ORDER BY should order ints in the expected order	pass
+ReturnOrderBy1	[6] ORDER BY DESC should order ints in the expected order	pass
+ReturnOrderBy1	[7] ORDER BY should order floats in the expected order	pass
+ReturnOrderBy1	[8] ORDER BY DESC should order floats in the expected order	pass
 ReturnOrderBy1	[9] ORDER BY should order lists in the expected order	no-parse
 ReturnOrderBy2	[10] Returned columns do not change from using ORDER BY	unsupported
 ReturnOrderBy2	[11] Aggregates ordered by arithmetics	no-parse

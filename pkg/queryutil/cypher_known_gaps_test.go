@@ -201,25 +201,6 @@ func TestCypherKnownGaps(t *testing.T) {
 		{"v1.4-cypher-count-distinct",
 			`MATCH (p:Person) RETURN count(DISTINCT p.age) AS n`,
 			wantCell("n", 4)},
-		{"v1.4-cypher-unwind-literal",
-			`UNWIND [1,2,3] AS x RETURN x * 2 AS y`,
-			func(t gapReporter, r gapResult) {
-				if !okResult(t, r) {
-					return
-				}
-				var got []float64
-				for _, row := range r.rs.Rows {
-					f, ok := toFloat(row["y"])
-					if !ok {
-						t.Errorf("y = %#v, want a number", row["y"])
-						return
-					}
-					got = append(got, f)
-				}
-				if !reflect.DeepEqual(got, []float64{2, 4, 6}) {
-					t.Errorf("y values = %v, want [2 4 6]", got)
-				}
-			}},
 		{"v1.4-cypher-negative-literal-in-map",
 			`OPTIONAL MATCH (p:Person {id: -1}) RETURN p`,
 			func(t gapReporter, r gapResult) {

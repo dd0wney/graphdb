@@ -43,6 +43,9 @@ func (p *Parser) Parse() (*Query, error) {
 			if query.Call != nil {
 				return nil, matchAfterCallError("OPTIONAL MATCH", token)
 			}
+			if query.Unwind != nil {
+				return nil, clauseAfterUnwindError("OPTIONAL MATCH", token)
+			}
 			p.advance() // consume OPTIONAL
 			if p.peek().Type != TokenMatch {
 				return nil, syntaxErrorAt(p.peek(), "expected MATCH after OPTIONAL")
@@ -70,6 +73,9 @@ func (p *Parser) Parse() (*Query, error) {
 			}
 			if query.Call != nil {
 				return nil, matchAfterCallError("MATCH", token)
+			}
+			if query.Unwind != nil {
+				return nil, clauseAfterUnwindError("MATCH", token)
 			}
 			if len(query.OptionalMatches) > 0 {
 				return nil, syntaxErrorAt(token, "MATCH after OPTIONAL MATCH is not supported: graphdb runs every MATCH before OPTIONAL MATCH; put the MATCH first or split the query with WITH")
@@ -166,6 +172,9 @@ func (p *Parser) Parse() (*Query, error) {
 			// The plan runs every MERGE before CREATE, SET, REMOVE and DELETE.
 			if w := writeClauseSeen(query); w != "" && w != "MERGE" {
 				return nil, syntaxErrorAt(token, "MERGE after %s is not supported: graphdb runs every MERGE before %s; put the MERGE first or split the query with WITH", w, w)
+			}
+			if query.Unwind != nil {
+				return nil, clauseAfterUnwindError("MERGE", token)
 			}
 			mergeClause, err := p.parseMerge()
 			if err != nil {
@@ -325,6 +334,14 @@ func writeClauseSeen(q *Query) string {
 		return "DELETE"
 	}
 	return ""
+}
+
+// clauseAfterUnwindError refuses a clause that the plan runs before UNWIND in
+// one segment. Run anyway, it gives a wrong result with no error: UNWIND []
+// then MERGE creates a node, and UNWIND then MATCH ... WHERE a.id = x filters
+// before x has a value. After WITH the clause runs once per unwound row.
+func clauseAfterUnwindError(clause string, token Token) error {
+	return syntaxErrorAt(token, "%s after UNWIND is not supported: graphdb runs %s before UNWIND; split the query with WITH, as in UNWIND $xs AS x WITH x %s ...", clause, clause, clause)
 }
 
 // clauseBeforeCall names a clause the plan runs after CALL that the query
