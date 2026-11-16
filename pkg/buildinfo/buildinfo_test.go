@@ -28,7 +28,12 @@ func TestResolve(t *testing.T) {
 		want   string
 	}{
 		{"linked release wins over module version", "v1.12.1", reader("v1.11.0", nil), "v1.12.1"},
-		{"goreleaser form without v is kept as given", "1.12.1", reader("(devel)", nil), "1.12.1"},
+		// goreleaser {{.Version}} and docker/metadata-action give "1.12.1";
+		// updater.IsNewer accepts only the "v" form (review of #766).
+		{"goreleaser form gains its v", "1.12.1", reader("(devel)", nil), "v1.12.1"},
+		{"prerelease form gains its v", "1.13.0-rc.1", noBuildInfo, "v1.13.0-rc.1"},
+		{"branch name is not a version", "main", noBuildInfo, Unset},
+		{"branch name falls through to the module version", "main", reader("v1.12.1", nil), "v1.12.1"},
 		{"go install of a tag gives the module version", Unset, reader("v1.12.1", nil), "v1.12.1"},
 		{"empty linked value counts as unset", "", reader("v1.12.1", nil), "v1.12.1"},
 		{"no build info and no linked value", Unset, noBuildInfo, Unset},

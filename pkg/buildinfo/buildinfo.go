@@ -10,7 +10,12 @@
 // status) reads one value that Resolve produced, so the places cannot disagree.
 package buildinfo
 
-import "runtime/debug"
+import (
+	"runtime/debug"
+	"strings"
+
+	"golang.org/x/mod/semver"
+)
 
 // Unset is the linked default in cmd/server. Resolve treats it, and the empty
 // string, as "the link step did not set a version".
@@ -25,8 +30,8 @@ func Resolve(linked string) string {
 // resolve is Resolve with the build-info reader passed in, so a test can supply
 // the module version and VCS settings that a real build would record.
 func resolve(linked string, read func() (*debug.BuildInfo, bool)) string {
-	if linked != "" && linked != Unset {
-		return linked
+	if v, ok := releaseVersion(linked); ok {
+		return v
 	}
 	info, ok := read()
 	if !ok || info == nil {
@@ -40,6 +45,24 @@ func resolve(linked string, read func() (*debug.BuildInfo, bool)) string {
 		return v
 	}
 	return Unset + commitSuffix(info.Settings)
+}
+
+// releaseVersion reports whether linked is a release version, in the "v" form
+// that updater.IsNewer compares. goreleaser {{.Version}} and
+// docker/metadata-action give "1.12.1"; a branch image gives "main", which is
+// not a version, so the caller falls through to what the toolchain recorded.
+func releaseVersion(linked string) (string, bool) {
+	if linked == "" || linked == Unset {
+		return "", false
+	}
+	v := linked
+	if !strings.HasPrefix(v, "v") {
+		v = "v" + v
+	}
+	if !semver.IsValid(v) {
+		return "", false
+	}
+	return v, true
 }
 
 // commitSuffix names the commit a checkout build came from, as semver build

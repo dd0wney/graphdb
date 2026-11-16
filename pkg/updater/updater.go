@@ -93,10 +93,10 @@ func pickLatest(releases []Release, channel string) *Release {
 }
 
 // IsNewer reports whether latest is a strictly higher semver than current.
-// "dev" and "" current versions are always considered older (so every
-// dev build sees updates).
+// "dev", "dev+<commit>" (a checkout build, see pkg/buildinfo) and "" current
+// versions are always considered older (so every dev build sees updates).
 func IsNewer(current, latest string) bool {
-	if current == "dev" || current == "" {
+	if current == "dev" || current == "" || strings.HasPrefix(current, "dev+") {
 		return true
 	}
 	if !semver.IsValid(current) || !semver.IsValid(latest) {

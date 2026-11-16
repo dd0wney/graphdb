@@ -26,6 +26,20 @@ func TestWireBuildVersion_ReachesEveryReader(t *testing.T) {
 	}
 }
 
+// TestWireBuildVersion_ReleaseStillSeesUpdates guards the review finding on
+// #766: goreleaser links "1.12.1" with no "v", which updater.IsNewer rejects,
+// so a release server would report that no update exists, ever.
+func TestWireBuildVersion_ReleaseStillSeesUpdates(t *testing.T) {
+	origAPI, origUpdater := api.BuildVersion, updater.Version
+	t.Cleanup(func() { api.BuildVersion, updater.Version = origAPI, origUpdater })
+
+	wireBuildVersion("1.12.1")
+
+	if !updater.IsNewer(updater.Version, "v1.13.0") {
+		t.Fatalf("IsNewer(%q, v1.13.0) = false: a release server cannot see a newer release", updater.Version)
+	}
+}
+
 // TestDockerBuildsSetTheVersion guards the Docker half of GitHub #766. The
 // Dockerfile ran `git describe`, but .dockerignore keeps .git out of the build
 // context, so every published image linked an empty version and nothing failed.
@@ -36,8 +50,13 @@ func TestDockerBuildsSetTheVersion(t *testing.T) {
 	if strings.Contains(dockerfile, "$(git describe") {
 		t.Error("Dockerfile runs git describe; .dockerignore excludes .git, so it links an empty version")
 	}
-	if !strings.Contains(dockerfile, "ARG VERSION") {
+	// An ARG declared before the first FROM is out of scope inside the stage,
+	// so ${VERSION} would expand to "" while every substring still matched.
+	argAt, fromAt := strings.Index(dockerfile, "ARG VERSION"), strings.Index(dockerfile, "FROM golang")
+	if argAt < 0 {
 		t.Error("Dockerfile declares no VERSION build argument")
+	} else if fromAt < 0 || argAt < fromAt {
+		t.Error("Dockerfile declares VERSION outside the builder stage, where the go build cannot see it")
 	}
 	if !strings.Contains(dockerfile, "-X main.Version=${VERSION}") {
 		t.Error("Dockerfile does not link VERSION into main.Version")
