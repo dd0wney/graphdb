@@ -957,6 +957,36 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: UNWIND $items AS item MERGE (n:L {id: item.id}) SET n.text = item.text, the batch upsert of GitHub #765. The plan puts MergeStep before UnwindStep (pkg/query/executor_plan.go:234 and :239, read at fa43632), so MERGE probably runs before item has a value (not probed). Also needs list elements that are maps, with item.field access. Acceptance: one statement upserts each item of a list parameter, a second run changes nothing, seen red first"
+    },
+    {
+      "id": "v1.4-docker-arm64-binary-arch",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "infra: the linux/arm64 Docker image probably holds amd64 binaries. Both image workflows build linux/amd64,linux/arm64 (.github/workflows/docker-publish.yml:57, release.yml:107, read at e64b9f3), but Dockerfile:21 and :27 set GOARCH=amd64 for each platform. Not probed: proof needs a pull of the published arm64 image, a download that the user must approve first. Fix: FROM --platform=$BUILDPLATFORM for the builder, and GOARCH=$TARGETARCH. Acceptance: a gate fails on a Dockerfile that hardcodes GOARCH, seen red first, and the arm64 image runs on arm64"
+    },
+    {
+      "id": "v1.4-server-shutdown-double-close",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "server: on SIGTERM, cmd/server closes graph storage two times at once: the signal goroutine at cmd/server/main.go:628 (read at e64b9f3), and the deferred Close at :482, which runs when server.Start returns after Shutdown. The second Close logs the false ERROR 'graph storage did not close cleanly ... storage already closed' (seen in 2 of 2 SIGTERM runs on 2026-11-16: a binary from fa43632 and one from the #768 branch). In the other order main can return, and the process can exit, while the goroutine's Close still writes the snapshot (not probed). Close once and wait for it before exit. Acceptance: a SIGTERM test sees one Close, no error line, and a written snapshot, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-optional-match-after-write",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: the parser accepts OPTIONAL MATCH after CREATE, MERGE or SET (the TokenOptional case in pkg/query/parser.go:42, read at e64b9f3, checks only CALL), but the plan runs OPTIONAL MATCH before every write. CREATE (n:L) OPTIONAL MATCH (m:L) RETURN m gave m = null, where openCypher gives the new node (probed by the #769 review at fa43632). Refuse it as MATCH after a write is refused, and name the WITH split. Acceptance: the probe is refused with no write, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-remove-then-set-order",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: REMOVE a.id SET a.id = 5 leaves id null, where openCypher gives 5, because the plan runs SetStep (pkg/query/executor_plan.go:249, read at e64b9f3) before RemoveStep (:254) whatever the text order (probed by the #769 review at fa43632). Refuse SET after REMOVE in one segment, or run the two in text order. Acceptance: the probe gives 5 or is refused, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-clause-after-return",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: the parser accepts a clause after RETURN. UNWIND [1] AS x RETURN x CREATE (n:Z) made a node, where openCypher refuses the query because RETURN must be the last clause of a query part (probed by the #769 review at fa43632). Refuse any clause after RETURN other than ORDER BY, SKIP, LIMIT and UNION. Acceptance: the probe is refused with no write, seen red first"
     }
   ],
   "deps": [

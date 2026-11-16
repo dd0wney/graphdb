@@ -1,8 +1,16 @@
 # Multi-stage Dockerfile for GraphDB
 # Optimized for size and security
 
-# Build stage
-FROM golang:1.27-alpine AS builder
+# Build stage. It runs on the build host and cross-compiles for the target
+# platform: the image workflows build linux/amd64 and linux/arm64, and an
+# emulated arm64 compile is slow.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
+
+# Set by BuildKit (docker buildx, podman) for each target platform. A stage
+# sees a predefined build argument only after it declares it. Only the legacy
+# builder leaves them empty, and an empty GOOS or GOARCH compiles for the host.
+ARG TARGETOS
+ARG TARGETARCH
 
 # Install build dependencies
 RUN apk add --no-cache git make ca-certificates tzdata
@@ -22,13 +30,13 @@ COPY . .
 ARG VERSION=dev
 
 # Build the server binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-w -s -X main.Version=${VERSION}" \
     -o /build/graphdb-server \
     ./cmd/server
 
 # Build the CLI binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-w -s" \
     -o /build/graphdb-cli \
     ./cmd/cli

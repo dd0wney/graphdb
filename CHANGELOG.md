@@ -91,6 +91,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A user who ran `SKIP` or `LIMIT` before a write, after `WITH` or not, must check what that write
   changed. `ORDER BY` after `WITH` is still refused
   (coord `graphdb:v1.4-cypher-with-order-by`).
+- **The `linux/arm64` Docker image held `amd64` binaries.** Both image workflows build
+  `linux/amd64` and `linux/arm64`, but each `go build` in the `Dockerfile` set `GOARCH=amd64`, so the
+  arm64 image put amd64 binaries on an arm64 base. Nobody ran the published arm64 image to confirm
+  the failure; the `Dockerfile` decides it. The builder stage now runs on the build host
+  (`--platform=$BUILDPLATFORM`) and compiles for `$TARGETOS`/`$TARGETARCH`.
 - **A write query that used a property index ignored every other condition of its `WHERE`.**
   With an index on `pid`, `MATCH (p:T) WHERE p.pid = 1 AND p.k > 5 DELETE p` deleted a node whose
   `k` is 1, although the `WHERE` is false for it. The index took the row, the `DELETE` ran on it,
