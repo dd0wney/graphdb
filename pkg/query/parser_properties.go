@@ -51,6 +51,15 @@ func (p *Parser) parsePropertyValue() (any, error) {
 			return p.parseValue()
 		}
 	}
+	// A negative number is a constant too. As a row expression it would take
+	// the per-row MERGE path, and -9223372036854775808 would overflow to a
+	// float, because the expression negates the positive literal.
+	if p.peek().Type == TokenMinus && p.peekAhead(1).Type == TokenNumber {
+		if next := p.peekAhead(2).Type; next == TokenComma || next == TokenRightBrace {
+			p.advance()
+			return p.parseNegativeNumber()
+		}
+	}
 	expr, err := p.parseExpression()
 	if err != nil {
 		return nil, err
@@ -64,6 +73,20 @@ func isPlainValueToken(t TokenType) bool {
 		return true
 	}
 	return false
+}
+
+// parseNegativeNumber parses the number after a minus sign as one literal, so
+// that the int64 minimum, whose magnitude has no positive int64, stays an int.
+func (p *Parser) parseNegativeNumber() (any, error) {
+	token := p.advance()
+	text := "-" + token.Value
+	if val, err := strconv.ParseInt(text, 10, 64); err == nil {
+		return val, nil
+	}
+	if val, err := strconv.ParseFloat(text, 64); err == nil {
+		return val, nil
+	}
+	return nil, syntaxErrorAt(token, "invalid number: %s", text)
 }
 
 // parseValue parses a literal value

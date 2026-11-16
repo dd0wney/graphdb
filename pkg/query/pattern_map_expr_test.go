@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -402,4 +403,28 @@ func TestPatternMapExpr_NegativeNumberLiteral(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantRows(t, res, "map[p.v:-1]")
+}
+
+// A negative number is a constant, so it must stay a plain literal: as a row
+// expression it took the per-row MERGE path, whose rows differ from the
+// literal path, and -9223372036854775808 became a float (review of the row
+// expression change).
+func TestPatternMapExpr_NegativeNumberIsAPlainLiteral(t *testing.T) {
+	cases := map[string]any{
+		`MERGE (n:N {v: -7})`:                   int64(-7),
+		`MERGE (n:N {v: -9223372036854775808})`: int64(math.MinInt64),
+		`MERGE (n:N {v: -1.5})`:                 -1.5,
+	}
+	for text, want := range cases {
+		t.Run(text, func(t *testing.T) {
+			q := parsePatternQuery(t, text)
+			got := q.Merges[0].Pattern.Nodes[0].Properties["v"]
+			if _, isExpr := got.(*RowExprRef); isExpr {
+				t.Fatalf("%q: v parsed as a row expression, want the literal %v", text, want)
+			}
+			if got != want {
+				t.Fatalf("%q: v = %#v, want %#v", text, got, want)
+			}
+		})
+	}
 }

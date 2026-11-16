@@ -22,7 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   item.text RETURN n.id`. The map `{id: item.id}` is calculated for each row in `CREATE`, `MERGE`
   (the node, the relationship, `ON CREATE` and `ON MATCH`), `MATCH` and `OPTIONAL MATCH`. A second
   run with the same items adds no node. A `MERGE` whose key is null for any row is refused before
-  it writes anything, as openCypher refuses it. `MERGE` directly after `UNWIND` in the same
+  that `MERGE` writes, as openCypher refuses it; a clause earlier in the query keeps its writes,
+  because Cypher writes in graphdb are not transactional (coord
+  `graphdb:v1.4-cypher-no-rollback-after-refusal`). A pattern map with a row value does not use a
+  property index: each row scans the tenant's nodes, so 500 items took about 0.7 s against 4,000
+  nodes in a probe. `MERGE` directly after `UNWIND` in the same
   segment, without `WITH`, is still refused: graphdb runs `MERGE` before `UNWIND` in a segment, so
   the `MERGE` would run once with no item. The `WITH item` starts a new segment, and the `MERGE`
   then runs once for each row. A negative number in a map, such as `{id: -1}`, parses now; it was
