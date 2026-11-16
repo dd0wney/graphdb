@@ -307,8 +307,8 @@ ReturnOrderBy2	[11] Aggregates ordered by arithmetics	no-parse
 ReturnOrderBy2	[12] Aggregation of named paths	no-parse
 ReturnOrderBy2	[13] Fail when sorting on variable removed by DISTINCT	fail
 ReturnOrderBy2	[14] Fail on aggregation in ORDER BY after RETURN	error-at-run
-ReturnOrderBy2	[1] ORDER BY should return results in ascending order	no-parse
-ReturnOrderBy2	[2] ORDER BY DESC should return results in descending order	no-parse
+ReturnOrderBy2	[1] ORDER BY should return results in ascending order	pass
+ReturnOrderBy2	[2] ORDER BY DESC should return results in descending order	pass
 ReturnOrderBy2	[3] Sort on aggregated function	fail
 ReturnOrderBy2	[4] Support sort and distinct	unsupported
 ReturnOrderBy2	[5] Support ordering by a property after being distinct-ified	no-parse
@@ -319,7 +319,7 @@ ReturnOrderBy2	[9] Using aliased DISTINCT expression in ORDER BY	pass
 ReturnOrderBy3	[1] Sort on aggregate function and normal property	no-parse
 ReturnOrderBy4	[1] ORDER BY of a column introduced in RETURN should return salient results in ascending order	no-parse
 ReturnOrderBy4	[2] Handle projections with ORDER BY	pass
-ReturnOrderBy5	[1] Renaming columns before ORDER BY should return results in ascending order	no-parse
+ReturnOrderBy5	[1] Renaming columns before ORDER BY should return results in ascending order	pass
 ReturnOrderBy6	[1] Handle constants and parameters inside an order by item which contains an aggregation expression	fail
 ReturnOrderBy6	[2] Handle returned aliases inside an order by item which contains an aggregation expression	no-parse
 ReturnOrderBy6	[3] Handle returned property accesses inside an order by item which contains an aggregation expression	no-parse

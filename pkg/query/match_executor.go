@@ -112,6 +112,12 @@ func intermediateLimit(n int) error {
 }
 
 func (ms *MatchStep) matchPattern(ctx *ExecutionContext, pattern *Pattern, existingBinding *BindingSet) ([]*BindingSet, error) {
+	// The one entry for MATCH, OPTIONAL MATCH and the match half of MERGE:
+	// each property map is calculated for this row before any node is tried.
+	pattern, err := patternWithRowProps(pattern, existingBinding)
+	if err != nil {
+		return nil, err
+	}
 	results := make([]*BindingSet, 0)
 
 	// Simple case: single node

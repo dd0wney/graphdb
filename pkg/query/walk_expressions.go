@@ -36,9 +36,10 @@ const (
 //   - the variable of SET, REMOVE (with its property) and DELETE
 //   - a ParameterRef in a pattern property map arrives as a *ParameterExpression
 //
-// Pattern property maps hold literals and *ParameterRef only (parseValue), so
-// they contain no variable. A hand-built AST may put an Expression there, and
-// it is visited too.
+// A pattern property map holds literals, *ParameterRef and *RowExprRef. The
+// expression of a *RowExprRef is walked, so a variable in it is checked like
+// any other. A hand-built AST may put an Expression there, and it is visited
+// too.
 func walkQueryExpressions(q *Query, visit func(clause string, expr Expression)) {
 	for seg := q; seg != nil; seg = seg.Next {
 		walkSegmentExpressions(seg, visit)
@@ -177,6 +178,17 @@ func walkValue(clause string, v any, visit func(string, Expression)) {
 		walkExpression(clause, val, visit)
 	case *ParameterRef:
 		visit(clause, &ParameterExpression{Name: val.Name})
+	case *RowExprRef:
+		// A parameter inside a row expression is not a survivor of
+		// resolveParameters: it is read from the row's "$name" binding. The
+		// mark keeps validateParameterExpressions from refusing it when the
+		// caller supplied it.
+		walkExpression(clause, val.Expr, func(c string, e Expression) {
+			if pe, ok := e.(*ParameterExpression); ok {
+				e = &ParameterExpression{Name: pe.Name, inRowExpr: true}
+			}
+			visit(c, e)
+		})
 	case []any:
 		for _, item := range val {
 			walkValue(clause, item, visit)

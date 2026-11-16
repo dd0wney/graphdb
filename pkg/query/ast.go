@@ -168,6 +168,15 @@ type ParameterRef struct {
 	Name string // "name" from $name
 }
 
+// RowExprRef is a pattern property value that reads a row variable, such as
+// {id: item.id} after UNWIND ... WITH item. A *ParameterRef is the same for
+// every row and the executor resolves it once, before the query runs. This
+// value differs for each row, so each step that reads a pattern map calculates
+// it against that row's bindings (resolveRowProps).
+type RowExprRef struct {
+	Expr Expression
+}
+
 // UnionClause represents a UNION between query segments
 type UnionClause struct {
 	All bool // true = UNION ALL (keep duplicates), false = UNION (deduplicate)

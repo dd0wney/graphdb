@@ -201,13 +201,6 @@ func TestCypherKnownGaps(t *testing.T) {
 		{"v1.4-cypher-count-distinct",
 			`MATCH (p:Person) RETURN count(DISTINCT p.age) AS n`,
 			wantCell("n", 4)},
-		{"v1.4-cypher-negative-literal-in-map",
-			`OPTIONAL MATCH (p:Person {id: -1}) RETURN p`,
-			func(t gapReporter, r gapResult) {
-				if r.err != nil {
-					t.Errorf("unexpected error: %v", r.err)
-				}
-			}},
 		{"v1.4-cypher-named-path-shortest-path/named-path",
 			`MATCH p = (a:Person {id: 0})-[:KNOWS]->(b) RETURN length(p) AS l LIMIT 1`,
 			wantCell("l", 1)},

@@ -84,6 +84,11 @@ func convertToStorageValue(val any) storage.Value {
 // ExecuteWithContext instead of ExecuteWithParams[Context]); previously it was
 // %v-stringified and the literal "&{name}" was persisted — silent corruption.
 func convertCreateProperty(val any) (storage.Value, error) {
+	// A caller must calculate a row expression first (resolveRowProps).
+	// Stored through the default case below, it would become a garbage value.
+	if _, ok := val.(*RowExprRef); ok {
+		return storage.Value{}, fmt.Errorf("unresolved row expression in a pattern property map")
+	}
 	if ref, ok := val.(*ParameterRef); ok {
 		return storage.Value{}, fmt.Errorf("unresolved query parameter $%s: parameterized queries must run via ExecuteWithParams", ref.Name)
 	}
@@ -182,6 +187,12 @@ func (cs *CreateStep) Execute(ctx *ExecutionContext) error {
 // already binds is reused, never created again; the new nodes and the new
 // relationship are bound into the row so later clauses see them.
 func (cs *CreateStep) createPattern(ctx *ExecutionContext, pattern *Pattern, row *BindingSet) error {
+	// Calculate the row expressions of the maps before any write, so a refused
+	// expression leaves no node behind.
+	pattern, err := patternWithRowProps(pattern, row)
+	if err != nil {
+		return err
+	}
 	// Refuse before creating anything, so a refused pattern leaves no node
 	// behind.
 	if err := cs.checkPattern(pattern, row); err != nil {
@@ -535,15 +546,22 @@ type MergeStep struct {
 // Execute decides match-or-create for each row on its own, from that row's
 // bindings, in row order, so a later row sees what an earlier row created.
 //
-// A pattern that uses none of the row's variables gets the same answer for
-// every row: the first row matches or creates, and every later row matches
+// A pattern that uses none of the row's variables, and holds no row
+// expression, gets the same answer for every row: the first row matches or creates, and every later row matches
 // that result. Deciding it once keeps the openCypher outcome (ON CREATE for
 // the first row, ON MATCH after) without a full scan for every row.
 func (ms *MergeStep) Execute(ctx *ExecutionContext) error {
+	// Before the first write: a null key in the last row of a batch must not
+	// leave the earlier rows written.
+	if err := refuseNullMergeValues(ms.merge.Pattern, ctx.results); err != nil {
+		return err
+	}
 	matchStep := &MatchStep{match: &MatchClause{Patterns: []*Pattern{ms.merge.Pattern}}}
 	createStep := &CreateStep{create: &CreateClause{Patterns: []*Pattern{ms.merge.Pattern}}, allowUndirected: true}
 	vars := patternVariables(ms.merge.Pattern)
-	unbound := len(ctx.results) > 0 && !bindsAny(ctx.results[0], vars)
+	// A row expression in a property map reads the row, so the answer differs
+	// for each row even when no pattern variable is bound.
+	unbound := len(ctx.results) > 0 && !bindsAny(ctx.results[0], vars) && !patternHasRowExpr(ms.merge.Pattern)
 
 	var decided []*BindingSet // pattern bindings of the first row, when unbound
 	out := make([]*BindingSet, 0, len(ctx.results))
