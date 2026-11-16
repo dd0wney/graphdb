@@ -138,6 +138,9 @@ func (p *Parser) Parse() (*Query, error) {
 			if query.Create != nil {
 				return nil, syntaxErrorAt(token, "repeated CREATE is not supported: put the patterns in one CREATE, separated by commas")
 			}
+			if w := writeRunLater(query, "CREATE"); w != "" {
+				return nil, writeOrderError("CREATE", w, token)
+			}
 			createClause, err := p.parseCreate()
 			if err != nil {
 				return nil, err
@@ -201,6 +204,9 @@ func (p *Parser) Parse() (*Query, error) {
 			query.Unwind = unwindClause
 
 		case TokenSet:
+			if w := writeRunLater(query, "SET"); w != "" {
+				return nil, writeOrderError("SET", w, token)
+			}
 			setClause, err := p.parseSet()
 			if err != nil {
 				return nil, err
@@ -214,6 +220,9 @@ func (p *Parser) Parse() (*Query, error) {
 			}
 
 		case TokenRemove:
+			if w := writeRunLater(query, "REMOVE"); w != "" {
+				return nil, writeOrderError("REMOVE", w, token)
+			}
 			removeClause, err := p.parseRemove()
 			if err != nil {
 				return nil, err
@@ -342,6 +351,39 @@ func writeClauseSeen(q *Query) string {
 		return "DELETE"
 	}
 	return ""
+}
+
+// writePlanOrder is the order in which the plan runs CREATE, SET, REMOVE and
+// DELETE (DETACH DELETE included) in one segment, whatever the text order.
+var writePlanOrder = []string{"CREATE", "SET", "REMOVE", "DELETE"}
+
+// writeRunLater names a write clause that the query already has and that the
+// plan runs after clause, or returns "". A clause written after it would run
+// before it: REMOVE a.id SET a.id = 5 leaves id null, because SET runs first.
+func writeRunLater(q *Query, clause string) string {
+	present := map[string]bool{
+		"CREATE": q.Create != nil,
+		"SET":    q.Set != nil,
+		"REMOVE": q.Remove != nil,
+		"DELETE": q.Delete != nil,
+	}
+	seen := false
+	for _, w := range writePlanOrder {
+		if w == clause {
+			seen = true
+			continue
+		}
+		if seen && present[w] {
+			return w
+		}
+	}
+	return ""
+}
+
+// writeOrderError refuses a write clause that the plan runs before an earlier
+// one in the text. Run anyway, it gives a wrong result with no error.
+func writeOrderError(clause, earlier string, token Token) error {
+	return syntaxErrorAt(token, "%s after %s is not supported: graphdb runs every %s before %s; put the %s first or split the query with WITH", clause, earlier, clause, earlier, clause)
 }
 
 // writeAfterUnwind names a write clause that the plan runs after UNWIND in one
