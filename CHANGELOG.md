@@ -39,6 +39,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same order would also make `UNWIND [] AS x MERGE (n:L)` create a node. Split such a query
   with `WITH`, which gives the openCypher result: `MATCH (a) UNWIND a.tags AS t WITH a, t MERGE
   (n:T)`, or `MATCH (a) SET a.n = a.n + 1 WITH a UNWIND a.tags AS t`.
+- **Breaking: more clauses that graphdb runs in a different order from the text are now refused.**
+  In one query segment graphdb runs `MATCH`, `WHERE`, `OPTIONAL MATCH`, `CALL`, `MERGE`, `UNWIND`,
+  `CREATE`, `SET`, `REMOVE`, `DELETE` and `RETURN` in that order, whatever the text order. The
+  parser now refuses three more classes, with a message that names the `WITH` split (or, for the
+  last class, `RETURN`):
+  - `OPTIONAL MATCH` written after `CREATE`, `MERGE`, `SET`, `REMOVE` or `DELETE`, for example
+    `CREATE (n:L {k: 1}) OPTIONAL MATCH (m:L) RETURN m.k`, which gave `null` for `m.k`;
+  - `CREATE`, `SET` or `REMOVE` written after a clause that the plan runs later: `SET` or `REMOVE` or
+    `DELETE` before `CREATE`, `REMOVE` or `DELETE` before `SET`, and `DELETE` before `REMOVE`
+    (`DETACH DELETE` counts as `DELETE`), for example `MATCH (a:A) REMOVE a.id SET a.id = 5 RETURN
+    a.id`, which left `id` null because `SET` ran first;
+  - any clause written after `RETURN`, except `ORDER BY`, `SKIP`, `LIMIT` and `UNION`, for example
+    `UNWIND [1] AS x RETURN x CREATE (n:Z)`, which created the node although `RETURN` ends a query
+    part in openCypher. Put the clause before `RETURN`.
+
+  These queries parsed in earlier releases and gave the plan-order result with no error. Split them
+  with `WITH`, which gives the openCypher result: `CREATE (n:L {k: 1}) WITH n OPTIONAL MATCH (m:L)
+  RETURN m.k`, or `MATCH (a:A) REMOVE a.id WITH a SET a.id = 5 RETURN a.id`.
 
 ### Security
 - **The development `docker-compose.yml` no longer publishes its ports to the network.** The server

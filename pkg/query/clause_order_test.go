@@ -219,3 +219,53 @@ func TestClauseOrder_WriteAgainstPlanOrderWithForm(t *testing.T) {
 		}
 	})
 }
+
+// Task 3: RETURN ends a query part. Only ORDER BY, SKIP, LIMIT and UNION may
+// follow it; any other clause ran in plan order, before the RETURN.
+func TestClauseOrder_ClauseAfterReturnIsRefused(t *testing.T) {
+	queries := map[string]string{
+		"CREATE":         `UNWIND [1] AS x RETURN x CREATE (n:Z)`,
+		"SET":            `MATCH (a:A) RETURN a.k SET a.k = 9`,
+		"REMOVE":         `MATCH (a:A) RETURN a.k REMOVE a.k`,
+		"DELETE":         `MATCH (a:A) RETURN a.k DELETE a`,
+		"DETACH DELETE":  `MATCH (a:A) RETURN a.k DETACH DELETE a`,
+		"MERGE":          `MATCH (a:A) RETURN a.k MERGE (n:Z)`,
+		"MATCH":          `MATCH (a:A) RETURN a.k MATCH (b:B)`,
+		"OPTIONAL MATCH": `MATCH (a:A) RETURN a.k OPTIONAL MATCH (b:B)`,
+		"UNWIND":         `MATCH (a:A) RETURN a.k UNWIND [1] AS x`,
+		"WITH":           `MATCH (a:A) RETURN a.k WITH a`,
+		"WHERE":          `MATCH (a:A) RETURN a.k WHERE a.k = 1`,
+	}
+	for name, text := range queries {
+		t.Run(name, func(t *testing.T) {
+			wantRefused(t, orderStore(t), text, "after RETURN", "RETURN ends")
+		})
+	}
+}
+
+func TestClauseOrder_AfterReturnOrderingAndUnionStillParse(t *testing.T) {
+	ex := orderStore(t)
+	for _, text := range []string{
+		`MATCH (a:A) RETURN a.k ORDER BY a.k SKIP 0 LIMIT 5`,
+		`MATCH (a:A) RETURN a.k AS k UNION MATCH (b:B) RETURN b.k AS k`,
+		`MATCH (a:A) RETURN a.k AS k UNION ALL MATCH (b:B) RETURN b.k AS k`,
+		`MATCH (a:A) RETURN a.k;`,
+	} {
+		if _, err := runUnwind(t, ex, text, nil); err != nil {
+			t.Errorf("%q: %v", text, err)
+		}
+	}
+}
+
+// The refusal says to put the clause before RETURN, so that form must work.
+func TestClauseOrder_ClauseBeforeReturnGivesTheOpenCypherResult(t *testing.T) {
+	ex := orderStore(t)
+	res, err := runUnwind(t, ex, `UNWIND [1] AS x CREATE (n:Z) RETURN x`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRows(t, res, "map[x:1]")
+	if got := countLabel(t, ex, "Z"); got != 1 {
+		t.Fatalf("%d :Z nodes, want 1", got)
+	}
+}

@@ -38,6 +38,15 @@ func (p *Parser) Parse() (*Query, error) {
 	for !p.isAtEnd() {
 		token := p.peek()
 
+		// RETURN ends a query part. The plan runs RETURN last, so a clause
+		// written after it would run before it. ORDER BY belongs to RETURN
+		// and parseReturn has taken it; SKIP, LIMIT and UNION still follow.
+		if query.Return != nil {
+			if name := clauseAfterReturn(token.Type); name != "" {
+				return nil, syntaxErrorAt(token, "%s after RETURN is not supported: RETURN ends a query part; put the %s before RETURN", name, name)
+			}
+		}
+
 		switch token.Type {
 		case TokenOptional:
 			if query.Call != nil {
@@ -468,6 +477,19 @@ func clauseTokenName(t TokenType) string {
 		return "SKIP"
 	}
 	return ""
+}
+
+// clauseAfterReturn names the clause a token starts when RETURN has already
+// ended the query part, or returns "" for a token that may follow RETURN.
+// A second RETURN is not named here: repeatedClauseError refuses it.
+func clauseAfterReturn(t TokenType) string {
+	switch t {
+	case TokenWith:
+		return "WITH"
+	case TokenReturn, TokenLimit, TokenSkip:
+		return ""
+	}
+	return clauseTokenName(t)
 }
 
 func clauseName(last string) string {
