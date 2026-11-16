@@ -157,6 +157,10 @@ type MergeClause struct {
 type WithClause struct {
 	Items []*ReturnItem
 	Where *WhereClause
+	// Skip and Limit are nil when absent. A LIMIT of 0 is valid and keeps no
+	// row, so a plain int could not tell it from "no LIMIT".
+	Skip  *int
+	Limit *int
 }
 
 // ParameterRef represents a parameter reference in property maps ({name: $name})

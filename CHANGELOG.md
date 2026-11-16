@@ -39,6 +39,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same order would also make `UNWIND [] AS x MERGE (n:L)` create a node. Split such a query
   with `WITH`, which gives the openCypher result: `MATCH (a) UNWIND a.tags AS t WITH a, t MERGE
   (n:T)`, or `MATCH (a) SET a.n = a.n + 1 WITH a UNWIND a.tags AS t`.
+- **Breaking: more clauses that graphdb runs in a different order from the text are now refused.**
+  In one query segment graphdb runs `MATCH`, `WHERE`, `OPTIONAL MATCH`, `CALL`, `MERGE`, `UNWIND`,
+  `CREATE`, `SET`, `REMOVE`, `DELETE` and `RETURN` in that order, whatever the text order. The
+  parser now refuses three more classes, with a message that names the `WITH` split (or, for the
+  last class, `RETURN`):
+  - `OPTIONAL MATCH` written after `CREATE`, `MERGE`, `SET`, `REMOVE` or `DELETE`, for example
+    `CREATE (n:L {k: 1}) OPTIONAL MATCH (m:L) RETURN m.k`, which gave `null` for `m.k`;
+  - `CREATE`, `SET` or `REMOVE` written after a clause that the plan runs later: `SET` or `REMOVE` or
+    `DELETE` before `CREATE`, `REMOVE` or `DELETE` before `SET`, and `DELETE` before `REMOVE`
+    (`DETACH DELETE` counts as `DELETE`), for example `MATCH (a:A) REMOVE a.id SET a.id = 5 RETURN
+    a.id`, which left `id` null because `SET` ran first;
+  - `MERGE` written after `CREATE`, `SET`, `REMOVE` or `DELETE` when an earlier `MERGE` hid the write
+    from the old check, for example `MERGE (x:L {k: 1}) SET x.k = 2 MERGE (y:L {k: 2})`, which made
+    two `L {k: 2}` nodes because both `MERGE`s ran before the `SET`;
+  - any clause written after `RETURN`, except `ORDER BY`, `SKIP`, `LIMIT` and `UNION`, for example
+    `UNWIND [1] AS x RETURN x CREATE (n:Z)`, which created the node although `RETURN` ends a query
+    part in openCypher. Put the clause before `RETURN`.
+
+  The first three classes parsed in earlier releases and gave the plan-order result with no error.
+  Split them with `WITH`, which gives the openCypher result: `CREATE (n:L {k: 1}) WITH n OPTIONAL
+  MATCH (m:L) RETURN m.k`, or `MATCH (a:A) REMOVE a.id WITH a SET a.id = 5 RETURN a.id`. In the last
+  class, a write, `MATCH`, `OPTIONAL MATCH` or `UNWIND` after `RETURN` parsed before and ran as if
+  written before it. `WITH` after `RETURN` also parsed, and the query then dropped the `RETURN`.
+  `WHERE` after `RETURN` was already refused; only its message changes.
 
 ### Security
 - **The development `docker-compose.yml` no longer publishes its ports to the network.** The server
@@ -49,6 +73,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the deployment scripts, which write their own compose file, are unchanged.
 
 ### Fixed
+- **`WITH ... SKIP` and `WITH ... LIMIT` were ignored, and a write after them changed more rows than
+  the query named.** `MATCH (a) WITH a SKIP 1 DETACH DELETE a` deleted every node. openCypher deletes
+  all but one. `MATCH (p:Person) WITH p LIMIT 1 MATCH (q:Person) RETURN q.id` gave 1 row, and
+  openCypher gives one row for each `Person` (6 in the test store). The parser read `SKIP` and
+  `LIMIT` after a `WITH` as the first token of the next query part, and only `RETURN` reads them.
+  Each release from v0.4.0, where the parser first read `WITH`, has the defect. `SKIP`, then `LIMIT`, now apply
+  to the rows that the `WITH` projects, after aggregation. The same defect had a second form: a
+  `SKIP` or `LIMIT` written before `RETURN`, or in a query part with no `RETURN`, limited nothing,
+  so `MATCH (p:Person) LIMIT 1 DETACH DELETE p` deleted every node. openCypher does not accept that
+  query. A `SKIP` or `LIMIT` that does not follow `RETURN` is now refused, because only `RETURN` or
+  the `WITH` before it can own one. A `WITH` that has
+  `SKIP` or `LIMIT` and also a `WHERE` is refused: "WHERE with SKIP or LIMIT after WITH is not
+  supported yet: split the query with a second WITH". openCypher writes `WHERE` after `SKIP` and
+  `LIMIT`, and the order in which they filter is not yet confirmed from a local source, so a
+  refusal is safer than a guess. The value of `SKIP` and `LIMIT` after `WITH` is a number, and `LIMIT 0` keeps no rows. (Under `RETURN`, `LIMIT 0` still keeps every row; coord `graphdb:v1.4-cypher-return-limit-zero`.)
+  A user who ran `SKIP` or `LIMIT` before a write, after `WITH` or not, must check what that write
+  changed. `ORDER BY` after `WITH` is still refused
+  (coord `graphdb:v1.4-cypher-with-order-by`).
 - **The `linux/arm64` Docker image held `amd64` binaries.** Both image workflows build
   `linux/amd64` and `linux/arm64`, but each `go build` in the `Dockerfile` set `GOARCH=amd64`, so the
   arm64 image put amd64 binaries on an arm64 base. Nobody ran the published arm64 image to confirm

@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -458,8 +459,31 @@ func (p *Parser) parseWith() (*WithClause, error) {
 		p.advance() // consume comma
 	}
 
+	// SKIP, then LIMIT. They belong to this WITH. Left unread they would start
+	// the next segment, where only RETURN looks at them.
+	if p.peek().Type == TokenSkip {
+		skip, err := p.parseSkipLimitValue("SKIP")
+		if err != nil {
+			return nil, err
+		}
+		withClause.Skip = &skip
+	}
+	if p.peek().Type == TokenLimit {
+		limit, err := p.parseSkipLimitValue("LIMIT")
+		if err != nil {
+			return nil, err
+		}
+		withClause.Limit = &limit
+	}
+
 	// Optional WHERE after WITH
 	if p.peek().Type == TokenWhere {
+		// openCypher writes WHERE after SKIP and LIMIT in a WITH. Whether it
+		// filters before or after them is not confirmed from a local source,
+		// and a wrong guess changes which rows a following write reaches.
+		if withClause.Skip != nil || withClause.Limit != nil {
+			return nil, syntaxErrorAt(p.peek(), "WHERE with SKIP or LIMIT after WITH is not supported yet: split the query with a second WITH")
+		}
 		where, err := p.parseWhere()
 		if err != nil {
 			return nil, err
@@ -468,6 +492,20 @@ func (p *Parser) parseWith() (*WithClause, error) {
 	}
 
 	return withClause, nil
+}
+
+// parseSkipLimitValue consumes the SKIP or LIMIT keyword and its number.
+func (p *Parser) parseSkipLimitValue(name string) (int, error) {
+	p.advance() // consume the keyword
+	tok, err := p.expect(TokenNumber)
+	if err != nil {
+		return 0, err
+	}
+	n, err := strconv.Atoi(tok.Value)
+	if err != nil {
+		return 0, syntaxErrorAt(tok, "invalid %s value: %s", name, tok.Value)
+	}
+	return n, nil
 }
 
 // parseMerge parses a MERGE clause with optional ON CREATE SET / ON MATCH SET

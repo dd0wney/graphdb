@@ -1,9 +1,5 @@
 package query
 
-import (
-	"strconv"
-)
-
 // Parser builds an AST from tokens
 type Parser struct {
 	tokens []Token
@@ -38,6 +34,15 @@ func (p *Parser) Parse() (*Query, error) {
 	for !p.isAtEnd() {
 		token := p.peek()
 
+		// RETURN ends a query part. The plan runs RETURN last, so a clause
+		// written after it would run before it. ORDER BY belongs to RETURN
+		// and parseReturn has taken it; SKIP, LIMIT and UNION still follow.
+		if query.Return != nil {
+			if name := clauseAfterReturn(token.Type); name != "" {
+				return nil, syntaxErrorAt(token, "%s after RETURN is not supported: RETURN ends a query part; put the %s before RETURN", name, name)
+			}
+		}
+
 		switch token.Type {
 		case TokenOptional:
 			if query.Call != nil {
@@ -45,6 +50,11 @@ func (p *Parser) Parse() (*Query, error) {
 			}
 			if query.Unwind != nil {
 				return nil, clauseAfterUnwindError("OPTIONAL MATCH", token)
+			}
+			// The plan runs every OPTIONAL MATCH before any write, as it does
+			// MATCH, so CREATE (n:L) OPTIONAL MATCH (m:L) would miss the new node.
+			if w := writeClauseSeen(query); w != "" {
+				return nil, syntaxErrorAt(token, "OPTIONAL MATCH after %s is not supported: graphdb runs every OPTIONAL MATCH before any write; put the OPTIONAL MATCH first or split the query with WITH", w)
 			}
 			p.advance() // consume OPTIONAL
 			if p.peek().Type != TokenMatch {
@@ -133,6 +143,9 @@ func (p *Parser) Parse() (*Query, error) {
 			if query.Create != nil {
 				return nil, syntaxErrorAt(token, "repeated CREATE is not supported: put the patterns in one CREATE, separated by commas")
 			}
+			if w := writeRunLater(query, "CREATE"); w != "" {
+				return nil, writeOrderError("CREATE", w, token)
+			}
 			createClause, err := p.parseCreate()
 			if err != nil {
 				return nil, err
@@ -170,7 +183,9 @@ func (p *Parser) Parse() (*Query, error) {
 
 		case TokenMerge:
 			// The plan runs every MERGE before CREATE, SET, REMOVE and DELETE.
-			if w := writeClauseSeen(query); w != "" && w != "MERGE" {
+			// writeClauseSeen would name an earlier MERGE first and hide a SET
+			// between two MERGEs.
+			if w := writeRunAfterMerge(query); w != "" {
 				return nil, syntaxErrorAt(token, "MERGE after %s is not supported: graphdb runs every MERGE before %s; put the MERGE first or split the query with WITH", w, w)
 			}
 			if query.Unwind != nil {
@@ -186,7 +201,7 @@ func (p *Parser) Parse() (*Query, error) {
 			if query.Unwind != nil {
 				return nil, syntaxErrorAt(token, "repeated UNWIND is not supported: split the query with WITH")
 			}
-			if w := writeAfterUnwind(query); w != "" {
+			if w := writeRunAfterMerge(query); w != "" {
 				return nil, syntaxErrorAt(token, "UNWIND after %s is not supported: graphdb runs UNWIND before %s, so the %s would run once per element; split the query with WITH, as in %s ... WITH n UNWIND ...", w, w, w, w)
 			}
 			unwindClause, err := p.parseUnwind()
@@ -196,6 +211,9 @@ func (p *Parser) Parse() (*Query, error) {
 			query.Unwind = unwindClause
 
 		case TokenSet:
+			if w := writeRunLater(query, "SET"); w != "" {
+				return nil, writeOrderError("SET", w, token)
+			}
 			setClause, err := p.parseSet()
 			if err != nil {
 				return nil, err
@@ -209,6 +227,9 @@ func (p *Parser) Parse() (*Query, error) {
 			}
 
 		case TokenRemove:
+			if w := writeRunLater(query, "REMOVE"); w != "" {
+				return nil, writeOrderError("REMOVE", w, token)
+			}
 			removeClause, err := p.parseRemove()
 			if err != nil {
 				return nil, err
@@ -219,28 +240,26 @@ func (p *Parser) Parse() (*Query, error) {
 				query.Remove = removeClause
 			}
 
-		case TokenLimit:
-			p.advance() // consume LIMIT
-			limitToken, err := p.expect(TokenNumber)
+		case TokenLimit, TokenSkip:
+			// Only RETURN reads Query.Skip and Query.Limit. A SKIP or LIMIT
+			// before RETURN, or in a part with no RETURN, therefore limited
+			// nothing: MATCH (p) LIMIT 1 DETACH DELETE p deleted every node.
+			// parseWith reads the SKIP and LIMIT that belong to a WITH.
+			if query.Return == nil {
+				return nil, syntaxErrorAt(token, "%s before RETURN is not supported: %s belongs to RETURN or to the WITH before it", token.Value, token.Value)
+			}
+			name := "LIMIT"
+			if token.Type == TokenSkip {
+				name = "SKIP"
+			}
+			n, err := p.parseSkipLimitValue(name)
 			if err != nil {
 				return nil, err
 			}
-			if limit, err := strconv.Atoi(limitToken.Value); err == nil {
-				query.Limit = limit
+			if token.Type == TokenSkip {
+				query.Skip = n
 			} else {
-				return nil, syntaxErrorAt(limitToken, "invalid LIMIT value: %s", limitToken.Value)
-			}
-
-		case TokenSkip:
-			p.advance() // consume SKIP
-			skipToken, err := p.expect(TokenNumber)
-			if err != nil {
-				return nil, err
-			}
-			if skip, err := strconv.Atoi(skipToken.Value); err == nil {
-				query.Skip = skip
-			} else {
-				return nil, syntaxErrorAt(skipToken, "invalid SKIP value: %s", skipToken.Value)
+				query.Limit = n
 			}
 
 		case TokenUnion:
@@ -339,12 +358,45 @@ func writeClauseSeen(q *Query) string {
 	return ""
 }
 
-// writeAfterUnwind names a write clause that the plan runs after UNWIND in one
-// segment. Written before UNWIND, such a clause would run once per unwound row,
-// or not at all for an empty list. MERGE is not one: the plan runs it before
-// UNWIND, which is text order. writeClauseSeen does not serve here, because it
-// names MERGE first and so hides a SET after the MERGE.
-func writeAfterUnwind(q *Query) string {
+// writePlanOrder is the order in which the plan runs CREATE, SET, REMOVE and
+// DELETE (DETACH DELETE included) in one segment, whatever the text order.
+var writePlanOrder = []string{"CREATE", "SET", "REMOVE", "DELETE"}
+
+// writeRunLater names a write clause that the query already has and that the
+// plan runs after clause, or returns "". A clause written after it would run
+// before it: REMOVE a.id SET a.id = 5 leaves id null, because SET runs first.
+func writeRunLater(q *Query, clause string) string {
+	present := map[string]bool{
+		"CREATE": q.Create != nil,
+		"SET":    q.Set != nil,
+		"REMOVE": q.Remove != nil,
+		"DELETE": q.Delete != nil,
+	}
+	seen := false
+	for _, w := range writePlanOrder {
+		if w == clause {
+			seen = true
+			continue
+		}
+		if seen && present[w] {
+			return w
+		}
+	}
+	return ""
+}
+
+// writeOrderError refuses a write clause that the plan runs before an earlier
+// one in the text. Run anyway, it gives a wrong result with no error.
+func writeOrderError(clause, earlier string, token Token) error {
+	return syntaxErrorAt(token, "%s after %s is not supported: graphdb runs every %s before %s; put the %s first or split the query with WITH", clause, earlier, clause, earlier, clause)
+}
+
+// writeRunAfterMerge names a write clause that the plan runs after MERGE and
+// UNWIND in one segment. Written before a MERGE or an UNWIND, such a clause
+// would run after it: once per unwound row, not at all for an empty list, or
+// after a MERGE that should have seen it. writeClauseSeen does not serve here,
+// because it names MERGE first and so hides a SET after a MERGE.
+func writeRunAfterMerge(q *Query) string {
 	switch {
 	case q.Create != nil:
 		return "CREATE"
@@ -421,6 +473,19 @@ func clauseTokenName(t TokenType) string {
 		return "SKIP"
 	}
 	return ""
+}
+
+// clauseAfterReturn names the clause a token starts when RETURN has already
+// ended the query part, or returns "" for a token that may follow RETURN.
+// A second RETURN is not named here: repeatedClauseError refuses it.
+func clauseAfterReturn(t TokenType) string {
+	switch t {
+	case TokenWith:
+		return "WITH"
+	case TokenReturn, TokenLimit, TokenSkip:
+		return ""
+	}
+	return clauseTokenName(t)
 }
 
 func clauseName(last string) string {
