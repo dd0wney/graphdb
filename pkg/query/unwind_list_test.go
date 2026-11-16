@@ -101,6 +101,40 @@ func TestUnwind_PropertyReferenceKeepsItsResult(t *testing.T) {
 	wantRows(t, res, "map[tag:a]", "map[tag:b]")
 }
 
+// A stored array reads back as a typed slice ([]string, []int64), and UNWIND
+// took only []any, so it gave one row that held the whole list. Equality and
+// IN read typed slices as lists through asList; UNWIND follows the same rule.
+func TestUnwind_StoredArrayGivesOneRowPerElement(t *testing.T) {
+	ex := unwindStore(t)
+	if _, err := ex.graph.CreateNode([]string{"T"}, map[string]storage.Value{
+		"tags": storage.StringArrayValue([]string{"a", "b", "c"}),
+		"nums": storage.IntArrayValue([]int64{1, 2}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := runUnwind(t, ex, `MATCH (n:T) UNWIND n.tags AS tag RETURN tag`, nil)
+	if err != nil {
+		t.Fatalf("UNWIND n.tags: %v", err)
+	}
+	wantRows(t, res, "map[tag:a]", "map[tag:b]", "map[tag:c]")
+
+	res, err = runUnwind(t, ex, `MATCH (n:T) UNWIND n.nums AS x RETURN x`, nil)
+	if err != nil {
+		t.Fatalf("UNWIND n.nums: %v", err)
+	}
+	wantRows(t, res, "map[x:1]", "map[x:2]")
+}
+
+// A Go caller can pass a typed slice as a parameter; REST gives []any.
+func TestUnwind_TypedSliceParameter(t *testing.T) {
+	ex := unwindStore(t)
+	res, err := runUnwind(t, ex, `UNWIND $xs AS x RETURN x`, map[string]any{"xs": []string{"p", "q"}})
+	if err != nil {
+		t.Fatalf("UNWIND $xs: %v", err)
+	}
+	wantRows(t, res, "map[x:p]", "map[x:q]")
+}
+
 // A parameter that the run does not hold is still refused, as a
 // *RefusalError that names it, before any row is made.
 func TestUnwind_MissingParameterIsRefused(t *testing.T) {

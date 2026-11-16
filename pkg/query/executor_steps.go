@@ -687,14 +687,12 @@ func (us *UnwindStep) Execute(ctx *ExecutionContext) error {
 			continue // Skip nil values
 		}
 
-		// Convert to list
-		var items []any
-		switch v := val.(type) {
-		case []any:
-			items = v
-		default:
-			// Non-list values treated as single-element list
-			items = []any{v}
+		// asList is the list rule equality and IN use: a stored array reads
+		// back as a typed slice, and it is a list too. A value that is not a
+		// list is one element.
+		items, ok := asList(val)
+		if !ok {
+			items = []any{val}
 		}
 
 		// Create one new binding per element

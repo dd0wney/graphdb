@@ -120,12 +120,12 @@ func (o *UnwindOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 				continue
 			}
 
-			switch v := val.(type) {
-			case []any:
-				o.items = v
-			default:
-				o.items = []any{v}
+			// The same list rule as UnwindStep: see asList.
+			items, ok := asList(val)
+			if !ok {
+				items = []any{val}
 			}
+			o.items = items
 			o.index = 0
 		}
 
