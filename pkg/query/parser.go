@@ -187,7 +187,9 @@ func (p *Parser) Parse() (*Query, error) {
 
 		case TokenMerge:
 			// The plan runs every MERGE before CREATE, SET, REMOVE and DELETE.
-			if w := writeClauseSeen(query); w != "" && w != "MERGE" {
+			// writeClauseSeen would name an earlier MERGE first and hide a SET
+			// between two MERGEs.
+			if w := writeRunAfterMerge(query); w != "" {
 				return nil, syntaxErrorAt(token, "MERGE after %s is not supported: graphdb runs every MERGE before %s; put the MERGE first or split the query with WITH", w, w)
 			}
 			if query.Unwind != nil {
@@ -203,7 +205,7 @@ func (p *Parser) Parse() (*Query, error) {
 			if query.Unwind != nil {
 				return nil, syntaxErrorAt(token, "repeated UNWIND is not supported: split the query with WITH")
 			}
-			if w := writeAfterUnwind(query); w != "" {
+			if w := writeRunAfterMerge(query); w != "" {
 				return nil, syntaxErrorAt(token, "UNWIND after %s is not supported: graphdb runs UNWIND before %s, so the %s would run once per element; split the query with WITH, as in %s ... WITH n UNWIND ...", w, w, w, w)
 			}
 			unwindClause, err := p.parseUnwind()
@@ -395,12 +397,12 @@ func writeOrderError(clause, earlier string, token Token) error {
 	return syntaxErrorAt(token, "%s after %s is not supported: graphdb runs every %s before %s; put the %s first or split the query with WITH", clause, earlier, clause, earlier, clause)
 }
 
-// writeAfterUnwind names a write clause that the plan runs after UNWIND in one
-// segment. Written before UNWIND, such a clause would run once per unwound row,
-// or not at all for an empty list. MERGE is not one: the plan runs it before
-// UNWIND, which is text order. writeClauseSeen does not serve here, because it
-// names MERGE first and so hides a SET after the MERGE.
-func writeAfterUnwind(q *Query) string {
+// writeRunAfterMerge names a write clause that the plan runs after MERGE and
+// UNWIND in one segment. Written before a MERGE or an UNWIND, such a clause
+// would run after it: once per unwound row, not at all for an empty list, or
+// after a MERGE that should have seen it. writeClauseSeen does not serve here,
+// because it names MERGE first and so hides a SET after a MERGE.
+func writeRunAfterMerge(q *Query) string {
 	switch {
 	case q.Create != nil:
 		return "CREATE"

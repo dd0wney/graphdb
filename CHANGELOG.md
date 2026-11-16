@@ -50,13 +50,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `DELETE` before `CREATE`, `REMOVE` or `DELETE` before `SET`, and `DELETE` before `REMOVE`
     (`DETACH DELETE` counts as `DELETE`), for example `MATCH (a:A) REMOVE a.id SET a.id = 5 RETURN
     a.id`, which left `id` null because `SET` ran first;
+  - `MERGE` written after `CREATE`, `SET`, `REMOVE` or `DELETE` when an earlier `MERGE` hid the write
+    from the old check, for example `MERGE (x:L {k: 1}) SET x.k = 2 MERGE (y:L {k: 2})`, which made
+    two `L {k: 2}` nodes because both `MERGE`s ran before the `SET`;
   - any clause written after `RETURN`, except `ORDER BY`, `SKIP`, `LIMIT` and `UNION`, for example
     `UNWIND [1] AS x RETURN x CREATE (n:Z)`, which created the node although `RETURN` ends a query
     part in openCypher. Put the clause before `RETURN`.
 
-  These queries parsed in earlier releases and gave the plan-order result with no error. Split them
-  with `WITH`, which gives the openCypher result: `CREATE (n:L {k: 1}) WITH n OPTIONAL MATCH (m:L)
-  RETURN m.k`, or `MATCH (a:A) REMOVE a.id WITH a SET a.id = 5 RETURN a.id`.
+  The first three classes parsed in earlier releases and gave the plan-order result with no error.
+  Split them with `WITH`, which gives the openCypher result: `CREATE (n:L {k: 1}) WITH n OPTIONAL
+  MATCH (m:L) RETURN m.k`, or `MATCH (a:A) REMOVE a.id WITH a SET a.id = 5 RETURN a.id`. In the last
+  class, a write, `MATCH`, `OPTIONAL MATCH` or `UNWIND` after `RETURN` parsed before and ran as if
+  written before it. `WITH` after `RETURN` also parsed, and the query then dropped the `RETURN`.
+  `WHERE` after `RETURN` was already refused; only its message changes.
 
 ### Security
 - **The development `docker-compose.yml` no longer publishes its ports to the network.** The server

@@ -269,3 +269,20 @@ func TestClauseOrder_ClauseBeforeReturnGivesTheOpenCypherResult(t *testing.T) {
 		t.Fatalf("%d :Z nodes, want 1", got)
 	}
 }
+
+// The MERGE check used writeClauseSeen, which names MERGE first, so a write
+// between two MERGEs hid behind the first one: MERGE (x:L {k: 1}) SET x.k = 2
+// MERGE (y:L {k: 2}) made two L {k: 2} nodes, because both MERGEs ran before
+// the SET (review of the clause-order commits).
+func TestClauseOrder_MergeAfterWriteBetweenMergesIsRefused(t *testing.T) {
+	for _, text := range []string{
+		`MERGE (x:L {k: 1}) SET x.k = 2 MERGE (y:L {k: 2}) RETURN y.k`,
+		`MERGE (x:L {k: 1}) REMOVE x.k MERGE (y:L {k: 3}) RETURN y.k`,
+		`MERGE (x:L {k: 1}) DELETE x MERGE (y:L {k: 1}) RETURN y.k`,
+		`MERGE (x:L {k: 1}) CREATE (z:L {k: 4}) MERGE (y:L {k: 4}) RETURN y.k`,
+	} {
+		t.Run(text, func(t *testing.T) {
+			wantRefused(t, orderStore(t), text, "MERGE after", "WITH")
+		})
+	}
+}
