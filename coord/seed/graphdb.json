@@ -987,9 +987,61 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: the parser accepts a clause after RETURN. UNWIND [1] AS x RETURN x CREATE (n:Z) made a node, where openCypher refuses the query because RETURN must be the last clause of a query part (probed by the #769 review at fa43632). Refuse any clause after RETURN other than ORDER BY, SKIP, LIMIT and UNION. Acceptance: the probe is refused with no write, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-return-limit-zero",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: RETURN ... LIMIT 0 keeps every row, where openCypher keeps none, because the plan reads Query.Limit 0 as 'no limit' (pkg/query/executor_plan.go, the limit step; found by the review of #773 at fa29ac7). WITH ... LIMIT 0 already keeps none since #773. Acceptance: RETURN ... LIMIT 0 gives 0 rows, and a query with no LIMIT still gives all rows, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-repeated-skip-limit",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: RETURN x SKIP 1 SKIP 2 (or LIMIT twice) parses and keeps the last value with no error (the TokenSkip/TokenLimit case in pkg/query/parser.go; found by the review of #773 at fa29ac7). Refuse a repeated SKIP or LIMIT, as repeated RETURN is refused. Acceptance: the probe is refused, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-with-distinct",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: WITH DISTINCT does not parse (unexpected token in expression: 'DISTINCT'), so DISTINCT after WITH and WITH DISTINCT ... SKIP/LIMIT cannot be written (found by the builder of #773). Parse it and apply DISTINCT to the WITH projection before SKIP and LIMIT. Acceptance: WITH DISTINCT a.g AS g RETURN g gives one row per value, and WITH DISTINCT ... LIMIT 1 gives one row, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-skip-limit-parameter",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: SKIP and LIMIT accept only a number literal after RETURN and after WITH; SKIP $n and LIMIT $n are refused at parse (parseSkipLimitValue, #773). openCypher accepts a parameter. Accept a non-negative integer parameter and refuse any other value at run time. Acceptance: RETURN x LIMIT $n with n = 2 gives 2 rows, and n = -1 or 'a' is refused, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-merge-after-unwind-auto-split",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: UNWIND $items AS item MERGE (n:L {id: item.id}) in one query part is refused (clauseAfterUnwindError, #769), because the plan runs MERGE before UNWIND. GitHub #765 asks for this standard form. Make the parser end the query part before such a clause with an implicit WITH that carries every bound variable, so the clause runs once per row. The same split could replace the other clause-order refusals of #769 and #773. Needs the parser to know each bound variable. Acceptance: the batch upsert of #765 works without WITH item, and each refusal it replaces gives the openCypher result, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-merge-null-property",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: MERGE (n:L {id: null}) and MERGE with a null $param are not refused, where openCypher refuses a MERGE whose property value is null; CREATE with a null property value stores a null property, where openCypher stores none (found by the builder of the #765 part 2 change; row expressions already refuse null in MERGE). Acceptance: both MERGE forms are refused with no write, and CREATE (n {a: null}) stores no property a, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-pattern-map-same-pattern-variable",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: a pattern property map cannot read a variable that the same pattern binds: MATCH (a:L)-[:R]->(b:L {id: a.id}) is refused with 'variable a is not bound where the pattern property map uses it', where openCypher accepts it (found by the builder of the #765 part 2 change). Acceptance: the probe gives the openCypher rows, with and without an index on L.id, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-pattern-map-row-value-index",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "perf(query): a pattern map with a row value, as in UNWIND $items AS item WITH item MERGE (n:L {id: item.id}), uses no property index: each row scans every node of the tenant (match_node.go, GetAllNodesForTenant). 500 items took 235 ms against 1,000 nodes and 717 ms against 4,000 nodes in the review probe of the #765 part 2 change. Look up a row value through the property index when one exists. Acceptance: the batch upsert with an index on L.id reads the index for each row (count the index reads), and the JSON-mmap oracle still holds, seen red first"
     }
   ],
   "deps": [
+    {
+      "from": "v1.4-cypher-merge-after-unwind-auto-split",
+      "to": "v1.4-cypher-unwind-write-per-item"
+    },
     {
       "from": "v1.4-cypher-unwind-write-per-item",
       "to": "v1.4-cypher-unwind-literal"
