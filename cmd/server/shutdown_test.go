@@ -104,4 +104,55 @@ func TestServe_StartFailureExitsOneWithoutClose(t *testing.T) {
 	if code != 1 {
 		t.Errorf("exit code %d, want 1", code)
 	}
+	if n := g.calls.Load(); n != 0 {
+		t.Errorf("Close called %d times after a Start failure, want 0", n)
+	}
+}
+
+// blockingServer makes Start return at once, as http.Server does, while
+// Shutdown keeps draining until the test releases it.
+type blockingServer struct {
+	stopped, entered, release chan struct{}
+}
+
+func (b *blockingServer) Start() error {
+	<-b.stopped
+	return http.ErrServerClosed
+}
+
+func (b *blockingServer) Shutdown(context.Context) error {
+	close(b.stopped)
+	close(b.entered)
+	<-b.release
+	return nil
+}
+
+// Close before the drain ends would cut off in-flight writes, so serve must
+// hold storage open while Shutdown blocks.
+func TestServe_DoesNotCloseWhileShutdownDrains(t *testing.T) {
+	b := &blockingServer{stopped: make(chan struct{}), entered: make(chan struct{}), release: make(chan struct{})}
+	g := &fakeGraph{}
+	sig := make(chan os.Signal, 1)
+	sig <- os.Interrupt
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+
+	done := make(chan int, 1)
+	go func() { done <- serve(b.Start, sig, b, func() {}, g, logger) }()
+
+	<-b.entered
+	// Start has returned by now. Give a wrongly ordered serve time to close.
+	time.Sleep(100 * time.Millisecond)
+	if n := g.calls.Load(); n != 0 {
+		t.Fatalf("Close called %d times while Shutdown still drained, want 0", n)
+	}
+
+	close(b.release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("serve did not return after Shutdown finished")
+	}
+	if n := g.calls.Load(); n != 1 {
+		t.Errorf("Close called %d times after the drain, want 1", n)
+	}
 }

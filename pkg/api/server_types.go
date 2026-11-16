@@ -83,4 +83,9 @@ type Server struct {
 	autoEmbedPool *intelligence.Pool
 
 	httpServer atomic.Pointer[http.Server] // set in Start(); read by Shutdown()
+
+	// shutdownMu orders Shutdown against Start's store of httpServer, so a
+	// Shutdown that lands first is not lost (see Start).
+	shutdownMu        sync.Mutex
+	shutdownRequested bool
 }

@@ -270,7 +270,15 @@ func (s *Server) Start() error {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+	// A Shutdown that ran before this point found no server to stop. Honour it
+	// here, or a signal in that window is lost and Start serves for ever.
+	s.shutdownMu.Lock()
+	if s.shutdownRequested {
+		s.shutdownMu.Unlock()
+		return http.ErrServerClosed
+	}
 	s.httpServer.Store(server)
+	s.shutdownMu.Unlock()
 
 	// Start server with or without TLS
 	if s.tlsConfig != nil && s.tlsConfig.Enabled {
@@ -290,9 +298,13 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully stops the HTTP server: it stops accepting new
 // connections and waits for in-flight requests to finish, up to ctx's
-// deadline. Safe to call if Start was never reached (no-op).
+// deadline. Called before Start, it stops nothing now but makes a later Start
+// return http.ErrServerClosed.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.shutdownMu.Lock()
+	s.shutdownRequested = true
 	srv := s.httpServer.Load()
+	s.shutdownMu.Unlock()
 	if srv == nil {
 		return nil
 	}
