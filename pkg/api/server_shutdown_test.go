@@ -65,3 +65,40 @@ func TestServer_Shutdown_StopsServing(t *testing.T) {
 		t.Fatal("Start did not return after Shutdown")
 	}
 }
+
+// TestServer_ShutdownBeforeStart_StartReturnsErrServerClosed guards a lost
+// SIGTERM: a signal that lands after signal.Notify but before Start stores its
+// http.Server calls Shutdown on a nil server. That Shutdown must still win,
+// or Start serves forever and ignores every later signal.
+func TestServer_ShutdownBeforeStart_StartReturnsErrServerClosed(t *testing.T) {
+	tmpDir := t.TempDir()
+	gs, err := storage.NewGraphStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create graph storage: %v", err)
+	}
+	defer func() { _ = gs.Close() }()
+
+	server, err := NewServerWithDataDir(gs, 0, tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown before Start: %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- server.Start() }()
+	select {
+	case startErr := <-errCh:
+		if startErr != http.ErrServerClosed {
+			t.Fatalf("Start returned %v, want http.ErrServerClosed", startErr)
+		}
+	case <-time.After(2 * time.Second):
+		// Stop the leaked server so the red run does not hang the suite.
+		_ = server.Shutdown(ctx)
+		t.Fatal("Start kept serving after an earlier Shutdown")
+	}
+}
