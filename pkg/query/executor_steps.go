@@ -676,27 +676,23 @@ func (us *UnwindStep) Execute(ctx *ExecutionContext) error {
 	newResults := make([]*BindingSet, 0)
 
 	for _, binding := range ctx.results {
-		// Extract the value to unwind
-		var val any
-		expr := us.unwind.Expression
-		if expr.Property == "" {
-			// Variable reference without property — get the raw binding value
-			val = binding.bindings[expr.Variable]
-		} else {
-			val = propertyValue(expr, binding.bindings)
+		// evalOperand returns only a refusal as an error, such as an
+		// arithmetic error, and reads a parameter from the row's "$name"
+		// binding. A bare variable gives its raw binding value.
+		val, err := evalOperand(us.unwind.Expression, binding.bindings)
+		if err != nil {
+			return err
 		}
 		if val == nil {
 			continue // Skip nil values
 		}
 
-		// Convert to list
-		var items []any
-		switch v := val.(type) {
-		case []any:
-			items = v
-		default:
-			// Non-list values treated as single-element list
-			items = []any{v}
+		// asList is the list rule equality and IN use: a stored array reads
+		// back as a typed slice, and it is a list too. A value that is not a
+		// list is one element.
+		items, ok := asList(val)
+		if !ok {
+			items = []any{val}
 		}
 
 		// Create one new binding per element

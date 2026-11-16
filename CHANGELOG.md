@@ -10,6 +10,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`UNWIND` takes any expression, not only a property reference (#765).** `UNWIND $xs AS x`,
+  `UNWIND [1, 2, 3] AS x` and `UNWIND $items AS item RETURN item.id` now work, so a client can send
+  a list in one request instead of one request per item. A stored array (`StringArrayValue`,
+  `IntArrayValue`) and a typed-slice parameter from a Go caller now unwind one row per element; they
+  gave one row that held the whole list. `UNWIND` uses the list rule that `=` and `IN` already use:
+  every list except bytes. A batch upsert in one statement, `UNWIND $items AS item MERGE (n:L {id:
+  item.id})`, does not work yet: a property map in a pattern takes only literals and parameters
+  (coord `graphdb:v1.4-cypher-unwind-write-per-item`).
+
+### Changed
+- **Breaking: clauses that graphdb runs in a different order from the text around `UNWIND` are now
+  refused.** In one query segment graphdb runs `MATCH`, `OPTIONAL MATCH` and `MERGE` before
+  `UNWIND`, and `CREATE`, `SET`, `REMOVE`, `DELETE` and `DETACH DELETE` after it. The parser now
+  refuses both of these classes, with a message that names the `WITH` split:
+  - `MATCH`, `OPTIONAL MATCH` or `MERGE` written after `UNWIND` in the same segment, for example
+    `MATCH (a) UNWIND a.tags AS t MERGE (n:T)`;
+  - `UNWIND` written after `CREATE`, `SET`, `REMOVE`, `DELETE` or `DETACH DELETE` in the same
+    segment, for example `MATCH (a) SET a.n = a.n + 1 UNWIND a.tags AS t` or `CREATE (n:L {tags:
+    $tags}) UNWIND n.tags AS t`.
+
+  Forms in both classes parsed in earlier releases, with `UNWIND` of a property reference, and ran
+  in plan order, not text order. A write before `UNWIND` ran once per element, or not at all for an
+  empty list: `SET a.n = a.n + 1` added the list length, and `CREATE (n:L {tags: $tags}) UNWIND
+  n.tags` made no node. A `MERGE` after `UNWIND` ran once, before the list was read, so it ran for
+  an empty list too and could not use the element. With list literals and parameters now allowed,
+  the same order would also make `UNWIND [] AS x MERGE (n:L)` create a node. Split such a query
+  with `WITH`, which gives the openCypher result: `MATCH (a) UNWIND a.tags AS t WITH a, t MERGE
+  (n:T)`, or `MATCH (a) SET a.n = a.n + 1 WITH a UNWIND a.tags AS t`.
+
 ### Security
 - **The development `docker-compose.yml` no longer publishes its ports to the network.** The server
   (8080), the license server (8082) and Postgres (5432) were published on every network interface.
@@ -30,6 +60,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already closed` error. The code is the same from v1.0.0. Shutdown now has one owner, which drains
   HTTP, then closes storage once and exits only after `Close` returns. The first stop after the
   upgrade writes the snapshot and truncates the WAL.
+- **The `linux/arm64` Docker image held `amd64` binaries.** Both image workflows build
+  `linux/amd64` and `linux/arm64`, but each `go build` in the `Dockerfile` set `GOARCH=amd64`, so the
+  arm64 image put amd64 binaries on an arm64 base. Nobody ran the published arm64 image to confirm
+  the failure; the `Dockerfile` decides it. The builder stage now runs on the build host
+  (`--platform=$BUILDPLATFORM`) and compiles for `$TARGETOS`/`$TARGETARCH`.
 - **A write query that used a property index ignored every other condition of its `WHERE`.**
   With an index on `pid`, `MATCH (p:T) WHERE p.pid = 1 AND p.k > 5 DELETE p` deleted a node whose
   `k` is 1, although the `WHERE` is false for it. The index took the row, the `DELETE` ran on it,
