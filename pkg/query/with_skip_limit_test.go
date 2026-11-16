@@ -169,3 +169,19 @@ func TestWithSkipLimit_ReturnStillWorks(t *testing.T) {
 		t.Errorf("rows = %d, want 3", len(res.Rows))
 	}
 }
+
+// Only RETURN reads Query.Skip and Query.Limit, so a SKIP or LIMIT written
+// before RETURN, or with no RETURN at all, did not limit a write: MATCH (p)
+// LIMIT 1 DETACH DELETE p deleted every node (review of the WITH SKIP/LIMIT
+// change; the segment-start refusal did not reach it).
+func TestWithSkipLimit_BeforeReturnIsRefused(t *testing.T) {
+	for _, text := range []string{
+		`MATCH (p:Person) LIMIT 1 DETACH DELETE p`,
+		`MATCH (p:Person) SKIP 5 DETACH DELETE p`,
+		`MATCH (p:Person) LIMIT 1 SET p.g = 'z' RETURN p.id`,
+	} {
+		t.Run(text, func(t *testing.T) {
+			wantRefusedCount(t, withLimitStore(t), text, 6)
+		})
+	}
+}

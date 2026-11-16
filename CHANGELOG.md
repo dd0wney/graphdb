@@ -78,14 +78,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all but one. `MATCH (p:Person) WITH p LIMIT 1 MATCH (q:Person) RETURN q.id` gave 1 row, and
   openCypher gives one row for each `Person` (6 in the test store). The parser read `SKIP` and
   `LIMIT` after a `WITH` as the first token of the next query part, and only `RETURN` reads them.
-  This is the same in each release, so each release has the defect. `SKIP`, then `LIMIT`, now apply
-  to the rows that the `WITH` projects, after aggregation. A `SKIP` or `LIMIT` that starts a query
-  part is refused, because only `RETURN` or the `WITH` before it can own one. A `WITH` that has
+  Each release from v0.4.0, where the parser first read `WITH`, has the defect. `SKIP`, then `LIMIT`, now apply
+  to the rows that the `WITH` projects, after aggregation. The same defect had a second form: a
+  `SKIP` or `LIMIT` written before `RETURN`, or in a query part with no `RETURN`, limited nothing,
+  so `MATCH (p:Person) LIMIT 1 DETACH DELETE p` deleted every node. openCypher does not accept that
+  query. A `SKIP` or `LIMIT` that does not follow `RETURN` is now refused, because only `RETURN` or
+  the `WITH` before it can own one. A `WITH` that has
   `SKIP` or `LIMIT` and also a `WHERE` is refused: "WHERE with SKIP or LIMIT after WITH is not
   supported yet: split the query with a second WITH". openCypher writes `WHERE` after `SKIP` and
   `LIMIT`, and the order in which they filter is not yet confirmed from a local source, so a
-  refusal is safer than a guess. The value of `SKIP` and `LIMIT` is a number, as under `RETURN`.
-  A user who ran `WITH ... SKIP` or `WITH ... LIMIT` before a write must check what that write
+  refusal is safer than a guess. The value of `SKIP` and `LIMIT` after `WITH` is a number, and `LIMIT 0` keeps no rows. (Under `RETURN`, `LIMIT 0` still keeps every row; coord `graphdb:v1.4-cypher-return-limit-zero`.)
+  A user who ran `SKIP` or `LIMIT` before a write, after `WITH` or not, must check what that write
   changed. `ORDER BY` after `WITH` is still refused
   (coord `graphdb:v1.4-cypher-with-order-by`).
 - **A write query that used a property index ignored every other condition of its `WHERE`.**

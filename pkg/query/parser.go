@@ -241,11 +241,12 @@ func (p *Parser) Parse() (*Query, error) {
 			}
 
 		case TokenLimit, TokenSkip:
-			// A SKIP or LIMIT with no clause before it once came from WITH
-			// ... LIMIT. parseWith reads those now. Only RETURN applies this
-			// one, so a write after it would reach every row.
-			if last == "" {
-				return nil, syntaxErrorAt(token, "%s at the start of a query part is not supported: %s belongs to RETURN or to the WITH before it", token.Value, token.Value)
+			// Only RETURN reads Query.Skip and Query.Limit. A SKIP or LIMIT
+			// before RETURN, or in a part with no RETURN, therefore limited
+			// nothing: MATCH (p) LIMIT 1 DETACH DELETE p deleted every node.
+			// parseWith reads the SKIP and LIMIT that belong to a WITH.
+			if query.Return == nil {
+				return nil, syntaxErrorAt(token, "%s before RETURN is not supported: %s belongs to RETURN or to the WITH before it", token.Value, token.Value)
 			}
 			name := "LIMIT"
 			if token.Type == TokenSkip {
