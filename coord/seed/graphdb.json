@@ -945,9 +945,25 @@
       "track": "v1.4",
       "status": "pending",
       "title": "test: add a guard test for pkg/faultsim. Each Site constant other than None and numSites (pkg/faultsim/faultsim.go:43, read at 5160638) must have a String case, at least one faultsim.Fail call outside the package, and at least one faultsim.Arm call in a test. A site that no test can reach goes on a list with a reason. Both current sites pass (pkg/wal/wal.go:113 and :385, armed in pkg/wal/wal_sweep_test.go:124 and :165), so the guard stops decay as sites are added. Idea from failpoint_names_guard.rs in ModernRelay/omnigraph. Acceptance: a fixture site with no Arm call makes the guard fail, seen red first"
+    },
+    {
+      "id": "v1.4-health-reports-build-version",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "api: GET /health reports version 1.0.0, because pkg/api/server_init.go:318 (read at fa43632) hardcodes it. The build version reaches only the backup manifest (api.BuildVersion, cmd/server/main.go:603), and cmd/server does not set updater.Version, so the update status reports dev. Docker images get an empty version: Dockerfile:22 runs git describe, but .dockerignore:2 keeps .git out and docker-publish.yml sends no version. Use one version source for /health, backups and the update status, send the tag to the Docker build as an ARG, and use runtime/debug.ReadBuildInfo when the version is dev. GitHub #766. Acceptance: a test that sets the build version sees it in /health and in the update status, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-unwind-write-per-item",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "query: UNWIND $items AS item MERGE (n:L {id: item.id}) SET n.text = item.text, the batch upsert of GitHub #765. The plan puts MergeStep before UnwindStep (pkg/query/executor_plan.go:234 and :239, read at fa43632), so MERGE probably runs before item has a value (not probed). Also needs list elements that are maps, with item.field access. Acceptance: one statement upserts each item of a list parameter, a second run changes nothing, seen red first"
     }
   ],
   "deps": [
+    {
+      "from": "v1.4-cypher-unwind-write-per-item",
+      "to": "v1.4-cypher-unwind-literal"
+    },
     {
       "from": "v1.4-sdk-parity",
       "to": "v1.4-graphql-index-pagination"
