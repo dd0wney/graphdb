@@ -46,6 +46,11 @@ func (p *Parser) Parse() (*Query, error) {
 			if query.Unwind != nil {
 				return nil, clauseAfterUnwindError("OPTIONAL MATCH", token)
 			}
+			// The plan runs every OPTIONAL MATCH before any write, as it does
+			// MATCH, so CREATE (n:L) OPTIONAL MATCH (m:L) would miss the new node.
+			if w := writeClauseSeen(query); w != "" {
+				return nil, syntaxErrorAt(token, "OPTIONAL MATCH after %s is not supported: graphdb runs every OPTIONAL MATCH before any write; put the OPTIONAL MATCH first or split the query with WITH", w)
+			}
 			p.advance() // consume OPTIONAL
 			if p.peek().Type != TokenMatch {
 				return nil, syntaxErrorAt(p.peek(), "expected MATCH after OPTIONAL")
