@@ -52,7 +52,7 @@ func TestDockerBuildsSetTheVersion(t *testing.T) {
 	}
 	// An ARG declared before the first FROM is out of scope inside the stage,
 	// so ${VERSION} would expand to "" while every substring still matched.
-	argAt, fromAt := strings.Index(dockerfile, "ARG VERSION"), strings.Index(dockerfile, "FROM golang")
+	argAt, fromAt := strings.Index(dockerfile, "ARG VERSION"), strings.Index(dockerfile, "AS builder")
 	if argAt < 0 {
 		t.Error("Dockerfile declares no VERSION build argument")
 	} else if fromAt < 0 || argAt < fromAt {
