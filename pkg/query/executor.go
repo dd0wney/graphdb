@@ -218,6 +218,11 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 	// not one of them. WITH ... WHERE x = $v reads it from these rows.
 	projectedBindings = seedRows(ctx, projectedBindings)
 
+	// SKIP then LIMIT act on the projected rows, after aggregation has made
+	// its groups. The parser refuses a WHERE beside them, so the order against
+	// WHERE does not arise.
+	projectedBindings = sliceRows(projectedBindings, query.With.Skip, query.With.Limit)
+
 	// Apply optional WITH WHERE filter
 	if query.With.Where != nil {
 		filtered := make([]*BindingSet, 0)
@@ -252,6 +257,18 @@ func (e *Executor) executeWithChain(ctx context.Context, plan *ExecutionPlan, qu
 		result.Notices = slices.Concat(execCtx.notices, result.Notices)
 	}
 	return result, errors.Join(execCtx.truncation, err)
+}
+
+// sliceRows drops the first *skip rows, then keeps at most *limit of the rest.
+// A nil bound does nothing.
+func sliceRows(rows []*BindingSet, skip, limit *int) []*BindingSet {
+	if skip != nil {
+		rows = rows[min(max(*skip, 0), len(rows)):]
+	}
+	if limit != nil {
+		rows = rows[:min(max(*limit, 0), len(rows))]
+	}
+	return rows
 }
 
 // ExecuteWithParams executes a parameterized query. Parameters are provided as a map

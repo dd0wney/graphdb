@@ -1,9 +1,5 @@
 package query
 
-import (
-	"strconv"
-)
-
 // Parser builds an AST from tokens
 type Parser struct {
 	tokens []Token
@@ -244,28 +240,25 @@ func (p *Parser) Parse() (*Query, error) {
 				query.Remove = removeClause
 			}
 
-		case TokenLimit:
-			p.advance() // consume LIMIT
-			limitToken, err := p.expect(TokenNumber)
+		case TokenLimit, TokenSkip:
+			// A SKIP or LIMIT with no clause before it once came from WITH
+			// ... LIMIT. parseWith reads those now. Only RETURN applies this
+			// one, so a write after it would reach every row.
+			if last == "" {
+				return nil, syntaxErrorAt(token, "%s at the start of a query part is not supported: %s belongs to RETURN or to the WITH before it", token.Value, token.Value)
+			}
+			name := "LIMIT"
+			if token.Type == TokenSkip {
+				name = "SKIP"
+			}
+			n, err := p.parseSkipLimitValue(name)
 			if err != nil {
 				return nil, err
 			}
-			if limit, err := strconv.Atoi(limitToken.Value); err == nil {
-				query.Limit = limit
+			if token.Type == TokenSkip {
+				query.Skip = n
 			} else {
-				return nil, syntaxErrorAt(limitToken, "invalid LIMIT value: %s", limitToken.Value)
-			}
-
-		case TokenSkip:
-			p.advance() // consume SKIP
-			skipToken, err := p.expect(TokenNumber)
-			if err != nil {
-				return nil, err
-			}
-			if skip, err := strconv.Atoi(skipToken.Value); err == nil {
-				query.Skip = skip
-			} else {
-				return nil, syntaxErrorAt(skipToken, "invalid SKIP value: %s", skipToken.Value)
+				query.Limit = n
 			}
 
 		case TokenUnion:
