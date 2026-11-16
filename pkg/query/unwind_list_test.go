@@ -270,3 +270,60 @@ func TestUnwind_WithSplitGivesTheOpenCypherResult(t *testing.T) {
 		t.Fatalf("UNWIND [] then MERGE made %d :M nodes, want 0", after-before)
 	}
 }
+
+// The plan runs UNWIND before CREATE, SET, REMOVE and DELETE, so a write
+// written before UNWIND ran once per unwound row, or not at all for an empty
+// list: CREATE (n:L) UNWIND [1, 2] AS x made two nodes, and DELETE a UNWIND []
+// AS x deleted nothing (second review of #765). MERGE before UNWIND runs in
+// text order, so it stays allowed, but a SET after that MERGE does not.
+func TestUnwind_AfterWriteThatRunsAfterUnwindIsRefused(t *testing.T) {
+	queries := map[string]string{
+		"CREATE":        `CREATE (n:L) UNWIND [1, 2] AS x RETURN x`,
+		"SET":           `MATCH (a:A) SET a.id = a.id + 1 UNWIND [1, 2] AS x RETURN x`,
+		"REMOVE":        `MATCH (a:A) REMOVE a.id UNWIND [] AS x RETURN x`,
+		"DELETE":        `MATCH (a:A) DELETE a UNWIND [] AS x RETURN x`,
+		"MERGE ... SET": `MERGE (n:L) SET n.c = 1 UNWIND [1, 2] AS x RETURN x`,
+	}
+	for name, text := range queries {
+		t.Run(name, func(t *testing.T) {
+			tokens, err := NewLexer(text).Tokenize()
+			if err != nil {
+				t.Fatalf("Tokenize %q: %v", text, err)
+			}
+			_, err = NewParser(tokens).Parse()
+			if err == nil {
+				t.Fatalf("%q parsed; UNWIND after a write that runs after UNWIND must be refused", text)
+			}
+			if !strings.Contains(err.Error(), "UNWIND after") || !strings.Contains(err.Error(), "WITH") {
+				t.Fatalf("error = %q, want an UNWIND-after refusal that names the WITH split", err)
+			}
+		})
+	}
+}
+
+// MERGE before UNWIND runs in text order, so it must keep working.
+func TestUnwind_AfterMergeStillRuns(t *testing.T) {
+	ex := unwindStore(t)
+	res, err := runUnwind(t, ex, `MERGE (n:K {k: 1}) UNWIND [1, 2] AS x RETURN n.k AS k, x`, nil)
+	if err != nil {
+		t.Fatalf("MERGE then UNWIND: %v", err)
+	}
+	wantRows(t, res, "map[k:1 x:1]", "map[k:1 x:2]")
+	if got := countLabel(t, ex, "K"); got != 1 {
+		t.Fatalf("MERGE then UNWIND made %d :K nodes, want 1", got)
+	}
+}
+
+// The refusal above names WITH as the way out: the write runs once, then the
+// next segment unwinds.
+func TestUnwind_WriteThenWithThenUnwind(t *testing.T) {
+	ex := unwindStore(t)
+	res, err := runUnwind(t, ex, `CREATE (n:W) WITH n UNWIND [1, 2] AS x RETURN x`, nil)
+	if err != nil {
+		t.Fatalf("CREATE ... WITH n UNWIND: %v", err)
+	}
+	wantRows(t, res, "map[x:1]", "map[x:2]")
+	if got := countLabel(t, ex, "W"); got != 1 {
+		t.Fatalf("CREATE ... WITH n UNWIND [1, 2] made %d :W nodes, want 1", got)
+	}
+}

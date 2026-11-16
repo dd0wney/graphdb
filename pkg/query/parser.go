@@ -186,6 +186,9 @@ func (p *Parser) Parse() (*Query, error) {
 			if query.Unwind != nil {
 				return nil, syntaxErrorAt(token, "repeated UNWIND is not supported: split the query with WITH")
 			}
+			if w := writeAfterUnwind(query); w != "" {
+				return nil, syntaxErrorAt(token, "UNWIND after %s is not supported: graphdb runs UNWIND before %s, so the %s would run once per element; split the query with WITH, as in %s ... WITH n UNWIND ...", w, w, w, w)
+			}
 			unwindClause, err := p.parseUnwind()
 			if err != nil {
 				return nil, err
@@ -326,6 +329,25 @@ func writeClauseSeen(q *Query) string {
 		return "CREATE"
 	case len(q.Merges) > 0:
 		return "MERGE"
+	case q.Set != nil:
+		return "SET"
+	case q.Remove != nil:
+		return "REMOVE"
+	case q.Delete != nil:
+		return "DELETE"
+	}
+	return ""
+}
+
+// writeAfterUnwind names a write clause that the plan runs after UNWIND in one
+// segment. Written before UNWIND, such a clause would run once per unwound row,
+// or not at all for an empty list. MERGE is not one: the plan runs it before
+// UNWIND, which is text order. writeClauseSeen does not serve here, because it
+// names MERGE first and so hides a SET after the MERGE.
+func writeAfterUnwind(q *Query) string {
+	switch {
+	case q.Create != nil:
+		return "CREATE"
 	case q.Set != nil:
 		return "SET"
 	case q.Remove != nil:
