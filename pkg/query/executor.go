@@ -330,7 +330,7 @@ func validateParameterExpressions(query *Query, params map[string]any) error {
 		if !ok {
 			return
 		}
-		if _, exists := params[pe.Name]; !exists || patternClauses[clause] {
+		if _, exists := params[pe.Name]; !exists || (patternClauses[clause] && !pe.inRowExpr) {
 			err = refusef("missing parameter: $%s", pe.Name)
 		}
 	})

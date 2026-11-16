@@ -42,7 +42,11 @@ func (o *CreateOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 	}
 
 	// For each pattern, create nodes and relationships
-	for _, pattern := range o.Patterns {
+	for _, rawPattern := range o.Patterns {
+		pattern, err := patternWithRowProps(rawPattern, row)
+		if err != nil {
+			return nil, err
+		}
 		// Map from AST NodePattern to created storage.Node
 		createdNodes := make(map[*NodePattern]*storage.Node)
 
@@ -294,7 +298,11 @@ func (o *MergeOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 	// For simplicity in this spike, we'll implement a simple node-only MERGE.
 	// 1. Try to find the node
 	if len(o.Pattern.Nodes) == 1 && len(o.Pattern.Relationships) == 0 {
-		nodePat := o.Pattern.Nodes[0]
+		resolved, err := patternWithRowProps(o.Pattern, row)
+		if err != nil {
+			return nil, err
+		}
+		nodePat := resolved.Nodes[0]
 
 		// Attempt to match
 		// We'll use a simple loop over all nodes for now, or index if possible.

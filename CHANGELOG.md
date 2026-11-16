@@ -16,9 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a list in one request instead of one request per item. A stored array (`StringArrayValue`,
   `IntArrayValue`) and a typed-slice parameter from a Go caller now unwind one row per element; they
   gave one row that held the whole list. `UNWIND` uses the list rule that `=` and `IN` already use:
-  every list except bytes. A batch upsert in one statement, `UNWIND $items AS item MERGE (n:L {id:
-  item.id})`, does not work yet: a property map in a pattern takes only literals and parameters
-  (coord `graphdb:v1.4-cypher-unwind-write-per-item`).
+  every list except bytes.
+- **A pattern property map takes an expression that reads a row variable (#765).** A batch upsert
+  now runs in one request: `UNWIND $items AS item WITH item MERGE (n:L {id: item.id}) SET n.text =
+  item.text RETURN n.id`. The map `{id: item.id}` is calculated for each row in `CREATE`, `MERGE`
+  (the node, the relationship, `ON CREATE` and `ON MATCH`), `MATCH` and `OPTIONAL MATCH`. A second
+  run with the same items adds no node. A `MERGE` whose key is null for any row is refused before
+  that `MERGE` writes, as openCypher refuses it; a clause earlier in the query keeps its writes,
+  because Cypher writes in graphdb are not transactional (coord
+  `graphdb:v1.4-cypher-no-rollback-after-refusal`). A pattern map with a row value does not use a
+  property index: each row scans the tenant's nodes, so 500 items took about 0.7 s against 4,000
+  nodes in a probe. `MERGE` directly after `UNWIND` in the same
+  segment, without `WITH`, is still refused: graphdb runs `MERGE` before `UNWIND` in a segment, so
+  the `MERGE` would run once with no item. The `WITH item` starts a new segment, and the `MERGE`
+  then runs once for each row. A negative number in a map, such as `{id: -1}`, parses now; it was
+  a syntax error (coord `graphdb:v1.4-cypher-negative-literal-in-map`).
 
 ### Changed
 - **Breaking: clauses that graphdb runs in a different order from the text around `UNWIND` are now

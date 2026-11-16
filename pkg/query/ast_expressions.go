@@ -183,6 +183,10 @@ func (fce *FunctionCallExpression) EvalValue(context map[string]any) (any, error
 // ParameterExpression represents a query parameter reference ($name) in expressions
 type ParameterExpression struct {
 	Name string // "name" from $name
+
+	// inRowExpr is set by the walker, never by the parser, on a parameter
+	// inside a *RowExprRef of a pattern map.
+	inRowExpr bool
 }
 
 func (pe *ParameterExpression) Eval(context map[string]any) (bool, error) {

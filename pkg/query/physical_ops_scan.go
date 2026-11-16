@@ -252,11 +252,14 @@ func (o *OptionalMatchOperator) matchSimplePattern(ctx *ExecutionContext, input 
 	if len(o.Pattern.Nodes) != 1 || len(o.Pattern.Relationships) != 0 {
 		return nil, nil
 	}
-	nodePat := o.Pattern.Nodes[0]
+	resolved, err := patternWithRowProps(o.Pattern, input)
+	if err != nil {
+		return nil, err
+	}
+	nodePat := resolved.Nodes[0]
 
 	// Scan nodes with label
 	var nodes []*storage.Node
-	var err error
 	if len(nodePat.Labels) > 0 {
 		nodes, err = ctx.graph.GetNodesByLabelForTenant(ctx.tenantID, nodePat.Labels[0])
 		if err != nil {
