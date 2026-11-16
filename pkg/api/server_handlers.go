@@ -50,7 +50,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	response := HealthResponse{
 		Status:    string(healthStatus.Status),
 		Timestamp: healthStatus.Timestamp,
-		Version:   s.version,
+		Version:   BuildVersion,
 		Edition:   editions.Current.String(),
 		Features:  features,
 		Uptime:    time.Since(s.startTime).String(),

@@ -68,7 +68,6 @@ type Server struct {
 	tokenValidator      auth.TokenValidator         // Composite validator for JWT + OIDC
 	tenantStore         *tenant.TenantStore         // Multi-tenant store (nil if single-tenant mode)
 	startTime           time.Time
-	version             string
 	host                string // address Start binds; "" is every interface
 	port                int
 	dataDir             string         // Data directory for auth persistence

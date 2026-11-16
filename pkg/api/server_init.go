@@ -315,7 +315,6 @@ func NewServerWithDataDir(graph *storage.GraphStorage, port int, dataDir string)
 		tokenValidator:      tokenValidator,
 		tenantStore:         tenantStore,
 		startTime:           time.Now(),
-		version:             "1.0.0",
 		port:                port,
 		dataDir:             dataDir,
 		environment:         serverEnv,

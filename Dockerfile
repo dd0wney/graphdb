@@ -17,9 +17,13 @@ RUN go mod verify
 # Copy source code
 COPY . .
 
+# The release workflows pass the image version. git describe cannot supply it:
+# .dockerignore keeps .git out of the build context.
+ARG VERSION=dev
+
 # Build the server binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-w -s -X main.Version=$(git describe --tags --always --dirty)" \
+    -ldflags="-w -s -X main.Version=${VERSION}" \
     -o /build/graphdb-server \
     ./cmd/server
 
