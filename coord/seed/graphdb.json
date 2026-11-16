@@ -933,6 +933,18 @@
       "track": "v1.4",
       "status": "pending",
       "title": "test: make the openCypher TCK feature files the source of TestCypherKnownGaps. A harness that runs each scenario and records parse-and-pass, parse-and-fail and no-parse gave, on 2026-11-13: ReturnOrderBy2 to 6, 4 of 23 pass; WithOrderBy1 to 4, 0 of 292 run; List5, 10 of 37 run as query text. Commit the harness and the counts so that each parser fix moves a measured number"
+    },
+    {
+      "id": "v1.4-storage-seeded-model-test",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "test: add a seeded test that drives GraphStorage with a random sequence of node and edge creates, updates, deletes and reopens, and compares the store with a model held in plain maps after every third operation, after each reopen, and through both snapshot formats (mmap and JSON). Under vfstest.CrashFS (pkg/vfs/vfstest/crash.go:47, read at 5160638) a crash must leave exactly the model or the model plus the operation in flight, and must never lose an acknowledged write. Run CheckInvariants (pkg/storage/invariants.go:72) at each comparison. A failure prints its seed, and that seed replays it. Idea from the omnigraph-dst crate in ModernRelay/omnigraph. Acceptance: a planted defect (one skipped WAL append) fails within the default seed count, seen red first"
+    },
+    {
+      "id": "v1.4-faultsim-site-guard",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "test: add a guard test for pkg/faultsim. Each Site constant other than None and numSites (pkg/faultsim/faultsim.go:43, read at 5160638) must have a String case, at least one faultsim.Fail call outside the package, and at least one faultsim.Arm call in a test. A site that no test can reach goes on a list with a reason. Both current sites pass (pkg/wal/wal.go:113 and :385, armed in pkg/wal/wal_sweep_test.go:124 and :165), so the guard stops decay as sites are added. Idea from failpoint_names_guard.rs in ModernRelay/omnigraph. Acceptance: a fixture site with no Arm call makes the guard fail, seen red first"
     }
   ],
   "deps": [
