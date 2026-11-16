@@ -1029,6 +1029,12 @@
       "track": "v1.4",
       "status": "pending",
       "title": "query: a pattern property map cannot read a variable that the same pattern binds: MATCH (a:L)-[:R]->(b:L {id: a.id}) is refused with 'variable a is not bound where the pattern property map uses it', where openCypher accepts it (found by the builder of the #765 part 2 change). Acceptance: the probe gives the openCypher rows, with and without an index on L.id, seen red first"
+    },
+    {
+      "id": "v1.4-cypher-pattern-map-row-value-index",
+      "track": "v1.4",
+      "status": "pending",
+      "title": "perf(query): a pattern map with a row value, as in UNWIND $items AS item WITH item MERGE (n:L {id: item.id}), uses no property index: each row scans every node of the tenant (match_node.go, GetAllNodesForTenant). 500 items took 235 ms against 1,000 nodes and 717 ms against 4,000 nodes in the review probe of the #765 part 2 change. Look up a row value through the property index when one exists. Acceptance: the batch upsert with an index on L.id reads the index for each row (count the index reads), and the JSON-mmap oracle still holds, seen red first"
     }
   ],
   "deps": [
