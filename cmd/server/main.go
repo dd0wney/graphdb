@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -475,15 +474,6 @@ func main() {
 		logger.Error("failed to create graph storage", "error", err)
 		os.Exit(1)
 	}
-	// Close snapshots first, and refuses to write when a base record is damaged
-	// (#521). Discarding that error hides the only report the operator gets: the
-	// snapshot did not write, so the WAL will not truncate and will grow on every
-	// restart until the disk fills.
-	defer func() {
-		if err := graph.Close(); err != nil {
-			logger.Error("graph storage did not close cleanly; the snapshot may not have been written", "error", err)
-		}
-	}()
 
 	stats := graph.GetStatistics()
 	logger.Info("graph storage initialized",
@@ -612,30 +602,12 @@ func main() {
 		logger.Info("encryption configured for API server")
 	}
 
-	// Graceful shutdown: stop accepting, drain in-flight, then close storage.
+	// Graceful shutdown: serve (shutdown.go) owns the sequence and closes storage once.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		logger.Info("shutting down server")
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := server.Shutdown(ctx); err != nil {
-			logger.Error("graceful shutdown failed", "error", err)
-		}
-		licensing.Global().Stop()
-		if err := graph.Close(); err != nil {
-			// Same reason as the deferred Close above. This is the path a real
-			// shutdown takes, because os.Exit below skips the defer.
-			logger.Error("graph storage did not close cleanly; the snapshot may not have been written", "error", err)
-		}
-		logger.Info("server exited")
-		os.Exit(0)
-	}()
 
 	logger.Info("server starting", "host", *host, "port", *port)
-	if err := server.Start(); err != nil && err != http.ErrServerClosed {
-		logger.Error("server error", "error", err)
-		os.Exit(1)
+	if code := serve(server.Start, sigChan, server, licensing.Global().Stop, graph, logger); code != 0 {
+		os.Exit(code)
 	}
 }

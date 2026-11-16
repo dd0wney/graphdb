@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the deployment scripts, which write their own compose file, are unchanged.
 
 ### Fixed
+- **The server wrote no snapshot when SIGTERM or SIGINT stopped it.** The signal handler closed
+  graph storage and called `os.Exit`, while `main`, which `Shutdown` had let return, ran a deferred
+  `Close` of its own. The two raced, and the process exited before the snapshot was written: in 10 of
+  10 SIGTERM runs of v1.12.1-era code there was no `snapshot.mmap`, once a 0-byte
+  `snapshot.mmap.tmp`. No acknowledged write was lost, because the WAL was never truncated and each
+  restart replayed it (5 of 5 nodes back in every run). The cost is that a server always stopped by
+  a signal never takes a snapshot: its WAL grows on every restart and every start replays all of it.
+  From v1.4.0 the losing `Close` also logged a false `graph storage did not close cleanly ... storage
+  already closed` error. The code is the same from v1.0.0. Shutdown now has one owner, which drains
+  HTTP, then closes storage once and exits only after `Close` returns. The first stop after the
+  upgrade writes the snapshot and truncates the WAL.
 - **A write query that used a property index ignored every other condition of its `WHERE`.**
   With an index on `pid`, `MATCH (p:T) WHERE p.pid = 1 AND p.k > 5 DELETE p` deleted a node whose
   `k` is 1, although the `WHERE` is false for it. The index took the row, the `DELETE` ran on it,
