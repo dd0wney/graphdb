@@ -22,8 +22,12 @@ func TestParser_Unwind(t *testing.T) {
 	if query.Unwind == nil {
 		t.Fatal("Expected non-nil Unwind clause")
 	}
-	if query.Unwind.Expression.Variable != "n" || query.Unwind.Expression.Property != "tags" {
-		t.Errorf("Expected n.tags, got %s.%s", query.Unwind.Expression.Variable, query.Unwind.Expression.Property)
+	prop, ok := query.Unwind.Expression.(*PropertyExpression)
+	if !ok {
+		t.Fatalf("Expected a *PropertyExpression, got %T", query.Unwind.Expression)
+	}
+	if prop.Variable != "n" || prop.Property != "tags" {
+		t.Errorf("Expected n.tags, got %s.%s", prop.Variable, prop.Property)
 	}
 	if query.Unwind.Alias != "tag" {
 		t.Errorf("Expected alias 'tag', got %q", query.Unwind.Alias)

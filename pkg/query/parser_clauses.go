@@ -519,14 +519,11 @@ func (p *Parser) parseUnwind() (*UnwindClause, error) {
 		return nil, err
 	}
 
-	exprStart := p.peek()
-	expr, err := p.parsePrimaryExpression()
+	// Any expression: a property, a list literal, a parameter or a function
+	// call. AS is a keyword token, so the expression parser stops before it.
+	expr, err := p.parseExpression()
 	if err != nil {
 		return nil, err
-	}
-	propExpr, ok := expr.(*PropertyExpression)
-	if !ok {
-		return nil, syntaxErrorAt(exprStart, "UNWIND expression must be a property reference")
 	}
 
 	if _, err := p.expect(TokenAs); err != nil {
@@ -539,7 +536,7 @@ func (p *Parser) parseUnwind() (*UnwindClause, error) {
 	}
 
 	return &UnwindClause{
-		Expression: propExpr,
+		Expression: expr,
 		Alias:      aliasToken.Value,
 	}, nil
 }

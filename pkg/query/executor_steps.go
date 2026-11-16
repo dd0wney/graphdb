@@ -676,14 +676,12 @@ func (us *UnwindStep) Execute(ctx *ExecutionContext) error {
 	newResults := make([]*BindingSet, 0)
 
 	for _, binding := range ctx.results {
-		// Extract the value to unwind
-		var val any
-		expr := us.unwind.Expression
-		if expr.Property == "" {
-			// Variable reference without property — get the raw binding value
-			val = binding.bindings[expr.Variable]
-		} else {
-			val = propertyValue(expr, binding.bindings)
+		// evalOperand returns only a refusal as an error, such as an
+		// arithmetic error, and reads a parameter from the row's "$name"
+		// binding. A bare variable gives its raw binding value.
+		val, err := evalOperand(us.unwind.Expression, binding.bindings)
+		if err != nil {
+			return err
 		}
 		if val == nil {
 			continue // Skip nil values
