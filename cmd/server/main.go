@@ -27,8 +27,9 @@ import (
 	"github.com/dd0wney/graphdb/pkg/tracing"
 )
 
-// Version is the build version injected by goreleaser via -X main.Version={{.Version}}.
-// Defaults to "dev" for local / non-release builds.
+// Version is the build version injected by goreleaser via -X main.Version={{.Version}}
+// and by the Dockerfile from its VERSION build argument. Defaults to "dev" for
+// local / non-release builds; buildinfo.Resolve then reads the Go build info.
 var Version = "dev"
 
 // loadLicense attempts to load a license from various sources
@@ -598,9 +599,7 @@ func main() {
 		os.Exit(1)
 	}
 	server.SetHost(*host)
-	// Wire the build version into the backup manifest so archives are
-	// self-describing. Set once at startup — before any request can land.
-	api.BuildVersion = Version
+	wireBuildVersion(Version)
 
 	// Apply TLS configuration if enabled
 	if tlsConfig != nil {

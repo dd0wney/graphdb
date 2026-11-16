@@ -8,9 +8,10 @@ import (
 	"time"
 )
 
-// BuildVersion is the graphdb build version recorded in backup manifests.
-// cmd/server sets it from main.Version at startup; defaults to "unknown"
-// (e.g. in tests or dev builds that skip ldflags injection).
+// BuildVersion is the graphdb build version. GET /health reports it and backup
+// manifests record it. cmd/server sets it once at startup, before the server
+// accepts a request; it stays "unknown" in tests and in builds that do not set
+// it.
 var BuildVersion = "unknown"
 
 // countingWriter tallies the bytes written through it so the handler can

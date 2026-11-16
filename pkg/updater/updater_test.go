@@ -38,6 +38,9 @@ func TestIsNewer(t *testing.T) {
 		// Special current values.
 		{"dev always upgradable", "dev", "v1.0.0", true},
 		{"empty always upgradable", "", "v0.1.0", true},
+		// buildinfo.Resolve names a checkout build "dev+<commit>" (#766).
+		{"dev with commit always upgradable", "dev+fa43632d1e2f", "v1.0.0", true},
+		{"dirty dev with commit always upgradable", "dev+fa43632d1e2f.dirty", "v1.0.0", true},
 
 		// Invalid semver returns false (defensive — don't upgrade on garbage).
 		{"invalid current", "garbage", "v1.0.0", false},
