@@ -90,7 +90,7 @@ func (o *ProjectOperator) Close(ctx *ExecutionContext) error {
 // UnwindOperator expands list values into individual rows.
 type UnwindOperator struct {
 	Input      PhysicalOperator
-	Expression *PropertyExpression
+	Expression Expression
 	Alias      string
 
 	curInput *BindingSet
@@ -111,18 +111,21 @@ func (o *UnwindOperator) Next(ctx *ExecutionContext) (*BindingSet, error) {
 				return nil, err
 			}
 
-			val := propertyValue(o.Expression, o.curInput.bindings)
+			val, err := evalOperand(o.Expression, o.curInput.bindings)
+			if err != nil {
+				return nil, err
+			}
 			if val == nil {
 				o.curInput = nil
 				continue
 			}
 
-			switch v := val.(type) {
-			case []any:
-				o.items = v
-			default:
-				o.items = []any{v}
+			// The same list rule as UnwindStep: see asList.
+			items, ok := asList(val)
+			if !ok {
+				items = []any{val}
 			}
+			o.items = items
 			o.index = 0
 		}
 

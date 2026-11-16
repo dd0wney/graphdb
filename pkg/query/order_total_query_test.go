@@ -180,7 +180,7 @@ func TestOrderByTCK_DistinctTypes(t *testing.T) {
 
 func TestOrderByTCK_SkippedScenarios(t *testing.T) {
 	t.Run("[11] path and node and relationship in one column", func(t *testing.T) {
-		t.Skip("a named path (MATCH p = ...) does not parse, and UNWIND of a list literal is not supported; " +
+		t.Skip("a named path (MATCH p = ...) does not parse; " +
 			"the node and relationship ranks are covered by TestCompareTotal_TypeLadder")
 	})
 	t.Run("[12] path and node and relationship in one column, DESC", func(t *testing.T) {
@@ -310,7 +310,8 @@ func TestOrderBy_TwoItemsWithNullInTheFirst(t *testing.T) {
 }
 
 // TestMinMax_TCKAggregation2 runs the scenarios of Aggregation2 with the values
-// as node properties, because UNWIND of a list literal is not supported.
+// as node properties. It was written while UNWIND of a list literal was not
+// supported; the TCK harness now runs the UNWIND form as well.
 func TestMinMax_TCKAggregation2(t *testing.T) {
 	cases := []struct {
 		scenario string

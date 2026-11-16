@@ -135,7 +135,7 @@ type Assignment struct {
 
 // UnwindClause represents an UNWIND operation
 type UnwindClause struct {
-	Expression *PropertyExpression
+	Expression Expression
 	Alias      string
 }
 

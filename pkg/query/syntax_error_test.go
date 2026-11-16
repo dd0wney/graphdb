@@ -42,7 +42,7 @@ var syntaxFaultQueries = []string{
 	`MATCH (p:Person) RETURN p.age > > 1`,
 	`MATCH (p:Person) RETURN count(*) AS n`,
 	`MATCH (p:Person) RETURN count(DISTINCT p.age) AS n`,
-	`UNWIND [1,2,3] AS x RETURN x`,
+	`UNWIND [1,2,3] x RETURN x`,
 	`OPTIONAL MATCH (p:Person {id: -1}) RETURN p`,
 	`MATCH (p) RETURN p LIMIT x`,
 	`MATCH (p) RETURN p SKIP 1.5`,

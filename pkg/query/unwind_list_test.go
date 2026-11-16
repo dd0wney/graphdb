@@ -1,0 +1,329 @@
+package query
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/dd0wney/graphdb/pkg/storage"
+)
+
+// UNWIND takes any expression, not only a property reference. The first form
+// that users reach for is a list parameter ($items) or a list literal, and the
+// parser refused both with "UNWIND expression must be a property reference".
+
+func unwindStore(t *testing.T) *Executor {
+	t.Helper()
+	gs, cleanup := setupExecutorTestGraph(t)
+	t.Cleanup(cleanup)
+	return NewExecutor(gs)
+}
+
+func runUnwind(t *testing.T, ex *Executor, text string, params map[string]any) (*ResultSet, error) {
+	t.Helper()
+	return ex.ExecuteWithParams(parsePatternQuery(t, text), params)
+}
+
+func wantRows(t *testing.T, res *ResultSet, want ...string) {
+	t.Helper()
+	got := make([]string, 0, len(res.Rows))
+	for _, r := range res.Rows {
+		got = append(got, fmt.Sprint(r))
+	}
+	sort.Strings(got)
+	sort.Strings(want)
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("rows = %v, want %v", got, want)
+	}
+}
+
+func TestUnwind_ListParameter(t *testing.T) {
+	ex := unwindStore(t)
+	res, err := runUnwind(t, ex, `UNWIND $xs AS x RETURN x`, map[string]any{"xs": []any{int64(1), int64(2)}})
+	if err != nil {
+		t.Fatalf("UNWIND $xs: %v", err)
+	}
+	wantRows(t, res, "map[x:1]", "map[x:2]")
+}
+
+func TestUnwind_ListLiteral(t *testing.T) {
+	ex := unwindStore(t)
+	res, err := runUnwind(t, ex, `UNWIND [1, 2, 3] AS x RETURN x`, nil)
+	if err != nil {
+		t.Fatalf("UNWIND [1, 2, 3]: %v", err)
+	}
+	wantRows(t, res, "map[x:1]", "map[x:2]", "map[x:3]")
+}
+
+func TestUnwind_ListOfMapsParameter(t *testing.T) {
+	ex := unwindStore(t)
+	items := []any{
+		map[string]any{"id": int64(1), "text": "one"},
+		map[string]any{"id": int64(2), "text": "two"},
+	}
+	res, err := runUnwind(t, ex, `UNWIND $items AS item RETURN item.id AS id, item.text AS text`, map[string]any{"items": items})
+	if err != nil {
+		t.Fatalf("UNWIND $items: %v", err)
+	}
+	wantRows(t, res, "map[id:1 text:one]", "map[id:2 text:two]")
+}
+
+func TestUnwind_EmptyAndNullListGiveNoRows(t *testing.T) {
+	for name, val := range map[string]any{"empty": []any{}, "null": nil} {
+		t.Run(name, func(t *testing.T) {
+			ex := unwindStore(t)
+			res, err := runUnwind(t, ex, `UNWIND $xs AS x RETURN x`, map[string]any{"xs": val})
+			if err != nil {
+				t.Fatalf("UNWIND $xs: %v", err)
+			}
+			if len(res.Rows) != 0 {
+				t.Errorf("rows = %v, want none", res.Rows)
+			}
+		})
+	}
+}
+
+// The existing form must keep its result: UNWIND of a stored list property.
+func TestUnwind_PropertyReferenceKeepsItsResult(t *testing.T) {
+	ex := unwindStore(t)
+	gs := ex.graph
+	tags, err := storage.JSONValue([]any{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gs.CreateNode([]string{"T"}, map[string]storage.Value{"tags": tags}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := runUnwind(t, ex, `MATCH (n:T) UNWIND n.tags AS tag RETURN tag`, nil)
+	if err != nil {
+		t.Fatalf("UNWIND n.tags: %v", err)
+	}
+	wantRows(t, res, "map[tag:a]", "map[tag:b]")
+}
+
+// A stored array reads back as a typed slice ([]string, []int64), and UNWIND
+// took only []any, so it gave one row that held the whole list. Equality and
+// IN read typed slices as lists through asList; UNWIND follows the same rule.
+func TestUnwind_StoredArrayGivesOneRowPerElement(t *testing.T) {
+	ex := unwindStore(t)
+	if _, err := ex.graph.CreateNode([]string{"T"}, map[string]storage.Value{
+		"tags": storage.StringArrayValue([]string{"a", "b", "c"}),
+		"nums": storage.IntArrayValue([]int64{1, 2}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := runUnwind(t, ex, `MATCH (n:T) UNWIND n.tags AS tag RETURN tag`, nil)
+	if err != nil {
+		t.Fatalf("UNWIND n.tags: %v", err)
+	}
+	wantRows(t, res, "map[tag:a]", "map[tag:b]", "map[tag:c]")
+
+	res, err = runUnwind(t, ex, `MATCH (n:T) UNWIND n.nums AS x RETURN x`, nil)
+	if err != nil {
+		t.Fatalf("UNWIND n.nums: %v", err)
+	}
+	wantRows(t, res, "map[x:1]", "map[x:2]")
+}
+
+// A Go caller can pass a typed slice as a parameter; REST gives []any.
+func TestUnwind_TypedSliceParameter(t *testing.T) {
+	ex := unwindStore(t)
+	res, err := runUnwind(t, ex, `UNWIND $xs AS x RETURN x`, map[string]any{"xs": []string{"p", "q"}})
+	if err != nil {
+		t.Fatalf("UNWIND $xs: %v", err)
+	}
+	wantRows(t, res, "map[x:p]", "map[x:q]")
+}
+
+// A parameter that the run does not hold is still refused, as a
+// *RefusalError that names it, before any row is made.
+func TestUnwind_MissingParameterIsRefused(t *testing.T) {
+	ex := unwindStore(t)
+	_, err := runUnwind(t, ex, `UNWIND $missing AS x RETURN x`, map[string]any{})
+	wantMissingParam(t, err, "missing")
+}
+
+// A parameter in an UNWIND expression of a second segment is seen too.
+func TestUnwind_ListParameterAfterMatch(t *testing.T) {
+	ex := unwindStore(t)
+	gs := ex.graph
+	for i := 0; i < 2; i++ {
+		if _, err := gs.CreateNode([]string{"T"}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := runUnwind(t, ex, `MATCH (n:T) UNWIND $xs AS x RETURN x`, map[string]any{"xs": []any{int64(1), int64(2)}})
+	if err != nil {
+		t.Fatalf("MATCH ... UNWIND $xs: %v", err)
+	}
+	if len(res.Rows) != 4 {
+		t.Errorf("rows = %v, want 4 (2 nodes x 2 items)", res.Rows)
+	}
+}
+
+// Probe, not a gate. It records what a write after UNWIND does today, for the
+// task v1.4-cypher-unwind-write-per-item.
+func TestUnwind_WriteAfterUnwind_Probe(t *testing.T) {
+	items := []any{
+		map[string]any{"id": int64(1), "text": "one"},
+		map[string]any{"id": int64(2), "text": "two"},
+	}
+	for _, text := range []string{
+		`UNWIND $items AS item CREATE (n:L {id: item.id})`,
+		`UNWIND $items AS item MERGE (n:L {id: item.id}) SET n.text = item.text`,
+		// The same two writes through SET, which takes an expression.
+		`UNWIND $items AS item CREATE (n:L) SET n.id = item.id`,
+		`UNWIND $items AS item MERGE (n:L) SET n.id = item.id, n.text = item.text`,
+	} {
+		ex := unwindStore(t)
+		// Not parsePatternQuery: a refusal at parse time is a result to log.
+		tokens, lexErr := NewLexer(text).Tokenize()
+		if lexErr != nil {
+			t.Fatalf("Tokenize %q: %v", text, lexErr)
+		}
+		q, parseErr := NewParser(tokens).Parse()
+		if parseErr != nil {
+			t.Logf("%s => parse refused: %v", text, parseErr)
+			continue
+		}
+		res, err := ex.ExecuteWithParams(q, map[string]any{"items": items})
+		t.Logf("%s => err=%v", text, err)
+		if res != nil {
+			t.Logf("  result rows=%v", res.Rows)
+		}
+		nodes, ferr := ex.graph.FindNodesByLabelAcrossTenants("L")
+		if ferr != nil {
+			t.Fatalf("FindNodesByLabel: %v", ferr)
+		}
+		t.Logf("  L nodes: %d", len(nodes))
+		for _, n := range nodes {
+			t.Logf("  node %d props=%v", n.ID, n.Properties)
+		}
+	}
+	t.Skip("probe for v1.4-cypher-unwind-write-per-item")
+}
+
+// The plan runs MATCH, OPTIONAL MATCH and MERGE before UNWIND in one segment.
+// While UNWIND took only a property reference nobody wrote these forms; once
+// it took a list, they ran and gave wrong results with no error: UNWIND []
+// then MERGE made a node, and UNWIND then MATCH ... WHERE a.id = x gave no
+// rows (review of #765). The parser refuses them and names the WITH split.
+func TestUnwind_ClauseThatRunsBeforeUnwindIsRefused(t *testing.T) {
+	queries := map[string]string{
+		"MATCH":          `UNWIND [1, 2] AS x MATCH (a:A) WHERE a.id = x RETURN x`,
+		"OPTIONAL MATCH": `UNWIND [1, 2] AS x OPTIONAL MATCH (a:A) WHERE a.id = x RETURN x, a.id`,
+		"MERGE":          `UNWIND [] AS x MERGE (n:L) RETURN n`,
+	}
+	for clause, text := range queries {
+		t.Run(clause, func(t *testing.T) {
+			tokens, err := NewLexer(text).Tokenize()
+			if err != nil {
+				t.Fatalf("Tokenize %q: %v", text, err)
+			}
+			_, err = NewParser(tokens).Parse()
+			if err == nil {
+				t.Fatalf("%q parsed; %s after UNWIND must be refused", text, clause)
+			}
+			want := clause + " after UNWIND is not supported"
+			if !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "WITH") {
+				t.Fatalf("error = %q, want it to contain %q and name the WITH split", err, want)
+			}
+		})
+	}
+}
+
+func countLabel(t *testing.T, ex *Executor, label string) int {
+	t.Helper()
+	nodes, err := ex.graph.FindNodesByLabelAcrossTenants(label)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(nodes)
+}
+
+// The refusal names WITH as the way out, so that form must give the
+// openCypher result.
+func TestUnwind_WithSplitGivesTheOpenCypherResult(t *testing.T) {
+	ex := unwindStore(t)
+	if _, err := ex.graph.CreateNode([]string{"A"}, map[string]storage.Value{"id": storage.IntValue(1)}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := runUnwind(t, ex, `UNWIND [1, 2] AS x WITH x MATCH (a:A) WHERE a.id = x RETURN x`, nil)
+	if err != nil {
+		t.Fatalf("UNWIND ... WITH x MATCH: %v", err)
+	}
+	wantRows(t, res, "map[x:1]")
+
+	res, err = runUnwind(t, ex, `UNWIND $xs AS x WITH x MERGE (n:L) ON CREATE SET n.v = x RETURN n.v AS v`, map[string]any{"xs": []any{int64(1), int64(2)}})
+	if err != nil {
+		t.Fatalf("UNWIND ... WITH x MERGE: %v", err)
+	}
+	// Row one creates the node and sets v = 1; row two matches it.
+	wantRows(t, res, "map[v:1]", "map[v:1]")
+
+	before := countLabel(t, ex, "M")
+	if _, err := runUnwind(t, ex, `UNWIND [] AS x WITH x MERGE (n:M) RETURN n`, nil); err != nil {
+		t.Fatalf("UNWIND [] ... WITH x MERGE: %v", err)
+	}
+	if after := countLabel(t, ex, "M"); after != before {
+		t.Fatalf("UNWIND [] then MERGE made %d :M nodes, want 0", after-before)
+	}
+}
+
+// The plan runs UNWIND before CREATE, SET, REMOVE and DELETE, so a write
+// written before UNWIND ran once per unwound row, or not at all for an empty
+// list: CREATE (n:L) UNWIND [1, 2] AS x made two nodes, and DELETE a UNWIND []
+// AS x deleted nothing (second review of #765). MERGE before UNWIND runs in
+// text order, so it stays allowed, but a SET after that MERGE does not.
+func TestUnwind_AfterWriteThatRunsAfterUnwindIsRefused(t *testing.T) {
+	queries := map[string]string{
+		"CREATE":        `CREATE (n:L) UNWIND [1, 2] AS x RETURN x`,
+		"SET":           `MATCH (a:A) SET a.id = a.id + 1 UNWIND [1, 2] AS x RETURN x`,
+		"REMOVE":        `MATCH (a:A) REMOVE a.id UNWIND [] AS x RETURN x`,
+		"DELETE":        `MATCH (a:A) DELETE a UNWIND [] AS x RETURN x`,
+		"MERGE ... SET": `MERGE (n:L) SET n.c = 1 UNWIND [1, 2] AS x RETURN x`,
+	}
+	for name, text := range queries {
+		t.Run(name, func(t *testing.T) {
+			tokens, err := NewLexer(text).Tokenize()
+			if err != nil {
+				t.Fatalf("Tokenize %q: %v", text, err)
+			}
+			_, err = NewParser(tokens).Parse()
+			if err == nil {
+				t.Fatalf("%q parsed; UNWIND after a write that runs after UNWIND must be refused", text)
+			}
+			if !strings.Contains(err.Error(), "UNWIND after") || !strings.Contains(err.Error(), "WITH") {
+				t.Fatalf("error = %q, want an UNWIND-after refusal that names the WITH split", err)
+			}
+		})
+	}
+}
+
+// MERGE before UNWIND runs in text order, so it must keep working.
+func TestUnwind_AfterMergeStillRuns(t *testing.T) {
+	ex := unwindStore(t)
+	res, err := runUnwind(t, ex, `MERGE (n:K {k: 1}) UNWIND [1, 2] AS x RETURN n.k AS k, x`, nil)
+	if err != nil {
+		t.Fatalf("MERGE then UNWIND: %v", err)
+	}
+	wantRows(t, res, "map[k:1 x:1]", "map[k:1 x:2]")
+	if got := countLabel(t, ex, "K"); got != 1 {
+		t.Fatalf("MERGE then UNWIND made %d :K nodes, want 1", got)
+	}
+}
+
+// The refusal above names WITH as the way out: the write runs once, then the
+// next segment unwinds.
+func TestUnwind_WriteThenWithThenUnwind(t *testing.T) {
+	ex := unwindStore(t)
+	res, err := runUnwind(t, ex, `CREATE (n:W) WITH n UNWIND [1, 2] AS x RETURN x`, nil)
+	if err != nil {
+		t.Fatalf("CREATE ... WITH n UNWIND: %v", err)
+	}
+	wantRows(t, res, "map[x:1]", "map[x:2]")
+	if got := countLabel(t, ex, "W"); got != 1 {
+		t.Fatalf("CREATE ... WITH n UNWIND [1, 2] made %d :W nodes, want 1", got)
+	}
+}
