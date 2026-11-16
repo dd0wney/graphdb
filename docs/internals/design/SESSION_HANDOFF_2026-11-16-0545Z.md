@@ -43,8 +43,8 @@ The CHANGELOG `[Unreleased]` section names each one, with the release range and 
 ## Current state
 
 - `origin/main` = `050499b`. Local `main` equals it.
-- Open PRs, none from this session: #762 (the previous handoff, still waiting for the user), #735 and #734 (encryption seed and spec), #711 (dependabot).
-- Local branches: `main`, plus the branches of #762, #735 and #734, plus `feat/encryption-key-check`, which is checked out in the worktree `.claude/worktrees/keycheck` and holds local work. The session deleted 24 merged branches and 7 scratch worktrees, with the user's approval.
+- Open PRs, none from this session: #735 and #734 (encryption seed and spec), #711 (dependabot). The previous handoff merged as #762, before this one, on the user's word.
+- Local branches: `main`, plus the branches of #735 and #734, plus `feat/encryption-key-check`, which is checked out in the worktree `.claude/worktrees/keycheck` and holds local work. The session deleted 24 merged branches and 7 scratch worktrees, with the user's approval.
 - Uncommitted changes: none.
 - Coord: every claim of this session is released. GitHub #766 is closed. **#765 is open on purpose**: the form without `WITH item` waits for `v1.4-cypher-merge-after-unwind-auto-split`.
 - Gates: each merged PR passed all 10 CI checks. **Local golangci-lint does not run at the moment** (see "Stale assumptions").
@@ -61,7 +61,7 @@ Ranked. The planning doc is still `docs/NEXT_STEPS_2026-10-08.md`; this session 
 3. **`v1.4-storage-seeded-model-test`** (#764): the largest durability gap that the omnigraph comparison found. Then `v1.4-faultsim-site-guard` (about one day).
 4. **`v1.4-cypher-merge-after-unwind-auto-split`**: the last part of #765. It is a design task: an implicit WITH that carries every bound variable. Done well, it could replace the clause-order refusals of #769 and #773.
 5. The rest of #774: `v1.4-cypher-with-distinct`, `v1.4-cypher-skip-limit-parameter`, `v1.4-cypher-pattern-map-same-pattern-variable`, `v1.4-cypher-pattern-map-row-value-index`.
-6. From the previous handoff (#762, not merged): the 37 TCK `fail` rows and the probes for the two defects that v1.12.1 leaves.
+6. From the previous handoff (`SESSION_HANDOFF_2026-11-14-0653Z.md`, merged as #762): the 37 TCK `fail` rows and the probes for the two defects that v1.12.1 leaves.
 
 ### New gaps not yet on the planning doc
 
@@ -77,7 +77,7 @@ Ranked. The planning doc is still `docs/NEXT_STEPS_2026-10-08.md`; this session 
 
 ## Open questions for the user
 
-1. **#762 and this handoff both overwrite `docs/internals/design/NEXT_SESSION_PROMPT.md`.** Merge #762 first and rebase this one, or close #762 as superseded? (This handoff carries its open queue items forward in "What's next" item 6.)
+1. **Resolved:** the user merged #762 first, then this handoff. `NEXT_SESSION_PROMPT.md` is this handoff's version.
 2. **v1.13.0 from `main`?** The data-loss and snapshot fixes argue for it. It is breaking for Cypher queries in the refused classes, so it is a minor version, not a patch.
 3. **Local lint:** approve a download of a Go 1.27.0 toolchain or a newer golangci-lint, or accept CI as the only lint gate?
 4. **`WITH … SKIP/LIMIT … WHERE` is refused** because the openCypher order of WHERE and SKIP/LIMIT is not confirmed from a local source. The full TCK (a download) would confirm it. Approve that download, or keep the refusal?
@@ -87,7 +87,7 @@ Ranked. The planning doc is still `docs/NEXT_STEPS_2026-10-08.md`; this session 
 
 ```text
 Read docs/internals/design/SESSION_HANDOFF_2026-11-16-0545Z.md first.
-Resolve its open questions 1 to 3 with the user before other work (handoff PR order, v1.13.0, local lint).
+Resolve its open questions 2 and 3 with the user before other work (v1.13.0, local lint).
 Then work the Cypher tasks in "What's next" item 2, red-first, one PR each:
 v1.4-cypher-return-limit-zero, v1.4-cypher-repeated-skip-limit, v1.4-cypher-merge-null-property.
 Claim each with `coord claim graphdb:<id>`; release with `--pr N` after merge.
@@ -100,5 +100,5 @@ End with the session-handoff skill.
 ## How to use this handoff
 
 1. Read this first.
-2. Then read `docs/NEXT_STEPS_2026-10-08.md` and the open handoff in #762.
+2. Then read `docs/NEXT_STEPS_2026-10-08.md` and `SESSION_HANDOFF_2026-11-14-0653Z.md`.
 3. For any Cypher work, read the `[Unreleased]` section of `CHANGELOG.md`: it lists every clause order that the parser now refuses, and why.
