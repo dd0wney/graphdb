@@ -88,4 +88,4 @@ jobs:
       with:
         name: security-scan-results
         path: results.json
-        retention-days: 30
+        retention-days: 3
